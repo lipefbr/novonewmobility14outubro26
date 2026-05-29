@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
+import { EmptyState } from '../ui/empty-states'
 
 const mockTickets = [
   {
@@ -342,7 +343,16 @@ export function SupportPage() {
           <Card className="shadow-sm">
             <CardContent className="p-0">
               <div className="divide-y max-h-[500px] overflow-y-auto custom-scrollbar">
-                {filtered.map((ticket, i) => {
+                {filtered.length === 0 ? (
+                  <EmptyState
+                    icon={MessageSquare}
+                    title="Nenhum ticket aberto"
+                    description="Precisa de ajuda? Crie um novo ticket e nossa equipe irá atendê-lo!"
+                    actionLabel="Criar ticket"
+                    onAction={() => setNewTicketOpen(true)}
+                  />
+                ) : (
+                filtered.map((ticket, i) => {
                   const StatusIcon = statusIcons[ticket.status] || Clock
                   return (
                     <motion.button
@@ -378,7 +388,8 @@ export function SupportPage() {
                       </div>
                     </motion.button>
                   )
-                })}
+                })
+                )}
               </div>
             </CardContent>
           </Card>

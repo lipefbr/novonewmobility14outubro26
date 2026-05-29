@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
+import { EmptyState } from '../ui/empty-states'
 
 type VoucherStatus = 'active' | 'used' | 'expired'
 type VoucherCategory = 'mobility' | 'pharmacy' | 'food' | 'shopping'
@@ -265,10 +266,13 @@ export function VoucherPage() {
       </div>
 
       {filtered.length === 0 && (
-        <div className="text-center py-12 text-gray-400">
-          <Ticket className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">Nenhum voucher encontrado</p>
-        </div>
+        <EmptyState
+          icon={Ticket}
+          title="Nenhum voucher ativo"
+          description="Adquira vouchers para aproveitar descontos em mobilidade, farmácia, refeição e compras!"
+          actionLabel="Comprar Voucher"
+          onAction={handleBuyVoucher}
+        />
       )}
     </div>
   )

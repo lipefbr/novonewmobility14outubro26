@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { formatCurrency, formatDate, getStatusLabel, getStatusVariant, getPlanName } from '@/lib/utils'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
+import { ReferralsSkeleton } from '../ui/loading-skeletons'
+import { EmptyState } from '../ui/empty-states'
 import {
   Users, UserPlus, UserCheck, TrendingUp, Search, Link2, Copy, Check as CheckIcon,
   Share2, Eye, ChevronDown, ChevronUp, Calendar, CreditCard, Award, ArrowUpRight
@@ -43,6 +45,17 @@ export function ReferralsPage() {
   const [copied, setCopied] = useState(false)
   const [detailReferral, setDetailReferral] = useState<typeof mockReferrals[0] | null>(null)
   const [showAllLevels, setShowAllLevels] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  // Simulate loading
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 800)
+    return () => clearTimeout(timer)
+  }, [])
+
+  if (loading) {
+    return <ReferralsSkeleton />
+  }
 
   const referralLink = `https://newmobility.com.br/ref/${user?.referralCode || 'USER2025'}`
 
@@ -379,10 +392,13 @@ export function ReferralsPage() {
               </motion.div>
             ))}
             {filtered.length === 0 && (
-              <div className="p-8 text-center text-gray-400">
-                <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">Nenhum indicado encontrado</p>
-              </div>
+              <EmptyState
+                icon={Users}
+                title="Nenhum indicado ainda"
+                description="Compartilhe seu link de indicação e comece a construir sua rede para ganhar CashBack!"
+                actionLabel="Compartilhar link"
+                onAction={handleShare}
+              />
             )}
           </div>
         </CardContent>

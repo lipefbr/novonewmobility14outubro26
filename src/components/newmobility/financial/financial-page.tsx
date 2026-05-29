@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,6 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency, formatDate, getStatusLabel, getStatusVariant, cn } from '@/lib/utils'
+import { FinancialSkeleton } from '../ui/loading-skeletons'
+import { EmptyState } from '../ui/empty-states'
 import {
   AreaChart,
   Area,
@@ -91,6 +93,17 @@ export function FinancialPage() {
   const [filterType, setFilterType] = useState<string>('all')
   const [withdrawOpen, setWithdrawOpen] = useState(false)
   const [withdrawAmount, setWithdrawAmount] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  // Simulate loading
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 800)
+    return () => clearTimeout(timer)
+  }, [])
+
+  if (loading) {
+    return <FinancialSkeleton />
+  }
 
   const filtered = mockTransactions.filter((tx) => {
     if (filterType === 'all') return true
@@ -368,6 +381,13 @@ export function FinancialPage() {
                 </div>
               </div>
             ))}
+            {filtered.length === 0 && (
+              <EmptyState
+                icon={Wallet}
+                title="Nenhuma transação encontrada"
+                description="Suas transações aparecerão aqui assim que houver movimentação na sua conta."
+              />
+            )}
           </div>
         </CardContent>
       </Card>

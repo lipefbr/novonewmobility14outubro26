@@ -30,6 +30,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { useState, useEffect } from 'react'
+import { DashboardSkeleton } from '../ui/loading-skeletons'
 
 interface DashboardData {
   user: any
@@ -113,6 +114,10 @@ export function DashboardPage() {
       : 1364,
     activeMembers: dashboardData?.directReferralCount ?? dashboardData?.directReferrals ?? 4,
     newReferrals: Math.max(1, Math.floor((dashboardData?.directReferralCount ?? dashboardData?.directReferrals ?? 4) * 0.3)),
+  }
+
+  if (loading) {
+    return <DashboardSkeleton />
   }
 
   return (

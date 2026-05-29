@@ -49,6 +49,99 @@ export interface UserData {
   createdAt: string
 }
 
+export interface Notification {
+  id: string
+  type: 'cashback' | 'referral' | 'career' | 'voucher' | 'system' | 'gratification'
+  title: string
+  description: string
+  time: string
+  read: boolean
+  icon?: string
+}
+
+const mockNotifications: Notification[] = [
+  {
+    id: 'n1',
+    type: 'cashback',
+    title: 'CashBack Recebido!',
+    description: 'Você recebeu R$ 45,00 de CashBack Entrada do usuário Maria Silva.',
+    time: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
+    read: false,
+  },
+  {
+    id: 'n2',
+    type: 'referral',
+    title: 'Novo Indicado',
+    description: 'João Santos se cadastrou usando seu código de indicação!',
+    time: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+    read: false,
+  },
+  {
+    id: 'n3',
+    type: 'career',
+    title: 'Progresso na Carreira',
+    description: 'Faltam apenas 5 pontos para você alcançar o rank Bronze!',
+    time: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    read: false,
+  },
+  {
+    id: 'n4',
+    type: 'voucher',
+    title: 'Voucher Disponível',
+    description: 'Seu voucher de R$ 100,00 está pronto para uso no App Mobilidade.',
+    time: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+    read: false,
+  },
+  {
+    id: 'n5',
+    type: 'gratification',
+    title: 'Gratificação Liberada',
+    description: 'Parabéns! Sua gratificação semanal de R$ 25,00 foi creditada.',
+    time: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+    read: true,
+  },
+  {
+    id: 'n6',
+    type: 'cashback',
+    title: 'CashBack Residual',
+    description: 'R$ 12,50 de CashBack Residual creditados na sua conta.',
+    time: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
+    read: true,
+  },
+  {
+    id: 'n7',
+    type: 'system',
+    title: 'Atualização do Sistema',
+    description: 'Nova versão do app disponível. Atualize para aproveitar as novidades!',
+    time: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    read: true,
+  },
+  {
+    id: 'n8',
+    type: 'referral',
+    title: 'Indicado Ativou Plano',
+    description: 'Pedro Costa ativou o plano Blue 5 Premium na sua rede!',
+    time: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    read: true,
+  },
+  {
+    id: 'n9',
+    type: 'cashback',
+    title: 'CashBack Vendas',
+    description: 'Você recebeu R$ 8,30 de CashBack de vendas no Shopping.',
+    time: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    read: true,
+  },
+  {
+    id: 'n10',
+    type: 'system',
+    title: 'Bem-vindo à NewMobility!',
+    description: 'Sua conta foi criada com sucesso. Explore todas as funcionalidades.',
+    time: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    read: true,
+  },
+]
+
 interface AppState {
   // Auth
   isAuthenticated: boolean
@@ -63,6 +156,9 @@ interface AppState {
   // Theme
   darkMode: boolean
 
+  // Notifications
+  notifications: Notification[]
+
   // Actions
   login: (user: UserData) => void
   logout: () => void
@@ -73,6 +169,9 @@ interface AppState {
   updateUser: (data: Partial<UserData>) => void
   toggleDarkMode: () => void
   setDarkMode: (dark: boolean) => void
+  markAsRead: (id: string) => void
+  markAllAsRead: () => void
+  unreadCount: () => number
 }
 
 const mockUser: UserData = {
@@ -102,7 +201,7 @@ const mockUser: UserData = {
 
 export const useStore = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       // Auth
       isAuthenticated: false,
       authView: 'login',
@@ -115,6 +214,9 @@ export const useStore = create<AppState>()(
 
       // Theme
       darkMode: false,
+
+      // Notifications
+      notifications: mockNotifications,
 
       // Actions
       login: (user) =>
@@ -164,6 +266,22 @@ export const useStore = create<AppState>()(
           }
           return { darkMode: dark }
         }),
+
+      markAsRead: (id) =>
+        set((state) => ({
+          notifications: state.notifications.map(n =>
+            n.id === id ? { ...n, read: true } : n
+          ),
+        })),
+
+      markAllAsRead: () =>
+        set((state) => ({
+          notifications: state.notifications.map(n => ({ ...n, read: true })),
+        })),
+
+      unreadCount: () => {
+        return get().notifications.filter(n => !n.read).length
+      },
     }),
     {
       name: 'newmobility-auth',
@@ -173,6 +291,7 @@ export const useStore = create<AppState>()(
         activePage: state.activePage,
         language: state.user?.language,
         darkMode: state.darkMode,
+        notifications: state.notifications,
       }),
     }
   )

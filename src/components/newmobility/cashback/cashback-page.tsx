@@ -1,16 +1,16 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { MatrixVisualization } from './matrix-visualization'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency, cn } from '@/lib/utils'
-import { DollarSign, TrendingUp, ShoppingBag, ArrowDownRight, Download, TrendingDown } from 'lucide-react'
+import { DollarSign, TrendingUp, ShoppingBag, ArrowDownRight, Download, TrendingDown, Users, Layers } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { EmptyState } from '../ui/empty-states'
 
 const cashbackSummary = {
   entrada: {
@@ -18,18 +18,21 @@ const cashbackSummary = {
     lastMonth: 456000,
     lastWeek: 112000,
     pending: 89000,
+    totalUsers: 328,
   },
   residual: {
     total: 1824000,
     lastMonth: 234000,
     lastWeek: 56000,
     pending: 45000,
+    totalUsers: 806,
   },
   vendas: {
     total: 10602500,
     lastMonth: 1234000,
     lastWeek: 345000,
     pending: 678000,
+    totalUsers: 13204,
   },
 }
 
@@ -54,9 +57,9 @@ function SummaryCard({
         <div className={`p-2 rounded-lg ${color}`}>
           <Icon className="h-4 w-4" />
         </div>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <p className="text-xs text-muted-foreground font-medium">{label}</p>
-          <p className="text-base font-bold text-foreground">{formatCurrency(value)}</p>
+          <p className="text-base font-bold text-foreground truncate">{formatCurrency(value)}</p>
         </div>
         {trend !== undefined && (
           <div className={`flex items-center gap-0.5 text-xs font-semibold ${trend >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
@@ -73,8 +76,31 @@ export function CashbackPage() {
   const [activeTab, setActiveTab] = useState('entrada')
   const [period, setPeriod] = useState<Period>('30d')
   const { t } = useTranslation()
+  const { setActivePage } = useStore()
+
+  // Show empty state when no cashback data (for demo: always false since we have mock data)
+  const hasCashbackData = cashbackSummary.entrada.total > 0
+
+  if (!hasCashbackData) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-xl font-bold text-foreground">{t('cashback.title')}</h2>
+          <p className="text-sm text-muted-foreground">{t('cashback.subtitle')}</p>
+        </div>
+        <EmptyState
+          icon={DollarSign}
+          title="Nenhum CashBack registrado ainda"
+          description="Comece a indicar pessoas para sua rede e ganhe CashBack em múltiplos níveis!"
+          actionLabel="Comece a indicar"
+          onAction={() => setActivePage('referrals')}
+        />
+      </div>
+    )
+  }
 
   const totalEarnings = cashbackSummary.entrada.total + cashbackSummary.residual.total + cashbackSummary.vendas.total
+  const totalUsers = cashbackSummary.entrada.totalUsers + cashbackSummary.residual.totalUsers + cashbackSummary.vendas.totalUsers
 
   const getFilteredSummary = (type: 'entrada' | 'residual' | 'vendas') => {
     const s = cashbackSummary[type]
@@ -101,29 +127,32 @@ export function CashbackPage() {
         </Button>
       </div>
 
-      {/* Total Earnings Summary */}
+      {/* Total Earnings Summary - Compact */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
         <Card className="bg-gradient-to-r from-emerald-600 to-teal-600 border-0 shadow-lg overflow-hidden">
-          <CardContent className="p-5 relative">
+          <CardContent className="p-4 relative">
             <div className="absolute inset-0 opacity-10" style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
             }} />
-            <div className="relative">
-              <p className="text-sm text-emerald-100 font-medium">{t('cashback.totalEarnings')}</p>
-              <p className="text-3xl font-bold text-white mt-1">{formatCurrency(totalEarnings)}</p>
-              <div className="flex items-center gap-4 mt-3">
-                <div className="text-xs text-emerald-200">
-                  <span className="font-semibold text-white">{t('cashback.entrada')}:</span> {formatCurrency(cashbackSummary.entrada.total)}
+            <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-sm text-emerald-100 font-medium">{t('cashback.totalEarnings')}</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white mt-1">{formatCurrency(totalEarnings)}</p>
+              </div>
+              <div className="flex items-center gap-4 sm:gap-6">
+                <div className="flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5 text-emerald-200" />
+                  <span className="text-xs text-emerald-200">Total Usuários:</span>
+                  <span className="text-xs font-bold text-white">{totalUsers.toLocaleString('pt-BR')}</span>
                 </div>
-                <div className="text-xs text-emerald-200">
-                  <span className="font-semibold text-white">{t('cashback.residual')}:</span> {formatCurrency(cashbackSummary.residual.total)}
-                </div>
-                <div className="text-xs text-emerald-200">
-                  <span className="font-semibold text-white">{t('cashback.vendas')}:</span> {formatCurrency(cashbackSummary.vendas.total)}
+                <div className="flex items-center gap-1.5">
+                  <Layers className="h-3.5 w-3.5 text-emerald-200" />
+                  <span className="text-xs text-emerald-200">Níveis:</span>
+                  <span className="text-xs font-bold text-white">5 · 7 · 9</span>
                 </div>
               </div>
             </div>

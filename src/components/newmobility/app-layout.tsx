@@ -1,13 +1,14 @@
 'use client'
 
-import { Menu, Globe, Bell, ChevronRight, Home, Moon, Sun } from 'lucide-react'
+import { Menu, Globe, ChevronRight, Home, Moon, Sun } from 'lucide-react'
 import { useStore, type PageKey } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { languageNames, type Language } from '@/lib/i18n'
 import { Sidebar } from './sidebar'
+import { NotificationPanel } from './notifications/notification-panel'
+import { WelcomeModal } from './onboarding/welcome-modal'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Badge } from '@/components/ui/badge'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,6 +54,8 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      {/* Welcome/Onboarding Modal */}
+      <WelcomeModal />
       <div className="flex flex-1 min-h-0">
         {/* Sidebar */}
         <Sidebar />
@@ -94,11 +97,8 @@ export function AppLayout({ children }: AppLayoutProps) {
               </div>
 
               <div className="flex items-center gap-2">
-                {/* Notification Bell */}
-                <Button variant="ghost" size="icon" className="h-9 w-9 relative text-muted-foreground hover:text-foreground">
-                  <Bell className="h-4.5 w-4.5" />
-                  <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-card" />
-                </Button>
+                {/* Notification Panel */}
+                <NotificationPanel />
 
                 {/* Dark Mode Toggle */}
                 <Button
