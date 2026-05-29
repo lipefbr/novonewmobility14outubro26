@@ -6,11 +6,12 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency, formatDate, getStatusLabel, getStatusVariant, cn } from '@/lib/utils'
+import { financialApi } from '@/lib/api'
 import { FinancialSkeleton } from '../ui/loading-skeletons'
 import { EmptyState } from '../ui/empty-states'
 import {
@@ -37,8 +38,10 @@ import {
   TrendingUp,
   TrendingDown,
   FileDown,
+  Calendar,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { toast } from 'sonner'
 
 const mockTransactions = [
   { id: '1', type: 'cashback_entry', amount: 45000, status: 'paid', category: 'withdrawal', description: 'CashBack Entrada - Nível 2', date: '2025-01-15' },
@@ -55,7 +58,6 @@ const mockTransactions = [
   { id: '12', type: 'bonus', amount: 50000, status: 'paid', category: 'withdrawal', description: 'Bônus Indicação Direta', date: '2025-01-04' },
 ]
 
-// Chart data for last 6 months
 const monthlyData = [
   { month: 'Ago', ganhos: 2850000, saques: 1200000 },
   { month: 'Set', ganhos: 3100000, saques: 1500000 },
@@ -94,8 +96,10 @@ export function FinancialPage() {
   const [withdrawOpen, setWithdrawOpen] = useState(false)
   const [withdrawAmount, setWithdrawAmount] = useState('')
   const [loading, setLoading] = useState(true)
+  const [exportStartDate, setExportStartDate] = useState('')
+  const [exportEndDate, setExportEndDate] = useState('')
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
 
-  // Simulate loading
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 800)
     return () => clearTimeout(timer)
@@ -136,6 +140,14 @@ export function FinancialPage() {
     link.click()
   }
 
+  const handleServerExport = () => {
+    if (!user?.id) return
+    const url = financialApi.getExportUrl(user.id, 'csv', exportStartDate || undefined, exportEndDate || undefined, filterType)
+    window.open(url, '_blank')
+    setExportDialogOpen(false)
+    toast.success('Exportação iniciada!')
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -145,17 +157,15 @@ export function FinancialPage() {
           <p className="text-sm text-muted-foreground">{t('financial.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={handleExportCSV}>
+          <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={() => setExportDialogOpen(true)}>
             <FileDown className="h-3.5 w-3.5" />
             {t('financial.exportCsv')}
           </Button>
           <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
-                <ArrowDownToLine className="h-4 w-4" />
-                {t('financial.withdraw')}
-              </Button>
-            </DialogTrigger>
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={() => setWithdrawOpen(true)}>
+              <ArrowDownToLine className="h-4 w-4" />
+              {t('financial.withdraw')}
+            </Button>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>{t('financial.withdraw')}</DialogTitle>
@@ -179,7 +189,7 @@ export function FinancialPage() {
                 </div>
                 <Button
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
-                  onClick={() => setWithdrawOpen(false)}
+                  onClick={() => { setWithdrawOpen(false); toast.success('Saque solicitado com sucesso!') }}
                 >
                   {t('financial.confirmWithdrawal')}
                 </Button>
@@ -391,6 +401,87 @@ export function FinancialPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Export Dialog */}
+      <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileDown className="h-5 w-5 text-emerald-600" />
+              Exportar Relatório
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Exporte suas transações em formato CSV com filtros de data e tipo.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-xs flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  Data inicial
+                </Label>
+                <Input
+                  type="date"
+                  value={exportStartDate}
+                  onChange={(e) => setExportStartDate(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  Data final
+                </Label>
+                <Input
+                  type="date"
+                  value={exportEndDate}
+                  onChange={(e) => setExportEndDate(e.target.value)}
+                  className="text-sm"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Tipo de transação</Label>
+              <Select value={filterType} onValueChange={setFilterType}>
+                <SelectTrigger className="text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="cashback_entry">CB Entrada</SelectItem>
+                  <SelectItem value="cashback_residual">CB Residual</SelectItem>
+                  <SelectItem value="cashback_sales">CB Vendas</SelectItem>
+                  <SelectItem value="withdrawal">Saques</SelectItem>
+                  <SelectItem value="gratification">Gratificações</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="bg-muted/50 rounded-lg p-3">
+              <p className="text-xs text-muted-foreground">
+                💡 Dica: Deixe as datas em branco para exportar todas as transações do período.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1 gap-2"
+                onClick={handleExportCSV}
+              >
+                <Download className="h-4 w-4" />
+                Exportar local
+              </Button>
+              <Button
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                onClick={handleServerExport}
+              >
+                <FileDown className="h-4 w-4" />
+                Exportar do servidor
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Bank Details */}
       <Card className="shadow-sm bg-card">

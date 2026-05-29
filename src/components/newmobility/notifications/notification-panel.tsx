@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Bell, CheckCheck, DollarSign, Users, TrendingUp, Gift, Ticket, Info, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { motion, AnimatePresence } from 'framer-motion'
+import { NotificationSettings } from './notification-settings'
 
 const iconMap: Record<Notification['type'], React.ElementType> = {
   cashback: DollarSign,
@@ -130,10 +131,21 @@ export function NotificationPanel() {
         </ScrollArea>
 
         {/* Footer */}
-        {latest.length === 0 && (
+        {latest.length === 0 ? (
           <div className="p-6 text-center">
             <Bell className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
             <p className="text-xs text-muted-foreground">Nenhuma notificação</p>
+          </div>
+        ) : (
+          <div className="border-t border-border px-3 py-2 flex items-center justify-between">
+            <NotificationSettings />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              Ver todas
+            </Button>
           </div>
         )}
       </PopoverContent>

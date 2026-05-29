@@ -1,6 +1,6 @@
 'use client'
 
-import { Menu, Globe, ChevronRight, Home, Moon, Sun } from 'lucide-react'
+import { Menu, Globe, ChevronRight, Home, Moon, Sun, Search } from 'lucide-react'
 import { useStore, type PageKey } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { languageNames, type Language } from '@/lib/i18n'
@@ -8,6 +8,7 @@ import { Sidebar } from './sidebar'
 import { NotificationPanel } from './notifications/notification-panel'
 import { WelcomeModal } from './onboarding/welcome-modal'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   DropdownMenu,
@@ -15,6 +16,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useState } from 'react'
 
 const languages: { code: Language; label: string; name: string }[] = [
   { code: 'pt', label: 'PT', name: 'Português' },
@@ -51,6 +54,7 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   const { user, setMobileSidebarOpen, updateUser, activePage, darkMode, toggleDarkMode } = useStore()
   const { t } = useTranslation()
+  const [searchOpen, setSearchOpen] = useState(false)
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -63,40 +67,80 @@ export function AppLayout({ children }: AppLayoutProps) {
         {/* Main Content Area */}
         <div className="flex flex-col flex-1 min-w-0">
           {/* Header */}
-          <header className="sticky top-0 z-30 bg-card border-b border-border shrink-0">
-            {/* Top gradient line */}
-            <div className="h-0.5 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500" />
-            <div className="px-4 py-2.5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {/* Mobile menu toggle */}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="lg:hidden h-9 w-9 text-muted-foreground"
-                  onClick={() => setMobileSidebarOpen(true)}
-                >
-                  <Menu className="h-5 w-5" />
-                </Button>
+          <header className="sticky top-0 z-30 bg-card/95 backdrop-blur-md border-b border-border shrink-0">
+            {/* Gradient bottom border */}
+            <div className="h-0.5 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 animate-gradient-shift" />
+            <div className="px-4 py-2.5 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3 min-w-0">
+                {/* Mobile menu toggle with animation */}
+                <motion.div whileTap={{ scale: 0.9 }}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="lg:hidden h-9 w-9 text-muted-foreground hover:text-foreground"
+                    onClick={() => setMobileSidebarOpen(true)}
+                  >
+                    <Menu className="h-5 w-5" />
+                  </Button>
+                </motion.div>
 
                 {/* Brand on mobile */}
                 <div className="flex items-center gap-2 lg:hidden">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-600 text-white font-bold text-xs">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-bold text-xs shadow-md shadow-emerald-500/20">
                     NM
                   </div>
                   <span className="font-bold text-foreground">NewMobility</span>
                 </div>
 
                 {/* Breadcrumb on desktop */}
-                <div className="hidden lg:flex items-center gap-1.5 text-sm">
-                  <Home className="h-3.5 w-3.5 text-muted-foreground" />
-                  <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
-                  <span className="text-muted-foreground">{t('header.backoffice')}</span>
-                  <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
-                  <span className="font-medium text-foreground">{t(sidebarLabelKeys[activePage]) || 'Dashboard'}</span>
+                <div className="hidden lg:flex items-center gap-1.5 text-sm min-w-0">
+                  <Home className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                  <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                  <span className="text-muted-foreground truncate">{t('header.backoffice')}</span>
+                  <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                  <span className="font-medium text-foreground truncate">{t(sidebarLabelKeys[activePage]) || 'Dashboard'}</span>
                 </div>
+
+                {/* Search bar */}
+                <AnimatePresence>
+                  {searchOpen ? (
+                    <motion.div
+                      initial={{ width: 0, opacity: 0 }}
+                      animate={{ width: 200, opacity: 1 }}
+                      exit={{ width: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="hidden lg:block overflow-hidden"
+                    >
+                      <Input
+                        placeholder="Buscar..."
+                        className="h-8 text-xs"
+                        autoFocus
+                        onBlur={() => setSearchOpen(false)}
+                      />
+                    </motion.div>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="hidden lg:flex h-8 w-8 text-muted-foreground hover:text-foreground"
+                      onClick={() => setSearchOpen(true)}
+                    >
+                      <Search className="h-4 w-4" />
+                    </Button>
+                  )}
+                </AnimatePresence>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                {/* Mobile search button */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="lg:hidden h-9 w-9 text-muted-foreground hover:text-foreground"
+                >
+                  <Search className="h-4.5 w-4.5" />
+                </Button>
+
                 {/* Notification Panel */}
                 <NotificationPanel />
 
@@ -107,7 +151,14 @@ export function AppLayout({ children }: AppLayoutProps) {
                   className="h-9 w-9 text-muted-foreground hover:text-foreground"
                   onClick={toggleDarkMode}
                 >
-                  {darkMode ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
+                  <motion.div
+                    key={darkMode ? 'dark' : 'light'}
+                    initial={{ rotate: -90, opacity: 0 }}
+                    animate={{ rotate: 0, opacity: 1 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    {darkMode ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
+                  </motion.div>
                 </Button>
 
                 {/* Language Selector */}

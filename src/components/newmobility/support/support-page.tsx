@@ -14,9 +14,9 @@ import { formatDate, getStatusLabel, getStatusVariant, formatDateTime } from '@/
 import {
   Headphones, Plus, MessageCircle, Clock, CheckCircle2, AlertCircle,
   Send, Filter, Mail, Phone, MessageSquare, HelpCircle, Zap, CreditCard,
-  Smartphone, ShoppingBag, ChevronRight
+  Smartphone, ShoppingBag, ChevronRight, Sparkles
 } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
 import { EmptyState } from '../ui/empty-states'
 
@@ -123,10 +123,10 @@ const faqItems = [
 ]
 
 const quickActions = [
-  { icon: CreditCard, label: 'Problema com Saque', category: 'financial' },
-  { icon: Smartphone, label: 'Problema no App', category: 'technical' },
-  { icon: ShoppingBag, label: 'Voucher não funciona', category: 'shopping' },
-  { icon: Zap, label: 'CashBack não creditado', category: 'financial' },
+  { icon: CreditCard, label: 'Problema com Saque', category: 'financial', desc: 'Saque não processado' },
+  { icon: Smartphone, label: 'Problema no App', category: 'technical', desc: 'Erro ou falha no app' },
+  { icon: ShoppingBag, label: 'Voucher não funciona', category: 'shopping', desc: 'Código inválido' },
+  { icon: Zap, label: 'CashBack não creditado', category: 'financial', desc: 'Valor pendente' },
 ]
 
 export function SupportPage() {
@@ -169,8 +169,8 @@ export function SupportPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Suporte</h2>
-          <p className="text-sm text-gray-500">Gerencie seus tickets de suporte</p>
+          <h2 className="text-xl font-bold text-foreground">Suporte</h2>
+          <p className="text-sm text-muted-foreground">Gerencie seus tickets de suporte</p>
         </div>
         <Dialog open={newTicketOpen} onOpenChange={setNewTicketOpen}>
           <DialogTrigger asChild>
@@ -181,7 +181,10 @@ export function SupportPage() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Criar Novo Ticket</DialogTitle>
+              <DialogTitle className="flex items-center gap-2">
+                <Headphones className="h-5 w-5 text-emerald-600" />
+                Criar Novo Ticket
+              </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
@@ -190,6 +193,7 @@ export function SupportPage() {
                   placeholder="Descreva resumidamente seu problema"
                   value={newTicket.subject}
                   onChange={(e) => setNewTicket((prev) => ({ ...prev, subject: e.target.value }))}
+                  className={!newTicket.subject && newTicket.category ? 'border-red-300 dark:border-red-700' : ''}
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -236,6 +240,7 @@ export function SupportPage() {
                   rows={4}
                   value={newTicket.message}
                   onChange={(e) => setNewTicket((prev) => ({ ...prev, message: e.target.value }))}
+                  className={!newTicket.message && newTicket.subject ? 'border-red-300 dark:border-red-700' : ''}
                 />
               </div>
               <Button
@@ -249,7 +254,7 @@ export function SupportPage() {
         </Dialog>
       </div>
 
-      {/* Quick Actions */}
+      {/* Quick Actions - Card-style buttons */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {quickActions.map((action, i) => (
           <motion.button
@@ -258,36 +263,39 @@ export function SupportPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
             onClick={() => handleQuickAction(action.category)}
-            className="bg-white border border-gray-200 rounded-xl p-3 hover:border-emerald-300 hover:bg-emerald-50 transition-colors text-left group"
+            className="bg-card border border-border rounded-xl p-3 hover:border-emerald-300 dark:hover:border-emerald-700 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 transition-colors text-left group"
           >
             <div className="flex items-center gap-2 mb-1">
-              <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-600">
+              <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
                 <action.icon className="h-4 w-4" />
               </div>
-              <ChevronRight className="h-3 w-3 text-gray-400 group-hover:text-emerald-600 ml-auto" />
+              <ChevronRight className="h-3 w-3 text-muted-foreground group-hover:text-emerald-600 ml-auto" />
             </div>
-            <p className="text-xs font-medium text-gray-700">{action.label}</p>
+            <p className="text-xs font-medium text-foreground">{action.label}</p>
+            <p className="text-[10px] text-muted-foreground">{action.desc}</p>
           </motion.button>
         ))}
       </div>
 
-      {/* Contact Options */}
+      {/* Contact Options - Enhanced card-style */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { icon: MessageSquare, title: 'Chat Online', desc: 'Atendimento em tempo real', detail: 'Disponível 9h-18h', color: 'bg-emerald-100 text-emerald-600' },
-          { icon: Mail, title: 'E-mail', desc: 'suporte@newmobility.com.br', detail: 'Resposta em até 24h', color: 'bg-blue-100 text-blue-600' },
-          { icon: Phone, title: 'Telefone', desc: '0800 123 4567', detail: 'Seg-Sex 8h-20h', color: 'bg-amber-100 text-amber-600' },
+          { icon: MessageSquare, title: 'Chat Online', desc: 'Atendimento em tempo real', detail: 'Disponível 9h-18h', color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400', gradient: 'from-emerald-500 to-emerald-600' },
+          { icon: Mail, title: 'E-mail', desc: 'suporte@newmobility.com.br', detail: 'Resposta em até 24h', color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400', gradient: 'from-blue-500 to-blue-600' },
+          { icon: Phone, title: 'Telefone', desc: '0800 123 4567', detail: 'Seg-Sex 8h-20h', color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400', gradient: 'from-amber-500 to-amber-600' },
         ].map((contact, i) => (
           <motion.div key={contact.title} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.05 }}>
-            <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+            <Card className="shadow-sm hover:shadow-md transition-all cursor-pointer group overflow-hidden bg-card">
+              {/* Top gradient accent */}
+              <div className={`h-1 bg-gradient-to-r ${contact.gradient}`} />
               <CardContent className="p-4 flex items-start gap-3">
-                <div className={`p-2.5 rounded-lg ${contact.color}`}>
+                <div className={`p-2.5 rounded-lg ${contact.color} group-hover:scale-105 transition-transform`}>
                   <contact.icon className="h-5 w-5" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-gray-900 text-sm">{contact.title}</h4>
-                  <p className="text-xs text-gray-600 mt-0.5">{contact.desc}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">{contact.detail}</p>
+                  <h4 className="font-bold text-foreground text-sm">{contact.title}</h4>
+                  <p className="text-xs text-muted-foreground mt-0.5">{contact.desc}</p>
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5 font-medium">{contact.detail}</p>
                 </div>
               </CardContent>
             </Card>
@@ -295,8 +303,8 @@ export function SupportPage() {
         ))}
       </div>
 
-      {/* FAQ */}
-      <Card className="shadow-sm">
+      {/* FAQ - Enhanced accordion with animated expand/collapse */}
+      <Card className="shadow-sm bg-card">
         <CardHeader>
           <CardTitle className="text-base font-bold flex items-center gap-2">
             <HelpCircle className="h-4 w-4 text-emerald-600" />
@@ -306,12 +314,22 @@ export function SupportPage() {
         <CardContent>
           <Accordion type="single" collapsible className="w-full">
             {faqItems.map((item, i) => (
-              <AccordionItem key={i} value={`faq-${i}`}>
-                <AccordionTrigger className="text-sm text-left hover:text-emerald-700">
-                  {item.question}
+              <AccordionItem key={i} value={`faq-${i}`} className="border-border">
+                <AccordionTrigger className="text-sm text-left hover:text-emerald-700 dark:hover:text-emerald-400 hover:no-underline py-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                    {item.question}
+                  </div>
                 </AccordionTrigger>
-                <AccordionContent className="text-sm text-gray-600 pb-4">
-                  {item.answer}
+                <AccordionContent className="text-sm text-muted-foreground pb-4">
+                  <motion.div
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="pl-5.5 border-l-2 border-emerald-200 dark:border-emerald-800 ml-1.5"
+                  >
+                    {item.answer}
+                  </motion.div>
                 </AccordionContent>
               </AccordionItem>
             ))}
@@ -319,12 +337,12 @@ export function SupportPage() {
         </CardContent>
       </Card>
 
-      {/* Active Tickets */}
+      {/* Active Tickets - Chat-style conversation */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         {/* Ticket List */}
         <div className="lg:col-span-2">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold text-gray-900">Seus Tickets</h3>
+            <h3 className="text-sm font-bold text-foreground">Seus Tickets</h3>
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
               <SelectTrigger className="h-8 text-xs w-36">
                 <Filter className="h-3 w-3 mr-1" />
@@ -340,7 +358,7 @@ export function SupportPage() {
             </Select>
           </div>
 
-          <Card className="shadow-sm">
+          <Card className="shadow-sm bg-card">
             <CardContent className="p-0">
               <div className="divide-y max-h-[500px] overflow-y-auto custom-scrollbar">
                 {filtered.length === 0 ? (
@@ -361,8 +379,8 @@ export function SupportPage() {
                       animate={{ opacity: 1 }}
                       transition={{ delay: i * 0.05 }}
                       onClick={() => setSelectedTicket(ticket.id)}
-                      className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors ${
-                        selectedTicket === ticket.id ? 'bg-emerald-50 border-l-2 border-l-emerald-500' : ''
+                      className={`w-full text-left px-4 py-3 hover:bg-muted/50 transition-colors ${
+                        selectedTicket === ticket.id ? 'bg-emerald-50 dark:bg-emerald-950/20 border-l-2 border-l-emerald-500' : 'border-l-2 border-l-transparent'
                       }`}
                     >
                       <div className="flex items-start gap-2">
@@ -372,7 +390,7 @@ export function SupportPage() {
                           'text-emerald-500'
                         }`} />
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">{ticket.subject}</p>
+                          <p className="text-sm font-medium text-foreground truncate">{ticket.subject}</p>
                           <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <Badge variant="outline" className="text-[10px]">
                               {categoryLabels[ticket.category]}
@@ -381,7 +399,7 @@ export function SupportPage() {
                               {getStatusLabel(ticket.status)}
                             </Badge>
                           </div>
-                          <p className="text-[10px] text-gray-400 mt-1">
+                          <p className="text-[10px] text-muted-foreground mt-1">
                             Atualizado: {ticket.updatedAt ? formatDateTime(ticket.updatedAt) : formatDate(ticket.createdAt)}
                           </p>
                         </div>
@@ -395,18 +413,18 @@ export function SupportPage() {
           </Card>
         </div>
 
-        {/* Ticket Detail */}
+        {/* Ticket Detail - Chat-style */}
         <div className="lg:col-span-3">
           {activeTicket ? (
-            <Card className="shadow-sm">
-              <CardHeader className="pb-3">
+            <Card className="shadow-sm bg-card">
+              <CardHeader className="pb-3 border-b border-border">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-base font-bold">{activeTicket.subject}</CardTitle>
+                  <CardTitle className="text-base font-bold text-foreground">{activeTicket.subject}</CardTitle>
                   <Badge variant={getStatusVariant(activeTicket.status)}>
                     {getStatusLabel(activeTicket.status)}
                   </Badge>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                   <Badge variant="outline" className="text-[10px]">
                     {categoryLabels[activeTicket.category]}
                   </Badge>
@@ -415,29 +433,34 @@ export function SupportPage() {
                   <span>{formatDate(activeTicket.createdAt)}</span>
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-4">
+                {/* Chat-style messages */}
                 <div className="space-y-3 max-h-72 overflow-y-auto custom-scrollbar mb-4">
-                  {activeTicket.messages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`flex ${msg.isAdmin ? 'justify-start' : 'justify-end'}`}
-                    >
-                      <div
-                        className={`max-w-[80%] rounded-xl px-4 py-2.5 ${
-                          msg.isAdmin
-                            ? 'bg-gray-100 text-gray-900'
-                            : 'bg-emerald-600 text-white'
-                        }`}
+                  <AnimatePresence>
+                    {activeTicket.messages.map((msg) => (
+                      <motion.div
+                        key={msg.id}
+                        initial={{ opacity: 0, y: 5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={`flex ${msg.isAdmin ? 'justify-start' : 'justify-end'}`}
                       >
-                        <p className="text-sm">{msg.message}</p>
-                        <p className={`text-[10px] mt-1 ${
-                          msg.isAdmin ? 'text-gray-500' : 'text-emerald-200'
-                        }`}>
-                          {msg.isAdmin ? 'Atendimento' : 'Você'} · {formatDateTime(msg.date)}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+                        <div
+                          className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
+                            msg.isAdmin
+                              ? 'bg-muted text-foreground rounded-bl-sm'
+                              : 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-br-sm'
+                          }`}
+                        >
+                          <p className="text-sm">{msg.message}</p>
+                          <p className={`text-[10px] mt-1.5 ${
+                            msg.isAdmin ? 'text-muted-foreground' : 'text-emerald-200'
+                          }`}>
+                            {msg.isAdmin ? '🛡️ Atendimento' : '👤 Você'} · {formatDateTime(msg.date)}
+                          </p>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
                 </div>
 
                 {activeTicket.status !== 'closed' && activeTicket.status !== 'resolved' && (
@@ -456,10 +479,19 @@ export function SupportPage() {
               </CardContent>
             </Card>
           ) : (
-            <Card className="shadow-sm">
+            <Card className="shadow-sm bg-card">
               <CardContent className="p-12 text-center">
-                <Headphones className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500">Selecione um ticket para ver os detalhes</p>
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="flex flex-col items-center"
+                >
+                  <div className="p-4 rounded-full bg-muted/50 mb-4">
+                    <Headphones className="h-12 w-12 text-muted-foreground/40" />
+                  </div>
+                  <p className="text-muted-foreground font-medium">Selecione um ticket para ver os detalhes</p>
+                  <p className="text-xs text-muted-foreground mt-1">ou crie um novo ticket para obter ajuda</p>
+                </motion.div>
               </CardContent>
             </Card>
           )}

@@ -1,13 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import {
   Ticket, Check, Clock, Car, ShoppingBag, Gift, Copy, Check as CheckIcon,
-  Pill, UtensilsCrossed, ShoppingCart, Plus, QrCode, Filter
+  Pill, UtensilsCrossed, ShoppingCart, Plus, QrCode, Filter, Timer, Sparkles
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
@@ -28,11 +28,54 @@ const mockVouchers = [
   { id: '9', code: 'NM-MOB-2025-009', amount: 12000, category: 'mobility' as VoucherCategory, expiresAt: '2025-05-15', status: 'active' as VoucherStatus, usedAt: null },
 ]
 
-const categoryConfig: Record<VoucherCategory, { label: string; icon: React.ElementType; color: string; bgGradient: string }> = {
-  mobility: { label: 'Mobilidade', icon: Car, color: 'text-blue-600', bgGradient: 'from-blue-500 to-blue-600' },
-  pharmacy: { label: 'Farmácia', icon: Pill, color: 'text-rose-600', bgGradient: 'from-rose-500 to-rose-600' },
-  food: { label: 'Refeição', icon: UtensilsCrossed, color: 'text-amber-600', bgGradient: 'from-amber-500 to-amber-600' },
-  shopping: { label: 'Shopping', icon: ShoppingCart, color: 'text-emerald-600', bgGradient: 'from-emerald-500 to-emerald-600' },
+const categoryConfig: Record<VoucherCategory, { label: string; icon: React.ElementType; color: string; bgGradient: string; darkBg: string }> = {
+  mobility: { label: 'Mobilidade', icon: Car, color: 'text-blue-600 dark:text-blue-400', bgGradient: 'from-blue-500 to-blue-600', darkBg: 'dark:from-blue-800 dark:to-blue-900' },
+  pharmacy: { label: 'Farmácia', icon: Pill, color: 'text-rose-600 dark:text-rose-400', bgGradient: 'from-rose-500 to-rose-600', darkBg: 'dark:from-rose-800 dark:to-rose-900' },
+  food: { label: 'Refeição', icon: UtensilsCrossed, color: 'text-amber-600 dark:text-amber-400', bgGradient: 'from-amber-500 to-amber-600', darkBg: 'dark:from-amber-800 dark:to-amber-900' },
+  shopping: { label: 'Shopping', icon: ShoppingCart, color: 'text-emerald-600 dark:text-emerald-400', bgGradient: 'from-emerald-500 to-emerald-600', darkBg: 'dark:from-emerald-800 dark:to-emerald-900' },
+}
+
+// Countdown timer component
+function CountdownTimer({ expiresAt }: { expiresAt: string }) {
+  const [timeLeft, setTimeLeft] = useState('')
+
+  useEffect(() => {
+    const update = () => {
+      const now = new Date()
+      const expiry = new Date(expiresAt)
+      const diff = expiry.getTime() - now.getTime()
+
+      if (diff <= 0) {
+        setTimeLeft('Expirado')
+        return
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+      const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+
+      if (days > 0) {
+        setTimeLeft(`${days}d ${hours}h`)
+      } else if (hours > 0) {
+        setTimeLeft(`${hours}h ${mins}m`)
+      } else {
+        setTimeLeft(`${mins}m`)
+      }
+    }
+
+    update()
+    const timer = setInterval(update, 60000)
+    return () => clearInterval(timer)
+  }, [expiresAt])
+
+  const isUrgent = timeLeft && !timeLeft.includes('d') && timeLeft !== 'Expirado'
+
+  return (
+    <div className={`flex items-center gap-1 text-xs font-medium ${isUrgent ? 'text-red-600 dark:text-red-400 animate-countdown-pulse' : 'text-muted-foreground'}`}>
+      <Timer className="h-3 w-3" />
+      <span>{timeLeft}</span>
+    </div>
+  )
 }
 
 export function VoucherPage() {
@@ -66,21 +109,31 @@ export function VoucherPage() {
     })
   }
 
-  const renderQRPattern = (id: string) => {
-    // Generate a deterministic pattern based on the id
+  const renderQRPattern = (id: string, color: string) => {
     const seed = parseInt(id) || 1
-    const cells = Array.from({ length: 9 }, (_, i) => {
-      const filled = ((seed * (i + 1) * 7) % 11) > 4
+    const cells = Array.from({ length: 16 }, (_, i) => {
+      const filled = ((seed * (i + 1) * 7) % 11) > 3
       return filled
     })
     return (
-      <div className="grid grid-cols-3 gap-0.5 w-12 h-12">
-        {cells.map((filled, i) => (
-          <div
-            key={i}
-            className={`rounded-[1px] ${filled ? 'bg-current opacity-30' : 'bg-current opacity-10'}`}
-          />
-        ))}
+      <div className="relative">
+        <div className="grid grid-cols-4 gap-0.5 w-14 h-14 p-1 bg-white dark:bg-gray-800 rounded-md">
+          {cells.map((filled, i) => (
+            <motion.div
+              key={i}
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: i * 0.02, duration: 0.15 }}
+              className={`rounded-[1px] ${filled ? 'bg-gray-900 dark:bg-gray-100' : 'bg-gray-200 dark:bg-gray-600'}`}
+            />
+          ))}
+        </div>
+        {/* QR scanning animation overlay */}
+        <motion.div
+          className="absolute left-1 right-1 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent"
+          animate={{ top: ['4px', '52px', '4px'] }}
+          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+        />
       </div>
     )
   }
@@ -90,8 +143,8 @@ export function VoucherPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Voucher</h2>
-          <p className="text-sm text-gray-500">Gerencie seus vouchers e cupons de desconto</p>
+          <h2 className="text-xl font-bold text-foreground">Voucher</h2>
+          <p className="text-sm text-muted-foreground">Gerencie seus vouchers e cupons de desconto</p>
         </div>
         <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleBuyVoucher}>
           <Plus className="h-4 w-4" />
@@ -102,22 +155,22 @@ export function VoucherPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { icon: Ticket, label: 'TOTAL', value: mockVouchers.length, color: 'bg-gray-100 text-gray-600' },
-          { icon: Check, label: 'ATIVOS', value: activeVouchers.length, color: 'bg-emerald-100 text-emerald-600', sub: formatCurrency(totalActiveValue) },
-          { icon: Clock, label: 'USADOS', value: usedVouchers.length, color: 'bg-blue-100 text-blue-600' },
-          { icon: Filter, label: 'EXPIRADOS', value: expiredVouchers.length, color: 'bg-red-100 text-red-600' },
+          { icon: Ticket, label: 'TOTAL', value: mockVouchers.length, color: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
+          { icon: Check, label: 'ATIVOS', value: activeVouchers.length, color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400', sub: formatCurrency(totalActiveValue) },
+          { icon: Clock, label: 'USADOS', value: usedVouchers.length, color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' },
+          { icon: Filter, label: 'EXPIRADOS', value: expiredVouchers.length, color: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' },
         ].map((stat, i) => (
           <motion.div key={stat.label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-            <Card className="shadow-sm">
+            <Card className="shadow-sm bg-card hover:shadow-md transition-shadow">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-1">
                   <div className={`p-1.5 rounded-lg ${stat.color}`}>
                     <stat.icon className="h-3.5 w-3.5" />
                   </div>
-                  <span className="text-[10px] text-gray-500 font-medium">{stat.label}</span>
+                  <span className="text-[10px] text-muted-foreground font-medium">{stat.label}</span>
                 </div>
-                <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-                {stat.sub && <p className="text-xs text-emerald-600 font-medium">{stat.sub}</p>}
+                <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+                {stat.sub && <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">{stat.sub}</p>}
               </CardContent>
             </Card>
           </motion.div>
@@ -129,7 +182,7 @@ export function VoucherPage() {
         <button
           onClick={() => setCategoryFilter('all')}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-            categoryFilter === 'all' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            categoryFilter === 'all' ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'
           }`}
         >
           Todas Categorias
@@ -139,7 +192,7 @@ export function VoucherPage() {
             key={key}
             onClick={() => setCategoryFilter(key)}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
-              categoryFilter === key ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              categoryFilter === key ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'
             }`}
           >
             <config.icon className="h-3 w-3" />
@@ -163,7 +216,7 @@ export function VoucherPage() {
               key={status}
               onClick={() => setStatusFilter(status)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                statusFilter === status ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                statusFilter === status ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'
               }`}
             >
               {labels[status]} ({counts[status]})
@@ -172,7 +225,7 @@ export function VoucherPage() {
         })}
       </div>
 
-      {/* Voucher Cards */}
+      {/* Voucher Cards with holographic effect */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <AnimatePresence mode="popLayout">
           {filtered.map((voucher, i) => {
@@ -190,17 +243,19 @@ export function VoucherPage() {
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ delay: i * 0.03 }}
               >
-                <Card className={`shadow-sm overflow-hidden relative ${
-                  !isActive ? 'opacity-60' : ''
-                } ${isExpired ? 'border-red-200' : 'border-gray-200'}`}>
-                  {/* Top color bar */}
-                  <div className={`h-2 bg-gradient-to-r ${config.bgGradient}`} />
+                <Card className={`shadow-sm overflow-hidden relative holographic ${
+                  !isActive ? 'opacity-60' : 'hover:shadow-lg transition-shadow'
+                } ${isExpired ? 'border-red-200 dark:border-red-800' : 'border-border'}`}>
+                  {/* Top color bar with shimmer */}
+                  <div className={`h-2 bg-gradient-to-r ${config.bgGradient} relative`}>
+                    {isActive && <div className="absolute inset-0 animate-shimmer" />}
+                  </div>
 
                   <CardContent className="p-4">
                     <div className="flex items-start gap-3">
-                      {/* QR-style pattern */}
-                      <div className={`${config.color} shrink-0`}>
-                        {renderQRPattern(voucher.id)}
+                      {/* QR-style pattern with scanning animation */}
+                      <div className={`shrink-0 ${config.color}`}>
+                        {renderQRPattern(voucher.id, config.bgGradient)}
                       </div>
 
                       <div className="flex-1 min-w-0">
@@ -210,38 +265,41 @@ export function VoucherPage() {
                             {config.label}
                           </Badge>
                           {voucher.status === 'active' && (
-                            <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">Ativo</Badge>
+                            <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[10px]">Ativo</Badge>
                           )}
                           {voucher.status === 'used' && (
-                            <Badge className="bg-gray-100 text-gray-600 text-[10px]">Usado</Badge>
+                            <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 text-[10px]">Usado</Badge>
                           )}
                           {voucher.status === 'expired' && (
                             <Badge variant="destructive" className="text-[10px]">Expirado</Badge>
                           )}
                         </div>
 
-                        <p className="text-lg font-bold text-gray-900">{formatCurrency(voucher.amount)}</p>
-                        <p className="text-xs font-mono text-gray-500 mt-0.5">{voucher.code}</p>
-                        <p className="text-[10px] text-gray-400 mt-0.5">
-                          {voucher.status === 'used'
-                            ? `Usado em ${voucher.usedAt ? formatDate(voucher.usedAt) : '-'}`
-                            : voucher.status === 'expired'
-                            ? `Expirou em ${formatDate(voucher.expiresAt)}`
-                            : `Expira em ${formatDate(voucher.expiresAt)}`}
-                        </p>
+                        <p className="text-lg font-bold text-foreground">{formatCurrency(voucher.amount)}</p>
+                        <p className="text-xs font-mono text-muted-foreground mt-0.5">{voucher.code}</p>
+                        <div className="flex items-center justify-between mt-1">
+                          <p className="text-[10px] text-muted-foreground">
+                            {voucher.status === 'used'
+                              ? `Usado em ${voucher.usedAt ? formatDate(voucher.usedAt) : '-'}`
+                              : voucher.status === 'expired'
+                              ? `Expirou em ${formatDate(voucher.expiresAt)}`
+                              : `Expira em ${formatDate(voucher.expiresAt)}`}
+                          </p>
+                          {isActive && <CountdownTimer expiresAt={voucher.expiresAt} />}
+                        </div>
                       </div>
                     </div>
 
                     {isActive && (
-                      <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100">
+                      <div className="flex gap-2 mt-3 pt-3 border-t border-border">
                         <Button
                           variant="outline"
                           size="sm"
-                          className="flex-1 h-8 text-xs gap-1"
+                          className="flex-1 h-8 text-xs gap-1 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
                           onClick={() => handleCopy(voucher.code, voucher.id)}
                         >
                           {copiedId === voucher.id ? (
-                            <CheckIcon className="h-3 w-3" />
+                            <CheckIcon className="h-3 w-3 text-emerald-600" />
                           ) : (
                             <Copy className="h-3 w-3" />
                           )}
@@ -250,7 +308,7 @@ export function VoucherPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="flex-1 h-8 text-xs gap-1"
+                          className="flex-1 h-8 text-xs gap-1 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
                         >
                           <QrCode className="h-3 w-3" />
                           Ver QR Code

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -8,9 +8,19 @@ import { MatrixVisualization } from './matrix-visualization'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency, cn } from '@/lib/utils'
-import { DollarSign, TrendingUp, ShoppingBag, ArrowDownRight, Download, TrendingDown, Users, Layers } from 'lucide-react'
+import { DollarSign, TrendingUp, ShoppingBag, ArrowDownRight, Download, TrendingDown, Users, Layers, BarChart3, Layers3, Activity } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { EmptyState } from '../ui/empty-states'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from 'recharts'
 
 const cashbackSummary = {
   entrada: {
@@ -38,31 +48,75 @@ const cashbackSummary = {
 
 type Period = '7d' | '30d' | 'all'
 
+// Animated number counter component
+function AnimatedCounter({ value, className }: { value: number; className?: string }) {
+  const [display, setDisplay] = useState(0)
+  const hasAnimated = useRef(false)
+
+  useEffect(() => {
+    if (hasAnimated.current) return
+    hasAnimated.current = true
+    const duration = 1200
+    const steps = 40
+    const increment = value / steps
+    let current = 0
+    const timer = setInterval(() => {
+      current += increment
+      if (current >= value) {
+        setDisplay(value)
+        clearInterval(timer)
+      } else {
+        setDisplay(Math.floor(current))
+      }
+    }, duration / steps)
+    return () => clearInterval(timer)
+  }, [value])
+
+  return (
+    <span className={cn('font-bold tabular-nums', className)}>
+      {formatCurrency(display)}
+    </span>
+  )
+}
+
+// Category config with icons and colors
+const tabConfig = {
+  entrada: { icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-500', gradient: 'from-emerald-500 to-emerald-600' },
+  residual: { icon: TrendingUp, color: 'text-teal-600', bg: 'bg-teal-500', gradient: 'from-teal-500 to-teal-600' },
+  vendas: { icon: ShoppingBag, color: 'text-amber-600', bg: 'bg-amber-500', gradient: 'from-amber-500 to-amber-600' },
+}
+
 function SummaryCard({
   label,
   value,
   icon: Icon,
   color,
   trend,
+  animate = true,
 }: {
   label: string
   value: number
   icon: React.ElementType
   color: string
   trend?: number
+  animate?: boolean
 }) {
   return (
-    <Card className="shadow-sm bg-card">
+    <Card className="shadow-sm bg-card hover:shadow-md transition-shadow group">
       <CardContent className="p-4 flex items-center gap-3">
-        <div className={`p-2 rounded-lg ${color}`}>
+        <div className={`p-2.5 rounded-xl ${color} group-hover:scale-105 transition-transform`}>
           <Icon className="h-4 w-4" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-xs text-muted-foreground font-medium">{label}</p>
-          <p className="text-base font-bold text-foreground truncate">{formatCurrency(value)}</p>
+          {animate ? (
+            <AnimatedCounter value={value} className="text-base text-foreground" />
+          ) : (
+            <p className="text-base font-bold text-foreground truncate">{formatCurrency(value)}</p>
+          )}
         </div>
         {trend !== undefined && (
-          <div className={`flex items-center gap-0.5 text-xs font-semibold ${trend >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+          <div className={`flex items-center gap-0.5 text-xs font-semibold px-2 py-1 rounded-full ${trend >= 0 ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30' : 'text-red-500 bg-red-50 dark:bg-red-950/30'}`}>
             {trend >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
             {trend >= 0 ? '+' : ''}{trend}%
           </div>
@@ -78,7 +132,6 @@ export function CashbackPage() {
   const { t } = useTranslation()
   const { setActivePage } = useStore()
 
-  // Show empty state when no cashback data (for demo: always false since we have mock data)
   const hasCashbackData = cashbackSummary.entrada.total > 0
 
   if (!hasCashbackData) {
@@ -113,6 +166,13 @@ export function CashbackPage() {
 
   const currentSummary = getFilteredSummary(activeTab as 'entrada' | 'residual' | 'vendas')
 
+  // Distribution chart data
+  const distributionData = [
+    { name: 'Entrada 4x5', value: cashbackSummary.entrada.total / 100, color: '#059669', users: cashbackSummary.entrada.totalUsers },
+    { name: 'Residual 4x7', value: cashbackSummary.residual.total / 100, color: '#0d9488', users: cashbackSummary.residual.totalUsers },
+    { name: 'Vendas 4x9', value: cashbackSummary.vendas.total / 100, color: '#f59e0b', users: cashbackSummary.vendas.totalUsers },
+  ]
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -127,21 +187,22 @@ export function CashbackPage() {
         </Button>
       </div>
 
-      {/* Total Earnings Summary - Compact */}
+      {/* Total Earnings Summary */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <Card className="bg-gradient-to-r from-emerald-600 to-teal-600 border-0 shadow-lg overflow-hidden">
-          <CardContent className="p-4 relative">
+        <Card className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 animate-gradient-shift border-0 shadow-lg overflow-hidden">
+          <CardContent className="p-5 relative">
             <div className="absolute inset-0 opacity-10" style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
             }} />
+            <div className="absolute inset-0 animate-shimmer" />
             <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <p className="text-sm text-emerald-100 font-medium">{t('cashback.totalEarnings')}</p>
-                <p className="text-2xl sm:text-3xl font-bold text-white mt-1">{formatCurrency(totalEarnings)}</p>
+                <AnimatedCounter value={totalEarnings} className="text-2xl sm:text-3xl text-white mt-1" />
               </div>
               <div className="flex items-center gap-4 sm:gap-6">
                 <div className="flex items-center gap-1.5">
@@ -155,6 +216,40 @@ export function CashbackPage() {
                   <span className="text-xs font-bold text-white">5 · 7 · 9</span>
                 </div>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* CashBack Distribution Chart */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05, duration: 0.3 }}
+      >
+        <Card className="shadow-sm bg-card">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <BarChart3 className="h-4 w-4 text-emerald-600" />
+              <span className="text-sm font-semibold text-foreground">Distribuição de CashBack</span>
+            </div>
+            <div className="h-[120px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={distributionData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.3)" />
+                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
+                  <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(v) => `R$${v}k`} />
+                  <Tooltip
+                    formatter={(value: number) => [`R$ ${value.toLocaleString('pt-BR')}`, 'Valor']}
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  />
+                  <Bar dataKey="value" radius={[6, 6, 0, 0]} animationDuration={1000}>
+                    {distributionData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>
@@ -179,17 +274,18 @@ export function CashbackPage() {
         ))}
       </div>
 
+      {/* Tabs with animated indicator */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="w-full sm:w-auto">
-          <TabsTrigger value="entrada" className="flex items-center gap-1.5">
+        <TabsList className="w-full sm:w-auto relative">
+          <TabsTrigger value="entrada" className="flex items-center gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
             <DollarSign className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{t('cashback.entrada')}</span>
           </TabsTrigger>
-          <TabsTrigger value="residual" className="flex items-center gap-1.5">
+          <TabsTrigger value="residual" className="flex items-center gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
             <TrendingUp className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{t('cashback.residual')}</span>
           </TabsTrigger>
-          <TabsTrigger value="vendas" className="flex items-center gap-1.5">
+          <TabsTrigger value="vendas" className="flex items-center gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
             <ShoppingBag className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{t('cashback.vendas')}</span>
           </TabsTrigger>
@@ -200,7 +296,7 @@ export function CashbackPage() {
             <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" trend={5} />
             <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.entrada.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" trend={8} />
             <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.entrada.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" trend={3} />
-            <SummaryCard label={t('cashback.pending')} value={cashbackSummary.entrada.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" />
+            <SummaryCard label={t('cashback.pending')} value={cashbackSummary.entrada.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} />
           </div>
           <MatrixVisualization type="entrada" />
         </TabsContent>
@@ -210,7 +306,7 @@ export function CashbackPage() {
             <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" trend={3} />
             <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.residual.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" trend={6} />
             <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.residual.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" trend={2} />
-            <SummaryCard label={t('cashback.pending')} value={cashbackSummary.residual.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" />
+            <SummaryCard label={t('cashback.pending')} value={cashbackSummary.residual.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} />
           </div>
           <MatrixVisualization type="residual" />
         </TabsContent>
@@ -220,7 +316,7 @@ export function CashbackPage() {
             <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" trend={15} />
             <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.vendas.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" trend={10} />
             <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.vendas.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" trend={7} />
-            <SummaryCard label={t('cashback.pending')} value={cashbackSummary.vendas.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" />
+            <SummaryCard label={t('cashback.pending')} value={cashbackSummary.vendas.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} />
           </div>
           <MatrixVisualization type="vendas" />
         </TabsContent>

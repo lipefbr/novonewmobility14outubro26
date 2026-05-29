@@ -8,7 +8,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import {
   Store, TrendingUp, Users, Package, BarChart3, Settings,
   ShoppingCart, DollarSign, ArrowUpRight, Clock, CheckCircle2,
-  Percent, Plus, Eye
+  Percent, Plus, Eye, Sparkles
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 
@@ -28,27 +28,32 @@ const productCatalog = [
 ]
 
 const salesMetrics = [
-  { label: 'Vendas Hoje', value: formatCurrency(189900), change: '+12%', icon: DollarSign, color: 'bg-emerald-100 text-emerald-600' },
-  { label: 'Vendas Semana', value: formatCurrency(1245000), change: '+8%', icon: TrendingUp, color: 'bg-teal-100 text-teal-600' },
-  { label: 'Pedidos Pendentes', value: '3', change: '', icon: Clock, color: 'bg-amber-100 text-amber-600' },
-  { label: 'Clientes Ativos', value: '156', change: '+5', icon: Users, color: 'bg-blue-100 text-blue-600' },
+  { label: 'Vendas Hoje', value: formatCurrency(189900), change: '+12%', icon: DollarSign, color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400', gradient: 'from-emerald-500 to-emerald-600' },
+  { label: 'Vendas Semana', value: formatCurrency(1245000), change: '+8%', icon: TrendingUp, color: 'bg-teal-100 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400', gradient: 'from-teal-500 to-teal-600' },
+  { label: 'Pedidos Pendentes', value: '3', change: '', icon: Clock, color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400', gradient: 'from-amber-500 to-amber-600' },
+  { label: 'Clientes Ativos', value: '156', change: '+5', icon: Users, color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400', gradient: 'from-blue-500 to-blue-600' },
 ]
 
 export function PortalLojista() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-gray-900">Portal do Lojista</h2>
-        <p className="text-sm text-gray-500">Gerencie sua loja e acompanhe suas vendas</p>
+        <h2 className="text-xl font-bold text-foreground">Portal do Lojista</h2>
+        <p className="text-sm text-muted-foreground">Gerencie sua loja e acompanhe suas vendas</p>
       </div>
 
       {/* Hero Banner */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <Card className="bg-gradient-to-r from-emerald-600 to-teal-600 border-0 shadow-lg overflow-hidden relative">
-          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIxIiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDgpIi8+PC9zdmc+')] opacity-50" />
+        <Card className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 animate-gradient-shift border-0 shadow-lg overflow-hidden relative">
+          <div className="absolute inset-0 opacity-10" style={{
+            backgroundImage: "url(\"data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIxIiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDgpIi8+PC9zdmc+\")"
+          }} />
+          <div className="absolute inset-0 animate-shimmer" />
           <CardContent className="p-6 text-white relative">
             <div className="flex items-center gap-3 mb-3">
-              <Store className="h-8 w-8" />
+              <div className="p-3 rounded-xl bg-white/15">
+                <Store className="h-8 w-8" />
+              </div>
               <div>
                 <h3 className="text-xl font-bold">Portal do Lojista</h3>
                 <p className="text-emerald-200">Gerencie seus produtos e vendas</p>
@@ -68,29 +73,29 @@ export function PortalLojista() {
         </Card>
       </motion.div>
 
-      {/* Sales Dashboard */}
+      {/* Sales Dashboard - Enhanced with animated stats */}
       <div>
-        <h3 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
+        <h3 className="text-base font-bold text-foreground mb-3 flex items-center gap-2">
           <BarChart3 className="h-4 w-4 text-emerald-600" />
           Dashboard de Vendas
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {salesMetrics.map((metric, i) => (
             <motion.div key={metric.label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-              <Card className="shadow-sm">
+              <Card className="shadow-sm bg-card hover:shadow-md transition-shadow group">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className={`p-1.5 rounded-lg ${metric.color}`}>
+                    <div className={`p-1.5 rounded-lg ${metric.color} group-hover:scale-105 transition-transform`}>
                       <metric.icon className="h-3.5 w-3.5" />
                     </div>
                     {metric.change && (
-                      <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200">
+                      <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200 dark:border-emerald-800">
                         {metric.change}
                       </Badge>
                     )}
                   </div>
-                  <p className="text-xl font-bold text-gray-900">{metric.value}</p>
-                  <p className="text-[10px] text-gray-500">{metric.label}</p>
+                  <p className="text-xl font-bold text-foreground">{metric.value}</p>
+                  <p className="text-[10px] text-muted-foreground">{metric.label}</p>
                 </CardContent>
               </Card>
             </motion.div>
@@ -99,7 +104,7 @@ export function PortalLojista() {
       </div>
 
       {/* CashBack Configuration */}
-      <Card className="shadow-sm">
+      <Card className="shadow-sm bg-card">
         <CardHeader>
           <CardTitle className="text-base font-bold flex items-center gap-2">
             <Percent className="h-4 w-4 text-emerald-600" />
@@ -108,28 +113,28 @@ export function PortalLojista() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-emerald-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-emerald-700">5%</p>
-              <p className="text-xs text-gray-600">CashBack Mobilidade</p>
+            <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-lg p-4 text-center border border-emerald-100 dark:border-emerald-900/50">
+              <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">5%</p>
+              <p className="text-xs text-muted-foreground">CashBack Mobilidade</p>
               <Progress value={50} className="h-1.5 mt-2" />
             </div>
-            <div className="bg-rose-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-rose-700">3%</p>
-              <p className="text-xs text-gray-600">CashBack Farmácia</p>
+            <div className="bg-rose-50 dark:bg-rose-950/30 rounded-lg p-4 text-center border border-rose-100 dark:border-rose-900/50">
+              <p className="text-2xl font-bold text-rose-700 dark:text-rose-400">3%</p>
+              <p className="text-xs text-muted-foreground">CashBack Farmácia</p>
               <Progress value={30} className="h-1.5 mt-2" />
             </div>
-            <div className="bg-amber-50 rounded-lg p-4 text-center">
-              <p className="text-2xl font-bold text-amber-700">4%</p>
-              <p className="text-xs text-gray-600">CashBack Refeição</p>
+            <div className="bg-amber-50 dark:bg-amber-950/30 rounded-lg p-4 text-center border border-amber-100 dark:border-amber-900/50">
+              <p className="text-2xl font-bold text-amber-700 dark:text-amber-400">4%</p>
+              <p className="text-xs text-muted-foreground">CashBack Refeição</p>
               <Progress value={40} className="h-1.5 mt-2" />
             </div>
           </div>
-          <p className="text-[10px] text-gray-400 mt-3">Configure as porcentagens de CashBack oferecidas aos clientes em cada categoria.</p>
+          <p className="text-[10px] text-muted-foreground mt-3">Configure as porcentagens de CashBack oferecidas aos clientes em cada categoria.</p>
         </CardContent>
       </Card>
 
       {/* Product Catalog */}
-      <Card className="shadow-sm">
+      <Card className="shadow-sm bg-card">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="text-base font-bold flex items-center gap-2">
@@ -150,21 +155,21 @@ export function PortalLojista() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: i * 0.05 }}
-                className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50"
+                className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors"
               >
-                <div className="p-2 rounded-lg bg-emerald-100 text-emerald-600">
+                <div className="p-2 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
                   <Package className="h-4 w-4" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{product.name}</p>
+                  <p className="text-sm font-medium text-foreground truncate">{product.name}</p>
                   <div className="flex items-center gap-2 mt-0.5">
                     <Badge variant="outline" className="text-[10px]">{product.category}</Badge>
-                    <span className="text-[10px] text-gray-400">Estoque: {product.stock}</span>
+                    <span className="text-[10px] text-muted-foreground">Estoque: {product.stock}</span>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-semibold text-gray-900">{formatCurrency(product.price)}</p>
-                  <Badge className={product.active ? 'bg-emerald-100 text-emerald-700 text-[10px]' : 'bg-gray-100 text-gray-500 text-[10px]'}>
+                  <p className="text-sm font-semibold text-foreground">{formatCurrency(product.price)}</p>
+                  <Badge className={product.active ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[10px]' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 text-[10px]'}>
                     {product.active ? 'Ativo' : 'Inativo'}
                   </Badge>
                 </div>
@@ -175,7 +180,7 @@ export function PortalLojista() {
       </Card>
 
       {/* Recent Orders */}
-      <Card className="shadow-sm">
+      <Card className="shadow-sm bg-card">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="text-base font-bold flex items-center gap-2">
@@ -198,14 +203,14 @@ export function PortalLojista() {
               const config = statusConfig[order.status] || statusConfig.pending
               const StatusIcon = config.icon
               return (
-                <div key={order.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50">
+                <div key={order.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors">
                   <StatusIcon className={`h-4 w-4 ${config.color} shrink-0`} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{order.customer}</p>
-                    <p className="text-xs text-gray-500">{order.id} · {formatDate(order.date)}</p>
+                    <p className="text-sm font-medium text-foreground">{order.customer}</p>
+                    <p className="text-xs text-muted-foreground">{order.id} · {formatDate(order.date)}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-semibold text-gray-900">{formatCurrency(order.amount)}</p>
+                    <p className="text-sm font-semibold text-foreground">{formatCurrency(order.amount)}</p>
                     <Badge variant="outline" className="text-[10px]">{config.label}</Badge>
                   </div>
                 </div>
@@ -223,13 +228,13 @@ export function PortalLojista() {
           { icon: Store, title: 'Perfil da Loja', desc: 'Edite informações da loja' },
         ].map((item, i) => (
           <motion.div key={item.title} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 + i * 0.05 }}>
-            <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+            <Card className="shadow-sm hover:shadow-md transition-all cursor-pointer group bg-card">
               <CardContent className="p-5">
-                <div className="p-2.5 rounded-lg bg-emerald-100 text-emerald-600 w-fit mb-3">
+                <div className="p-2.5 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 w-fit mb-3 group-hover:scale-105 transition-transform">
                   <item.icon className="h-5 w-5" />
                 </div>
-                <h4 className="font-bold text-gray-900 text-sm">{item.title}</h4>
-                <p className="text-xs text-gray-500 mt-1">{item.desc}</p>
+                <h4 className="font-bold text-foreground text-sm">{item.title}</h4>
+                <p className="text-xs text-muted-foreground mt-1">{item.desc}</p>
               </CardContent>
             </Card>
           </motion.div>

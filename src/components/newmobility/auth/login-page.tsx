@@ -12,6 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Eye, EyeOff, Mail, Lock, ArrowRight, DollarSign, TrendingUp, Users, Smartphone, Apple, Quote, Sparkles } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
+import { ResetPasswordFlow } from './reset-password-flow'
 
 function mapApiUserToUserData(apiUser: Record<string, unknown>, balances?: Record<string, number>): UserData {
   return {
@@ -40,16 +41,23 @@ function mapApiUserToUserData(apiUser: Record<string, unknown>, balances?: Recor
   }
 }
 
-// Floating particles component
+// Seeded pseudo-random for consistent SSR/client rendering
+// Uses integer-based calculation to avoid floating-point differences between server/client
+function seededRandom(seed: number) {
+  const x = ((Math.sin(seed + 1) * 10000) | 0) % 10000
+  return x / 10000
+}
+
+// Floating particles component - uses seeded random to avoid hydration mismatch
 function FloatingParticles() {
   const particles = Array.from({ length: 20 }, (_, i) => ({
     id: i,
-    x: Math.random() * 100,
-    y: Math.random() * 100,
-    size: Math.random() * 4 + 2,
-    duration: Math.random() * 20 + 15,
-    delay: Math.random() * 10,
-    opacity: Math.random() * 0.3 + 0.1,
+    x: seededRandom(i * 7 + 1) * 100,
+    y: seededRandom(i * 13 + 2) * 100,
+    size: seededRandom(i * 3 + 5) * 4 + 2,
+    duration: seededRandom(i * 11 + 3) * 20 + 15,
+    delay: seededRandom(i * 5 + 7) * 10,
+    opacity: seededRandom(i * 17 + 4) * 0.3 + 0.1,
   }))
 
   return (
@@ -81,15 +89,15 @@ function FloatingParticles() {
   )
 }
 
-// Network lines between particles
+// Network lines between particles - uses seeded random to avoid hydration mismatch
 function NetworkLines() {
   const lines = Array.from({ length: 8 }, (_, i) => ({
     id: i,
-    x1: Math.random() * 100,
-    y1: Math.random() * 100,
-    x2: Math.random() * 100,
-    y2: Math.random() * 100,
-    delay: Math.random() * 5,
+    x1: seededRandom(i * 23 + 10) * 100,
+    y1: seededRandom(i * 29 + 11) * 100,
+    x2: seededRandom(i * 31 + 12) * 100,
+    y2: seededRandom(i * 37 + 13) * 100,
+    delay: seededRandom(i * 41 + 14) * 5,
   }))
 
   return (
@@ -134,6 +142,7 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [testimonialIdx, setTestimonialIdx] = useState(0)
+  const [showResetPassword, setShowResetPassword] = useState(false)
 
   // Rotate testimonials
   useEffect(() => {
@@ -291,6 +300,9 @@ export function LoginPage() {
             <p className="text-sm text-muted-foreground mt-1">BackOffice - Área do Membro</p>
           </div>
 
+        {showResetPassword ? (
+          <ResetPasswordFlow onBack={() => setShowResetPassword(false)} />
+        ) : (
           <Card className="shadow-xl border-0 shadow-emerald-100/50 dark:shadow-emerald-900/20 bg-card/80 backdrop-blur-sm">
             <CardHeader className="space-y-1 pb-4">
               <CardTitle className="text-xl font-bold text-center text-foreground">{t('auth.login.title')}</CardTitle>
@@ -346,7 +358,7 @@ export function LoginPage() {
                       {t('auth.login.remember')}
                     </label>
                   </div>
-                  <button type="button" className="text-sm text-emerald-600 hover:text-emerald-700 font-medium">
+                  <button type="button" className="text-sm text-emerald-600 hover:text-emerald-700 font-medium" onClick={() => setShowResetPassword(true)}>
                     {t('auth.login.forgot')}
                   </button>
                 </div>
@@ -449,6 +461,7 @@ export function LoginPage() {
               </div>
             </CardContent>
           </Card>
+        )}
 
           {/* Testimonial card */}
           <motion.div

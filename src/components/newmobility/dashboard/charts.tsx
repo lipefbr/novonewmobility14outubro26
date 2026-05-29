@@ -18,6 +18,7 @@ import {
 import { motion } from 'framer-motion'
 import { BarChart3, PieChart as PieChartIcon, FileText } from 'lucide-react'
 import { useTranslation } from '@/lib/i18n'
+import { useStore, type PageKey } from '@/lib/store'
 
 interface DashboardChartsProps {
   data: any | null
@@ -86,6 +87,22 @@ const nameTranslations: Record<string, string> = {
 
 const RADIAN = Math.PI / 180
 
+// Page navigation mapping for clickable chart segments
+const segmentPageMap: Record<string, PageKey> = {
+  'Diretos': 'referrals',
+  'Nível 2': 'referrals',
+  'Nível 3': 'referrals',
+  'Nível 4': 'referrals',
+  'Nível 5': 'referrals',
+  'Entrada': 'cashback',
+  'Residual': 'cashback',
+  'Gratific.': 'gratifications',
+  'Mobilidade': 'financial',
+  'Farmácia': 'financial',
+  'Refeição': 'financial',
+  'Shopping': 'financial',
+}
+
 function renderCustomizedLabel({
   cx,
   cy,
@@ -120,7 +137,6 @@ function renderCustomizedLabel({
 }
 
 function normalizeToArray(obj: any, colorMap: Record<string, string>, nameMap: Record<string, string>, valueKey: string): any[] {
-  // If it's already an array, validate and return
   if (Array.isArray(obj)) {
     if (obj.length === 0) return []
     return obj.map((item: any) => ({
@@ -130,10 +146,8 @@ function normalizeToArray(obj: any, colorMap: Record<string, string>, nameMap: R
     }))
   }
   
-  // If it's null/undefined/primitive, return empty
   if (!obj || typeof obj !== 'object') return []
   
-  // Convert object entries to array
   const entries = Object.entries(obj)
   if (entries.length === 0) return []
   
@@ -154,8 +168,59 @@ function EmptyChartState({ icon: Icon, title, description }: { icon: React.Eleme
   )
 }
 
+// Custom tooltip for pie chart
+function CustomPieTooltip({ active, payload }: any) {
+  if (!active || !payload?.length) return null
+  const data = payload[0]
+  return (
+    <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
+      <div className="flex items-center gap-2 mb-1">
+        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: data.payload.color }} />
+        <span className="text-sm font-semibold text-foreground">{data.name}</span>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {data.value} {data.value === 1 ? 'usuário' : 'usuários'}
+      </p>
+      <p className="text-xs text-emerald-600 font-medium">
+        {((data.payload.percent || 0) * 100).toFixed(1)}% do total
+      </p>
+      <p className="text-[10px] text-muted-foreground mt-1 border-t border-border pt-1">
+        Clique para ver indicações
+      </p>
+    </div>
+  )
+}
+
+// Custom tooltip for bar chart
+function CustomBarTooltip({ active, payload }: any) {
+  if (!active || !payload?.length) return null
+  const data = payload[0]
+  const name = data.payload.name
+  const page = segmentPageMap[name]
+  return (
+    <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
+      <div className="flex items-center gap-2 mb-1">
+        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: data.payload.color }} />
+        <span className="text-sm font-semibold text-foreground">{name}</span>
+      </div>
+      <p className="text-sm text-foreground font-bold">
+        R$ {(data.value / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+      </p>
+      <p className="text-xs text-emerald-600 font-medium">
+        {((data.payload.percent || 0) * 100).toFixed(1)}% do total
+      </p>
+      {page && (
+        <p className="text-[10px] text-muted-foreground mt-1 border-t border-border pt-1">
+          Clique para ver detalhes →
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function DashboardCharts({ data }: DashboardChartsProps) {
   const { t } = useTranslation()
+  const { setActivePage } = useStore()
 
   const userDistributionData = data?.userDistribution 
     ? normalizeToArray(data.userDistribution, userColorMap, nameTranslations, 'value')
@@ -167,6 +232,20 @@ export function DashboardCharts({ data }: DashboardChartsProps) {
 
   const hasUserData = userDistributionData.length > 0
   const hasRevenueData = revenueByCategoryData.length > 0
+
+  const handlePieClick = (data: any) => {
+    if (data?.name) {
+      const page = segmentPageMap[data.name]
+      if (page) setActivePage(page)
+    }
+  }
+
+  const handleBarClick = (data: any) => {
+    if (data?.name) {
+      const page = segmentPageMap[data.name]
+      if (page) setActivePage(page)
+    }
+  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
@@ -183,7 +262,12 @@ export function DashboardCharts({ data }: DashboardChartsProps) {
                 <PieChartIcon className="h-5 w-5 text-emerald-600" />
                 {t('dashboard.charts.users')}
               </CardTitle>
-              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-emerald-600 gap-1">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="text-xs text-muted-foreground hover:text-emerald-600 gap-1"
+                onClick={() => setActivePage('referrals')}
+              >
                 <FileText className="h-3.5 w-3.5" />
                 {t('dashboard.charts.viewReport')}
               </Button>
@@ -206,25 +290,24 @@ export function DashboardCharts({ data }: DashboardChartsProps) {
                       dataKey="value"
                       animationBegin={0}
                       animationDuration={1200}
+                      onClick={handlePieClick}
+                      className="cursor-pointer"
                     >
                       {userDistributionData.map((entry: any, index: number) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={entry.color}
+                          className="transition-opacity hover:opacity-80"
+                        />
                       ))}
                     </Pie>
-                    <Tooltip
-                      formatter={(value: number) => [`${value} ${t('general.users')}`, t('charts.quantity')]}
-                      contentStyle={{
-                        borderRadius: '8px',
-                        border: 'none',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                      }}
-                    />
+                    <Tooltip content={<CustomPieTooltip />} />
                     <Legend
                       verticalAlign="bottom"
                       iconType="circle"
                       iconSize={8}
                       formatter={(value: string) => (
-                        <span className="text-xs text-muted-foreground">{value}</span>
+                        <span className="text-xs text-muted-foreground cursor-pointer hover:text-emerald-600 transition-colors">{value}</span>
                       )}
                     />
                   </PieChart>
@@ -254,7 +337,12 @@ export function DashboardCharts({ data }: DashboardChartsProps) {
                 <BarChart3 className="h-5 w-5 text-emerald-600" />
                 {t('dashboard.charts.revenue')}
               </CardTitle>
-              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-emerald-600 gap-1">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="text-xs text-muted-foreground hover:text-emerald-600 gap-1"
+                onClick={() => setActivePage('financial')}
+              >
                 <FileText className="h-3.5 w-3.5" />
                 {t('dashboard.charts.viewReport')}
               </Button>
@@ -279,22 +367,21 @@ export function DashboardCharts({ data }: DashboardChartsProps) {
                       axisLine={{ stroke: 'hsl(var(--border))' }}
                       tickFormatter={(value) => `R$${(value / 1000).toFixed(0)}k`}
                     />
-                    <Tooltip
-                      formatter={(value: number) => [`R$ ${value.toLocaleString('pt-BR')}`, 'Valor']}
-                      contentStyle={{
-                        borderRadius: '8px',
-                        border: 'none',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                      }}
-                    />
+                    <Tooltip content={<CustomBarTooltip />} />
                     <Bar
                       dataKey="valor"
                       radius={[6, 6, 0, 0]}
                       animationBegin={0}
                       animationDuration={1200}
+                      onClick={handleBarClick}
+                      className="cursor-pointer"
                     >
                       {revenueByCategoryData.map((entry: any, index: number) => (
-                        <Cell key={`bar-${index}`} fill={entry.color} />
+                        <Cell 
+                          key={`bar-${index}`} 
+                          fill={entry.color}
+                          className="transition-opacity hover:opacity-80"
+                        />
                       ))}
                     </Bar>
                   </BarChart>

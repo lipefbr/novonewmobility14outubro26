@@ -55,6 +55,18 @@ export const authApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  forgotPassword: (email: string) =>
+    apiFetch<any>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  resetPassword: (email: string, code: string, newPassword: string) =>
+    apiFetch<any>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ email, code, newPassword }),
+    }),
 }
 
 // Dashboard
@@ -92,6 +104,12 @@ export const financialApi = {
       method: 'POST',
       body: JSON.stringify({ userId, amount, category }),
     }),
+  getExportUrl: (userId: string, format = 'csv', startDate?: string, endDate?: string, type = 'all') => {
+    const params = new URLSearchParams({ userId, format, type })
+    if (startDate) params.set('startDate', startDate)
+    if (endDate) params.set('endDate', endDate)
+    return `/api/financial/export?${params.toString()}`
+  },
 }
 
 // Career
@@ -156,6 +174,11 @@ export const plansApi = {
       method: 'POST',
       body: JSON.stringify({ userId, plan }),
     }),
+  calculateUpgrade: (userId: string, targetPlan: string) =>
+    apiFetch<any>('/plans/calculate-upgrade', {
+      method: 'POST',
+      body: JSON.stringify({ userId, targetPlan }),
+    }),
 }
 
 // User
@@ -171,6 +194,11 @@ export const userApi = {
     apiFetch<any>('/user/password', {
       method: 'PUT',
       body: JSON.stringify({ userId, currentPassword, newPassword }),
+    }),
+  updateLanguage: (userId: string, language: string) =>
+    apiFetch<any>('/user/language', {
+      method: 'PUT',
+      body: JSON.stringify({ userId, language }),
     }),
 }
 

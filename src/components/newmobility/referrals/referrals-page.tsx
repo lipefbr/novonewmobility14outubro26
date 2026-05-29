@@ -12,9 +12,11 @@ import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { ReferralsSkeleton } from '../ui/loading-skeletons'
 import { EmptyState } from '../ui/empty-states'
+import { ShareOptions } from './share-options'
 import {
   Users, UserPlus, UserCheck, TrendingUp, Search, Link2, Copy, Check as CheckIcon,
-  Share2, Eye, ChevronDown, ChevronUp, Calendar, CreditCard, Award, ArrowUpRight
+  Share2, Eye, ChevronDown, ChevronUp, Calendar, CreditCard, Award, ArrowUpRight,
+  ArrowRight, MessageCircle
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -37,6 +39,14 @@ const mockReferrals = [
   { id: '16', name: 'Juliana Santos', date: '2025-02-05', status: 'active', plan: 'blue5', level: 4, cashback: 88000, email: 'juliana.s@email.com' },
 ]
 
+// Social media share buttons
+const socialShareOptions = [
+  { name: 'WhatsApp', icon: '💬', color: 'bg-green-500 hover:bg-green-600', url: 'https://wa.me/?text=' },
+  { name: 'Telegram', icon: '✈️', color: 'bg-blue-500 hover:bg-blue-600', url: 'https://t.me/share/url?url=' },
+  { name: 'Twitter', icon: '🐦', color: 'bg-sky-500 hover:bg-sky-600', url: 'https://twitter.com/intent/tweet?text=' },
+  { name: 'Facebook', icon: '📘', color: 'bg-blue-600 hover:bg-blue-700', url: 'https://www.facebook.com/sharer/sharer.php?u=' },
+]
+
 export function ReferralsPage() {
   const { t } = useTranslation()
   const { user } = useStore()
@@ -47,7 +57,6 @@ export function ReferralsPage() {
   const [showAllLevels, setShowAllLevels] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  // Simulate loading
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 800)
     return () => clearTimeout(timer)
@@ -74,6 +83,10 @@ export function ReferralsPage() {
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
   }).length
   const conversionRate = Math.round((activeCount / totalNetwork) * 100)
+
+  // This week vs last week comparison
+  const thisWeekCount = Math.max(1, Math.floor(newThisMonth * 0.4))
+  const lastWeekCount = Math.max(0, thisWeekCount - 1)
 
   const levelCounts = Array.from({ length: 7 }, (_, i) => i + 1).map((lvl) => ({
     level: lvl,
@@ -102,11 +115,16 @@ export function ReferralsPage() {
     }
   }
 
+  const handleSocialShare = (option: typeof socialShareOptions[0]) => {
+    const text = `Use meu código ${user?.referralCode || 'USER2025'} e ganhe CashBack! ${referralLink}`
+    window.open(option.url + encodeURIComponent(text), '_blank')
+  }
+
   const planBadgeColor = (plan: string) => {
     switch (plan) {
-      case 'blue5': return 'bg-emerald-100 text-emerald-700 border-emerald-200'
-      case 'blue3': return 'bg-teal-100 text-teal-700 border-teal-200'
-      default: return 'bg-gray-100 text-gray-600 border-gray-200'
+      case 'blue5': return 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400'
+      case 'blue3': return 'bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-900/30 dark:text-teal-400'
+      default: return 'bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400'
     }
   }
 
@@ -114,45 +132,23 @@ export function ReferralsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-xl font-bold text-gray-900">{t('referrals.title')}</h2>
-        <p className="text-sm text-gray-500">Gerencie e acompanhe sua rede de indicações</p>
+        <h2 className="text-xl font-bold text-foreground">{t('referrals.title')}</h2>
+        <p className="text-sm text-muted-foreground">Gerencie e acompanhe sua rede de indicações</p>
       </div>
 
-      {/* Referral Link Section */}
+      {/* Referral Link Section with Social Share */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <Card className="shadow-sm border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50">
+        <Card className="shadow-sm border-emerald-200 dark:border-emerald-800 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 overflow-hidden relative">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400 animate-gradient-shift" />
           <CardContent className="p-5">
             <div className="flex items-center gap-2 mb-3">
               <Link2 className="h-5 w-5 text-emerald-600" />
-              <h3 className="font-bold text-gray-900">Link de Indicação</h3>
+              <h3 className="font-bold text-foreground">Link de Indicação</h3>
             </div>
-            <div className="flex items-center gap-2 mb-3">
-              <div className="flex-1 bg-white rounded-lg border border-emerald-200 px-4 py-2.5 text-sm font-mono text-gray-700 truncate">
-                {referralLink}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-emerald-300 hover:bg-emerald-50 gap-1.5"
-                onClick={handleCopyLink}
-              >
-                {copied ? <CheckIcon className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
-                {copied ? t('general.copied') : t('general.copy')}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-emerald-300 hover:bg-emerald-50 gap-1.5"
-                onClick={handleShare}
-              >
-                <Share2 className="h-4 w-4" />
-                {t('general.share')}
-              </Button>
-            </div>
-            <div className="flex items-center gap-4 text-xs text-gray-500">
-              <span>Código: <strong className="text-emerald-700">{user?.referralCode || 'USER2025'}</strong></span>
-              <span>Compartilhe e ganhe CashBack por cada indicação ativa!</span>
-            </div>
+            <ShareOptions
+              referralLink={referralLink}
+              referralCode={user?.referralCode || 'USER2025'}
+            />
           </CardContent>
         </Card>
       </motion.div>
@@ -160,10 +156,10 @@ export function ReferralsPage() {
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { icon: UserPlus, label: 'INDICAÇÕES DIRETAS', value: totalDirect, color: 'bg-emerald-100 text-emerald-600', trend: '+2 este mês' },
-          { icon: Users, label: 'TOTAL DA REDE', value: totalNetwork, color: 'bg-teal-100 text-teal-600', trend: `+${newThisMonth} novos` },
-          { icon: UserCheck, label: 'NOVOS ESTE MÊS', value: newThisMonth, color: 'bg-amber-100 text-amber-600', trend: 'Crescendo!' },
-          { icon: TrendingUp, label: 'TAXA CONVERSÃO', value: `${conversionRate}%`, color: 'bg-rose-100 text-rose-600', trend: 'Ativos/Total' },
+          { icon: UserPlus, label: 'INDICAÇÕES DIRETAS', value: totalDirect, color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400', trend: '+2 este mês' },
+          { icon: Users, label: 'TOTAL DA REDE', value: totalNetwork, color: 'bg-teal-100 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400', trend: `+${newThisMonth} novos` },
+          { icon: UserCheck, label: 'NOVOS ESTE MÊS', value: newThisMonth, color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400', trend: 'Crescendo!' },
+          { icon: TrendingUp, label: 'TAXA CONVERSÃO', value: `${conversionRate}%`, color: 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400', trend: 'Ativos/Total' },
         ].map((stat, i) => (
           <motion.div
             key={stat.label}
@@ -171,45 +167,80 @@ export function ReferralsPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
           >
-            <Card className="shadow-sm">
+            <Card className="shadow-sm bg-card hover:shadow-md transition-shadow">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3 mb-2">
                   <div className={`p-2 rounded-lg ${stat.color}`}>
                     <stat.icon className="h-4 w-4" />
                   </div>
                 </div>
-                <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-                <p className="text-[10px] text-gray-500 font-medium">{stat.label}</p>
-                <p className="text-[10px] text-emerald-600 font-medium mt-1">{stat.trend}</p>
+                <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+                <p className="text-[10px] text-muted-foreground font-medium">{stat.label}</p>
+                <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium mt-1">{stat.trend}</p>
               </CardContent>
             </Card>
           </motion.div>
         ))}
       </div>
 
+      {/* Stats Comparison: This Week vs Last Week */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+        <Card className="shadow-sm bg-card">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingUp className="h-4 w-4 text-emerald-600" />
+              <span className="text-sm font-semibold text-foreground">Comparação Semanal</span>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-xl p-3 text-center border border-emerald-100 dark:border-emerald-900/50">
+                <p className="text-xs text-muted-foreground mb-1">Esta Semana</p>
+                <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{thisWeekCount}</p>
+                <p className="text-[10px] text-muted-foreground">novos indicados</p>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-800/30 rounded-xl p-3 text-center border border-gray-100 dark:border-gray-700/50">
+                <p className="text-xs text-muted-foreground mb-1">Semana Anterior</p>
+                <p className="text-2xl font-bold text-foreground">{lastWeekCount}</p>
+                <p className="text-[10px] text-muted-foreground">novos indicados</p>
+              </div>
+            </div>
+            {thisWeekCount > lastWeekCount && (
+              <div className="mt-2 flex items-center justify-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                <TrendingUp className="h-3 w-3" />
+                +{((thisWeekCount - lastWeekCount) / Math.max(lastWeekCount, 1) * 100).toFixed(0)}% em relação à semana anterior
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* Network Tree Visualization */}
-      <Card className="shadow-sm">
+      <Card className="shadow-sm bg-card">
         <CardHeader>
           <CardTitle className="text-base font-bold flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-emerald-600" />
+            <Users className="h-4 w-4 text-emerald-600" />
             Visualização da Rede
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center gap-2">
             {/* You - Root Node */}
-            <div className="relative">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-white font-bold text-sm shadow-lg border-4 border-emerald-200">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", stiffness: 300, damping: 20 }}
+              className="relative"
+            >
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-emerald-500/30 border-4 border-emerald-200 dark:border-emerald-800">
                 Você
               </div>
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-emerald-600 text-white text-[8px] flex items-center justify-center border-2 border-white font-bold">
+              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-emerald-600 text-white text-[8px] flex items-center justify-center border-2 border-card font-bold animate-pulse-soft">
                 {totalNetwork}
               </div>
-            </div>
+            </motion.div>
 
             {/* Connector Lines */}
-            <div className="w-px h-6 bg-gradient-to-b from-emerald-400 to-gray-300" />
-            <div className="hidden sm:flex w-64 h-px bg-gray-300" />
+            <div className="w-px h-6 bg-gradient-to-b from-emerald-400 to-border" />
+            <div className="hidden sm:flex w-64 h-px bg-border" />
             
             {/* Level Nodes */}
             {Array.from({ length: maxLevelWithData }, (_, idx) => {
@@ -219,28 +250,28 @@ export function ReferralsPage() {
               return (
                 <div key={lvl} className="w-full">
                   <div className="flex items-center justify-center gap-2 mb-2">
-                    <div className="h-px flex-1 bg-gradient-to-r from-transparent to-gray-200" />
-                    <span className="text-xs text-gray-500 font-medium px-2">
+                    <div className="h-px flex-1 bg-gradient-to-r from-transparent to-border" />
+                    <span className="text-xs text-muted-foreground font-medium px-2">
                       Nível {lvl} — {lvlData.length} {lvlData.length === 1 ? 'membro' : 'membros'}
-                      <span className="text-emerald-600 ml-1">({lvlActive} ativos)</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 ml-1">({lvlActive} ativos)</span>
                     </span>
-                    <div className="h-px flex-1 bg-gradient-to-l from-transparent to-gray-200" />
+                    <div className="h-px flex-1 bg-gradient-to-l from-transparent to-border" />
                   </div>
                   <div className="flex flex-wrap justify-center gap-2">
-                    {lvlData.map((r) => (
+                    {lvlData.map((r, ri) => (
                       <motion.div
                         key={r.id}
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
-                        transition={{ delay: idx * 0.1 + Math.random() * 0.1 }}
-                        className={`w-10 h-10 rounded-full flex items-center justify-center text-[10px] font-bold border-2 cursor-pointer hover:scale-110 transition-transform ${
+                        transition={{ delay: idx * 0.08 + ri * 0.03, type: "spring", stiffness: 400, damping: 20 }}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center text-[10px] font-bold border-2 cursor-pointer hover:scale-110 transition-transform shadow-sm ${
                           r.status === 'active'
                             ? r.plan === 'blue5'
-                              ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                              ? 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-400 dark:border-emerald-700'
                               : r.plan === 'blue3'
-                              ? 'bg-teal-100 text-teal-700 border-teal-300'
-                              : 'bg-gray-100 text-gray-700 border-gray-300'
-                            : 'bg-red-50 text-red-400 border-red-200 opacity-50'
+                              ? 'bg-teal-100 text-teal-700 border-teal-300 dark:bg-teal-900/40 dark:text-teal-400 dark:border-teal-700'
+                              : 'bg-gray-100 text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600'
+                            : 'bg-red-50 text-red-400 border-red-200 opacity-50 dark:bg-red-950/20'
                         }`}
                         title={r.name}
                         onClick={() => setDetailReferral(r)}
@@ -251,7 +282,7 @@ export function ReferralsPage() {
                   </div>
                   {lvl < maxLevelWithData && (
                     <div className="flex justify-center mt-2">
-                      <div className="w-px h-4 bg-gray-200" />
+                      <div className="w-px h-4 bg-border" />
                     </div>
                   )}
                 </div>
@@ -262,7 +293,7 @@ export function ReferralsPage() {
       </Card>
 
       {/* Níveis da Rede */}
-      <Card className="shadow-sm">
+      <Card className="shadow-sm bg-card">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base font-bold flex items-center gap-2">
@@ -289,13 +320,13 @@ export function ReferralsPage() {
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 10 }}
                     transition={{ delay: i * 0.05 }}
-                    className="bg-gray-50 rounded-lg p-3"
+                    className="bg-muted/50 rounded-lg p-3 border border-border"
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-medium text-gray-600">Nível {lvl.level}</span>
-                      <span className="text-sm font-bold text-gray-900">{lvl.count}</span>
+                      <span className="text-xs font-medium text-muted-foreground">Nível {lvl.level}</span>
+                      <span className="text-sm font-bold text-foreground">{lvl.count}</span>
                     </div>
-                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-2 bg-muted rounded-full overflow-hidden">
                       <motion.div
                         className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full"
                         initial={{ width: 0 }}
@@ -303,7 +334,7 @@ export function ReferralsPage() {
                         transition={{ delay: 0.3 + i * 0.1, duration: 0.6 }}
                       />
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-1">
+                    <p className="text-[10px] text-muted-foreground mt-1">
                       {lvl.count === 1 ? '1 usuário' : `${lvl.count} usuários`}
                     </p>
                   </motion.div>
@@ -317,7 +348,7 @@ export function ReferralsPage() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Buscar por nome..."
             value={search}
@@ -333,7 +364,7 @@ export function ReferralsPage() {
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                 levelFilter === level
                   ? 'bg-emerald-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  : 'bg-muted text-muted-foreground hover:bg-muted/80'
               }`}
             >
               {level === null ? 'Todos' : `Nível ${level}`}
@@ -343,7 +374,7 @@ export function ReferralsPage() {
       </div>
 
       {/* Referral List */}
-      <Card className="shadow-sm">
+      <Card className="shadow-sm bg-card">
         <CardContent className="p-0">
           <div className="divide-y max-h-96 overflow-y-auto custom-scrollbar">
             {filtered.map((referral, i) => (
@@ -352,16 +383,16 @@ export function ReferralsPage() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: i * 0.03 }}
-                className="flex items-center gap-3 p-4 hover:bg-gray-50 transition-colors"
+                className="flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors"
               >
-                <Avatar className="h-10 w-10 border-2 border-emerald-100">
-                  <AvatarFallback className="bg-emerald-50 text-emerald-700 text-sm font-medium">
+                <Avatar className="h-10 w-10 border-2 border-emerald-100 dark:border-emerald-900">
+                  <AvatarFallback className="bg-emerald-50 text-emerald-700 text-sm font-medium dark:bg-emerald-950/30 dark:text-emerald-400">
                     {referral.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium text-gray-900 truncate">{referral.name}</span>
+                    <span className="text-sm font-medium text-foreground truncate">{referral.name}</span>
                     <Badge className={`text-[10px] border ${planBadgeColor(referral.plan)}`}>
                       {getPlanName(referral.plan)}
                     </Badge>
@@ -370,20 +401,20 @@ export function ReferralsPage() {
                     </Badge>
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-xs text-gray-500">{formatDate(referral.date)}</span>
-                    <span className="text-xs text-gray-400">·</span>
-                    <span className="text-xs text-emerald-600 font-medium">Nível {referral.level}</span>
+                    <span className="text-xs text-muted-foreground">{formatDate(referral.date)}</span>
+                    <span className="text-xs text-muted-foreground">·</span>
+                    <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Nível {referral.level}</span>
                   </div>
                 </div>
                 <div className="text-right shrink-0 flex items-center gap-2">
                   <div>
-                    <p className="text-sm font-semibold text-emerald-700">{formatCurrency(referral.cashback)}</p>
-                    <p className="text-[10px] text-gray-400">CashBack gerado</p>
+                    <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">{formatCurrency(referral.cashback)}</p>
+                    <p className="text-[10px] text-muted-foreground">CashBack gerado</p>
                   </div>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 text-gray-400 hover:text-emerald-600"
+                    className="h-8 w-8 text-muted-foreground hover:text-emerald-600"
                     onClick={() => setDetailReferral(referral)}
                   >
                     <Eye className="h-4 w-4" />
@@ -413,14 +444,14 @@ export function ReferralsPage() {
           {detailReferral && (
             <div className="space-y-4 py-4">
               <div className="flex items-center gap-4">
-                <Avatar className="h-14 w-14 border-2 border-emerald-200">
-                  <AvatarFallback className="bg-emerald-50 text-emerald-700 text-lg font-medium">
+                <Avatar className="h-14 w-14 border-2 border-emerald-200 dark:border-emerald-800">
+                  <AvatarFallback className="bg-emerald-50 text-emerald-700 text-lg font-medium dark:bg-emerald-950/30 dark:text-emerald-400">
                     {detailReferral.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
                   </AvatarFallback>
                 </Avatar>
                 <div>
-                  <h3 className="font-bold text-gray-900">{detailReferral.name}</h3>
-                  <p className="text-sm text-gray-500">{detailReferral.email}</p>
+                  <h3 className="font-bold text-foreground">{detailReferral.name}</h3>
+                  <p className="text-sm text-muted-foreground">{detailReferral.email}</p>
                   <div className="flex items-center gap-2 mt-1">
                     <Badge className={`text-[10px] border ${planBadgeColor(detailReferral.plan)}`}>
                       {getPlanName(detailReferral.plan)}
@@ -433,33 +464,33 @@ export function ReferralsPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div className="bg-gray-50 rounded-lg p-3">
+                <div className="bg-muted/50 rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-1">
-                    <Calendar className="h-3.5 w-3.5 text-gray-400" />
-                    <span className="text-xs text-gray-500">Entrada</span>
+                    <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Entrada</span>
                   </div>
-                  <p className="text-sm font-semibold text-gray-900">{formatDate(detailReferral.date)}</p>
+                  <p className="text-sm font-semibold text-foreground">{formatDate(detailReferral.date)}</p>
                 </div>
-                <div className="bg-gray-50 rounded-lg p-3">
+                <div className="bg-muted/50 rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-1">
-                    <ArrowUpRight className="h-3.5 w-3.5 text-gray-400" />
-                    <span className="text-xs text-gray-500">Nível</span>
+                    <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Nível</span>
                   </div>
-                  <p className="text-sm font-semibold text-gray-900">Nível {detailReferral.level}</p>
+                  <p className="text-sm font-semibold text-foreground">Nível {detailReferral.level}</p>
                 </div>
-                <div className="bg-emerald-50 rounded-lg p-3">
+                <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-lg p-3 border border-emerald-100 dark:border-emerald-900/50">
                   <div className="flex items-center gap-2 mb-1">
                     <CreditCard className="h-3.5 w-3.5 text-emerald-500" />
-                    <span className="text-xs text-emerald-600">CashBack Gerado</span>
+                    <span className="text-xs text-emerald-600 dark:text-emerald-400">CashBack Gerado</span>
                   </div>
-                  <p className="text-sm font-semibold text-emerald-700">{formatCurrency(detailReferral.cashback)}</p>
+                  <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">{formatCurrency(detailReferral.cashback)}</p>
                 </div>
-                <div className="bg-gray-50 rounded-lg p-3">
+                <div className="bg-muted/50 rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-1">
-                    <Award className="h-3.5 w-3.5 text-gray-400" />
-                    <span className="text-xs text-gray-500">Plano</span>
+                    <Award className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Plano</span>
                   </div>
-                  <p className="text-sm font-semibold text-gray-900">{getPlanName(detailReferral.plan)}</p>
+                  <p className="text-sm font-semibold text-foreground">{getPlanName(detailReferral.plan)}</p>
                 </div>
               </div>
             </div>
