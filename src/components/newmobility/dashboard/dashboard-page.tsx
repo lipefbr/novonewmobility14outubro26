@@ -8,6 +8,8 @@ import { StatsCards } from './stats-cards'
 import { FinancialCards } from './financial-cards'
 import { DashboardCharts } from './charts'
 import { ActivityFeed } from './activity-feed'
+import { AnnouncementBanner } from './announcement-banner'
+import { ComparisonWidget } from './comparison-widget'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -32,9 +34,17 @@ import {
   Eye,
   Star,
   Gift,
+  Sun,
+  Moon,
+  CloudSun,
+  Target,
+  Trophy,
+  ArrowRight,
+  Play,
 } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { DashboardSkeleton } from '../ui/loading-skeletons'
+import { ResponsiveContainer, LineChart, Line, XAxis, Tooltip as RechartsTooltip } from 'recharts'
 
 interface DashboardData {
   user: any
@@ -49,6 +59,25 @@ interface DashboardData {
   userDistribution: any
   revenueByCategory: any
 }
+
+// Greeting based on time of day
+function getGreeting() {
+  const hour = new Date().getHours()
+  if (hour >= 5 && hour < 12) return { text: 'Bom dia', icon: Sun, iconClass: 'text-yellow-400' }
+  if (hour >= 12 && hour < 18) return { text: 'Boa tarde', icon: CloudSun, iconClass: 'text-orange-400' }
+  return { text: 'Boa noite', icon: Moon, iconClass: 'text-blue-300' }
+}
+
+// Network Health mini chart data
+const networkHealthData = [
+  { month: 'Jul', growth: 12 },
+  { month: 'Ago', growth: 18 },
+  { month: 'Set', growth: 15 },
+  { month: 'Out', growth: 22 },
+  { month: 'Nov', growth: 28 },
+  { month: 'Dez', growth: 35 },
+  { month: 'Jan', growth: 42 },
+]
 
 export function DashboardPage() {
   const { user, logout, setActivePage } = useStore()
@@ -136,13 +165,25 @@ export function DashboardPage() {
     { id: '6', description: 'Voucher R$25 comprado', detail: 'Mobilidade', time: '4 dias', icon: Gift, color: 'bg-teal-100 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400' },
   ]
 
+  // Greeting
+  const greeting = getGreeting()
+  const GreetingIcon = greeting.icon
+
+  // Career milestones for "Next Milestone" card
+  const careerProgress = dashboardData?.career?.progress ?? 75
+  const nextRankName = dashboardData?.career?.nextRank?.name ?? 'Safira'
+  const pointsNeeded = dashboardData?.career?.nextRank?.pointsNeeded ?? 8
+
   if (loading) {
     return <DashboardSkeleton />
   }
 
   return (
     <div className="space-y-6">
-      {/* Welcome Section - Animated Gradient Banner */}
+      {/* Announcement Banner */}
+      <AnnouncementBanner />
+
+      {/* Greeting Card based on time of day */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -150,11 +191,9 @@ export function DashboardPage() {
       >
         <Card className="border-0 shadow-lg overflow-hidden">
           <div className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 animate-gradient-shift relative">
-            {/* Animated pattern overlay */}
             <div className="absolute inset-0 opacity-10" style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
             }} />
-            {/* Shimmer overlay */}
             <div className="absolute inset-0 animate-shimmer" />
             <CardContent className="p-5 md:p-6 relative">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -165,9 +204,9 @@ export function DashboardPage() {
                       transition={{ delay: 0.5, duration: 0.8, ease: 'easeInOut' }}
                       className="inline-block"
                     >
-                      👋
+                      <GreetingIcon className={`h-7 w-7 ${greeting.iconClass}`} />
                     </motion.span>
-                    {t('dashboard.welcome')}, {user?.name?.split(' ')[0] || 'Usuário'}
+                    {greeting.text}, {user?.name?.split(' ')[0] || 'Usuário'}
                   </h2>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-2 text-emerald-100 text-sm">
                     <span>{t('dashboard.since')}: {user?.createdAt ? formatDate(user.createdAt) : '-'}</span>
@@ -276,14 +315,16 @@ export function DashboardPage() {
       {/* Stats Cards */}
       <StatsCards data={dashboardData} />
 
-      {/* Network Overview + Plan Progress */}
+      {/* Data Comparison Widget */}
+      <ComparisonWidget />
+
+      {/* Network Overview + Network Health + Next Milestone */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Network Overview */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.3 }}
-          className="lg:col-span-2"
         >
           <Card className="shadow-sm h-full bg-card">
             <CardHeader className="pb-3">
@@ -293,48 +334,99 @@ export function DashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="text-center p-4 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl border border-emerald-100 dark:border-emerald-900/50">
-                  <Users className="h-7 w-7 text-emerald-600 mx-auto mb-2" />
-                  <p className="text-2xl font-bold text-foreground">{networkStats.totalSize.toLocaleString('pt-BR')}</p>
-                  <p className="text-xs text-muted-foreground font-medium">{t('dashboard.network.total')}</p>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="text-center p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl border border-emerald-100 dark:border-emerald-900/50">
+                  <Users className="h-6 w-6 text-emerald-600 mx-auto mb-1" />
+                  <p className="text-xl font-bold text-foreground">{networkStats.totalSize.toLocaleString('pt-BR')}</p>
+                  <p className="text-[10px] text-muted-foreground font-medium">{t('dashboard.network.total')}</p>
                 </div>
-                <div className="text-center p-4 bg-teal-50 dark:bg-teal-950/30 rounded-xl border border-teal-100 dark:border-teal-900/50">
-                  <TrendingUp className="h-7 w-7 text-teal-600 mx-auto mb-2" />
-                  <p className="text-2xl font-bold text-foreground">{networkStats.activeMembers}</p>
-                  <p className="text-xs text-muted-foreground font-medium">{t('dashboard.network.active')}</p>
+                <div className="text-center p-3 bg-teal-50 dark:bg-teal-950/30 rounded-xl border border-teal-100 dark:border-teal-900/50">
+                  <TrendingUp className="h-6 w-6 text-teal-600 mx-auto mb-1" />
+                  <p className="text-xl font-bold text-foreground">{networkStats.activeMembers}</p>
+                  <p className="text-[10px] text-muted-foreground font-medium">{t('dashboard.network.active')}</p>
                 </div>
-                <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/30 rounded-xl border border-blue-100 dark:border-blue-900/50">
-                  <UserPlus className="h-7 w-7 text-blue-600 mx-auto mb-2" />
-                  <p className="text-2xl font-bold text-foreground">{networkStats.newReferrals}</p>
-                  <p className="text-xs text-muted-foreground font-medium">{t('dashboard.network.new')}</p>
+                <div className="text-center p-3 bg-blue-50 dark:bg-blue-950/30 rounded-xl border border-blue-100 dark:border-blue-900/50">
+                  <UserPlus className="h-6 w-6 text-blue-600 mx-auto mb-1" />
+                  <p className="text-xl font-bold text-foreground">{networkStats.newReferrals}</p>
+                  <p className="text-[10px] text-muted-foreground font-medium">{t('dashboard.network.new')}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </motion.div>
 
-        {/* Plan Progress */}
+        {/* Network Health Mini Widget - Line chart */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25, duration: 0.3 }}
+        >
+          <Card className="shadow-sm h-full bg-card">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-emerald-600" />
+                Saúde da Rede
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  <span className="text-sm font-bold">+23%</span>
+                </div>
+                <span className="text-xs text-muted-foreground">crescimento nos últimos 6 meses</span>
+              </div>
+              <div className="h-[80px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={networkHealthData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                    <defs>
+                      <linearGradient id="networkGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
+                    <RechartsTooltip
+                      formatter={(value: number) => [`${value} membros`, 'Crescimento']}
+                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '11px' }}
+                    />
+                    <Line type="monotone" dataKey="growth" stroke="#10b981" strokeWidth={2.5} dot={{ fill: '#10b981', strokeWidth: 0, r: 3 }} activeDot={{ r: 5, fill: '#059669' }} animationDuration={1200} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Next Milestone Card */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.3 }}
         >
-          <Card className="shadow-sm h-full bg-gradient-to-br from-gray-900 to-gray-800 border-0">
-            <CardContent className="p-4 flex flex-col justify-between h-full">
+          <Card className="shadow-sm h-full bg-gradient-to-br from-gray-900 to-gray-800 border-0 overflow-hidden relative">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+            <CardContent className="p-4 flex flex-col justify-between h-full relative">
               <div>
-                <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">{t('dashboard.plan.current')}</p>
-                <p className="text-lg font-bold text-white mt-1">{getPlanName(user?.plan || 'free')}</p>
-                <div className="mt-3">
-                  <div className="flex justify-between text-xs text-gray-400 mb-1">
-                    <span>{t('dashboard.plan.progress')}</span>
-                    <span className="text-emerald-400 font-bold">{dashboardData?.career?.progress?.toFixed(0) ?? 75}%</span>
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="p-2 rounded-lg bg-emerald-500/20">
+                    <Trophy className="h-5 w-5 text-emerald-400" />
                   </div>
-                  <div className="h-2.5 bg-gray-700 rounded-full overflow-hidden">
+                  <div>
+                    <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Próximo Marco</p>
+                    <p className="text-base font-bold text-white">{nextRankName}</p>
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <div className="flex justify-between text-xs text-gray-400 mb-1.5">
+                    <span>Progresso</span>
+                    <span className="text-emerald-400 font-bold">{careerProgress.toFixed(0)}%</span>
+                  </div>
+                  <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
                     <motion.div
                       initial={{ width: 0 }}
-                      animate={{ width: `${dashboardData?.career?.progress?.toFixed(0) ?? 75}%` }}
-                      transition={{ delay: 0.5, duration: 1 }}
+                      animate={{ width: `${careerProgress.toFixed(0)}%` }}
+                      transition={{ delay: 0.5, duration: 1.2, ease: 'easeOut' }}
                       className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full relative"
                     >
                       <div className="absolute inset-0 animate-shimmer" />
@@ -342,17 +434,22 @@ export function DashboardPage() {
                   </div>
                 </div>
               </div>
-              <div className="mt-3 pt-3 border-t border-gray-700">
-                <p className="text-xs text-emerald-400 font-medium">
-                  {dashboardData?.career?.nextRank 
-                    ? `${t('dashboard.plan.next')}: ${dashboardData.career.nextRank.name}` 
-                    : t('dashboard.plan.maxRank')}
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {dashboardData?.career?.nextRank 
-                    ? t('dashboard.plan.pointsLeft', { points: dashboardData.career.nextRank.pointsNeeded })
-                    : t('dashboard.plan.keepGoing')}
-                </p>
+              <div className="mt-3 pt-3 border-t border-gray-700 flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Target className="h-3.5 w-3.5 text-emerald-400" />
+                  <p className="text-xs text-emerald-400 font-medium">
+                    Faltam {pointsNeeded} pontos
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 gap-1"
+                  onClick={() => setActivePage('career')}
+                >
+                  Ver trilha
+                  <ArrowRight className="h-3 w-3" />
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -380,7 +477,7 @@ export function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         <ActivityFeed />
 
-        {/* App Download Section */}
+        {/* App Download Section with platform-specific hover colors */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -397,36 +494,41 @@ export function DashboardPage() {
               <div className="grid grid-cols-2 gap-3">
                 <Button
                   variant="outline"
-                  className="h-auto py-3 flex flex-col gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-300 group"
+                  className="h-auto py-3 flex flex-col gap-1.5 border-green-200 dark:border-green-800 hover:bg-green-50 dark:hover:bg-green-950/30 hover:border-green-400 dark:hover:border-green-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
                 >
-                  <Smartphone className="h-5 w-5 text-emerald-600 group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-semibold">Android</span>
+                  <Smartphone className="h-5 w-5 text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform" />
+                  <span className="text-xs font-semibold text-green-700 dark:text-green-400">Android</span>
                   <span className="text-[10px] text-muted-foreground">{t('dashboard.download.driver')}</span>
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-auto py-3 flex flex-col gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-300 group"
+                  className="h-auto py-3 flex flex-col gap-1.5 border-sky-200 dark:border-sky-800 hover:bg-sky-50 dark:hover:bg-sky-950/30 hover:border-sky-400 dark:hover:border-sky-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
                 >
-                  <Apple className="h-5 w-5 text-emerald-600 group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-semibold">iOS</span>
+                  <Apple className="h-5 w-5 text-sky-600 dark:text-sky-400 group-hover:scale-110 transition-transform" />
+                  <span className="text-xs font-semibold text-sky-700 dark:text-sky-400">iOS</span>
                   <span className="text-[10px] text-muted-foreground">{t('dashboard.download.driver')}</span>
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-auto py-3 flex flex-col gap-1.5 border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:border-blue-300 group"
+                  className="h-auto py-3 flex flex-col gap-1.5 border-green-200 dark:border-green-800 hover:bg-green-50 dark:hover:bg-green-950/30 hover:border-green-400 dark:hover:border-green-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
                 >
-                  <Smartphone className="h-5 w-5 text-blue-600 group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-semibold">Android</span>
+                  <Smartphone className="h-5 w-5 text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform" />
+                  <span className="text-xs font-semibold text-green-700 dark:text-green-400">Android</span>
                   <span className="text-[10px] text-muted-foreground">{t('dashboard.download.passenger')}</span>
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-auto py-3 flex flex-col gap-1.5 border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-950/30 hover:border-blue-300 group"
+                  className="h-auto py-3 flex flex-col gap-1.5 border-sky-200 dark:border-sky-800 hover:bg-sky-50 dark:hover:bg-sky-950/30 hover:border-sky-400 dark:hover:border-sky-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
                 >
-                  <Apple className="h-5 w-5 text-blue-600 group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-semibold">iOS</span>
+                  <Apple className="h-5 w-5 text-sky-600 dark:text-sky-400 group-hover:scale-110 transition-transform" />
+                  <span className="text-xs font-semibold text-sky-700 dark:text-sky-400">iOS</span>
                   <span className="text-[10px] text-muted-foreground">{t('dashboard.download.passenger')}</span>
                 </Button>
+              </div>
+              {/* Play Store badge */}
+              <div className="mt-3 flex items-center justify-center gap-2 bg-muted/50 rounded-lg p-2.5">
+                <Play className="h-4 w-4 text-emerald-600" />
+                <span className="text-[10px] text-muted-foreground font-medium">Disponível na Google Play e App Store</span>
               </div>
             </CardContent>
           </Card>

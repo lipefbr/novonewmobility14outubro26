@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
@@ -14,6 +14,8 @@ import { formatCurrency, formatDate, getStatusLabel, getStatusVariant, cn } from
 import { financialApi } from '@/lib/api'
 import { FinancialSkeleton } from '../ui/loading-skeletons'
 import { EmptyState } from '../ui/empty-states'
+import { InvoiceViewer } from './invoice-viewer'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   AreaChart,
   Area,
@@ -22,6 +24,9 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
 } from 'recharts'
 import {
   Wallet,
@@ -33,12 +38,22 @@ import {
   UtensilsCrossed,
   Pill,
   Gift,
+  Star,
   Filter,
   Download,
   TrendingUp,
   TrendingDown,
   FileDown,
   Calendar,
+  Send,
+  Clock,
+  ArrowRightLeft,
+  CircleDot,
+  FileText,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Ban,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
@@ -89,6 +104,54 @@ const typeIcons: Record<string, string> = {
   voucher: '🎫',
 }
 
+// Transaction type filter chips with icons
+const filterChips = [
+  { key: 'all', label: 'Todos', icon: Filter },
+  { key: 'cashback_entry', label: 'CB Entrada', icon: DollarSign },
+  { key: 'cashback_residual', label: 'CB Residual', icon: TrendingUp },
+  { key: 'cashback_sales', label: 'CB Vendas', icon: ShoppingBag },
+  { key: 'withdrawal', label: 'Saques', icon: ArrowDownToLine },
+  { key: 'gratification', label: 'Gratificações', icon: Gift },
+  { key: 'bonus', label: 'Bônus', icon: Star },
+]
+
+// Animated counter
+function AnimatedBalance({ value, className }: { value: number; className?: string }) {
+  const [display, setDisplay] = useState(0)
+  const hasAnimated = useRef(false)
+  useEffect(() => {
+    if (hasAnimated.current) return
+    hasAnimated.current = true
+    const duration = 1500
+    const steps = 50
+    const increment = value / steps
+    let current = 0
+    const timer = setInterval(() => {
+      current += increment
+      if (current >= value) { setDisplay(value); clearInterval(timer) }
+      else setDisplay(Math.floor(current))
+    }, duration / steps)
+    return () => clearInterval(timer)
+  }, [value])
+  return <span className={className}>{formatCurrency(display)}</span>
+}
+
+// Mock withdrawal history
+const mockWithdrawals = [
+  { id: 'wd_001', amount: 200000, status: 'completed', requestedAt: '2025-01-13T10:30:00Z', processedAt: '2025-01-14T14:22:00Z', completedAt: '2025-01-16T09:00:00Z', estimatedCompletion: null, fee: 350, bankInfo: 'Banco do Brasil - Ag 1234-5 / CC 67890-1' },
+  { id: 'wd_002', amount: 150000, status: 'completed', requestedAt: '2024-12-20T15:45:00Z', processedAt: '2024-12-21T08:30:00Z', completedAt: '2024-12-23T11:15:00Z', estimatedCompletion: null, fee: 350, bankInfo: 'Banco do Brasil - Ag 1234-5 / CC 67890-1' },
+  { id: 'wd_003', amount: 500000, status: 'processing', requestedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), processedAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(), completedAt: null, estimatedCompletion: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(), fee: 850, bankInfo: 'Banco do Brasil - Ag 1234-5 / CC 67890-1' },
+  { id: 'wd_004', amount: 100000, status: 'requested', requestedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), processedAt: null, completedAt: null, estimatedCompletion: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(), fee: 350, bankInfo: 'Banco do Brasil - Ag 1234-5 / CC 67890-1' },
+  { id: 'wd_005', amount: 75000, status: 'rejected', requestedAt: '2024-11-10T09:00:00Z', processedAt: '2024-11-10T16:45:00Z', completedAt: null, estimatedCompletion: null, fee: 0, bankInfo: 'Banco do Brasil - Ag 1234-5 / CC 67890-1' },
+]
+
+const withdrawalStatusConfig: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+  requested: { label: 'Solicitado', icon: Clock, color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
+  processing: { label: 'Processando', icon: Loader2, color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+  completed: { label: 'Concluído', icon: CheckCircle2, color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
+  rejected: { label: 'Rejeitado', icon: XCircle, color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+}
+
 export function FinancialPage() {
   const { user } = useStore()
   const { t } = useTranslation()
@@ -99,6 +162,7 @@ export function FinancialPage() {
   const [exportStartDate, setExportStartDate] = useState('')
   const [exportEndDate, setExportEndDate] = useState('')
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [financialTab, setFinancialTab] = useState('transactions')
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 800)
@@ -127,9 +191,20 @@ export function FinancialPage() {
     { label: t('financial.balance.gratification'), value: user?.balanceGratification || 0, icon: Gift, color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400', gradient: 'from-amber-500 to-amber-600', change: 12 },
   ]
 
+  // Balance breakdown pie chart data
+  const totalBalance = balances.reduce((acc, b) => acc + b.value, 0)
+  const pieData = balances.map((b) => ({
+    name: b.label,
+    value: b.value,
+    color: b.gradient.includes('emerald') ? '#059669' : b.gradient.includes('blue') ? '#3b82f6' : b.gradient.includes('purple') ? '#8b5cf6' : b.gradient.includes('orange') ? '#f97316' : b.gradient.includes('rose') ? '#f43f5e' : '#f59e0b',
+  }))
+
+  // Pending transactions
+  const pendingTransactions = mockTransactions.filter((tx) => tx.status === 'pending')
+
   const handleExportCSV = () => {
     const headers = 'Data,Descrição,Tipo,Valor,Status\n'
-    const rows = filtered.map(tx => 
+    const rows = filtered.map(tx =>
       `${tx.date},"${tx.description}",${typeLabels[tx.type] || tx.type},${tx.amount / 100},${getStatusLabel(tx.status)}`
     ).join('\n')
     const csv = headers + rows
@@ -150,7 +225,7 @@ export function FinancialPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header with Quick Transfer */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-foreground">{t('financial.title')}</h2>
@@ -161,6 +236,10 @@ export function FinancialPage() {
             <FileDown className="h-3.5 w-3.5" />
             {t('financial.exportCsv')}
           </Button>
+          <Button variant="outline" size="sm" className="gap-2 text-xs border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" onClick={() => toast.info('Transferência rápida em breve!')}>
+            <ArrowRightLeft className="h-3.5 w-3.5" />
+            Transferir
+          </Button>
           <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
             <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={() => setWithdrawOpen(true)}>
               <ArrowDownToLine className="h-4 w-4" />
@@ -169,6 +248,7 @@ export function FinancialPage() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>{t('financial.withdraw')}</DialogTitle>
+                <DialogDescription className="sr-only">Dialog to request a withdrawal from your account</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-lg p-4 text-center">
@@ -199,11 +279,57 @@ export function FinancialPage() {
         </div>
       </div>
 
+      {/* Balance Overview Hero with Pie Chart */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+        <Card className="shadow-lg border-0 bg-gradient-to-r from-gray-900 to-gray-800 overflow-hidden relative">
+          <div className="absolute inset-0 opacity-5" style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.3'%3E%3Ccircle cx='20' cy='20' r='1.5'/%3E%3C/g%3E%3C/svg%3E")`,
+          }} />
+          <CardContent className="p-5 md:p-6 relative">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <p className="text-sm text-gray-400 font-medium">Saldo Total</p>
+                <AnimatedBalance value={totalBalance} className="text-3xl md:text-4xl font-bold text-white" />
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="flex items-center gap-1 bg-emerald-500/20 rounded-full px-2.5 py-1">
+                    <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
+                    <span className="text-xs font-bold text-emerald-400">+5.2%</span>
+                  </div>
+                  <span className="text-xs text-gray-400">vs. mês anterior</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="h-[100px] w-[100px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={pieData} cx="50%" cy="50%" innerRadius={28} outerRadius={45} paddingAngle={2} dataKey="value" animationDuration={1000}>
+                        {pieData.map((entry, index) => (
+                          <Cell key={`pie-${index}`} fill={entry.color} stroke="none" />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {pieData.slice(0, 4).map((item) => (
+                    <div key={item.name} className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                      <span className="text-[10px] text-gray-300 truncate max-w-[100px]">{item.name}</span>
+                      <span className="text-[10px] font-bold text-white">{((item.value / totalBalance) * 100).toFixed(0)}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* Quick Stats */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
+        transition={{ delay: 0.05, duration: 0.3 }}
       >
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="border-l-4 border-l-emerald-500 shadow-sm bg-card">
@@ -249,6 +375,44 @@ export function FinancialPage() {
           </Card>
         </div>
       </motion.div>
+
+      {/* Pending Transactions Section with pulsing dot */}
+      {pendingTransactions.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <Card className="shadow-sm bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                <CircleDot className="h-4 w-4 animate-pulse" />
+                Transações Pendentes
+                <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 text-[10px]">{pendingTransactions.length}</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {pendingTransactions.map((tx) => (
+                <div key={tx.id} className="flex items-center justify-between py-2 border-b border-amber-100 dark:border-amber-900/30 last:border-0">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400">
+                      <Clock className="h-3.5 w-3.5" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{tx.description}</p>
+                      <p className="text-xs text-muted-foreground">{formatDate(tx.date)}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                      {formatCurrency(Math.abs(tx.amount))}
+                    </p>
+                    <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 text-[10px]">
+                      Processando
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Mini Chart */}
       <motion.div
@@ -330,78 +494,6 @@ export function FinancialPage() {
         ))}
       </div>
 
-      {/* Transactions */}
-      <Card className="shadow-sm bg-card">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-bold text-foreground">{t('financial.transactions')}</CardTitle>
-            <div className="flex items-center gap-2">
-              <Select value={filterType} onValueChange={setFilterType}>
-                <SelectTrigger className="w-[140px] h-8 text-xs">
-                  <Filter className="h-3 w-3 mr-1" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('general.all')}</SelectItem>
-                  <SelectItem value="cashback_entry">CB Entrada</SelectItem>
-                  <SelectItem value="cashback_residual">CB Residual</SelectItem>
-                  <SelectItem value="cashback_sales">CB Vendas</SelectItem>
-                  <SelectItem value="withdrawal">Saques</SelectItem>
-                  <SelectItem value="gratification">Gratificações</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-emerald-600" onClick={handleExportCSV}>
-                <Download className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="divide-y divide-border max-h-96 overflow-y-auto custom-scrollbar">
-            {filtered.map((tx, i) => (
-              <div key={tx.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors">
-                <div className="flex items-center gap-2">
-                  <span className="text-base">{typeIcons[tx.type] || '📋'}</span>
-                  <div className={`p-1.5 rounded-lg ${
-                    tx.amount > 0 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400' : 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400'
-                  }`}>
-                    {tx.amount > 0 ? (
-                      <ArrowUpFromLine className="h-3.5 w-3.5" />
-                    ) : (
-                      <ArrowDownToLine className="h-3.5 w-3.5" />
-                    )}
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-foreground truncate">{tx.description}</span>
-                    <Badge variant="outline" className="text-[10px] shrink-0 hidden sm:inline-flex">
-                      {typeLabels[tx.type] || tx.type}
-                    </Badge>
-                  </div>
-                  <span className="text-xs text-muted-foreground">{formatDate(tx.date)}</span>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className={`text-sm font-semibold ${tx.amount > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                    {tx.amount > 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
-                  </p>
-                  <Badge variant={getStatusVariant(tx.status)} className="text-[10px]">
-                    {getStatusLabel(tx.status)}
-                  </Badge>
-                </div>
-              </div>
-            ))}
-            {filtered.length === 0 && (
-              <EmptyState
-                icon={Wallet}
-                title="Nenhuma transação encontrada"
-                description="Suas transações aparecerão aqui assim que houver movimentação na sua conta."
-              />
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Export Dialog */}
       <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
         <DialogContent>
@@ -410,6 +502,7 @@ export function FinancialPage() {
               <FileDown className="h-5 w-5 text-emerald-600" />
               Exportar Relatório
             </DialogTitle>
+            <DialogDescription className="sr-only">Dialog to export financial transactions as CSV</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <p className="text-sm text-muted-foreground">
@@ -512,6 +605,188 @@ export function FinancialPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Withdrawal History & Invoices Tabs */}
+      <Tabs value={financialTab} onValueChange={setFinancialTab}>
+        <TabsList>
+          <TabsTrigger value="transactions" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+            <ArrowRightLeft className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t('financial.transactions')}</span>
+            <span className="sm:hidden">Transações</span>
+          </TabsTrigger>
+          <TabsTrigger value="withdrawals" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+            <ArrowDownToLine className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t('withdrawals.title')}</span>
+            <span className="sm:hidden">Saques</span>
+          </TabsTrigger>
+          <TabsTrigger value="invoices" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+            <FileText className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t('invoice.title')}</span>
+            <span className="sm:hidden">Faturas</span>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="transactions" className="mt-4">
+          {/* Transaction Type Filter Chips */}
+          <div className="flex gap-2 flex-wrap mb-4">
+            {filterChips.map((chip) => {
+              const Icon = chip.icon
+              const isActive = filterType === chip.key
+              return (
+                <button
+                  key={chip.key}
+                  onClick={() => setFilterType(chip.key)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                    isActive
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
+                      : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+                  }`}
+                >
+                  <Icon className="h-3 w-3" />
+                  {chip.label}
+                </button>
+              )
+            })}
+          </div>
+
+          <Card className="shadow-sm bg-card">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base font-bold text-foreground">{t('financial.transactions')}</CardTitle>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-emerald-600" onClick={handleExportCSV}>
+                  <Download className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y divide-border max-h-96 overflow-y-auto custom-scrollbar">
+                {filtered.map((tx, i) => {
+                  const isPositive = tx.amount > 0
+                  const isPending = tx.status === 'pending'
+                  return (
+                    <div
+                      key={tx.id}
+                      className={`flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors ${i % 2 === 1 ? 'bg-muted/20' : ''}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">{typeIcons[tx.type] || '📋'}</span>
+                        <div className={`p-1.5 rounded-lg ${
+                          isPositive ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400' : 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400'
+                        }`}>
+                          {isPositive ? <ArrowUpFromLine className="h-3.5 w-3.5" /> : <ArrowDownToLine className="h-3.5 w-3.5" />}
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-foreground truncate">{tx.description}</span>
+                          {isPending && <CircleDot className="h-3 w-3 text-amber-500 animate-pulse shrink-0" />}
+                          <Badge variant="outline" className="text-[10px] shrink-0 hidden sm:inline-flex">
+                            {typeLabels[tx.type] || tx.type}
+                          </Badge>
+                        </div>
+                        <span className="text-xs text-muted-foreground">{formatDate(tx.date)}</span>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className={`text-sm font-semibold ${isPositive ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                          {isPositive ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
+                        </p>
+                        <Badge variant={getStatusVariant(tx.status)} className="text-[10px]">
+                          {getStatusLabel(tx.status)}
+                        </Badge>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="withdrawals" className="mt-4">
+          <Card className="shadow-sm bg-card">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
+                {t('withdrawals.title')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y divide-border">
+                {mockWithdrawals.map((wd, i) => {
+                  const config = withdrawalStatusConfig[wd.status] || withdrawalStatusConfig.requested
+                  const StatusIcon = config.icon
+                  const isPending = wd.status === 'requested' || wd.status === 'processing'
+                  return (
+                    <motion.div
+                      key={wd.id}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: i * 0.05 }}
+                      className="p-4 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <Badge className={`text-[10px] gap-1 ${config.color}`}>
+                            <StatusIcon className={`h-3 w-3 ${wd.status === 'processing' ? 'animate-spin' : ''}`} />
+                            {config.label}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground font-mono">#{wd.id.toUpperCase()}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-lg font-bold text-foreground">{formatCurrency(wd.amount)}</p>
+                          {isPending && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 h-7 gap-1"
+                              onClick={() => toast.success(t('withdrawals.cancelled'))}
+                            >
+                              <Ban className="h-3 w-3" />
+                              {t('withdrawals.cancel')}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Status Timeline */}
+                      <div className="flex items-center gap-1 mt-3">
+                        <div className={`flex items-center gap-1.5 text-[10px] ${wd.requestedAt ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-muted-foreground'}`}>
+                          <div className={`w-3 h-3 rounded-full ${wd.requestedAt ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`} />
+                          {t('withdrawals.requested')}
+                        </div>
+                        <div className={`flex-1 h-0.5 ${wd.processedAt ? 'bg-emerald-400' : 'bg-muted-foreground/20'}`} />
+                        <div className={`flex items-center gap-1.5 text-[10px] ${wd.processedAt ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-muted-foreground'}`}>
+                          <div className={`w-3 h-3 rounded-full ${wd.processedAt ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`} />
+                          {t('withdrawals.processing')}
+                        </div>
+                        <div className={`flex-1 h-0.5 ${(wd.completedAt || wd.status === 'rejected') ? 'bg-emerald-400' : 'bg-muted-foreground/20'}`} />
+                        <div className={`flex items-center gap-1.5 text-[10px] ${wd.completedAt ? 'text-emerald-600 dark:text-emerald-400 font-medium' : wd.status === 'rejected' ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
+                          <div className={`w-3 h-3 rounded-full ${wd.completedAt ? 'bg-emerald-500' : wd.status === 'rejected' ? 'bg-red-500' : 'bg-muted-foreground/30'}`} />
+                          {wd.status === 'rejected' ? t('withdrawals.rejected') : t('withdrawals.completed')}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4 mt-2 text-[10px] text-muted-foreground">
+                        <span>{t('withdrawals.requestedAt')}: {new Date(wd.requestedAt).toLocaleDateString('pt-BR')}</span>
+                        {wd.estimatedCompletion && isPending && (
+                          <span className="text-amber-600 dark:text-amber-400">
+                            {t('withdrawals.estimated')}: {new Date(wd.estimatedCompletion).toLocaleDateString('pt-BR')}
+                          </span>
+                        )}
+                        <span>{t('withdrawals.fee')}: {formatCurrency(wd.fee)}</span>
+                      </div>
+                    </motion.div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="invoices" className="mt-4">
+          <InvoiceViewer />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

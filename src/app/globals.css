@@ -556,3 +556,56 @@ textarea:focus-visible {
 .dark .chart-tooltip .recharts-tooltip-label {
   color: #fff;
 }
+
+/* ===== Skeleton Loading Shimmer ===== */
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 0%,
+    hsl(var(--muted) / 0.5) 50%,
+    hsl(var(--muted)) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* ===== Mobile Safe Area ===== */
+
+.safe-area-inset-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ===== Smooth Scroll ===== */
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* ===== Premium Badge Glow ===== */
+
+.badge-premium {
+  position: relative;
+  overflow: hidden;
+}
+
+.badge-premium::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.3) 50%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* ===== Star Rating Hover ===== */
+
+.star-rating button:hover ~ button svg {
+  color: hsl(var(--muted-foreground));
+}

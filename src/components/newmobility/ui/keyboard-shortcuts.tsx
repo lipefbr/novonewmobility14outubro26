@@ -8,6 +8,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -75,6 +76,7 @@ export function KeyboardShortcuts() {
               <Keyboard className="h-5 w-5 text-emerald-600" />
               Atalhos de Teclado
             </DialogTitle>
+            <DialogDescription className="sr-only">Dialog showing keyboard shortcuts for quick navigation</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             {shortcuts.map((shortcut) => (

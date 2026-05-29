@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import {
   Ticket, Check, Clock, Car, ShoppingBag, Gift, Copy, Check as CheckIcon,
-  Pill, UtensilsCrossed, ShoppingCart, Plus, QrCode, Filter, Timer, Sparkles
+  Pill, UtensilsCrossed, ShoppingCart, Plus, QrCode, Filter, Timer, Sparkles,
+  Share2, ChevronDown, ChevronUp, Star, Info
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
@@ -83,6 +84,7 @@ export function VoucherPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<VoucherStatus | 'all'>('all')
   const [categoryFilter, setCategoryFilter] = useState<VoucherCategory | 'all'>('all')
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const filtered = mockVouchers.filter((v) => {
     const matchesStatus = statusFilter === 'all' || v.status === statusFilter
@@ -94,6 +96,11 @@ export function VoucherPage() {
   const usedVouchers = mockVouchers.filter((v) => v.status === 'used')
   const expiredVouchers = mockVouchers.filter((v) => v.status === 'expired')
   const totalActiveValue = activeVouchers.reduce((acc, v) => acc + v.amount, 0)
+
+  // Featured voucher (highest value active)
+  const featuredVoucher = activeVouchers.length > 0
+    ? activeVouchers.reduce((prev, curr) => curr.amount > prev.amount ? curr : prev)
+    : null
 
   const handleCopy = (code: string, id: string) => {
     navigator.clipboard.writeText(code).then(() => {
@@ -109,7 +116,17 @@ export function VoucherPage() {
     })
   }
 
-  const renderQRPattern = (id: string, color: string) => {
+  const handleShareVoucher = (code: string, amount: number) => {
+    const text = `🎁 Voucher NewMobility: ${formatCurrency(amount)} - Código: ${code}`
+    if (navigator.share) {
+      navigator.share({ title: 'Voucher NewMobility', text })
+    } else {
+      navigator.clipboard.writeText(text)
+      toast({ title: 'Copiado!', description: 'Link do voucher copiado' })
+    }
+  }
+
+  const renderQRPattern = (id: string, color: string, branded = false) => {
     const seed = parseInt(id) || 1
     const cells = Array.from({ length: 16 }, (_, i) => {
       const filled = ((seed * (i + 1) * 7) % 11) > 3
@@ -117,7 +134,11 @@ export function VoucherPage() {
     })
     return (
       <div className="relative">
-        <div className="grid grid-cols-4 gap-0.5 w-14 h-14 p-1 bg-white dark:bg-gray-800 rounded-md">
+        {/* Branded frame */}
+        {branded && (
+          <div className="absolute -inset-2 rounded-xl border-2 border-emerald-400 dark:border-emerald-600 shadow-lg shadow-emerald-500/20" />
+        )}
+        <div className={`grid grid-cols-4 gap-0.5 ${branded ? 'w-20 h-20 p-1.5' : 'w-14 h-14 p-1'} bg-white dark:bg-gray-800 rounded-md relative`}>
           {cells.map((filled, i) => (
             <motion.div
               key={i}
@@ -127,16 +148,30 @@ export function VoucherPage() {
               className={`rounded-[1px] ${filled ? 'bg-gray-900 dark:bg-gray-100' : 'bg-gray-200 dark:bg-gray-600'}`}
             />
           ))}
+          {/* QR scanning animation */}
+          <motion.div
+            className="absolute left-1 right-1 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent"
+            animate={{ top: ['4px', branded ? '68px' : '52px', '4px'] }}
+            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+          />
         </div>
-        {/* QR scanning animation overlay */}
-        <motion.div
-          className="absolute left-1 right-1 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent"
-          animate={{ top: ['4px', '52px', '4px'] }}
-          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-        />
+        {branded && (
+          <div className="text-center mt-1.5">
+            <span className="text-[8px] font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">NEWMOBILITY</span>
+          </div>
+        )}
       </div>
     )
   }
+
+  // Usage instructions
+  const usageInstructions = [
+    'Abra o app NewMobility no seu celular',
+    'Vá até a seção "Vouchers" no menu',
+    'Toque em "Adicionar Voucher"',
+    'Digite ou cole o código do voucher',
+    'Confirme e o valor será creditado na categoria correspondente',
+  ]
 
   return (
     <div className="space-y-6">
@@ -176,6 +211,101 @@ export function VoucherPage() {
           </motion.div>
         ))}
       </div>
+
+      {/* Featured Voucher Hero Card */}
+      {featuredVoucher && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <Card className="shadow-lg border-2 border-emerald-300 dark:border-emerald-700 overflow-hidden relative gradient-border">
+            <div className="absolute top-0 left-0 bg-emerald-600 text-white text-[10px] font-bold px-3 py-1 rounded-br-lg z-10 flex items-center gap-1">
+              <Sparkles className="h-3 w-3" />
+              DESTAQUE
+            </div>
+            <div className="h-2 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400 animate-gradient-shift" />
+            <CardContent className="p-6">
+              <div className="flex items-center gap-5">
+                {renderQRPattern(featuredVoucher.id, featuredVoucher.category, true)}
+                <div className="flex-1">
+                  <p className="text-xs text-muted-foreground font-medium">Maior Voucher Ativo</p>
+                  <p className="text-3xl font-bold text-foreground mt-1">{formatCurrency(featuredVoucher.amount)}</p>
+                  <p className="text-sm font-mono text-muted-foreground mt-1">{featuredVoucher.code}</p>
+                  <div className="flex items-center gap-3 mt-2">
+                    <Badge variant="outline" className="text-[10px] gap-1">
+                      {(() => { const c = categoryConfig[featuredVoucher.category]; const I = c.icon; return <><I className="h-3 w-3" />{c.label}</> })()}
+                    </Badge>
+                    <CountdownTimer expiresAt={featuredVoucher.expiresAt} />
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2 mt-4 pt-4 border-t border-border">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 h-9 text-xs gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                  onClick={() => handleCopy(featuredVoucher.code, featuredVoucher.id)}
+                >
+                  {copiedId === featuredVoucher.id ? <CheckIcon className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copiedId === featuredVoucher.id ? 'Copiado!' : 'Copiar Código'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 h-9 text-xs gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                  onClick={() => handleShareVoucher(featuredVoucher.code, featuredVoucher.amount)}
+                >
+                  <Share2 className="h-3.5 w-3.5" />
+                  Compartilhar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* How to Use - Expandable Section */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+        <Card className="shadow-sm bg-card">
+          <CardContent className="p-4">
+            <button
+              onClick={() => setExpandedId(expandedId === 'instructions' ? null : 'instructions')}
+              className="w-full flex items-center justify-between text-sm font-semibold text-foreground hover:text-emerald-600 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Info className="h-4 w-4 text-emerald-600" />
+                Como Usar Seus Vouchers
+              </div>
+              {expandedId === 'instructions' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+            <AnimatePresence>
+              {expandedId === 'instructions' && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="mt-3 space-y-2">
+                    {usageInstructions.map((step, i) => (
+                      <motion.div
+                        key={i}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.05 }}
+                        className="flex items-center gap-3 p-2 bg-muted/50 rounded-lg"
+                      >
+                        <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 flex items-center justify-center text-xs font-bold shrink-0">
+                          {i + 1}
+                        </div>
+                        <p className="text-sm text-foreground">{step}</p>
+                      </motion.div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </CardContent>
+        </Card>
+      </motion.div>
 
       {/* Category Filter */}
       <div className="flex gap-2 flex-wrap">
@@ -225,7 +355,7 @@ export function VoucherPage() {
         })}
       </div>
 
-      {/* Voucher Cards with holographic effect */}
+      {/* Voucher Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <AnimatePresence mode="popLayout">
           {filtered.map((voucher, i) => {
@@ -246,14 +376,12 @@ export function VoucherPage() {
                 <Card className={`shadow-sm overflow-hidden relative holographic ${
                   !isActive ? 'opacity-60' : 'hover:shadow-lg transition-shadow'
                 } ${isExpired ? 'border-red-200 dark:border-red-800' : 'border-border'}`}>
-                  {/* Top color bar with shimmer */}
                   <div className={`h-2 bg-gradient-to-r ${config.bgGradient} relative`}>
                     {isActive && <div className="absolute inset-0 animate-shimmer" />}
                   </div>
 
                   <CardContent className="p-4">
                     <div className="flex items-start gap-3">
-                      {/* QR-style pattern with scanning animation */}
                       <div className={`shrink-0 ${config.color}`}>
                         {renderQRPattern(voucher.id, config.bgGradient)}
                       </div>
@@ -298,20 +426,17 @@ export function VoucherPage() {
                           className="flex-1 h-8 text-xs gap-1 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
                           onClick={() => handleCopy(voucher.code, voucher.id)}
                         >
-                          {copiedId === voucher.id ? (
-                            <CheckIcon className="h-3 w-3 text-emerald-600" />
-                          ) : (
-                            <Copy className="h-3 w-3" />
-                          )}
+                          {copiedId === voucher.id ? <CheckIcon className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
                           {copiedId === voucher.id ? 'Copiado!' : 'Copiar Código'}
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
                           className="flex-1 h-8 text-xs gap-1 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                          onClick={() => handleShareVoucher(voucher.code, voucher.amount)}
                         >
-                          <QrCode className="h-3 w-3" />
-                          Ver QR Code
+                          <Share2 className="h-3 w-3" />
+                          Compartilhar
                         </Button>
                       </div>
                     )}

@@ -757,3 +757,201 @@ Stage Summary:
 6. Add 2FA/MFA authentication
 7. Add admin dashboard for system management
 8. Add more portal-specific API endpoints (Lojista, Gamer, SportBet)
+
+---
+Task ID: 10-a
+Agent: Full-Stack Developer (Accessibility Fix)
+Task: Fix DialogDescription accessibility warnings
+
+Work Log:
+- Added `DialogDescription` with `className="sr-only"` to all DialogContent components that were missing it
+- This fixes the React warning: "Missing `Description` or `aria-describedby={undefined}` for {DialogContent}"
+- sr-only class makes the description accessible to screen readers without changing visual layout
+
+### Files Modified
+1. **src/components/newmobility/financial/financial-page.tsx** - 2 dialogs fixed:
+   - Withdraw dialog: Added sr-only DialogDescription "Dialog to request a withdrawal from your account"
+   - Export dialog: Added sr-only DialogDescription "Dialog to export financial transactions as CSV"
+   - Updated import to include DialogDescription
+
+2. **src/components/newmobility/support/support-page.tsx** - 1 dialog fixed:
+   - New ticket dialog: Added sr-only DialogDescription "Dialog to create a new support ticket"
+   - Updated import to include DialogDescription
+
+3. **src/components/newmobility/referrals/referrals-page.tsx** - 1 dialog fixed:
+   - Detail dialog: Added sr-only DialogDescription "Dialog showing details of a referral member"
+   - Updated import to include DialogDescription
+
+4. **src/components/newmobility/myplan/myplan-page.tsx** - 1 dialog fixed:
+   - Upgrade dialog: Added sr-only DialogDescription "Dialog to calculate and confirm a plan upgrade"
+   - Updated import to include DialogDescription
+
+5. **src/components/newmobility/ui/keyboard-shortcuts.tsx** - 1 dialog fixed:
+   - Shortcuts help dialog: Added sr-only DialogDescription "Dialog showing keyboard shortcuts for quick navigation"
+   - Updated import to include DialogDescription
+
+6. **src/components/newmobility/onboarding/welcome-modal.tsx** - 1 dialog fixed:
+   - Onboarding modal: Added sr-only DialogDescription "Onboarding tutorial for new users" (already had sr-only DialogTitle)
+   - Updated import to include DialogDescription
+
+### Not Modified
+- **src/components/newmobility/auth/login-page.tsx** - No Dialog components used; ResetPasswordFlow uses Card components, not Dialog
+- **src/components/newmobility/auth/reset-password-flow.tsx** - Uses Card components, not Dialog
+
+### Verification
+- Lint passes with 0 errors
+- No visual changes - all descriptions are sr-only (screen reader only)
+- 6 files modified, 7 dialogs fixed total
+
+Stage Summary:
+- All DialogDescription accessibility warnings fixed across 7 dialogs in 6 files
+- No visual changes to the UI
+- Lint passes with 0 errors
+
+---
+Task ID: 10-c
+Agent: Full-Stack Developer (Feature Enhancement)
+Task: Add more features and functionality (10 features)
+
+Work Log:
+
+### 1. Achievements/Badges System
+- Created `src/components/newmobility/points/achievements-section.tsx`
+- 14 achievements across 4 categories (referral, financial, engagement, milestone)
+- 4 rarity levels: common, rare, epic, legendary with distinct visual styles
+- Earned achievements show checkmark, date, and colored borders
+- Locked achievements show progress bar, percentage, and progress text
+- Header stats: earned count, total points, completion percentage
+- Overall progress bar with percentage
+- Integrated into PointsPage with trophy icon header
+
+### 2. Notification Sound & Toast System
+- Created `src/components/newmobility/notifications/notification-toast.tsx`
+- Web Audio API chime sound on new notifications (3-tone ascending)
+- Toast notifications appear at top-right with auto-dismiss (5s timer)
+- Progress bar showing remaining time before auto-dismiss
+- 10 simulated notification events (cashback, referral, career, etc.)
+- First toast after 10s, subsequent every 30-60s
+- Max 3 toasts visible at once
+- Integrated into AppLayout
+
+### 3. Referral Tree Deep View / Network Modal
+- Created `src/components/newmobility/referrals/network-modal.tsx`
+- Full-screen dialog with expandable/collapsible tree nodes
+- Search within the referral tree (highlights matching nodes)
+- Expand All / Collapse All buttons
+- Zoom controls (50% to 150%)
+- Level statistics: total members, active members, total earnings, levels count
+- Per-level breakdown cards with user count and earnings
+- Selected node detail panel with avatar, plan, cashback, direct referrals
+- AnimatePresence for smooth expand/collapse animations
+- "Ver Rede Completa" button on network tree card in ReferralsPage
+
+### 4. PDF Invoice Generation
+- Created API endpoint: `GET /api/invoices/[invoiceId]/pdf`
+- Generates HTML-based invoice with professional layout
+- NewMobility branding, client info, item table, total box, footer
+- Auto-prints when opened via `window.print()` script
+- Created `src/components/newmobility/financial/invoice-viewer.tsx`
+- Invoice list with filter by status (all, paid, pending)
+- View detail dialog and download PDF button per invoice
+- 6 mock invoices with different statuses and amounts
+
+### 5. Withdrawal History & Status Tracking
+- Created API endpoint: `GET /api/financial/withdrawals`
+- Returns mock withdrawal history with 5 withdrawals
+- Created withdrawal tab in FinancialPage with:
+  - Status timeline: Requested → Processing → Completed/Rejected
+  - Color-coded status badges with icons
+  - Estimated completion date for pending withdrawals
+  - Fee display per withdrawal
+  - Cancel button for pending/processing withdrawals
+- Added financialTab state with Tabs component (Transactions, Withdrawals, Invoices)
+
+### 6. Two-Factor Authentication Setup (Visual)
+- Created `src/components/newmobility/profile/two-factor-setup.tsx`
+- 4-step flow: Intro → QR Setup → Verify Code → Backup Codes → Complete
+- SVG QR code pattern (21x21 grid)
+- Manual key with copy button
+- 6-digit verification code input with auto-focus
+- 8 backup codes with reveal/hide blur and copy functionality
+- Warning about saving backup codes
+- Enable/disable 2FA toggle
+- Added "Segurança" tab to ProfilePage with ShieldCheck icon
+
+### 7. Announcement Banner System
+- Created `src/components/newmobility/dashboard/announcement-banner.tsx`
+- 3 announcement types: promo (green), feature (blue), maintenance (amber)
+- Dismissable with X button, stored in localStorage
+- Multiple announcements with counter (1/N) and next button
+- AnimatePresence for smooth mount/unmount
+- Integrated at top of DashboardPage
+
+### 8. Data Comparison Widget
+- Created `src/components/newmobility/dashboard/comparison-widget.tsx`
+- 4 comparison cards: CashBack Earnings, New Referrals, Points Earned, Withdrawals
+- Month-over-month percentage change with color coding (green up, red down)
+- Mini SVG sparkline charts with gradient fill
+- TrendingUp/TrendingDown/Minus icons per card
+- Integrated after StatsCards on DashboardPage
+
+### 9. Mobile Bottom Navigation Bar
+- Created `src/components/newmobility/ui/mobile-nav.tsx`
+- 5 navigation items: Dashboard, CashBack, Financial, Referrals, Profile
+- Active state with animated highlight (framer-motion layoutId)
+- Icon scale animation on active state
+- Fixed bottom position, hidden on lg: screens
+- Integrated into AppLayout with mobile padding (pb-16 lg:pb-0)
+- Footer hidden on mobile (hidden lg:block)
+
+### 10. Feedback/Rating Widget
+- Created `src/components/newmobility/ui/feedback-widget.tsx`
+- Floating button (bottom-right, above mobile nav)
+- Emoji rating system (1-5: 😡😐🙂😊🤩)
+- Optional text feedback textarea
+- Stored in localStorage (newmobility-feedback)
+- Submitted state hides widget
+- Auto-dismiss after 5 seconds
+- Integrated into AppLayout
+
+### i18n Updates
+- Added 100+ translation keys across all 5 languages (PT, EN, ES, FR, IT)
+- Categories: achievements, network, invoices, withdrawals, twoFactor, comparison, mobileNav, feedback
+- French and Italian translations added in compact format
+
+### Bug Fixes
+- Fixed lint error: setState-in-effect in announcement-banner.tsx (wrapped in callback function)
+- Fixed lint error: setState-in-effect in feedback-widget.tsx (wrapped in callback function)
+- Fixed lint error: Unterminated string literal in career-page.tsx (smart quotes → regular quotes)
+
+### Files Created
+- src/components/newmobility/points/achievements-section.tsx
+- src/components/newmobility/notifications/notification-toast.tsx
+- src/components/newmobility/referrals/network-modal.tsx
+- src/components/newmobility/financial/invoice-viewer.tsx
+- src/components/newmobility/profile/two-factor-setup.tsx
+- src/components/newmobility/dashboard/announcement-banner.tsx
+- src/components/newmobility/dashboard/comparison-widget.tsx
+- src/components/newmobility/ui/mobile-nav.tsx
+- src/components/newmobility/ui/feedback-widget.tsx
+- src/app/api/invoices/[invoiceId]/pdf/route.ts
+- src/app/api/financial/withdrawals/route.ts
+
+### Files Modified
+- src/components/newmobility/points/points-page.tsx (added achievements section)
+- src/components/newmobility/financial/financial-page.tsx (added tabs, withdrawal history, invoice viewer)
+- src/components/newmobility/referrals/referrals-page.tsx (added network modal button)
+- src/components/newmobility/profile/profile-page.tsx (added security tab)
+- src/components/newmobility/dashboard/dashboard-page.tsx (added banner, comparison widget)
+- src/components/newmobility/app-layout.tsx (added toast, mobile nav, feedback widget)
+- src/lib/i18n.ts (added 100+ keys for 5 languages)
+- src/components/newmobility/career/career-page.tsx (fixed lint error)
+
+Stage Summary:
+- All 10 features implemented and working
+- 11 new files created
+- 8 existing files modified
+- 2 new API endpoints created
+- 100+ i18n keys added across 5 languages
+- Lint passes with 0 errors
+- Dev server compiles successfully

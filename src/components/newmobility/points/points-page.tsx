@@ -5,8 +5,9 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { useStore } from '@/lib/store'
 import { formatDate } from '@/lib/utils'
-import { Star, TrendingUp, Users, ShoppingCart, Award } from 'lucide-react'
+import { Star, TrendingUp, Users, ShoppingCart, Award, Trophy } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { AchievementsSection } from './achievements-section'
 
 const mockPointHistory = [
   { id: '1', type: 'direct_referral', amount: 2, description: 'Indicação direta ativa - Ana Paula', date: '2025-01-15' },
@@ -179,6 +180,19 @@ export function PointsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Achievements / Badges */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <Trophy className="h-5 w-5 text-amber-500" />
+          <h3 className="text-lg font-bold text-foreground">Conquistas</h3>
+        </div>
+        <AchievementsSection />
+      </motion.div>
     </div>
   )
 }

@@ -24,9 +24,11 @@ import {
   X,
   Circle,
   Bell,
+  Sparkles,
+  Zap,
 } from 'lucide-react'
 import { useStore, type PageKey } from '@/lib/store'
-import { cn, getPlanName } from '@/lib/utils'
+import { cn, getPlanName, formatCurrency } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
 import { SidebarSearch } from './search/search-dialog'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -39,6 +41,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useState } from 'react'
 
 interface MenuItem {
   key: PageKey
@@ -71,10 +74,20 @@ const menuItems: MenuItem[] = [
 export function Sidebar() {
   const { activePage, setActivePage, logout, sidebarCollapsed, setSidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen, user } = useStore()
   const { t } = useTranslation()
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
   const handleItemClick = (key: PageKey) => {
     setActivePage(key)
     setMobileSidebarOpen(false)
+  }
+
+  const handleLogout = () => {
+    if (!showLogoutConfirm) {
+      setShowLogoutConfirm(true)
+      setTimeout(() => setShowLogoutConfirm(false), 3000)
+      return
+    }
+    logout()
   }
 
   // Group menu items
@@ -89,9 +102,12 @@ export function Sidebar() {
     }
   }
 
+  // Check if user has PRO plan (blue5+)
+  const isProPlan = user?.plan === 'blue5'
+
   const sidebarContent = (
     <TooltipProvider delayDuration={0}>
-      <div className="flex flex-col h-full bg-gradient-to-b from-gray-950 to-gray-900">
+      <div className="flex flex-col h-full bg-gradient-to-b from-gray-950 to-gray-900 backdrop-blur-xl">
         {/* Logo area */}
         <div className="flex items-center gap-3 px-4 py-5 border-b border-white/10">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 text-white font-bold text-lg shrink-0 shadow-lg shadow-emerald-500/25 animate-glow">
@@ -144,9 +160,17 @@ export function Sidebar() {
                 <span className="text-white text-sm font-medium truncate">{user.name}</span>
                 <div className="flex items-center gap-2">
                   <span className="text-emerald-400 text-xs truncate">{user.referralCode}</span>
-                  <Badge variant="secondary" className="h-4 px-1.5 text-[9px] bg-emerald-600/30 text-emerald-300 border-0 shrink-0">
-                    {getPlanName(user.plan)}
-                  </Badge>
+                  {/* PRO badge with premium effect */}
+                  {isProPlan ? (
+                    <Badge className="h-4 px-1.5 text-[9px] bg-gradient-to-r from-amber-500 to-yellow-500 text-white border-0 shrink-0 shadow-md shadow-amber-500/30 font-bold tracking-wider">
+                      <Sparkles className="h-2.5 w-2.5 mr-0.5" />
+                      PRO
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="h-4 px-1.5 text-[9px] bg-emerald-600/30 text-emerald-300 border-0 shrink-0">
+                      {getPlanName(user.plan)}
+                    </Badge>
+                  )}
                 </div>
               </div>
             </div>
@@ -164,6 +188,9 @@ export function Sidebar() {
                     </AvatarFallback>
                   </Avatar>
                   <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 border-2 border-gray-950" />
+                  {isProPlan && (
+                    <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-amber-400 border border-gray-950 animate-pulse-soft" />
+                  )}
                 </div>
               </TooltipTrigger>
               <TooltipContent side="right" className="text-xs">
@@ -182,16 +209,23 @@ export function Sidebar() {
           <div className="space-y-1">
             {groupedItems.map((group, gi) => (
               <div key={group.groupKey}>
-                {/* Group label */}
+                {/* Group label with gradient fade separator */}
+                {gi > 0 && !sidebarCollapsed && (
+                  <div className="mx-3 my-2 relative h-px">
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+                  </div>
+                )}
                 {!sidebarCollapsed && (
-                  <div className="px-3 pt-3 pb-1 first:pt-0">
+                  <div className="px-3 pt-2 pb-1 first:pt-0">
                     <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">
                       {t(group.groupKey)}
                     </span>
                   </div>
                 )}
                 {sidebarCollapsed && gi > 0 && (
-                  <div className="mx-3 my-2 border-t border-white/5" />
+                  <div className="mx-3 my-2 relative h-px">
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                  </div>
                 )}
                 {/* Group items */}
                 {group.items.map((item) => {
@@ -275,15 +309,53 @@ export function Sidebar() {
           </div>
         </nav>
 
-        {/* Version & Logout */}
+        {/* Quick Stats Row at bottom */}
+        {!sidebarCollapsed && user && (
+          <div className="px-4 py-2 border-t border-white/10">
+            <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-white/5">
+              <div className="flex items-center gap-1.5">
+                <Wallet className="h-3.5 w-3.5 text-emerald-400" />
+                <span className="text-[10px] text-gray-400">Saldo:</span>
+                <span className="text-[10px] font-bold text-emerald-400">{formatCurrency(user.balanceWithdrawal)}</span>
+              </div>
+              <div className="w-px h-3 bg-white/10" />
+              <div className="flex items-center gap-1.5">
+                <Users className="h-3.5 w-3.5 text-blue-400" />
+                <span className="text-[10px] text-gray-400">Refs:</span>
+                <span className="text-[10px] font-bold text-blue-400">6</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Version & Logout with confirmation tooltip */}
         <div className="px-2 pb-3 pt-2 border-t border-white/10">
-          <button
-            onClick={logout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all duration-150"
-          >
-            <LogOut className="h-4.5 w-4.5 shrink-0" />
-            {!sidebarCollapsed && <span>{t('sidebar.logout')}</span>}
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 relative overflow-hidden group/logout"
+                style={{ color: showLogoutConfirm ? '#f87171' : undefined }}
+                onMouseLeave={() => setShowLogoutConfirm(false)}
+              >
+                <div className={`absolute inset-0 rounded-lg transition-colors ${showLogoutConfirm ? 'bg-red-500/15' : 'group-hover/logout:bg-red-500/10'}`} />
+                <LogOut className={`h-4.5 w-4.5 shrink-0 relative z-10 transition-colors ${showLogoutConfirm ? 'text-red-400' : 'text-red-400/70 group-hover/logout:text-red-400'}`} />
+                {!sidebarCollapsed && (
+                  <span className="relative z-10 transition-colors text-red-400/70 group-hover/logout:text-red-400">
+                    {showLogoutConfirm ? 'Confirmar saída?' : t('sidebar.logout')}
+                  </span>
+                )}
+                {!sidebarCollapsed && showLogoutConfirm && (
+                  <Zap className="h-3.5 w-3.5 text-red-400 ml-auto relative z-10 animate-pulse-soft" />
+                )}
+              </button>
+            </TooltipTrigger>
+            {!showLogoutConfirm && (
+              <TooltipContent side="right" className="text-xs">
+                Clique duas vezes para sair
+              </TooltipContent>
+            )}
+          </Tooltip>
           {!sidebarCollapsed && (
             <p className="text-[10px] text-gray-600 text-center mt-2">v1.0.0</p>
           )}

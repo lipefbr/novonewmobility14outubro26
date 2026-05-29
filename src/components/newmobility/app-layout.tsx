@@ -1,12 +1,13 @@
 'use client'
 
-import { Menu, Globe, ChevronRight, Home, Moon, Sun, Search } from 'lucide-react'
+import { Menu, Globe, ChevronRight, Home, Moon, Sun, Search, Users, Wallet, DollarSign, TrendingUp, Headphones } from 'lucide-react'
 import { useStore, type PageKey } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { languageNames, type Language } from '@/lib/i18n'
 import { Sidebar } from './sidebar'
 import { NotificationPanel } from './notifications/notification-panel'
 import { WelcomeModal } from './onboarding/welcome-modal'
+import { BackToTopButton, LastUpdated } from './ui/global-enhancements'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -47,32 +48,36 @@ const sidebarLabelKeys: Record<PageKey, string> = {
   'support': 'sidebar.support',
 }
 
+// Mobile bottom navigation items
+const mobileNavItems: { key: PageKey; icon: React.ElementType; label: string }[] = [
+  { key: 'dashboard', icon: Home, label: 'Início' },
+  { key: 'cashback', icon: DollarSign, label: 'CashBack' },
+  { key: 'financial', icon: Wallet, label: 'Finanças' },
+  { key: 'referrals', icon: Users, label: 'Rede' },
+  { key: 'support', icon: Headphones, label: 'Suporte' },
+]
+
 interface AppLayoutProps {
   children: React.ReactNode
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
-  const { user, setMobileSidebarOpen, updateUser, activePage, darkMode, toggleDarkMode } = useStore()
+  const { user, setMobileSidebarOpen, updateUser, activePage, darkMode, toggleDarkMode, setActivePage } = useStore()
   const { t } = useTranslation()
   const [searchOpen, setSearchOpen] = useState(false)
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      {/* Welcome/Onboarding Modal */}
       <WelcomeModal />
       <div className="flex flex-1 min-h-0">
-        {/* Sidebar */}
         <Sidebar />
 
-        {/* Main Content Area */}
         <div className="flex flex-col flex-1 min-w-0">
           {/* Header */}
           <header className="sticky top-0 z-30 bg-card/95 backdrop-blur-md border-b border-border shrink-0">
-            {/* Gradient bottom border */}
             <div className="h-0.5 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 animate-gradient-shift" />
             <div className="px-4 py-2.5 flex items-center justify-between gap-2">
               <div className="flex items-center gap-3 min-w-0">
-                {/* Mobile menu toggle with animation */}
                 <motion.div whileTap={{ scale: 0.9 }}>
                   <Button
                     variant="ghost"
@@ -84,7 +89,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                   </Button>
                 </motion.div>
 
-                {/* Brand on mobile */}
                 <div className="flex items-center gap-2 lg:hidden">
                   <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-bold text-xs shadow-md shadow-emerald-500/20">
                     NM
@@ -92,7 +96,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <span className="font-bold text-foreground">NewMobility</span>
                 </div>
 
-                {/* Breadcrumb on desktop */}
                 <div className="hidden lg:flex items-center gap-1.5 text-sm min-w-0">
                   <Home className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
                   <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
@@ -101,7 +104,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <span className="font-medium text-foreground truncate">{t(sidebarLabelKeys[activePage]) || 'Dashboard'}</span>
                 </div>
 
-                {/* Search bar */}
                 <AnimatePresence>
                   {searchOpen ? (
                     <motion.div
@@ -132,7 +134,6 @@ export function AppLayout({ children }: AppLayoutProps) {
               </div>
 
               <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                {/* Mobile search button */}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -141,10 +142,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <Search className="h-4.5 w-4.5" />
                 </Button>
 
-                {/* Notification Panel */}
                 <NotificationPanel />
 
-                {/* Dark Mode Toggle */}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -161,7 +160,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                   </motion.div>
                 </Button>
 
-                {/* Language Selector */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8">
@@ -186,7 +184,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                {/* User Avatar */}
                 {user && (
                   <div className="flex items-center gap-2">
                     <Avatar className="h-8 w-8 border-2 border-emerald-200 dark:border-emerald-800">
@@ -203,15 +200,29 @@ export function AppLayout({ children }: AppLayoutProps) {
             </div>
           </header>
 
-          {/* Content */}
+          {/* Content with page transition */}
           <main className="flex-1 overflow-y-auto custom-scrollbar">
-            <div className="p-4 md:p-6 page-transition">
-              {children}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activePage}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                className="p-4 md:p-6 pb-20 lg:pb-6"
+              >
+                {children}
+              </motion.div>
+            </AnimatePresence>
+
+            {/* Last Updated timestamp */}
+            <div className="px-4 md:px-6 pb-2">
+              <LastUpdated />
             </div>
           </main>
 
           {/* Footer */}
-          <footer className="bg-card border-t border-border px-4 py-3 shrink-0">
+          <footer className="bg-card border-t border-border px-4 py-3 shrink-0 hidden lg:block">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
               <p className="text-xs text-muted-foreground text-center">
                 {t('footer.copyright')}
@@ -225,6 +236,35 @@ export function AppLayout({ children }: AppLayoutProps) {
           </footer>
         </div>
       </div>
+
+      {/* Mobile Bottom Navigation Bar */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-card/95 backdrop-blur-md border-t border-border safe-area-inset-bottom">
+        <div className="grid grid-cols-5 gap-1 px-2 py-1.5">
+          {mobileNavItems.map((item) => {
+            const Icon = item.icon
+            const isActive = activePage === item.key
+            return (
+              <button
+                key={item.key}
+                onClick={() => setActivePage(item.key)}
+                className={`flex flex-col items-center gap-0.5 py-1.5 px-1 rounded-lg transition-colors ${
+                  isActive
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <div className={`p-1 rounded-lg transition-colors ${isActive ? 'bg-emerald-100 dark:bg-emerald-950/40' : ''}`}>
+                  <Icon className="h-5 w-5" />
+                </div>
+                <span className="text-[9px] font-medium leading-none">{item.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      </nav>
+
+      {/* Back to Top */}
+      <BackToTopButton />
     </div>
   )
 }

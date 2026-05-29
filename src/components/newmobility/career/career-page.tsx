@@ -8,7 +8,7 @@ import { formatCurrency } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
 import {
   Trophy, Star, TrendingUp, Award, Target, Crown,
-  Zap, Shield, Percent, Gift, CheckCircle2, ArrowRight, Sparkles
+  Zap, Shield, Percent, Gift, CheckCircle2, ArrowRight, Sparkles, Lock, Unlock
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 
@@ -113,6 +113,42 @@ const motivationalMessages = [
   { minProgress: 100, maxProgress: 999, message: 'Parabéns! Você atingiu o topo! Continue brilhando.' },
 ]
 
+// Custom SVG Rank Badge
+function RankBadge({ level, size = 48 }: { level: typeof careerLevels[0]; size?: number }) {
+  const colors: Record<string, string> = {
+    bronze: '#b45309',
+    silver: '#6b7280',
+    gold: '#eab308',
+    sapphire: '#3b82f6',
+    diamond: '#06b6d4',
+    platinum: '#10b981',
+  }
+  const color = colors[level.id] || '#10b981'
+  const Icon = level.icon
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox="0 0 48 48">
+        {/* Shield/Badge shape */}
+        <path
+          d="M24 4 L40 12 L40 28 Q40 40 24 46 Q8 40 8 28 L8 12 Z"
+          fill={color}
+          opacity={0.15}
+          stroke={color}
+          strokeWidth={1.5}
+        />
+        <path
+          d="M24 8 L36 14 L36 27 Q36 37 24 42 Q12 37 12 27 L12 14 Z"
+          fill={color}
+          opacity={0.3}
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <Icon className="text-white" style={{ width: size * 0.35, height: size * 0.35 }} />
+      </div>
+    </div>
+  )
+}
+
 // Animated Progress Ring Component
 function ProgressRing({ progress, size = 120, strokeWidth = 10 }: { progress: number; size?: number; strokeWidth?: number }) {
   const radius = (size - strokeWidth) / 2
@@ -122,7 +158,6 @@ function ProgressRing({ progress, size = 120, strokeWidth = 10 }: { progress: nu
   return (
     <div className="relative" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="transform -rotate-90">
-        {/* Background circle */}
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -132,7 +167,6 @@ function ProgressRing({ progress, size = 120, strokeWidth = 10 }: { progress: nu
           strokeWidth={strokeWidth}
           className="text-muted/30"
         />
-        {/* Progress circle */}
         <motion.circle
           cx={size / 2}
           cy={size / 2}
@@ -180,6 +214,16 @@ export function CareerPage() {
 
   const currentBenefits = achievedLevel.benefits
 
+  // Rewards unlocked at current rank
+  const unlockedRewards = [
+    { label: 'CashBack Entrada', unlocked: true, icon: '💰' },
+    { label: 'CashBack Residual', unlocked: achievedLevel.id !== 'bronze', icon: '📈' },
+    { label: 'CashBack Vendas', unlocked: achievedLevel.id === 'gold' || achievedLevel.id === 'sapphire' || achievedLevel.id === 'diamond' || achievedLevel.id === 'platinum', icon: '🛒' },
+    { label: 'Gratificações', unlocked: achievedLevel.id !== 'bronze', icon: '🎁' },
+    { label: 'Portal Gamer', unlocked: achievedLevel.id === 'sapphire' || achievedLevel.id === 'diamond' || achievedLevel.id === 'platinum', icon: '🎮' },
+    { label: 'Seguro Auto', unlocked: achievedLevel.id === 'sapphire' || achievedLevel.id === 'diamond' || achievedLevel.id === 'platinum', icon: '🚗' },
+  ]
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -188,7 +232,7 @@ export function CareerPage() {
         <p className="text-sm text-muted-foreground">Acompanhe seu progresso e conquistas na carreira</p>
       </div>
 
-      {/* Current Rank Card with Progress Ring */}
+      {/* Current Rank Card with Rank Badge and Progress Ring */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -200,13 +244,11 @@ export function CareerPage() {
           <CardContent className="p-6 relative">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div className="text-white flex items-center gap-4">
-                {/* Progress Ring */}
-                <ProgressRing progress={progressToNext} size={90} strokeWidth={8} />
+                {/* Custom Rank Badge SVG */}
+                <RankBadge level={achievedLevel} size={70} />
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <div className="p-2 rounded-xl bg-white/15">
-                      <achievedLevel.icon className="h-6 w-6" />
-                    </div>
+                    <ProgressRing progress={progressToNext} size={70} strokeWidth={6} />
                     <div>
                       <p className="text-emerald-200 text-xs font-medium">Patente Atual</p>
                       <h3 className="text-xl md:text-2xl font-bold">{achievedLevel.name}</h3>
@@ -251,14 +293,20 @@ export function CareerPage() {
         </Card>
       </motion.div>
 
-      {/* Progress to Next Rank */}
+      {/* Level Up Progress Animation */}
       {nextLevel && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-          <Card className="shadow-sm border-emerald-100 dark:border-emerald-900/50">
+          <Card className="shadow-sm border-emerald-100 dark:border-emerald-900/50 overflow-hidden">
+            <div className="h-1 bg-gradient-to-r from-emerald-300 via-teal-400 to-emerald-500 animate-gradient-shift" />
             <CardContent className="p-5">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-foreground flex items-center gap-2">
-                  <ArrowRight className="h-4 w-4 text-emerald-600" />
+                  <motion.div
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ repeat: Infinity, duration: 2, ease: 'easeInOut' }}
+                  >
+                    <Zap className="h-4 w-4 text-emerald-600" />
+                  </motion.div>
                   Progresso para {nextLevel.name}
                 </span>
                 <span className="text-sm font-bold text-emerald-600">
@@ -273,7 +321,10 @@ export function CareerPage() {
                   animate={{ width: `${progressToNext}%` }}
                   transition={{ duration: 1.5, ease: 'easeOut' }}
                   style={{ maxWidth: '100%' }}
-                />
+                >
+                  {/* Animated glow effect at the end of progress bar */}
+                  <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-r from-transparent to-emerald-300 rounded-full animate-pulse-glow" />
+                </motion.div>
               </div>
               <div className="flex items-center justify-between mt-2">
                 <p className="text-xs text-muted-foreground">
@@ -308,9 +359,7 @@ export function CareerPage() {
             </div>
             <CardContent className="p-5">
               <div className="flex items-center gap-4">
-                <div className={`p-4 rounded-xl bg-gradient-to-br ${nextLevel.color} text-white shadow-lg`}>
-                  <nextLevel.icon className="h-8 w-8" />
-                </div>
+                <RankBadge level={nextLevel} size={56} />
                 <div className="flex-1">
                   <h3 className="font-bold text-foreground text-lg">{nextLevel.name}</h3>
                   <div className="flex items-center gap-1 mb-2">
@@ -338,6 +387,53 @@ export function CareerPage() {
           </Card>
         </motion.div>
       )}
+
+      {/* Rewards Unlocked Section */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}>
+        <Card className="shadow-sm bg-card">
+          <CardHeader>
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Gift className="h-4 w-4 text-emerald-600" />
+              Recompensas Desbloqueadas
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {unlockedRewards.map((reward, i) => (
+                <motion.div
+                  key={reward.label}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.3 + i * 0.05 }}
+                  className={`flex items-center gap-2 p-3 rounded-lg border ${
+                    reward.unlocked
+                      ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800'
+                      : 'bg-muted/50 border-border opacity-50'
+                  }`}
+                >
+                  <span className="text-lg">{reward.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-xs font-medium ${reward.unlocked ? 'text-foreground' : 'text-muted-foreground'}`}>{reward.label}</p>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      {reward.unlocked ? (
+                        <>
+                          <Unlock className="h-2.5 w-2.5 text-emerald-500" />
+                          <span className="text-[9px] text-emerald-600 dark:text-emerald-400">Desbloqueado</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="h-2.5 w-2.5 text-muted-foreground" />
+                          <span className="text-[9px] text-muted-foreground">Bloqueado</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
 
       {/* Benefícios Atuais */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
@@ -367,29 +463,32 @@ export function CareerPage() {
         </Card>
       </motion.div>
 
-      {/* Career Path Timeline with Animated Milestones */}
+      {/* Career Path Timeline with Alternating Layout on Desktop */}
       <div>
         <h3 className="text-base font-bold text-foreground mb-4 flex items-center gap-2">
           <TrendingUp className="h-4 w-4 text-emerald-600" />
           Trilha de Carreira
         </h3>
         <div className="relative">
-          {/* Timeline Line with gradient */}
-          <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gradient-to-b from-emerald-400 via-emerald-200 to-gray-200 dark:via-emerald-800 dark:to-gray-700 hidden sm:block" />
+          {/* Center Timeline Line for desktop */}
+          <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-gradient-to-b from-emerald-400 via-emerald-200 to-gray-200 dark:via-emerald-800 dark:to-gray-700 hidden lg:block" />
+          {/* Left Timeline Line for mobile */}
+          <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gradient-to-b from-emerald-400 via-emerald-200 to-gray-200 dark:via-emerald-800 dark:to-gray-700 lg:hidden" />
 
           <div className="space-y-4">
             {careerLevels.map((level, i) => {
               const Icon = level.icon
+              const isEven = i % 2 === 0
               return (
                 <motion.div
                   key={level.id}
-                  initial={{ opacity: 0, x: -20 }}
+                  initial={{ opacity: 0, x: isEven ? -20 : 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.3 + i * 0.08 }}
-                  className="relative sm:pl-16"
+                  className={`relative lg:flex ${isEven ? 'lg:flex-row' : 'lg:flex-row-reverse'} pl-16 lg:pl-0`}
                 >
-                  {/* Timeline Dot with animation for achieved */}
-                  <div className={`absolute left-4 top-4 w-5 h-5 rounded-full border-2 hidden sm:flex items-center justify-center transition-all ${
+                  {/* Timeline Dot - desktop center */}
+                  <div className={`absolute left-4 top-4 w-5 h-5 rounded-full border-2 lg:hidden items-center justify-center transition-all ${
                     level.achieved
                       ? 'bg-emerald-500 border-emerald-300 dark:border-emerald-600'
                       : 'bg-card border-gray-300 dark:border-gray-600'
@@ -398,70 +497,148 @@ export function CareerPage() {
                       <motion.div
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
-                        transition={{ delay: 0.5 + i * 0.1, type: "spring" }}
+                        transition={{ delay: 0.5 + i * 0.1, type: 'spring' }}
                         className="w-1.5 h-1.5 rounded-full bg-white"
                       />
                     )}
                   </div>
 
-                  <Card className={`shadow-sm relative overflow-hidden bg-card ${
-                    level.achieved ? 'ring-2 ring-emerald-500/30 dark:ring-emerald-500/20' : ''
+                  {/* Desktop alternating layout */}
+                  <div className={`hidden lg:block lg:w-1/2 ${isEven ? 'lg:pr-12' : 'lg:pl-12'}`}>
+                    <Card className={`shadow-sm relative overflow-hidden bg-card ${
+                      level.achieved ? 'ring-2 ring-emerald-500/30 dark:ring-emerald-500/20' : ''
+                    }`}>
+                      {/* Gradient border on left/right based on position */}
+                      {level.achieved && isEven && (
+                        <div className="absolute right-0 top-0 bottom-0 w-1 bg-gradient-to-b from-emerald-400 to-emerald-600" />
+                      )}
+                      {level.achieved && !isEven && (
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-emerald-400 to-emerald-600" />
+                      )}
+                      {level.achieved && (
+                        <div className="absolute top-2 right-2">
+                          <Badge className="bg-emerald-600 text-white text-[10px]">Conquistado</Badge>
+                        </div>
+                      )}
+                      <CardContent className="p-4">
+                        <div className="flex items-start gap-3">
+                          <RankBadge level={level} size={44} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h4 className="font-bold text-foreground text-base">{level.name}</h4>
+                              <div className="flex items-center gap-0.5">
+                                {Array.from({ length: level.starsRequired }).map((_, si) => (
+                                  <Star key={si} className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+                                ))}
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div>
+                                <span className="text-muted-foreground">Min. Pontos</span>
+                                <p className="font-medium text-foreground">{level.pointsRequired}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Multiplicador</span>
+                                <p className="font-medium text-emerald-600">{level.cashbackMultiplier}</p>
+                              </div>
+                            </div>
+                            {level.benefits.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {level.benefits.slice(0, 3).map((b, bi) => (
+                                  <Badge key={bi} variant="outline" className="text-[10px]">{b}</Badge>
+                                ))}
+                                {level.benefits.length > 3 && (
+                                  <Badge variant="outline" className="text-[10px]">+{level.benefits.length - 3}</Badge>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Center dot for desktop */}
+                  <div className={`hidden lg:flex absolute left-1/2 top-4 -translate-x-1/2 w-6 h-6 rounded-full border-2 items-center justify-center transition-all z-10 bg-card ${
+                    level.achieved
+                      ? 'border-emerald-500 bg-emerald-500'
+                      : 'border-gray-300 dark:border-gray-600'
                   }`}>
-                    {/* Gradient border on left for achieved */}
                     {level.achieved && (
-                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-emerald-400 to-emerald-600" />
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: 0.5 + i * 0.1, type: 'spring' }}
+                        className='w-2 h-2 rounded-full bg-white'
+                      />
                     )}
-                    {level.achieved && (
-                      <div className="absolute top-2 right-2">
-                        <Badge className="bg-emerald-600 text-white text-[10px]">Conquistado</Badge>
-                      </div>
-                    )}
-                    <CardContent className="p-4">
-                      <div className="flex items-start gap-4">
-                        <div className={`p-3 rounded-xl bg-gradient-to-br ${level.color} text-white shrink-0 shadow-lg`}>
-                          <Icon className="h-6 w-6" />
+                  </div>
+
+                  {/* Empty space for the other side on desktop */}
+                  <div className={`hidden lg:block lg:w-1/2 ${isEven ? 'lg:pl-12' : 'lg:pr-12'}`}>
+                    {/* This side is empty for alternating layout */}
+                  </div>
+
+                  {/* Mobile layout (card only) */}
+                  <div className="lg:hidden">
+                    <Card className={`shadow-sm relative overflow-hidden bg-card ${
+                      level.achieved ? 'ring-2 ring-emerald-500/30 dark:ring-emerald-500/20' : ''
+                    }`}>
+                      {level.achieved && (
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-emerald-400 to-emerald-600" />
+                      )}
+                      {level.achieved && (
+                        <div className="absolute top-2 right-2">
+                          <Badge className="bg-emerald-600 text-white text-[10px]">Conquistado</Badge>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h4 className="font-bold text-foreground text-base">{level.name}</h4>
-                            <div className="flex items-center gap-0.5">
-                              {Array.from({ length: level.starsRequired }).map((_, si) => (
-                                <Star key={si} className="h-3 w-3 text-yellow-500 fill-yellow-500" />
-                              ))}
-                            </div>
+                      )}
+                      <CardContent className="p-4">
+                        <div className="flex items-start gap-4">
+                          <div className={`p-3 rounded-xl bg-gradient-to-br ${level.color} text-white shrink-0 shadow-lg`}>
+                            <Icon className="h-6 w-6" />
                           </div>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                            <div>
-                              <span className="text-muted-foreground">Min. Estrelas</span>
-                              <p className="font-medium text-foreground">{level.starsRequired}</p>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h4 className="font-bold text-foreground text-base">{level.name}</h4>
+                              <div className="flex items-center gap-0.5">
+                                {Array.from({ length: level.starsRequired }).map((_, si) => (
+                                  <Star key={si} className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+                                ))}
+                              </div>
                             </div>
-                            <div>
-                              <span className="text-muted-foreground">Min. Pontos</span>
-                              <p className="font-medium text-foreground">{level.pointsRequired}</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                              <div>
+                                <span className="text-muted-foreground">Min. Estrelas</span>
+                                <p className="font-medium text-foreground">{level.starsRequired}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Min. Pontos</span>
+                                <p className="font-medium text-foreground">{level.pointsRequired}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Multiplicador</span>
+                                <p className="font-medium text-emerald-600">{level.cashbackMultiplier}</p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Recompensa</span>
+                                <p className="font-semibold text-emerald-600">{formatCurrency(level.reward)}</p>
+                              </div>
                             </div>
-                            <div>
-                              <span className="text-muted-foreground">Multiplicador</span>
-                              <p className="font-medium text-emerald-600">{level.cashbackMultiplier}</p>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Recompensa</span>
-                              <p className="font-semibold text-emerald-600">{formatCurrency(level.reward)}</p>
-                            </div>
+                            {level.benefits.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {level.benefits.slice(0, 3).map((b, bi) => (
+                                  <Badge key={bi} variant="outline" className="text-[10px]">{b}</Badge>
+                                ))}
+                                {level.benefits.length > 3 && (
+                                  <Badge variant="outline" className="text-[10px]">+{level.benefits.length - 3}</Badge>
+                                )}
+                              </div>
+                            )}
                           </div>
-                          {level.benefits.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {level.benefits.slice(0, 3).map((b, bi) => (
-                                <Badge key={bi} variant="outline" className="text-[10px]">{b}</Badge>
-                              ))}
-                              {level.benefits.length > 3 && (
-                                <Badge variant="outline" className="text-[10px]">+{level.benefits.length - 3}</Badge>
-                              )}
-                            </div>
-                          )}
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                      </CardContent>
+                    </Card>
+                  </div>
                 </motion.div>
               )
             })}

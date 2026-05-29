@@ -6,19 +6,21 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { formatCurrency, formatDate, getStatusLabel, getStatusVariant, getPlanName } from '@/lib/utils'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { ReferralsSkeleton } from '../ui/loading-skeletons'
 import { EmptyState } from '../ui/empty-states'
 import { ShareOptions } from './share-options'
+import { NetworkModal } from './network-modal'
 import {
   Users, UserPlus, UserCheck, TrendingUp, Search, Link2, Copy, Check as CheckIcon,
   Share2, Eye, ChevronDown, ChevronUp, Calendar, CreditCard, Award, ArrowUpRight,
-  ArrowRight, MessageCircle
+  ArrowRight, MessageCircle, Target, Medal, Maximize2
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { ResponsiveContainer, LineChart, Line, XAxis, Tooltip as RechartsTooltip } from 'recharts'
 
 const mockReferrals = [
   { id: '1', name: 'Ana Paula Santos', date: '2024-11-15', status: 'active', plan: 'blue5', level: 1, cashback: 125000, email: 'ana.santos@email.com' },
@@ -39,12 +41,21 @@ const mockReferrals = [
   { id: '16', name: 'Juliana Santos', date: '2025-02-05', status: 'active', plan: 'blue5', level: 4, cashback: 88000, email: 'juliana.s@email.com' },
 ]
 
-// Social media share buttons
-const socialShareOptions = [
-  { name: 'WhatsApp', icon: '💬', color: 'bg-green-500 hover:bg-green-600', url: 'https://wa.me/?text=' },
-  { name: 'Telegram', icon: '✈️', color: 'bg-blue-500 hover:bg-blue-600', url: 'https://t.me/share/url?url=' },
-  { name: 'Twitter', icon: '🐦', color: 'bg-sky-500 hover:bg-sky-600', url: 'https://twitter.com/intent/tweet?text=' },
-  { name: 'Facebook', icon: '📘', color: 'bg-blue-600 hover:bg-blue-700', url: 'https://www.facebook.com/sharer/sharer.php?u=' },
+// Network growth data for mini chart
+const networkGrowthData = [
+  { month: 'Ago', count: 8 },
+  { month: 'Set', count: 10 },
+  { month: 'Out', count: 12 },
+  { month: 'Nov', count: 11 },
+  { month: 'Dez', count: 14 },
+  { month: 'Jan', count: 16 },
+]
+
+// Top referrers leaderboard
+const topReferrers = [
+  { name: 'Maria Clara Costa', cashback: 234000, rank: 1 },
+  { name: 'Ricardo Souza', cashback: 312000, rank: 2 },
+  { name: 'Elisa Barbosa', cashback: 445000, rank: 3 },
 ]
 
 export function ReferralsPage() {
@@ -56,6 +67,8 @@ export function ReferralsPage() {
   const [detailReferral, setDetailReferral] = useState<typeof mockReferrals[0] | null>(null)
   const [showAllLevels, setShowAllLevels] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [networkModalOpen, setNetworkModalOpen] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 800)
@@ -84,7 +97,6 @@ export function ReferralsPage() {
   }).length
   const conversionRate = Math.round((activeCount / totalNetwork) * 100)
 
-  // This week vs last week comparison
   const thisWeekCount = Math.max(1, Math.floor(newThisMonth * 0.4))
   const lastWeekCount = Math.max(0, thisWeekCount - 1)
 
@@ -115,9 +127,11 @@ export function ReferralsPage() {
     }
   }
 
-  const handleSocialShare = (option: typeof socialShareOptions[0]) => {
-    const text = `Use meu código ${user?.referralCode || 'USER2025'} e ganhe CashBack! ${referralLink}`
-    window.open(option.url + encodeURIComponent(text), '_blank')
+  const handleLinkCopyAnimation = () => {
+    navigator.clipboard.writeText(referralLink).then(() => {
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 1500)
+    })
   }
 
   const planBadgeColor = (plan: string) => {
@@ -128,6 +142,11 @@ export function ReferralsPage() {
     }
   }
 
+  // Share progress - how many more referrals for next reward tier
+  const nextTierAt = 10
+  const currentDirect = totalDirect
+  const remainingForNext = nextTierAt - currentDirect
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -136,14 +155,34 @@ export function ReferralsPage() {
         <p className="text-sm text-muted-foreground">Gerencie e acompanhe sua rede de indicações</p>
       </div>
 
-      {/* Referral Link Section with Social Share */}
+      {/* Referral Link Section with gradient border */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <Card className="shadow-sm border-emerald-200 dark:border-emerald-800 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 overflow-hidden relative">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400 animate-gradient-shift" />
+        <Card className="shadow-sm bg-card overflow-hidden relative gradient-border">
           <CardContent className="p-5">
             <div className="flex items-center gap-2 mb-3">
               <Link2 className="h-5 w-5 text-emerald-600" />
               <h3 className="font-bold text-foreground">Link de Indicação</h3>
+            </div>
+            <div className="flex items-center gap-2 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 rounded-lg px-3 py-2.5 border border-emerald-200 dark:border-emerald-800">
+              <span className="text-sm font-mono text-foreground flex-1 truncate">{referralLink}</span>
+              <motion.div whileTap={{ scale: 0.9 }}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleLinkCopyAnimation}
+                  className="h-8 px-3 gap-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-950/40"
+                >
+                  <motion.div
+                    key={linkCopied ? 'copied' : 'copy'}
+                    initial={{ scale: 0.5, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 20 }}
+                  >
+                    {linkCopied ? <CheckIcon className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+                  </motion.div>
+                  <span className="text-xs">{linkCopied ? 'Copiado!' : 'Copiar'}</span>
+                </Button>
+              </motion.div>
             </div>
             <ShareOptions
               referralLink={referralLink}
@@ -183,6 +222,102 @@ export function ReferralsPage() {
         ))}
       </div>
 
+      {/* Network Growth Chart + Share Progress Card */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <Card className="shadow-sm bg-card h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-emerald-600" />
+                Crescimento da Rede
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2 mb-2">
+                <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[10px]">+100%</Badge>
+                <span className="text-[10px] text-muted-foreground">últimos 6 meses</span>
+              </div>
+              <div className="h-[80px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={networkGrowthData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                    <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
+                    <RechartsTooltip
+                      formatter={(value: number) => [`${value} indicados`, 'Total']}
+                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '11px' }}
+                    />
+                    <Line type="monotone" dataKey="count" stroke="#10b981" strokeWidth={2.5} dot={{ fill: '#10b981', strokeWidth: 0, r: 3 }} activeDot={{ r: 5 }} animationDuration={1200} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Top Referrers Leaderboard with medals */}
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+          <Card className="shadow-sm bg-card h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                <Medal className="h-4 w-4 text-emerald-600" />
+                Top Indicadores
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {topReferrers.map((referrer) => {
+                  const medal = referrer.rank === 1 ? '🥇' : referrer.rank === 2 ? '🥈' : '🥉'
+                  const medalBg = referrer.rank === 1 ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800' : referrer.rank === 2 ? 'bg-gray-50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-700' : 'bg-orange-50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800'
+                  return (
+                    <div key={referrer.name} className={`flex items-center gap-3 p-2.5 rounded-lg border ${medalBg}`}>
+                      <span className="text-xl">{medal}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{referrer.name}</p>
+                        <p className="text-xs text-muted-foreground">Nível {referrer.rank}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(referrer.cashback)}</p>
+                        <p className="text-[10px] text-muted-foreground">CashBack</p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* Share Progress Card */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+        <Card className="shadow-sm bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 border-emerald-200 dark:border-emerald-800">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
+                <Target className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-foreground">Próximo Nível de Recompensa</p>
+                <p className="text-xs text-muted-foreground">
+                  Faltam <span className="font-bold text-emerald-600 dark:text-emerald-400">{remainingForNext} indicações</span> para desbloquear bônus de R$ 200
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{currentDirect}/{nextTierAt}</p>
+                <p className="text-[10px] text-muted-foreground">indicações</p>
+              </div>
+            </div>
+            <div className="mt-3 h-2 bg-emerald-200 dark:bg-emerald-900/50 rounded-full overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${(currentDirect / nextTierAt) * 100}%` }}
+                transition={{ duration: 1, ease: 'easeOut' }}
+                className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* Stats Comparison: This Week vs Last Week */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
         <Card className="shadow-sm bg-card">
@@ -216,14 +351,19 @@ export function ReferralsPage() {
       {/* Network Tree Visualization */}
       <Card className="shadow-sm bg-card">
         <CardHeader>
-          <CardTitle className="text-base font-bold flex items-center gap-2">
-            <Users className="h-4 w-4 text-emerald-600" />
-            Visualização da Rede
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Users className="h-4 w-4 text-emerald-600" />
+              Visualização da Rede
+            </CardTitle>
+            <Button variant="outline" size="sm" className="text-xs gap-1.5" onClick={() => setNetworkModalOpen(true)}>
+              <Maximize2 className="h-3.5 w-3.5" />
+              {t('network.viewFull')}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center gap-2">
-            {/* You - Root Node */}
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
@@ -237,12 +377,9 @@ export function ReferralsPage() {
                 {totalNetwork}
               </div>
             </motion.div>
-
-            {/* Connector Lines */}
             <div className="w-px h-6 bg-gradient-to-b from-emerald-400 to-border" />
             <div className="hidden sm:flex w-64 h-px bg-border" />
             
-            {/* Level Nodes */}
             {Array.from({ length: maxLevelWithData }, (_, idx) => {
               const lvl = idx + 1
               const lvlData = mockReferrals.filter((r) => r.level === lvl)
@@ -440,6 +577,7 @@ export function ReferralsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Detalhes do Indicado</DialogTitle>
+            <DialogDescription className="sr-only">Dialog showing details of a referral member</DialogDescription>
           </DialogHeader>
           {detailReferral && (
             <div className="space-y-4 py-4">
@@ -497,6 +635,9 @@ export function ReferralsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Network Modal */}
+      <NetworkModal open={networkModalOpen} onOpenChange={setNetworkModalOpen} />
     </div>
   )
 }

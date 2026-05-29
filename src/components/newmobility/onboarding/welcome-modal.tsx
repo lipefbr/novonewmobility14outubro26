@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useStore } from '@/lib/store'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -359,6 +359,7 @@ export function WelcomeModal() {
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose() }}>
       <DialogContent className="sm:max-w-md p-6" showCloseButton={false}>
         <DialogTitle className="sr-only">Tutorial de Boas-vindas</DialogTitle>
+        <DialogDescription className="sr-only">Onboarding tutorial for new users</DialogDescription>
         <AnimatePresence mode="wait">
           <motion.div
             key={currentStep}

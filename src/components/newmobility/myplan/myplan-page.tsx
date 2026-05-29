@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { plansApi } from '@/lib/api'
@@ -510,6 +510,7 @@ export function MyPlanPage() {
               <Sparkles className="h-5 w-5 text-emerald-600" />
               Upgrade de Plano
             </DialogTitle>
+            <DialogDescription className="sr-only">Dialog to calculate and confirm a plan upgrade</DialogDescription>
           </DialogHeader>
           
           {upgradeStep === 'calculate' && (

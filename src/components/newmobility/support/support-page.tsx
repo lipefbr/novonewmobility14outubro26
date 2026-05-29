@@ -8,13 +8,13 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { formatDate, getStatusLabel, getStatusVariant, formatDateTime } from '@/lib/utils'
 import {
   Headphones, Plus, MessageCircle, Clock, CheckCircle2, AlertCircle,
   Send, Filter, Mail, Phone, MessageSquare, HelpCircle, Zap, CreditCard,
-  Smartphone, ShoppingBag, ChevronRight, Sparkles
+  Smartphone, ShoppingBag, ChevronRight, Sparkles, Search, Star, ThumbsUp
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
@@ -99,27 +99,49 @@ const statusIcons: Record<string, React.ElementType> = {
   closed: CheckCircle2,
 }
 
+// Status badge config
+const statusBadgeConfig: Record<string, { label: string; bg: string; text: string; dot: string }> = {
+  open: { label: 'Aberto', bg: 'bg-emerald-100 dark:bg-emerald-950/30', text: 'text-emerald-700 dark:text-emerald-400', dot: 'bg-emerald-500' },
+  in_progress: { label: 'Em Andamento', bg: 'bg-amber-100 dark:bg-amber-950/30', text: 'text-amber-700 dark:text-amber-400', dot: 'bg-amber-500' },
+  resolved: { label: 'Resolvido', bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-600 dark:text-gray-400', dot: 'bg-gray-400' },
+  closed: { label: 'Fechado', bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-600 dark:text-gray-400', dot: 'bg-gray-400' },
+}
+
 const faqItems = [
   {
     question: 'Como funciona o CashBack Entrada 4x5?',
     answer: 'O CashBack Entrada 4x5 é calculado sobre as atividades dos seus 5 primeiros níveis de indicações. Cada nível gera uma porcentagem diferente de CashBack, variando conforme seu plano.',
+    category: 'cashback',
   },
   {
     question: 'Como solicitar um saque?',
     answer: 'Acesse a seção Financeiro, clique em "Solicitar Saque" e informe o valor desejado. O valor mínimo para saque é R$ 50,00. O saque é processado em até 5 dias úteis na sua conta bancária cadastrada.',
+    category: 'financial',
   },
   {
     question: 'Qual a diferença entre os planos Blue 3 e Blue 5?',
     answer: 'O plano Blue 3 oferece CashBack Entrada e Residual com benefícios básicos. O Blue 5 Premium inclui CashBack Vendas (9 níveis), Portal Gamer, Sport Bet, seguros, telemedicina e muito mais.',
+    category: 'plans',
   },
   {
     question: 'Como usar meus vouchers?',
     answer: 'Na seção Voucher, copie o código do voucher ativo e use-o no app ou no parceiro correspondente. Vouchers de mobilidade são usados no app de corridas, vouchers de farmácia nas redes credenciadas.',
+    category: 'vouchers',
   },
   {
     question: 'Como acompanhar meu progresso na carreira?',
     answer: 'Acesse "Plano de Carreira" para ver sua patente atual, pontos acumulados e o que falta para o próximo nível. Você ganha pontos através de indicações, uso do app e pagamentos em dia.',
+    category: 'career',
   },
+]
+
+const faqCategories = [
+  { key: 'all', label: 'Todas' },
+  { key: 'cashback', label: 'CashBack' },
+  { key: 'financial', label: 'Financeiro' },
+  { key: 'plans', label: 'Planos' },
+  { key: 'vouchers', label: 'Vouchers' },
+  { key: 'career', label: 'Carreira' },
 ]
 
 const quickActions = [
@@ -129,11 +151,54 @@ const quickActions = [
   { icon: Zap, label: 'CashBack não creditado', category: 'financial', desc: 'Valor pendente' },
 ]
 
+// Satisfaction rating component
+function SatisfactionRating({ ticketId }: { ticketId: string }) {
+  const [rating, setRating] = useState(0)
+  const [submitted, setSubmitted] = useState(false)
+  const { toast } = useToast()
+
+  const handleSubmitRating = (stars: number) => {
+    setRating(stars)
+    setSubmitted(true)
+    toast({ title: 'Obrigado!', description: `Você avaliou com ${stars} estrela${stars > 1 ? 's' : ''}.` })
+  }
+
+  return (
+    <div className="mt-3 p-3 bg-muted/50 rounded-lg">
+      <p className="text-xs text-muted-foreground mb-2">Como foi sua experiência?</p>
+      {submitted ? (
+        <div className="flex items-center gap-2">
+          <div className="flex gap-0.5">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Star key={i} className={`h-4 w-4 ${i < rating ? 'text-yellow-500 fill-yellow-500' : 'text-gray-300'}`} />
+            ))}
+          </div>
+          <span className="text-xs text-emerald-600 font-medium">Obrigado!</span>
+        </div>
+      ) : (
+        <div className="flex gap-1">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <button
+              key={i}
+              onClick={() => handleSubmitRating(i + 1)}
+              className="p-0.5 hover:scale-125 transition-transform"
+            >
+              <Star className={`h-5 w-5 ${i < rating ? 'text-yellow-500 fill-yellow-500' : 'text-gray-300 hover:text-yellow-400'} transition-colors`} />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function SupportPage() {
   const { toast } = useToast()
   const [selectedTicket, setSelectedTicket] = useState<string | null>(null)
   const [newTicketOpen, setNewTicketOpen] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  const [faqCategory, setFaqCategory] = useState('all')
+  const [faqSearch, setFaqSearch] = useState('')
   const [newMessage, setNewMessage] = useState('')
   const [newTicket, setNewTicket] = useState({
     subject: '',
@@ -148,6 +213,12 @@ export function SupportPage() {
   })
 
   const activeTicket = mockTickets.find((t) => t.id === selectedTicket)
+
+  const filteredFaq = faqItems.filter((item) => {
+    const matchesCategory = faqCategory === 'all' || item.category === faqCategory
+    const matchesSearch = faqSearch === '' || item.question.toLowerCase().includes(faqSearch.toLowerCase()) || item.answer.toLowerCase().includes(faqSearch.toLowerCase())
+    return matchesCategory && matchesSearch
+  })
 
   const handleQuickAction = (category: string) => {
     setNewTicket((prev) => ({ ...prev, category }))
@@ -185,6 +256,7 @@ export function SupportPage() {
                 <Headphones className="h-5 w-5 text-emerald-600" />
                 Criar Novo Ticket
               </DialogTitle>
+              <DialogDescription className="sr-only">Dialog to create a new support ticket</DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
@@ -199,13 +271,8 @@ export function SupportPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Categoria</Label>
-                  <Select
-                    value={newTicket.category}
-                    onValueChange={(v) => setNewTicket((prev) => ({ ...prev, category: v }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione" />
-                    </SelectTrigger>
+                  <Select value={newTicket.category} onValueChange={(v) => setNewTicket((prev) => ({ ...prev, category: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="support">Suporte</SelectItem>
                       <SelectItem value="financial">Financeiro</SelectItem>
@@ -217,13 +284,8 @@ export function SupportPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Prioridade</Label>
-                  <Select
-                    value={newTicket.priority}
-                    onValueChange={(v) => setNewTicket((prev) => ({ ...prev, priority: v }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
+                  <Select value={newTicket.priority} onValueChange={(v) => setNewTicket((prev) => ({ ...prev, priority: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="low">Baixa</SelectItem>
                       <SelectItem value="normal">Normal</SelectItem>
@@ -243,10 +305,7 @@ export function SupportPage() {
                   className={!newTicket.message && newTicket.subject ? 'border-red-300 dark:border-red-700' : ''}
                 />
               </div>
-              <Button
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
-                onClick={handleSubmitTicket}
-              >
+              <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleSubmitTicket}>
                 Enviar Ticket
               </Button>
             </div>
@@ -254,7 +313,7 @@ export function SupportPage() {
         </Dialog>
       </div>
 
-      {/* Quick Actions - Card-style buttons */}
+      {/* Quick Actions */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {quickActions.map((action, i) => (
           <motion.button
@@ -277,7 +336,7 @@ export function SupportPage() {
         ))}
       </div>
 
-      {/* Contact Options - Enhanced card-style */}
+      {/* Contact Options */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { icon: MessageSquare, title: 'Chat Online', desc: 'Atendimento em tempo real', detail: 'Disponível 9h-18h', color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400', gradient: 'from-emerald-500 to-emerald-600' },
@@ -286,7 +345,6 @@ export function SupportPage() {
         ].map((contact, i) => (
           <motion.div key={contact.title} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.05 }}>
             <Card className="shadow-sm hover:shadow-md transition-all cursor-pointer group overflow-hidden bg-card">
-              {/* Top gradient accent */}
               <div className={`h-1 bg-gradient-to-r ${contact.gradient}`} />
               <CardContent className="p-4 flex items-start gap-3">
                 <div className={`p-2.5 rounded-lg ${contact.color} group-hover:scale-105 transition-transform`}>
@@ -303,7 +361,7 @@ export function SupportPage() {
         ))}
       </div>
 
-      {/* FAQ - Enhanced accordion with animated expand/collapse */}
+      {/* FAQ with Category Tabs and Quick Help Search */}
       <Card className="shadow-sm bg-card">
         <CardHeader>
           <CardTitle className="text-base font-bold flex items-center gap-2">
@@ -312,8 +370,36 @@ export function SupportPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {/* Quick Help Search */}
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar na central de ajuda..."
+              value={faqSearch}
+              onChange={(e) => setFaqSearch(e.target.value)}
+              className="pl-10 h-9 text-sm"
+            />
+          </div>
+
+          {/* Category Tabs */}
+          <div className="flex gap-1.5 flex-wrap mb-4">
+            {faqCategories.map((cat) => (
+              <button
+                key={cat.key}
+                onClick={() => setFaqCategory(cat.key)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  faqCategory === cat.key
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                }`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+
           <Accordion type="single" collapsible className="w-full">
-            {faqItems.map((item, i) => (
+            {filteredFaq.map((item, i) => (
               <AccordionItem key={i} value={`faq-${i}`} className="border-border">
                 <AccordionTrigger className="text-sm text-left hover:text-emerald-700 dark:hover:text-emerald-400 hover:no-underline py-3">
                   <div className="flex items-center gap-2">
@@ -333,11 +419,16 @@ export function SupportPage() {
                 </AccordionContent>
               </AccordionItem>
             ))}
+            {filteredFaq.length === 0 && (
+              <div className="text-center py-6 text-sm text-muted-foreground">
+                Nenhuma pergunta encontrada. Tente outro termo.
+              </div>
+            )}
           </Accordion>
         </CardContent>
       </Card>
 
-      {/* Active Tickets - Chat-style conversation */}
+      {/* Active Tickets - Chat-style */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         {/* Ticket List */}
         <div className="lg:col-span-2">
@@ -372,6 +463,7 @@ export function SupportPage() {
                 ) : (
                 filtered.map((ticket, i) => {
                   const StatusIcon = statusIcons[ticket.status] || Clock
+                  const statusConfig = statusBadgeConfig[ticket.status]
                   return (
                     <motion.button
                       key={ticket.id}
@@ -384,20 +476,17 @@ export function SupportPage() {
                       }`}
                     >
                       <div className="flex items-start gap-2">
-                        <StatusIcon className={`h-4 w-4 mt-0.5 shrink-0 ${
-                          ticket.status === 'open' ? 'text-amber-500' :
-                          ticket.status === 'in_progress' ? 'text-blue-500' :
-                          'text-emerald-500'
-                        }`} />
+                        {/* Status dot */}
+                        <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${statusConfig.dot} ${ticket.status === 'open' ? 'animate-pulse' : ''}`} />
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-foreground truncate">{ticket.subject}</p>
                           <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <Badge variant="outline" className="text-[10px]">
                               {categoryLabels[ticket.category]}
                             </Badge>
-                            <Badge variant={getStatusVariant(ticket.status)} className="text-[10px]">
-                              {getStatusLabel(ticket.status)}
-                            </Badge>
+                            <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${statusConfig.bg} ${statusConfig.text}`}>
+                              {statusConfig.label}
+                            </span>
                           </div>
                           <p className="text-[10px] text-muted-foreground mt-1">
                             Atualizado: {ticket.updatedAt ? formatDateTime(ticket.updatedAt) : formatDate(ticket.createdAt)}
@@ -413,16 +502,17 @@ export function SupportPage() {
           </Card>
         </div>
 
-        {/* Ticket Detail - Chat-style */}
+        {/* Ticket Detail */}
         <div className="lg:col-span-3">
           {activeTicket ? (
             <Card className="shadow-sm bg-card">
               <CardHeader className="pb-3 border-b border-border">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base font-bold text-foreground">{activeTicket.subject}</CardTitle>
-                  <Badge variant={getStatusVariant(activeTicket.status)}>
-                    {getStatusLabel(activeTicket.status)}
-                  </Badge>
+                  <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium ${statusBadgeConfig[activeTicket.status].bg} ${statusBadgeConfig[activeTicket.status].text}`}>
+                    <span className={`w-2 h-2 rounded-full ${statusBadgeConfig[activeTicket.status].dot} ${activeTicket.status === 'open' ? 'animate-pulse' : ''}`} />
+                    {statusBadgeConfig[activeTicket.status].label}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                   <Badge variant="outline" className="text-[10px]">
@@ -434,7 +524,6 @@ export function SupportPage() {
                 </div>
               </CardHeader>
               <CardContent className="p-4">
-                {/* Chat-style messages */}
                 <div className="space-y-3 max-h-72 overflow-y-auto custom-scrollbar mb-4">
                   <AnimatePresence>
                     {activeTicket.messages.map((msg) => (
@@ -475,6 +564,11 @@ export function SupportPage() {
                       <Send className="h-4 w-4" />
                     </Button>
                   </div>
+                )}
+
+                {/* Satisfaction Rating for resolved/closed tickets */}
+                {(activeTicket.status === 'resolved' || activeTicket.status === 'closed') && (
+                  <SatisfactionRating ticketId={activeTicket.id} />
                 )}
               </CardContent>
             </Card>

@@ -8,8 +8,8 @@ import { MatrixVisualization } from './matrix-visualization'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency, cn } from '@/lib/utils'
-import { DollarSign, TrendingUp, ShoppingBag, ArrowDownRight, Download, TrendingDown, Users, Layers, BarChart3, Layers3, Activity } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { DollarSign, TrendingUp, ShoppingBag, ArrowDownRight, Download, TrendingDown, Users, Layers, BarChart3, Activity, ChevronRight } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { EmptyState } from '../ui/empty-states'
 import {
   BarChart,
@@ -20,6 +20,8 @@ import {
   Tooltip,
   ResponsiveContainer,
   Cell,
+  PieChart,
+  Pie,
 } from 'recharts'
 
 const cashbackSummary = {
@@ -93,6 +95,7 @@ function SummaryCard({
   color,
   trend,
   animate = true,
+  level,
 }: {
   label: string
   value: number
@@ -100,7 +103,15 @@ function SummaryCard({
   color: string
   trend?: number
   animate?: boolean
+  level?: 'high' | 'medium' | 'low'
 }) {
+  // Color-coded level badges
+  const levelBadge = level ? {
+    high: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 border-emerald-200 dark:border-emerald-700',
+    medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 border-amber-200 dark:border-amber-700',
+    low: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 border-red-200 dark:border-red-700',
+  }[level] : null
+
   return (
     <Card className="shadow-sm bg-card hover:shadow-md transition-shadow group">
       <CardContent className="p-4 flex items-center gap-3">
@@ -108,7 +119,14 @@ function SummaryCard({
           <Icon className="h-4 w-4" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-xs text-muted-foreground font-medium">{label}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-muted-foreground font-medium">{label}</p>
+            {levelBadge && (
+              <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold border ${levelBadge}`}>
+                {level === 'high' ? 'ALTO' : level === 'medium' ? 'MÉDIO' : 'BAIXO'}
+              </span>
+            )}
+          </div>
           {animate ? (
             <AnimatedCounter value={value} className="text-base text-foreground" />
           ) : (
@@ -154,6 +172,8 @@ export function CashbackPage() {
 
   const totalEarnings = cashbackSummary.entrada.total + cashbackSummary.residual.total + cashbackSummary.vendas.total
   const totalUsers = cashbackSummary.entrada.totalUsers + cashbackSummary.residual.totalUsers + cashbackSummary.vendas.totalUsers
+  const lastMonthTotal = cashbackSummary.entrada.lastMonth + cashbackSummary.residual.lastMonth + cashbackSummary.vendas.lastMonth
+  const percentChange = 8.5
 
   const getFilteredSummary = (type: 'entrada' | 'residual' | 'vendas') => {
     const s = cashbackSummary[type]
@@ -173,6 +193,13 @@ export function CashbackPage() {
     { name: 'Vendas 4x9', value: cashbackSummary.vendas.total / 100, color: '#f59e0b', users: cashbackSummary.vendas.totalUsers },
   ]
 
+  // Donut chart data
+  const donutData = [
+    { name: 'Entrada', value: cashbackSummary.entrada.total, color: '#059669' },
+    { name: 'Residual', value: cashbackSummary.residual.total, color: '#0d9488' },
+    { name: 'Vendas', value: cashbackSummary.vendas.total, color: '#f59e0b' },
+  ]
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -187,24 +214,31 @@ export function CashbackPage() {
         </Button>
       </div>
 
-      {/* Total Earnings Summary */}
+      {/* Total CashBack Earned Hero Card with large animated number */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        <Card className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 animate-gradient-shift border-0 shadow-lg overflow-hidden">
-          <CardContent className="p-5 relative">
+        <Card className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 animate-gradient-shift border-0 shadow-lg overflow-hidden relative">
+          <CardContent className="p-5 md:p-6 relative">
             <div className="absolute inset-0 opacity-10" style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
             }} />
             <div className="absolute inset-0 animate-shimmer" />
-            <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
                 <p className="text-sm text-emerald-100 font-medium">{t('cashback.totalEarnings')}</p>
-                <AnimatedCounter value={totalEarnings} className="text-2xl sm:text-3xl text-white mt-1" />
+                <AnimatedCounter value={totalEarnings} className="text-3xl md:text-4xl text-white mt-1" />
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="flex items-center gap-1 bg-white/15 rounded-full px-2.5 py-1">
+                    <TrendingUp className="h-3.5 w-3.5 text-emerald-200" />
+                    <span className="text-xs font-bold text-white">+{percentChange}%</span>
+                  </div>
+                  <span className="text-xs text-emerald-200">vs. mês anterior</span>
+                </div>
               </div>
-              <div className="flex items-center gap-4 sm:gap-6">
+              <div className="flex items-center gap-4 md:gap-6">
                 <div className="flex items-center gap-1.5">
                   <Users className="h-3.5 w-3.5 text-emerald-200" />
                   <span className="text-xs text-emerald-200">Total Usuários:</span>
@@ -221,38 +255,102 @@ export function CashbackPage() {
         </Card>
       </motion.div>
 
-      {/* CashBack Distribution Chart */}
+      {/* CashBack Distribution Chart + Donut Chart side by side */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05, duration: 0.3 }}
       >
-        <Card className="shadow-sm bg-card">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <BarChart3 className="h-4 w-4 text-emerald-600" />
-              <span className="text-sm font-semibold text-foreground">Distribuição de CashBack</span>
-            </div>
-            <div className="h-[120px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={distributionData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.3)" />
-                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
-                  <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(v) => `R$${v}k`} />
-                  <Tooltip
-                    formatter={(value: number) => [`R$ ${value.toLocaleString('pt-BR')}`, 'Valor']}
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                  />
-                  <Bar dataKey="value" radius={[6, 6, 0, 0]} animationDuration={1000}>
-                    {distributionData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Bar Chart */}
+          <Card className="shadow-sm bg-card">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <BarChart3 className="h-4 w-4 text-emerald-600" />
+                <span className="text-sm font-semibold text-foreground">Distribuição de CashBack</span>
+              </div>
+              <div className="h-[140px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={distributionData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.3)" />
+                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
+                    <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} tickFormatter={(v) => `R$${v}k`} />
+                    <Tooltip
+                      formatter={(value: number) => [`R$ ${value.toLocaleString('pt-BR')}`, 'Valor']}
+                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                    />
+                    <Bar dataKey="value" radius={[6, 6, 0, 0]} animationDuration={1000}>
+                      {distributionData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Donut Chart */}
+          <Card className="shadow-sm bg-card">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Activity className="h-4 w-4 text-emerald-600" />
+                <span className="text-sm font-semibold text-foreground">Proporção por Tipo</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="h-[140px] w-[140px] shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={donutData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={40}
+                        outerRadius={65}
+                        paddingAngle={3}
+                        dataKey="value"
+                        animationDuration={1000}
+                      >
+                        {donutData.map((entry, index) => (
+                          <Cell key={`donut-${index}`} fill={entry.color} stroke="none" />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value: number) => [formatCurrency(value), '']}
+                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '11px' }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex flex-col gap-2 flex-1">
+                  {donutData.map((item) => {
+                    const pct = ((item.value / totalEarnings) * 100).toFixed(1)
+                    return (
+                      <div key={item.name} className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-foreground">{item.name}</span>
+                            <span className="text-xs font-bold text-foreground">{pct}%</span>
+                          </div>
+                          <div className="h-1.5 bg-muted rounded-full mt-1 overflow-hidden">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${pct}%` }}
+                              transition={{ duration: 0.8, ease: 'easeOut' }}
+                              className="h-full rounded-full"
+                              style={{ backgroundColor: item.color }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </motion.div>
 
       {/* Period Filter */}
@@ -274,7 +372,7 @@ export function CashbackPage() {
         ))}
       </div>
 
-      {/* Tabs with animated indicator */}
+      {/* Tabs with animated slide indicator */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="w-full sm:w-auto relative">
           <TabsTrigger value="entrada" className="flex items-center gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
@@ -291,35 +389,58 @@ export function CashbackPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="entrada" className="mt-4 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" trend={5} />
-            <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.entrada.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" trend={8} />
-            <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.entrada.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" trend={3} />
-            <SummaryCard label={t('cashback.pending')} value={cashbackSummary.entrada.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} />
-          </div>
-          <MatrixVisualization type="entrada" />
-        </TabsContent>
+        <AnimatePresence mode="wait">
+          <TabsContent value="entrada" className="mt-4 space-y-4" key="entrada-content">
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.25 }}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" trend={5} level="high" />
+                <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.entrada.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" trend={8} level="medium" />
+                <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.entrada.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" trend={3} level="medium" />
+                <SummaryCard label={t('cashback.pending')} value={cashbackSummary.entrada.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} level="low" />
+              </div>
+            </motion.div>
+            <MatrixVisualization type="entrada" />
+          </TabsContent>
 
-        <TabsContent value="residual" className="mt-4 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" trend={3} />
-            <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.residual.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" trend={6} />
-            <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.residual.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" trend={2} />
-            <SummaryCard label={t('cashback.pending')} value={cashbackSummary.residual.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} />
-          </div>
-          <MatrixVisualization type="residual" />
-        </TabsContent>
+          <TabsContent value="residual" className="mt-4 space-y-4" key="residual-content">
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.25 }}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" trend={3} level="high" />
+                <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.residual.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" trend={6} level="medium" />
+                <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.residual.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" trend={2} level="medium" />
+                <SummaryCard label={t('cashback.pending')} value={cashbackSummary.residual.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} level="low" />
+              </div>
+            </motion.div>
+            <MatrixVisualization type="residual" />
+          </TabsContent>
 
-        <TabsContent value="vendas" className="mt-4 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" trend={15} />
-            <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.vendas.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" trend={10} />
-            <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.vendas.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" trend={7} />
-            <SummaryCard label={t('cashback.pending')} value={cashbackSummary.vendas.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} />
-          </div>
-          <MatrixVisualization type="vendas" />
-        </TabsContent>
+          <TabsContent value="vendas" className="mt-4 space-y-4" key="vendas-content">
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.25 }}
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" trend={15} level="high" />
+                <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.vendas.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" trend={10} level="high" />
+                <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.vendas.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" trend={7} level="medium" />
+                <SummaryCard label={t('cashback.pending')} value={cashbackSummary.vendas.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} level="low" />
+              </div>
+            </motion.div>
+            <MatrixVisualization type="vendas" />
+          </TabsContent>
+        </AnimatePresence>
       </Tabs>
     </div>
   )
