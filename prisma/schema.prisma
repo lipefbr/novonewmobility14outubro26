@@ -1,0 +1,249 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  name              String
+  phone             String?
+  cpf               String?  @unique
+  password          String
+  role              String   @default("user") // user, admin
+  isActive          Boolean  @default(false)
+  plan              String   @default("free") // free, blue3, blue5
+  language          String   @default("pt") // pt, en, es, fr, it
+  
+  // Referral system
+  referralCode      String   @unique
+  referredById      String?
+  referredBy        User?    @relation("Referrals", fields: [referredById], references: [id])
+  referrals         User[]   @relation("Referrals")
+  
+  // Matrix positions
+  entradaLevel      Int      @default(0)
+  residualLevel     Int      @default(0)
+  vendasLevel       Int      @default(0)
+  
+  // Balances (in cents to avoid floating point)
+  balanceWithdrawal     Int    @default(0) // Saldo para Saque
+  balanceMobility       Int    @default(0) // Saldo do App Mobilidade
+  balanceShopping       Int    @default(0) // Saldo do App de Compras
+  balanceFood           Int    @default(0) // Saldo do App Refeição
+  balancePharmacy       Int    @default(0) // Saldo do App Farmácia
+  balanceGratification  Int    @default(0) // Gratificações
+  
+  // Points
+  careerPoints      Int      @default(0)
+  personalPoints    Int      @default(0)
+  stars             Int      @default(0) // 0-5 stars
+  
+  // Driver-specific
+  isDriver          Boolean  @default(false)
+  isDelivery        Boolean  @default(false)
+  totalRides        Int      @default(0)
+  
+  // Metadata
+  profileImage      String?
+  address           String?
+  city              String?
+  state             String?
+  country           String?  @default("BR")
+  bankCode          String?
+  bankAgency        String?
+  bankAccount       String?
+  bankType          String?  // cc, cp
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  cashbackEntries      CashbackEntry[]
+  cashbackResiduals    CashbackResidual[]
+  cashbackSales        CashbackSales[]
+  transactions         Transaction[]
+  vouchers             Voucher[]
+  tickets              Ticket[]
+  ticketMessages       TicketMessage[]
+  notifications        Notification[]
+  invoices             Invoice[]
+  careerMilestones     CareerMilestone[]
+  matrixPositions      MatrixPosition[]
+  gratifications       Gratification[]
+  pointTransactions    PointTransaction[]
+}
+
+model MatrixPosition {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  matrixType      String   // entrada, residual, vendas
+  parentId        String?
+  level           Int      @default(0)
+  position        Int      @default(0) // position within level (0-3 for first level, etc.)
+  isFilled        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+}
+
+model CashbackEntry {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  fromUserId      String
+  amount          Int      // in cents
+  level           Int      // 1-5
+  percentage      Float
+  description     String?
+  createdAt       DateTime @default(now())
+}
+
+model CashbackResidual {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  fromUserId      String
+  amount          Int      // in cents
+  level           Int      // 1-7
+  percentage      Float
+  description     String?
+  createdAt       DateTime @default(now())
+}
+
+model CashbackSales {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  fromUserId      String
+  amount          Int      // in cents
+  level           Int      // 1-9
+  percentage      Float
+  category        String   // mobility, food, pharmacy, pet, shopping
+  description     String?
+  createdAt       DateTime @default(now())
+}
+
+model Transaction {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  type            String   // deposit, withdrawal, cashback_entry, cashback_residual, cashback_sales, gratification, voucher, bonus
+  amount          Int      // in cents
+  status          String   @default("pending") // pending, approved, rejected, paid
+  category        String?  // withdrawal, mobility, shopping, food, pharmacy, gratification
+  description     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Invoice {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  amount          Int      // in cents
+  type            String   // plan_blue3, plan_blue5, upgrade, monthly_fee, residual_entry
+  status          String   @default("pending") // pending, paid, overdue, cancelled
+  dueDate         DateTime
+  paidAt          DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Voucher {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  code            String   @unique
+  amount          Int      // in cents
+  type            String   // mobility, payment, bonus
+  isUsed          Boolean  @default(false)
+  usedAt          DateTime?
+  expiresAt       DateTime?
+  createdAt       DateTime @default(now())
+}
+
+model Ticket {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  subject         String
+  category        String   // support, financial, mobility, shopping, food, pharmacy, technical
+  status          String   @default("open") // open, in_progress, resolved, closed
+  priority        String   @default("normal") // low, normal, high, urgent
+  messages        TicketMessage[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model TicketMessage {
+  id              String   @id @default(cuid())
+  ticketId        String
+  ticket          Ticket   @relation(fields: [ticketId], references: [id])
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  message         String
+  isAdmin         Boolean  @default(false)
+  attachments     String?  // JSON array of file paths
+  createdAt       DateTime @default(now())
+}
+
+model Notification {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  title           String
+  message         String
+  type            String   // info, success, warning, error
+  isRead          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+}
+
+model CareerMilestone {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  milestone       String   // bronze, silver, gold, sapphire, diamond, platinum
+  pointsRequired  Int
+  achieved        Boolean  @default(false)
+  achievedAt      DateTime?
+  createdAt       DateTime @default(now())
+}
+
+model Gratification {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  type            String   // mobility_team, shopping, leadership, residual_activation, career_evolution, insurance_car, insurance_life, insurance_phone, telemedicine, dental, fuel_aid, food_ticket, mimo_kit, tow_truck, home_assistance, retirement_fund, motorcycle_choice
+  amount          Int      // in cents
+  category        String   // mobility, shopping, withdrawal, service
+  description     String?
+  isClaimed       Boolean  @default(false)
+  claimedAt       DateTime?
+  createdAt       DateTime @default(now())
+}
+
+model PointTransaction {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  amount          Int      // positive or negative
+  type            String   // service_use, purchase, evaluation_received, evaluation_upline, payment, direct_referral
+  description     String?
+  referenceId     String?  // ID of related entity
+  createdAt       DateTime @default(now())
+}
+
+model SystemConfig {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  value           String
+  description     String?
+  updatedAt       DateTime @updatedAt
+}
