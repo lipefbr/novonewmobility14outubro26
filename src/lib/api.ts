@@ -3,6 +3,16 @@
 // API service for NewMobility frontend
 const API_BASE = '/api'
 
+export class ApiError extends Error {
+  status: number
+  
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
 export async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE}${endpoint}`
   const res = await fetch(url, {
@@ -14,8 +24,11 @@ export async function apiFetch<T>(endpoint: string, options?: RequestInit): Prom
   })
   
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ error: 'Erro desconhecido' }))
-    throw new Error(error.error || `Erro ${res.status}`)
+    const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido' }))
+    throw new ApiError(
+      errorData.error || `Erro ${res.status}`,
+      res.status
+    )
   }
   
   return res.json()

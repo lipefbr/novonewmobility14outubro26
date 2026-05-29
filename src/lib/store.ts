@@ -60,6 +60,9 @@ interface AppState {
   sidebarCollapsed: boolean
   mobileSidebarOpen: boolean
 
+  // Theme
+  darkMode: boolean
+
   // Actions
   login: (user: UserData) => void
   logout: () => void
@@ -68,6 +71,8 @@ interface AppState {
   setSidebarCollapsed: (collapsed: boolean) => void
   setMobileSidebarOpen: (open: boolean) => void
   updateUser: (data: Partial<UserData>) => void
+  toggleDarkMode: () => void
+  setDarkMode: (dark: boolean) => void
 }
 
 const mockUser: UserData = {
@@ -108,6 +113,9 @@ export const useStore = create<AppState>()(
       sidebarCollapsed: false,
       mobileSidebarOpen: false,
 
+      // Theme
+      darkMode: false,
+
       // Actions
       login: (user) =>
         set({
@@ -139,6 +147,23 @@ export const useStore = create<AppState>()(
         set((state) => ({
           user: state.user ? { ...state.user, ...data } : null,
         })),
+
+      toggleDarkMode: () =>
+        set((state) => {
+          const newDarkMode = !state.darkMode
+          if (typeof document !== 'undefined') {
+            document.documentElement.classList.toggle('dark', newDarkMode)
+          }
+          return { darkMode: newDarkMode }
+        }),
+
+      setDarkMode: (dark) =>
+        set(() => {
+          if (typeof document !== 'undefined') {
+            document.documentElement.classList.toggle('dark', dark)
+          }
+          return { darkMode: dark }
+        }),
     }),
     {
       name: 'newmobility-auth',
@@ -147,6 +172,7 @@ export const useStore = create<AppState>()(
         user: state.user,
         activePage: state.activePage,
         language: state.user?.language,
+        darkMode: state.darkMode,
       }),
     }
   )

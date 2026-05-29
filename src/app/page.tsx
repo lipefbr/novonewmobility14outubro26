@@ -68,7 +68,12 @@ function PageContent() {
 }
 
 export default function Home() {
-  const { isAuthenticated, authView, login } = useStore()
+  const { isAuthenticated, authView, login, darkMode } = useStore()
+
+  // Sync dark mode class on html element from persisted state
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode)
+  }, [darkMode])
 
   // Auto-login with demo credentials if URL has ?demo=true
   useEffect(() => {
