@@ -76,7 +76,9 @@ const menuItems: MenuItem[] = [
   { key: 'financial', labelKey: 'sidebar.financial', icon: Wallet, groupKey: 'sidebar.group.financial', shortcut: '⌘5' },
   { key: 'voucher', labelKey: 'sidebar.voucher', icon: Ticket, groupKey: 'sidebar.group.financial' },
   { key: 'simulator', labelKey: 'sidebar.simulator', icon: Calculator, groupKey: 'sidebar.group.financial' },
-  { key: 'gamification', labelKey: 'sidebar.gamification', icon: Flame, groupKey: 'sidebar.group.financial', isNew: true },
+  { key: 'leaderboard', labelKey: 'sidebar.leaderboard', icon: BarChart3, groupKey: 'sidebar.group.financial', isNew: true },
+  { key: 'gamification', labelKey: 'sidebar.gamification', icon: Flame, groupKey: 'sidebar.group.financial' },
+  { key: 'events', labelKey: 'sidebar.events', icon: Bell, groupKey: 'sidebar.group.system', isNew: true },
   { key: 'reports', labelKey: 'sidebar.reports', icon: BarChart3, groupKey: 'sidebar.group.system' },
   { key: 'support', labelKey: 'sidebar.support', icon: Headphones, groupKey: 'sidebar.group.system', shortcut: '⌘?' },
   { key: 'admin', labelKey: 'sidebar.admin', icon: Shield, groupKey: 'sidebar.group.system' },
@@ -263,7 +265,8 @@ export function Sidebar() {
                         <motion.div
                           layoutId="activeBg"
                           className="absolute inset-0 bg-gradient-to-r from-emerald-600 to-emerald-500 rounded-lg"
-                          transition={{ type: "spring", stiffness: 350, damping: 30, duration: 0.4 }}
+                          layout
+                          transition={{ type: "tween", duration: 0.3, ease: "easeInOut" }}
                         />
                       )}
                       {/* Active shimmer effect */}
@@ -275,7 +278,8 @@ export function Sidebar() {
                         <motion.div
                           layoutId="activeIndicator"
                           className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-emerald-300 rounded-r-full z-10"
-                          transition={{ type: "spring", stiffness: 350, damping: 30, duration: 0.4 }}
+                          layout
+                          transition={{ type: "tween", duration: 0.3, ease: "easeInOut" }}
                         />
                       )}
                       <Icon className={cn(

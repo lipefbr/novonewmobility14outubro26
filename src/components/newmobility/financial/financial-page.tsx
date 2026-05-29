@@ -95,6 +95,9 @@ const typeLabels: Record<string, string> = {
   gratification: 'Gratificação',
   bonus: 'Bônus',
   voucher: 'Voucher',
+  transfer_out: 'Transferência Envio',
+  transfer_in: 'Transferência Recebido',
+  transfer: 'Transferência',
 }
 
 // Color-coded transaction type icon config (Lucide icons with colors)
@@ -107,6 +110,9 @@ const typeIconConfig: Record<string, { icon: React.ElementType; color: string; b
   gratification: { icon: ArrowDownLeft, color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30' },
   bonus: { icon: ArrowDownLeft, color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30' },
   voucher: { icon: RotateCcw, color: 'text-pink-600 dark:text-pink-400', bgColor: 'bg-pink-100 dark:bg-pink-900/30' },
+  transfer_out: { icon: ArrowRightLeft, color: 'text-orange-600 dark:text-orange-400', bgColor: 'bg-orange-100 dark:bg-orange-900/30' },
+  transfer_in: { icon: ArrowRightLeft, color: 'text-teal-600 dark:text-teal-400', bgColor: 'bg-teal-100 dark:bg-teal-900/30' },
+  transfer: { icon: ArrowRightLeft, color: 'text-cyan-600 dark:text-cyan-400', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30' },
 }
 
 // Enhanced status icon config with background colors
@@ -128,6 +134,9 @@ const typeBadgeConfig: Record<string, { bg: string; text: string; border: string
   gratification: { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400', border: 'border-purple-200 dark:border-purple-800' },
   bonus: { bg: 'bg-yellow-100 dark:bg-yellow-900/30', text: 'text-yellow-700 dark:text-yellow-400', border: 'border-yellow-200 dark:border-yellow-800' },
   voucher: { bg: 'bg-pink-100 dark:bg-pink-900/30', text: 'text-pink-700 dark:text-pink-400', border: 'border-pink-200 dark:border-pink-800' },
+  transfer_out: { bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400', border: 'border-orange-200 dark:border-orange-800' },
+  transfer_in: { bg: 'bg-teal-100 dark:bg-teal-900/30', text: 'text-teal-700 dark:text-teal-400', border: 'border-teal-200 dark:border-teal-800' },
+  transfer: { bg: 'bg-cyan-100 dark:bg-cyan-900/30', text: 'text-cyan-700 dark:text-cyan-400', border: 'border-cyan-200 dark:border-cyan-800' },
 }
 
 // Transaction type filter chips with icons
@@ -139,6 +148,7 @@ const filterChips = [
   { key: 'withdrawal', label: 'Saques', icon: ArrowDownToLine },
   { key: 'gratification', label: 'Gratificações', icon: Gift },
   { key: 'bonus', label: 'Bônus', icon: Star },
+  { key: 'transfer', label: 'Transferências', icon: ArrowRightLeft },
 ]
 
 // Animated counter
@@ -189,6 +199,11 @@ export function FinancialPage() {
   const [exportEndDate, setExportEndDate] = useState('')
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [financialTab, setFinancialTab] = useState('transactions')
+  const [transferOpen, setTransferOpen] = useState(false)
+  const [transferSource, setTransferSource] = useState('mobility')
+  const [transferDestination, setTransferDestination] = useState('withdrawal')
+  const [transferAmount, setTransferAmount] = useState('')
+  const [selectedTransaction, setSelectedTransaction] = useState<any | null>(null)
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 800)
@@ -241,6 +256,43 @@ export function FinancialPage() {
     link.click()
   }
 
+  // 5% fee for non-Saque source transfers, 0% for Saque source
+  const TRANSFER_FEES: Record<string, number> = {
+    'mobility->withdrawal': 5, 'shopping->withdrawal': 5, 'food->withdrawal': 5,
+    'pharmacy->withdrawal': 5, 'gratification->withdrawal': 5, 'withdrawal->mobility': 0,
+    'withdrawal->shopping': 0, 'withdrawal->food': 0, 'withdrawal->pharmacy': 0,
+  }
+  const balanceLabels: Record<string, string> = {
+    withdrawal: t('financial.balance.withdrawal'), mobility: t('financial.balance.mobility'),
+    shopping: t('financial.balance.shopping'), food: t('financial.balance.food'),
+    pharmacy: t('financial.balance.pharmacy'), gratification: t('financial.balance.gratification'),
+  }
+  const balanceValues: Record<string, number> = {
+    withdrawal: user?.balanceWithdrawal || 0, mobility: user?.balanceMobility || 0,
+    shopping: user?.balanceShopping || 0, food: user?.balanceFood || 0,
+    pharmacy: user?.balancePharmacy || 0, gratification: user?.balanceGratification || 0,
+  }
+  const feeKey = `${transferSource}->${transferDestination}`
+  const feePercent = TRANSFER_FEES[feeKey] ?? 5
+  const amountNum = Number(transferAmount) || 0
+  const feeAmount = Math.round(amountNum * feePercent / 100)
+  const netAmount = amountNum - feeAmount
+
+  const handleTransfer = async () => {
+    if (!user?.id || !transferAmount || !transferSource || !transferDestination) return
+    if (transferSource === transferDestination) { toast.error(t('transfer.sameBalance')); return }
+    if (amountNum > (balanceValues[transferSource] || 0)) { toast.error(t('transfer.insufficientFunds')); return }
+    try {
+      const { transferApi } = await import('@/lib/api')
+      await transferApi.transfer(user.id, transferSource, transferDestination, amountNum)
+      toast.success(t('transfer.success'))
+      setTransferOpen(false)
+      setTransferAmount('')
+    } catch (err: any) {
+      toast.error(err.message || 'Erro na transferência')
+    }
+  }
+
   const handleServerExport = () => {
     if (!user?.id) return
     const url = financialApi.getExportUrl(user.id, 'csv', exportStartDate || undefined, exportEndDate || undefined, filterType)
@@ -262,9 +314,9 @@ export function FinancialPage() {
             <FileDown className="h-3.5 w-3.5" />
             {t('financial.exportCsv')}
           </Button>
-          <Button variant="outline" size="sm" className="gap-2 text-xs border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" onClick={() => toast.info('Transferência rápida em breve!')}>
+          <Button variant="outline" size="sm" className="gap-2 text-xs border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" onClick={() => setTransferOpen(true)}>
             <ArrowRightLeft className="h-3.5 w-3.5" />
-            Transferir
+            {t('transfer.title')}
           </Button>
           <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
             <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={() => setWithdrawOpen(true)}>
@@ -908,6 +960,151 @@ export function FinancialPage() {
           <InvoiceViewer />
         </TabsContent>
       </Tabs>
+
+      {/* Enhanced Transfer Dialog */}
+      <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowRightLeft className="h-5 w-5 text-emerald-600" />
+              {t('transfer.title')}
+            </DialogTitle>
+            <DialogDescription className="sr-only">Dialog to transfer funds between balance types</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {/* Source → Destination flow indicator */}
+            <div className="flex items-center justify-center gap-3 py-3">
+              <div className="flex-1 rounded-lg border border-border p-3 text-center bg-muted/30">
+                <p className="text-[10px] text-muted-foreground mb-1">Origem</p>
+                <p className="text-sm font-bold text-foreground">{balanceLabels[transferSource]}</p>
+                <p className="text-xs text-emerald-600 dark:text-emerald-400">{formatCurrency(balanceValues[transferSource] || 0)}</p>
+              </div>
+              <div className="flex flex-col items-center gap-0.5">
+                <motion.div
+                  animate={{ x: [0, 6, 0] }}
+                  transition={{ repeat: Infinity, duration: 1.2, ease: 'easeInOut' }}
+                >
+                  <ArrowRightLeft className="h-5 w-5 text-emerald-600" />
+                </motion.div>
+                <span className="text-[9px] text-muted-foreground animate-arrow-flow">transferir</span>
+              </div>
+              <div className="flex-1 rounded-lg border border-border p-3 text-center bg-muted/30">
+                <p className="text-[10px] text-muted-foreground mb-1">Destino</p>
+                <p className="text-sm font-bold text-foreground">{balanceLabels[transferDestination]}</p>
+                <p className="text-xs text-emerald-600 dark:text-emerald-400">{formatCurrency(balanceValues[transferDestination] || 0)}</p>
+              </div>
+            </div>
+
+            {/* Source select */}
+            <div className="space-y-2">
+              <Label className="text-xs flex items-center gap-1">
+                <ArrowUpFromLine className="h-3 w-3" />
+                De (origem)
+              </Label>
+              <Select value={transferSource} onValueChange={setTransferSource}>
+                <SelectTrigger className="text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(balanceLabels).map(([key, label]) => (
+                    <SelectItem key={key} value={key}>{label} ({formatCurrency(balanceValues[key] || 0)})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Destination select */}
+            <div className="space-y-2">
+              <Label className="text-xs flex items-center gap-1">
+                <ArrowDownToLine className="h-3 w-3" />
+                Para (destino)
+              </Label>
+              <Select value={transferDestination} onValueChange={setTransferDestination}>
+                <SelectTrigger className="text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(balanceLabels).map(([key, label]) => (
+                    <SelectItem key={key} value={key}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Amount */}
+            <div className="space-y-2">
+              <Label className="text-xs">{t('financial.withdrawAmount')}</Label>
+              <Input
+                type="number"
+                placeholder="0,00"
+                value={transferAmount}
+                onChange={(e) => setTransferAmount(e.target.value)}
+              />
+            </div>
+
+            {/* Fee calculation with animated counter */}
+            {amountNum > 0 && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="bg-gradient-to-b from-muted/50 to-muted/30 rounded-lg p-3 space-y-2 border border-border overflow-hidden"
+              >
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Info className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-xs font-semibold text-foreground">Resumo da transferência</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Valor</span>
+                  <span className="text-foreground font-medium">{formatCurrency(amountNum)}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Taxa ({feePercent}%)</span>
+                  <span className="text-red-600 dark:text-red-400 font-medium animate-count-pop">-{formatCurrency(feeAmount)}</span>
+                </div>
+                <div className="h-px bg-border" />
+                <div className="flex justify-between text-sm">
+                  <span className="text-foreground font-semibold">Destino receberá</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-bold text-base">{formatCurrency(netAmount)}</span>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Balance preview after transfer */}
+            {amountNum > 0 && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="bg-emerald-50 dark:bg-emerald-950/30 rounded-lg p-3 space-y-2 border border-emerald-100 dark:border-emerald-900/50 overflow-hidden"
+              >
+                <p className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 mb-1">Saldos após transferência</p>
+                <div className="flex justify-between text-xs">
+                  <span className="text-emerald-600 dark:text-emerald-400">{balanceLabels[transferSource]}</span>
+                  <span className="font-medium text-foreground">{formatCurrency(Math.max(0, (balanceValues[transferSource] || 0) - amountNum))}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-emerald-600 dark:text-emerald-400">{balanceLabels[transferDestination]}</span>
+                  <span className="font-medium text-foreground">{formatCurrency((balanceValues[transferDestination] || 0) + netAmount)}</span>
+                </div>
+              </motion.div>
+            )}
+
+            {transferSource === transferDestination && (
+              <p className="text-xs text-red-500 font-medium text-center">Selecione origem e destino diferentes</p>
+            )}
+
+            <Button
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={handleTransfer}
+              disabled={transferSource === transferDestination || amountNum <= 0 || amountNum > (balanceValues[transferSource] || 0)}
+            >
+              <ArrowRightLeft className="h-4 w-4 mr-2" />
+              Confirmar Transferência
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

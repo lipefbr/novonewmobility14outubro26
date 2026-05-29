@@ -25,6 +25,8 @@ export type PageKey =
   | 'reports'
   | 'gamification'
   | 'simulator'
+  | 'events'
+  | 'leaderboard'
 
 export type AuthView = 'login' | 'register'
 

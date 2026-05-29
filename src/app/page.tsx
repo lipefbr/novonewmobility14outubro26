@@ -27,6 +27,8 @@ import { AdminPage } from '@/components/newmobility/admin/admin-page'
 import { ReportsPage } from '@/components/newmobility/reports/reports-page'
 import { GamificationPage } from '@/components/newmobility/gamification/gamification-page'
 import { EarningsSimulator } from '@/components/newmobility/simulator/earnings-simulator'
+import { EventsPage } from '@/components/newmobility/events/events-page'
+import { LeaderboardPage } from '@/components/newmobility/leaderboard/leaderboard-page'
 
 function PageContent() {
   const { activePage } = useStore()
@@ -74,6 +76,10 @@ function PageContent() {
       return <GamificationPage />
     case 'simulator':
       return <EarningsSimulator />
+    case 'events':
+      return <EventsPage />
+    case 'leaderboard':
+      return <LeaderboardPage />
     default:
       return <DashboardPage />
   }

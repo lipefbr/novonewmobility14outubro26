@@ -33,8 +33,9 @@ export function MobileNav() {
               {isActive && (
                 <motion.div
                   layoutId="mobile-nav-active"
+                  layout
                   className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-emerald-500 rounded-full"
-                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  transition={{ type: 'tween', duration: 0.25, ease: 'easeInOut' }}
                 />
               )}
               <motion.div
@@ -42,7 +43,7 @@ export function MobileNav() {
                   scale: isActive ? 1.15 : 1,
                   color: isActive ? '#059669' : undefined,
                 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+                transition={{ type: 'tween', duration: 0.2, ease: 'easeOut' }}
                 className={isActive ? 'text-emerald-600' : 'text-muted-foreground'}
               >
                 <Icon className="h-5 w-5" />

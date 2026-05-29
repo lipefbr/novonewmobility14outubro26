@@ -300,3 +300,37 @@ export const seedApi = {
   seed: () =>
     apiFetch<any>('/seed', { method: 'POST' }),
 }
+
+// Transfer
+export const transferApi = {
+  transfer: (userId: string, source: string, destination: string, amount: number) =>
+    apiFetch<any>('/financial/transfer', {
+      method: 'POST',
+      body: JSON.stringify({ userId, source, destination, amount }),
+    }),
+}
+
+// Events
+export const eventsApi = {
+  getEvents: (userId: string, status?: string, limit?: number) => {
+    const params = new URLSearchParams({ userId })
+    if (status) params.set('status', status)
+    if (limit) params.set('limit', String(limit))
+    return apiFetch<any>(`/events?${params}`)
+  },
+  register: (userId: string, eventId: string) =>
+    apiFetch<any>('/events/register', {
+      method: 'POST',
+      body: JSON.stringify({ userId, eventId }),
+    }),
+}
+
+// Leaderboard
+export const leaderboardApi = {
+  getData: (userId: string, type?: string, period?: string) => {
+    const params = new URLSearchParams({ userId })
+    if (type) params.set('type', type)
+    if (period) params.set('period', period)
+    return apiFetch<any>(`/leaderboard?${params}`)
+  },
+}

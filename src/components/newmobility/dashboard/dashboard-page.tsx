@@ -3,7 +3,7 @@
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { dashboardApi, ApiError } from '@/lib/api'
-import { formatCurrency, timeSince, formatDate, getPlanName } from '@/lib/utils'
+import { formatCurrency, timeSince, formatDate, getPlanName, cn } from '@/lib/utils'
 import { StatsCards } from './stats-cards'
 import { FinancialCards } from './financial-cards'
 import { DashboardCharts } from './charts'
@@ -44,6 +44,7 @@ import {
   Shield,
   Globe,
   Lock,
+  CalendarIcon,
 } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { DashboardSkeleton } from '../ui/loading-skeletons'
@@ -593,6 +594,201 @@ export function DashboardPage() {
 
       {/* Charts */}
       <DashboardCharts data={dashboardData} />
+
+      {/* Visão Geral - Mini Widgets */}
+      <div className="border-b border-emerald-200/50 dark:border-emerald-800/30" />
+      <div>
+        <h3 className="text-lg font-bold text-foreground flex items-center gap-2 mb-4">
+          <Eye className="h-5 w-5 text-emerald-600" />
+          Visão Geral
+          <span className="flex-1 h-px bg-gradient-to-r from-emerald-400/60 to-transparent ml-2" />
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Próximos Eventos Mini Widget */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1, duration: 0.3 }}
+          >
+            <Card className="shadow-sm h-full bg-card card-hover-lift">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <CalendarIcon className="h-4 w-4 text-emerald-600" />
+                  Próximos Eventos
+                  <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[9px] ml-auto">3</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2.5">
+                {[
+                  { title: 'Webinar: Maximizar Ganhos', type: 'webinar', days: 3, color: 'bg-emerald-500' },
+                  { title: 'Manutenção do Sistema', type: 'maintenance', days: 2, color: 'bg-red-500' },
+                  { title: 'Promo: CashBack Dobrado', type: 'promo', days: 7, color: 'bg-amber-500' },
+                ].map((event, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.15 + i * 0.05 }}
+                    className="flex items-center gap-2.5 p-2 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
+                  >
+                    <div className={cn('w-2 h-2 rounded-full shrink-0', event.color)} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">{event.title}</p>
+                      <p className="text-[10px] text-muted-foreground capitalize">{event.type}</p>
+                    </div>
+                    <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 shrink-0">
+                      {event.days === 1 ? 'amanhã' : `${event.days}d`}
+                    </span>
+                  </motion.div>
+                ))}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs text-muted-foreground hover:text-emerald-600 gap-1 mt-1"
+                  onClick={() => setActivePage('events')}
+                >
+                  Ver todos os eventos
+                  <ArrowRight className="h-3 w-3" />
+                </Button>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Sua Posição Mini Widget */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.3 }}
+          >
+            <Card className="shadow-sm h-full bg-gradient-to-br from-gray-900 to-gray-800 border-0 overflow-hidden relative">
+              <div className="absolute top-0 right-0 w-20 h-20 bg-amber-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+              <CardHeader className="pb-2 relative">
+                <CardTitle className="text-sm font-bold text-white flex items-center gap-2">
+                  <Trophy className="h-4 w-4 text-amber-400" />
+                  Sua Posição
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="relative">
+                <div className="text-center mb-3">
+                  <p className="text-3xl font-bold text-white animate-count-pop">#15</p>
+                  <p className="text-xs text-gray-400 mt-1">de 156 membros</p>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400">Ganhos</span>
+                    <span className="text-emerald-400 font-medium">#15</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400">Indicações</span>
+                    <span className="text-teal-400 font-medium">#12</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400">Pontos</span>
+                    <span className="text-amber-400 font-medium">#18</span>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs text-gray-400 hover:text-amber-400 mt-3 gap-1"
+                  onClick={() => setActivePage('leaderboard')}
+                >
+                  Ver ranking completo
+                  <ArrowRight className="h-3 w-3" />
+                </Button>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Resumo Semanal Mini Widget with Sparkline */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3, duration: 0.3 }}
+          >
+            <Card className="shadow-sm h-full bg-card card-hover-lift">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-emerald-600" />
+                  Resumo Semanal
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Ganhos esta semana</p>
+                    <p className="text-xl font-bold text-foreground">R$ 1.250,00</p>
+                  </div>
+                  <div className="flex items-center gap-1 text-xs font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-1 rounded-full">
+                    <TrendingUp className="h-3 w-3" />
+                    +12%
+                  </div>
+                </div>
+                {/* SVG Sparkline */}
+                <div className="h-16 mb-2">
+                  <svg viewBox="0 0 200 60" className="w-full h-full" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="weeklySparkGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity="0.3" />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity="0" />
+                      </linearGradient>
+                    </defs>
+                    <motion.path
+                      d="M0,45 L33,38 L66,42 L100,30 L133,25 L166,18 L200,10"
+                      fill="none"
+                      stroke="#10b981"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      initial={{ pathLength: 0 }}
+                      animate={{ pathLength: 1 }}
+                      transition={{ duration: 1.2, ease: 'easeOut' }}
+                    />
+                    <motion.path
+                      d="M0,45 L33,38 L66,42 L100,30 L133,25 L166,18 L200,10 L200,60 L0,60 Z"
+                      fill="url(#weeklySparkGrad)"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.5, duration: 0.5 }}
+                    />
+                    {/* Data points */}
+                    {[
+                      { x: 0, y: 45 }, { x: 33, y: 38 }, { x: 66, y: 42 },
+                      { x: 100, y: 30 }, { x: 133, y: 25 }, { x: 166, y: 18 }, { x: 200, y: 10 },
+                    ].map((point, i) => (
+                      <motion.circle
+                        key={i}
+                        cx={point.x}
+                        cy={point.y}
+                        r="3"
+                        fill="#10b981"
+                        stroke="white"
+                        strokeWidth="1.5"
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: 0.3 + i * 0.08, duration: 0.3 }}
+                      />
+                    ))}
+                  </svg>
+                </div>
+                <div className="flex justify-between text-[9px] text-muted-foreground">
+                  <span>Seg</span>
+                  <span>Ter</span>
+                  <span>Qua</span>
+                  <span>Qui</span>
+                  <span>Sex</span>
+                  <span>Sáb</span>
+                  <span>Dom</span>
+                </div>
+                <div className="mt-2 pt-2 border-t border-border flex items-center justify-between text-[10px]">
+                  <span className="text-muted-foreground">Média diária</span>
+                  <span className="font-semibold text-foreground">R$ 178,57</span>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
+      </div>
     </div>
   )
 }

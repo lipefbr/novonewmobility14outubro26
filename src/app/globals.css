@@ -1080,3 +1080,140 @@ html {
     opacity: 0;
   }
 }
+
+/* ===== Crown Bounce Animation (for #1 position) ===== */
+
+@keyframes crown-bounce {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-4px) rotate(-5deg);
+  }
+  50% {
+    transform: translateY(-2px) rotate(0deg);
+  }
+  75% {
+    transform: translateY(-3px) rotate(5deg);
+  }
+}
+
+.animate-crown-bounce {
+  animation: crown-bounce 2s ease-in-out infinite;
+  display: inline-block;
+}
+
+/* ===== Podium Rise Animation ===== */
+
+@keyframes podium-rise {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-podium-rise {
+  animation: podium-rise 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.animate-podium-rise-delay-1 {
+  animation: podium-rise 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both;
+}
+
+.animate-podium-rise-delay-2 {
+  animation: podium-rise 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s both;
+}
+
+/* ===== Event Card Hover Effect ===== */
+
+.event-card-hover {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.event-card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.1), 0 4px 10px rgba(0, 0, 0, 0.06);
+}
+
+.dark .event-card-hover:hover {
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4), 0 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+/* ===== Leaderboard Row Hover Effect ===== */
+
+.leaderboard-row-hover {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.leaderboard-row-hover:hover {
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  background-color: rgba(16, 185, 129, 0.04);
+}
+
+.dark .leaderboard-row-hover:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  background-color: rgba(16, 185, 129, 0.08);
+}
+
+/* ===== Live Pulse Indicator ===== */
+
+@keyframes live-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+  }
+}
+
+.animate-live-pulse {
+  animation: live-pulse 1.5s ease-in-out infinite;
+}
+
+/* ===== Arrow Flow Animation (for transfer dialog) ===== */
+
+@keyframes arrow-flow {
+  0% {
+    transform: translateX(0);
+    opacity: 0.4;
+  }
+  50% {
+    transform: translateX(6px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 0.4;
+  }
+}
+
+.animate-arrow-flow {
+  animation: arrow-flow 1.2s ease-in-out infinite;
+}
+
+/* ===== Number Count Up Animation ===== */
+
+@keyframes count-pop {
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-count-pop {
+  animation: count-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}

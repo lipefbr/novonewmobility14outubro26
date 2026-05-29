@@ -26,7 +26,7 @@ function StepWelcome({ onNext, onSkip, step, totalSteps }: StepProps) {
       <motion.div
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}
-        transition={{ type: 'spring', stiffness: 200, damping: 15, delay: 0.1 }}
+        transition={{ type: 'tween', duration: 0.4, ease: 'easeOut', delay: 0.1 }}
         className="w-24 h-24 rounded-3xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center mb-6 shadow-xl shadow-emerald-500/30"
       >
         <PartyPopper className="h-12 w-12 text-white" />
@@ -102,7 +102,7 @@ function StepShareLink({ onNext, onSkip, step, totalSteps }: StepProps) {
       <motion.div
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}
-        transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+        transition={{ type: 'tween', duration: 0.4, ease: 'easeOut' }}
         className="w-20 h-20 rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center mb-6 shadow-xl shadow-teal-500/25"
       >
         <Share2 className="h-10 w-10 text-white" />
@@ -199,7 +199,7 @@ function StepExplore({ onNext, onSkip, step, totalSteps }: StepProps) {
       <motion.div
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}
-        transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+        transition={{ type: 'tween', duration: 0.4, ease: 'easeOut' }}
         className="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center mb-6 shadow-xl shadow-purple-500/25"
       >
         <Sparkles className="h-10 w-10 text-white" />
@@ -280,7 +280,7 @@ function StepGetStarted({ onSkip }: { onSkip: () => void }) {
       <motion.div
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}
-        transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+        transition={{ type: 'tween', duration: 0.4, ease: 'easeOut' }}
         className="w-24 h-24 rounded-3xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mb-6 shadow-xl shadow-emerald-500/30"
       >
         <Sparkles className="h-12 w-12 text-white" />
