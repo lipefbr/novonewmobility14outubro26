@@ -26,6 +26,11 @@ import {
   Bell,
   Sparkles,
   Zap,
+  Shield,
+  BarChart3,
+  Target,
+  Calculator,
+  Flame,
 } from 'lucide-react'
 import { useStore, type PageKey } from '@/lib/store'
 import { cn, getPlanName, formatCurrency } from '@/lib/utils'
@@ -49,26 +54,32 @@ interface MenuItem {
   icon: React.ElementType
   groupKey: string
   isNew?: boolean
+  isBeta?: boolean
+  shortcut?: string
 }
 
 const menuItems: MenuItem[] = [
-  { key: 'dashboard', labelKey: 'sidebar.dashboard', icon: Home, groupKey: 'sidebar.group.main' },
-  { key: 'apps', labelKey: 'sidebar.apps', icon: Smartphone, groupKey: 'sidebar.group.main' },
+  { key: 'dashboard', labelKey: 'sidebar.dashboard', icon: Home, groupKey: 'sidebar.group.main', shortcut: '⌘1' },
+  { key: 'apps', labelKey: 'sidebar.apps', icon: Smartphone, groupKey: 'sidebar.group.main', shortcut: '⌘2' },
   { key: 'bank', labelKey: 'sidebar.bank', icon: Building2, groupKey: 'sidebar.group.main' },
   { key: 'profile', labelKey: 'sidebar.profile', icon: User, groupKey: 'sidebar.group.main' },
   { key: 'myplan', labelKey: 'sidebar.myplan', icon: CreditCard, groupKey: 'sidebar.group.main' },
   { key: 'purchases', labelKey: 'sidebar.purchases', icon: ShoppingCart, groupKey: 'sidebar.group.main' },
-  { key: 'portal-lojista', labelKey: 'sidebar.portal-lojista', icon: Store, groupKey: 'sidebar.group.portals' },
-  { key: 'portal-gamer', labelKey: 'sidebar.portal-gamer', icon: Gamepad2, groupKey: 'sidebar.group.portals' },
-  { key: 'portal-sportbet', labelKey: 'sidebar.portal-sportbet', icon: Trophy, groupKey: 'sidebar.group.portals' },
+  { key: 'portal-lojista', labelKey: 'sidebar.portal-lojista', icon: Store, groupKey: 'sidebar.group.portals', isBeta: true },
+  { key: 'portal-gamer', labelKey: 'sidebar.portal-gamer', icon: Gamepad2, groupKey: 'sidebar.group.portals', isBeta: true },
+  { key: 'portal-sportbet', labelKey: 'sidebar.portal-sportbet', icon: Trophy, groupKey: 'sidebar.group.portals', isBeta: true },
   { key: 'gratifications', labelKey: 'sidebar.gratifications', icon: Gift, groupKey: 'sidebar.group.financial' },
   { key: 'points', labelKey: 'sidebar.points', icon: Star, groupKey: 'sidebar.group.financial' },
   { key: 'career', labelKey: 'sidebar.career', icon: TrendingUp, groupKey: 'sidebar.group.financial' },
-  { key: 'referrals', labelKey: 'sidebar.referrals', icon: Users, groupKey: 'sidebar.group.financial' },
-  { key: 'cashback', labelKey: 'sidebar.cashback', icon: DollarSign, groupKey: 'sidebar.group.financial' },
-  { key: 'financial', labelKey: 'sidebar.financial', icon: Wallet, groupKey: 'sidebar.group.financial' },
+  { key: 'referrals', labelKey: 'sidebar.referrals', icon: Users, groupKey: 'sidebar.group.financial', shortcut: '⌘3' },
+  { key: 'cashback', labelKey: 'sidebar.cashback', icon: DollarSign, groupKey: 'sidebar.group.financial', shortcut: '⌘4' },
+  { key: 'financial', labelKey: 'sidebar.financial', icon: Wallet, groupKey: 'sidebar.group.financial', shortcut: '⌘5' },
   { key: 'voucher', labelKey: 'sidebar.voucher', icon: Ticket, groupKey: 'sidebar.group.financial' },
-  { key: 'support', labelKey: 'sidebar.support', icon: Headphones, groupKey: 'sidebar.group.support', isNew: true },
+  { key: 'simulator', labelKey: 'sidebar.simulator', icon: Calculator, groupKey: 'sidebar.group.financial' },
+  { key: 'gamification', labelKey: 'sidebar.gamification', icon: Flame, groupKey: 'sidebar.group.financial', isNew: true },
+  { key: 'reports', labelKey: 'sidebar.reports', icon: BarChart3, groupKey: 'sidebar.group.system' },
+  { key: 'support', labelKey: 'sidebar.support', icon: Headphones, groupKey: 'sidebar.group.system', shortcut: '⌘?' },
+  { key: 'admin', labelKey: 'sidebar.admin', icon: Shield, groupKey: 'sidebar.group.system' },
 ]
 
 export function Sidebar() {
@@ -205,7 +216,9 @@ export function Sidebar() {
         {!sidebarCollapsed && <SidebarSearch />}
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto sidebar-scrollbar px-2 py-2">
+        <nav className="flex-1 overflow-y-auto sidebar-scrollbar px-2 py-2 scroll-smooth relative">
+          {/* Top fade gradient overlay */}
+          <div className="sticky top-0 left-0 right-0 h-6 bg-gradient-to-b from-gray-950 to-transparent pointer-events-none z-10" />
           <div className="space-y-1">
             {groupedItems.map((group, gi) => (
               <div key={group.groupKey}>
@@ -250,7 +263,7 @@ export function Sidebar() {
                         <motion.div
                           layoutId="activeBg"
                           className="absolute inset-0 bg-gradient-to-r from-emerald-600 to-emerald-500 rounded-lg"
-                          transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                          transition={{ type: "spring", stiffness: 350, damping: 30, duration: 0.4 }}
                         />
                       )}
                       {/* Active shimmer effect */}
@@ -262,7 +275,7 @@ export function Sidebar() {
                         <motion.div
                           layoutId="activeIndicator"
                           className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-emerald-300 rounded-r-full z-10"
-                          transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                          transition={{ type: "spring", stiffness: 350, damping: 30, duration: 0.4 }}
                         />
                       )}
                       <Icon className={cn(
@@ -278,8 +291,21 @@ export function Sidebar() {
                           NOVO
                         </Badge>
                       )}
+                      {/* Beta badge */}
+                      {item.isBeta && !item.isNew && !sidebarCollapsed && (
+                        <Badge className="bg-amber-500/80 text-white text-[8px] px-1.5 py-0 h-4 border-0 ml-auto relative z-10">
+                          BETA
+                        </Badge>
+                      )}
                       {item.isNew && sidebarCollapsed && (
                         <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-rose-500 rounded-full z-10" />
+                      )}
+                      {item.isBeta && !item.isNew && sidebarCollapsed && (
+                        <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-500 rounded-full z-10" />
+                      )}
+                      {/* Keyboard shortcut hint */}
+                      {item.shortcut && !sidebarCollapsed && !item.isNew && !item.isBeta && (
+                        <span className="kbd-shortcut ml-auto relative z-10">{item.shortcut}</span>
                       )}
                     </motion.button>
                   )
@@ -307,6 +333,8 @@ export function Sidebar() {
               </div>
             ))}
           </div>
+          {/* Bottom fade gradient overlay */}
+          <div className="sticky bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-gray-950 to-transparent pointer-events-none z-10" />
         </nav>
 
         {/* Quick Stats Row at bottom */}

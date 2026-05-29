@@ -8,7 +8,7 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import {
   Store, TrendingUp, Users, Package, BarChart3, Settings,
   ShoppingCart, DollarSign, ArrowUpRight, Clock, CheckCircle2,
-  Percent, Plus, Eye, Sparkles
+  Percent, Plus, Eye, Sparkles, Shield, Truck, Headphones, Award, Zap
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 
@@ -34,6 +34,16 @@ const salesMetrics = [
   { label: 'Clientes Ativos', value: '156', change: '+5', icon: Users, color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400', gradient: 'from-blue-500 to-blue-600' },
 ]
 
+// Benefits/Vantagens section data
+const benefits = [
+  { icon: DollarSign, title: 'CashBack Automático', desc: 'Receba CashBack em cada venda realizada' },
+  { icon: Users, title: 'Base de Clientes', desc: 'Acesse milhares de membros da rede NewMobility' },
+  { icon: Truck, title: 'Logística Integrada', desc: 'Sistema de entrega e rastreamento incluso' },
+  { icon: Shield, title: 'Pagamento Seguro', desc: 'Receba com garantia e proteção contra fraudes' },
+  { icon: BarChart3, title: 'Relatórios Detalhados', desc: 'Dashboards com métricas em tempo real' },
+  { icon: Headphones, title: 'Suporte Dedicado', desc: 'Atendimento prioritário para lojistas' },
+]
+
 export function PortalLojista() {
   return (
     <div className="space-y-6">
@@ -42,14 +52,23 @@ export function PortalLojista() {
         <p className="text-sm text-muted-foreground">Gerencie sua loja e acompanhe suas vendas</p>
       </div>
 
-      {/* Hero Banner */}
+      {/* Hero Banner with gradient overlay */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 animate-gradient-shift border-0 shadow-lg overflow-hidden relative">
+          {/* Gradient overlay for depth */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
           <div className="absolute inset-0 opacity-10" style={{
             backgroundImage: "url(\"data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIxIiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDgpIi8+PC9zdmc+\")"
           }} />
           <div className="absolute inset-0 animate-shimmer" />
-          <CardContent className="p-6 text-white relative">
+          {/* Coming Soon badge */}
+          <div className="absolute top-3 right-3 z-10">
+            <Badge className="bg-amber-500/90 text-white text-[10px] font-bold px-2.5 py-1 border-0 shadow-md animate-bounce-subtle">
+              <Sparkles className="h-3 w-3 mr-1" />
+              EM BREVE
+            </Badge>
+          </div>
+          <CardContent className="p-6 text-white relative z-10">
             <div className="flex items-center gap-3 mb-3">
               <div className="p-3 rounded-xl bg-white/15">
                 <Store className="h-8 w-8" />
@@ -73,6 +92,40 @@ export function PortalLojista() {
         </Card>
       </motion.div>
 
+      {/* Vantagens (Benefits) Section */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+        <Card className="shadow-sm bg-card">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Award className="h-4 w-4 text-emerald-500" />
+              Vantagens para Lojistas
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {benefits.map((benefit, i) => {
+                const BenefitIcon = benefit.icon
+                return (
+                  <motion.div
+                    key={benefit.title}
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="p-3 rounded-lg border border-border bg-card hover:shadow-md hover:scale-[1.02] transition-all duration-200 cursor-pointer group"
+                  >
+                    <div className="p-2 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 w-fit mb-2 group-hover:scale-105 transition-transform">
+                      <BenefitIcon className="h-4 w-4" />
+                    </div>
+                    <p className="text-xs font-bold text-foreground">{benefit.title}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{benefit.desc}</p>
+                  </motion.div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* Sales Dashboard - Enhanced with animated stats */}
       <div>
         <h3 className="text-base font-bold text-foreground mb-3 flex items-center gap-2">
@@ -82,7 +135,7 @@ export function PortalLojista() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {salesMetrics.map((metric, i) => (
             <motion.div key={metric.label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-              <Card className="shadow-sm bg-card hover:shadow-md transition-shadow group">
+              <Card className="shadow-sm bg-card hover:shadow-md hover:scale-[1.02] transition-all duration-200 group card-hover-lift">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-2">
                     <div className={`p-1.5 rounded-lg ${metric.color} group-hover:scale-105 transition-transform`}>
@@ -109,6 +162,7 @@ export function PortalLojista() {
           <CardTitle className="text-base font-bold flex items-center gap-2">
             <Percent className="h-4 w-4 text-emerald-600" />
             Configuração de CashBack
+            <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px] ml-1">Em Breve</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -140,6 +194,7 @@ export function PortalLojista() {
             <CardTitle className="text-base font-bold flex items-center gap-2">
               <Package className="h-4 w-4 text-emerald-600" />
               Catálogo de Produtos
+              <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px]">Em Breve</Badge>
             </CardTitle>
             <Button variant="outline" size="sm" className="text-xs gap-1">
               <Plus className="h-3 w-3" />
@@ -220,15 +275,22 @@ export function PortalLojista() {
         </CardContent>
       </Card>
 
-      {/* Quick Action Cards */}
+      {/* Quick Action Cards with hover scale */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { icon: Settings, title: 'Configurações', desc: 'Configure sua loja e preferências' },
-          { icon: BarChart3, title: 'Relatórios', desc: 'Análise detalhada de desempenho' },
-          { icon: Store, title: 'Perfil da Loja', desc: 'Edite informações da loja' },
+          { icon: Settings, title: 'Configurações', desc: 'Configure sua loja e preferências', soon: true },
+          { icon: BarChart3, title: 'Relatórios', desc: 'Análise detalhada de desempenho', soon: true },
+          { icon: Store, title: 'Perfil da Loja', desc: 'Edite informações da loja', soon: false },
         ].map((item, i) => (
           <motion.div key={item.title} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 + i * 0.05 }}>
-            <Card className="shadow-sm hover:shadow-md transition-all cursor-pointer group bg-card">
+            <Card className="shadow-sm hover:shadow-md hover:scale-[1.02] transition-all duration-200 cursor-pointer group bg-card relative">
+              {item.soon && (
+                <div className="absolute top-2 right-2 z-10">
+                  <Badge className="bg-amber-500/90 text-white text-[8px] font-bold px-1.5 py-0.5 border-0 shadow-sm">
+                    Em Breve
+                  </Badge>
+                </div>
+              )}
               <CardContent className="p-5">
                 <div className="p-2.5 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 w-fit mb-3 group-hover:scale-105 transition-transform">
                   <item.icon className="h-5 w-5" />

@@ -32,6 +32,9 @@ import {
   Wallet,
   ArrowDownToLine,
   ArrowUpFromLine,
+  ArrowDownLeft,
+  ArrowUpRight,
+  RotateCcw,
   DollarSign,
   Car,
   ShoppingBag,
@@ -54,6 +57,7 @@ import {
   XCircle,
   Loader2,
   Ban,
+  Info,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
@@ -93,15 +97,37 @@ const typeLabels: Record<string, string> = {
   voucher: 'Voucher',
 }
 
-const typeIcons: Record<string, string> = {
-  cashback_entry: '💰',
-  cashback_residual: '📈',
-  cashback_sales: '🛒',
-  withdrawal: '🏦',
-  deposit: '💳',
-  gratification: '🎁',
-  bonus: '⭐',
-  voucher: '🎫',
+// Color-coded transaction type icon config (Lucide icons with colors)
+const typeIconConfig: Record<string, { icon: React.ElementType; color: string; bgColor: string }> = {
+  cashback_entry: { icon: ArrowDownLeft, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-100 dark:bg-emerald-900/30' },
+  cashback_residual: { icon: ArrowDownLeft, color: 'text-teal-600 dark:text-teal-400', bgColor: 'bg-teal-100 dark:bg-teal-900/30' },
+  cashback_sales: { icon: RotateCcw, color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30' },
+  withdrawal: { icon: ArrowUpRight, color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30' },
+  deposit: { icon: ArrowDownLeft, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-100 dark:bg-emerald-900/30' },
+  gratification: { icon: ArrowDownLeft, color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30' },
+  bonus: { icon: ArrowDownLeft, color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30' },
+  voucher: { icon: RotateCcw, color: 'text-pink-600 dark:text-pink-400', bgColor: 'bg-pink-100 dark:bg-pink-900/30' },
+}
+
+// Enhanced status icon config with background colors
+const statusConfig: Record<string, { icon: React.ElementType; color: string; bgColor: string; label: string }> = {
+  paid: { icon: CheckCircle2, color: 'text-emerald-600', bgColor: 'bg-emerald-100 dark:bg-emerald-900/30', label: 'Concluído' },
+  approved: { icon: CheckCircle2, color: 'text-emerald-600', bgColor: 'bg-emerald-100 dark:bg-emerald-900/30', label: 'Aprovado' },
+  pending: { icon: Clock, color: 'text-amber-600', bgColor: 'bg-amber-100 dark:bg-amber-900/30', label: 'Pendente' },
+  failed: { icon: XCircle, color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', label: 'Falhou' },
+  rejected: { icon: XCircle, color: 'text-red-600', bgColor: 'bg-red-100 dark:bg-red-900/30', label: 'Rejeitado' },
+}
+
+// Color-coded transaction type badge config
+const typeBadgeConfig: Record<string, { bg: string; text: string; border: string }> = {
+  cashback_entry: { bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-400', border: 'border-emerald-200 dark:border-emerald-800' },
+  cashback_residual: { bg: 'bg-teal-100 dark:bg-teal-900/30', text: 'text-teal-700 dark:text-teal-400', border: 'border-teal-200 dark:border-teal-800' },
+  cashback_sales: { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400', border: 'border-amber-200 dark:border-amber-800' },
+  withdrawal: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400', border: 'border-red-200 dark:border-red-800' },
+  deposit: { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400', border: 'border-blue-200 dark:border-blue-800' },
+  gratification: { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400', border: 'border-purple-200 dark:border-purple-800' },
+  bonus: { bg: 'bg-yellow-100 dark:bg-yellow-900/30', text: 'text-yellow-700 dark:text-yellow-400', border: 'border-yellow-200 dark:border-yellow-800' },
+  voucher: { bg: 'bg-pink-100 dark:bg-pink-900/30', text: 'text-pink-700 dark:text-pink-400', border: 'border-pink-200 dark:border-pink-800' },
 }
 
 // Transaction type filter chips with icons
@@ -247,11 +273,32 @@ export function FinancialPage() {
             </Button>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>{t('financial.withdraw')}</DialogTitle>
+                <DialogTitle className="flex items-center gap-2">
+                  <ArrowDownToLine className="h-5 w-5 text-emerald-600" />
+                  {t('financial.withdraw')}
+                </DialogTitle>
                 <DialogDescription className="sr-only">Dialog to request a withdrawal from your account</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
-                <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-lg p-4 text-center">
+                {/* Step indicator */}
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-bold">1</div>
+                    <span className="text-xs font-medium text-foreground">Valor</span>
+                  </div>
+                  <div className="flex-1 h-0.5 bg-emerald-200 dark:bg-emerald-800" />
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-7 h-7 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs font-bold">2</div>
+                    <span className="text-xs font-medium text-muted-foreground">Confirmar</span>
+                  </div>
+                  <div className="flex-1 h-0.5 bg-muted" />
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-7 h-7 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs font-bold">3</div>
+                    <span className="text-xs font-medium text-muted-foreground">Pronto</span>
+                  </div>
+                </div>
+
+                <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-lg p-4 text-center border border-emerald-100 dark:border-emerald-900/50">
                   <p className="text-sm text-emerald-700 dark:text-emerald-300">{t('financial.availableForWithdrawal')}</p>
                   <p className="text-2xl font-bold text-emerald-800 dark:text-emerald-200">
                     {formatCurrency(user?.balanceWithdrawal || 0)}
@@ -259,6 +306,19 @@ export function FinancialPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>{t('financial.withdrawAmount')}</Label>
+                  {/* Quick amount presets */}
+                  <div className="flex gap-2 flex-wrap">
+                    {[50, 100, 250, 500, 1000].map((amount) => (
+                      <button
+                        key={amount}
+                        type="button"
+                        onClick={() => setWithdrawAmount(String(amount * 100))}
+                        className="px-3 py-1 rounded-full text-xs font-medium border border-border hover:border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:text-emerald-600 transition-colors"
+                      >
+                        R$ {amount}
+                      </button>
+                    ))}
+                  </div>
                   <Input
                     type="number"
                     placeholder="0,00"
@@ -267,6 +327,31 @@ export function FinancialPage() {
                   />
                   <p className="text-xs text-muted-foreground">{t('financial.minimumWithdrawal')}</p>
                 </div>
+                {/* Fee calculation display */}
+                {withdrawAmount && Number(withdrawAmount) > 0 && (
+                  <div className="bg-gradient-to-b from-muted/50 to-muted/30 rounded-lg p-3 space-y-2 border border-border">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Info className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-xs font-semibold text-foreground">Resumo do saque</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Valor solicitado</span>
+                      <span className="text-foreground font-medium">{formatCurrency(Number(withdrawAmount))}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Taxa de processamento ({((350 / Number(withdrawAmount)) * 100).toFixed(1)}%)</span>
+                      <span className="text-red-600 dark:text-red-400 font-medium">-{formatCurrency(350)}</span>
+                    </div>
+                    <div className="h-px bg-border" />
+                    <div className="flex justify-between text-sm">
+                      <span className="text-foreground font-semibold">Você receberá</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-bold text-base">{formatCurrency(Math.max(0, Number(withdrawAmount) - 350))}</span>
+                    </div>
+                    {Number(withdrawAmount) - 350 <= 0 && (
+                      <p className="text-[10px] text-red-500 font-medium">Valor insuficiente para cobrir a taxa mínima</p>
+                    )}
+                  </div>
+                )}
                 <Button
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                   onClick={() => { setWithdrawOpen(false); toast.success('Saque solicitado com sucesso!') }}
@@ -332,7 +417,7 @@ export function FinancialPage() {
         transition={{ delay: 0.05, duration: 0.3 }}
       >
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Card className="border-l-4 border-l-emerald-500 shadow-sm bg-card">
+          <Card className="border-l-4 border-l-emerald-500 shadow-sm bg-card card-hover-lift">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -346,7 +431,7 @@ export function FinancialPage() {
               </div>
             </CardContent>
           </Card>
-          <Card className="border-l-4 border-l-amber-500 shadow-sm bg-card">
+          <Card className="border-l-4 border-l-amber-500 shadow-sm bg-card card-hover-lift">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -360,7 +445,7 @@ export function FinancialPage() {
               </div>
             </CardContent>
           </Card>
-          <Card className="border-l-4 border-l-teal-500 shadow-sm bg-card">
+          <Card className="border-l-4 border-l-teal-500 shadow-sm bg-card card-hover-lift">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -460,7 +545,7 @@ export function FinancialPage() {
         </Card>
       </motion.div>
 
-      {/* Balance Cards with gradient left borders */}
+      {/* Balance Cards with gradient top border accents */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {balances.map((balance, i) => (
           <motion.div
@@ -469,10 +554,13 @@ export function FinancialPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
           >
-            <Card className="shadow-sm overflow-hidden bg-card">
+            <Card className="shadow-sm overflow-hidden bg-card card-hover-lift relative">
+              {/* Gradient top border accent */}
+              <div className={cn('h-1 bg-gradient-to-r', balance.gradient)} />
               <div className="flex">
                 <div className={cn('w-1.5 bg-gradient-to-b', balance.gradient)} />
-                <CardContent className="p-4 flex items-center gap-3 flex-1">
+                <div className={cn('absolute inset-0 opacity-[0.03] bg-gradient-to-br pointer-events-none', balance.gradient)} />
+                <CardContent className="p-4 flex items-center gap-3 flex-1 relative">
                   <div className={`p-3 rounded-lg ${balance.color}`}>
                     <balance.icon className="h-5 w-5" />
                   </div>
@@ -663,38 +751,71 @@ export function FinancialPage() {
                 {filtered.map((tx, i) => {
                   const isPositive = tx.amount > 0
                   const isPending = tx.status === 'pending'
+                  const txIconCfg = typeIconConfig[tx.type]
+                  const txStatusCfg = statusConfig[tx.status]
                   return (
-                    <div
+                    <motion.div
                       key={tx.id}
-                      className={`flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors ${i % 2 === 1 ? 'bg-muted/20' : ''}`}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: i * 0.03 }}
+                      className={`flex items-center gap-3 px-4 py-3 transition-all duration-200 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 ${i % 2 === 1 ? 'bg-muted/20' : ''}`}
                     >
                       <div className="flex items-center gap-2">
-                        <span className="text-base">{typeIcons[tx.type] || '📋'}</span>
-                        <div className={`p-1.5 rounded-lg ${
-                          isPositive ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400' : 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400'
-                        }`}>
-                          {isPositive ? <ArrowUpFromLine className="h-3.5 w-3.5" /> : <ArrowDownToLine className="h-3.5 w-3.5" />}
-                        </div>
+                        {/* Color-coded transaction type icon */}
+                        {txIconCfg ? (
+                          <div className={`p-1.5 rounded-lg ${txIconCfg.bgColor} ${txIconCfg.color}`}>
+                            <txIconCfg.icon className="h-3.5 w-3.5" />
+                          </div>
+                        ) : (
+                          <div className={`p-1.5 rounded-lg ${isPositive ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400' : 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400'}`}>
+                            {isPositive ? <ArrowDownLeft className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
+                          </div>
+                        )}
+                        {/* Status indicator with background */}
+                        {txStatusCfg && (
+                          <div className={`p-0.5 rounded-full ${txStatusCfg.bgColor}`}>
+                            <txStatusCfg.icon className={`h-3 w-3 ${txStatusCfg.color} ${isPending ? 'animate-pulse' : ''}`} />
+                          </div>
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-foreground truncate">{tx.description}</span>
-                          {isPending && <CircleDot className="h-3 w-3 text-amber-500 animate-pulse shrink-0" />}
-                          <Badge variant="outline" className="text-[10px] shrink-0 hidden sm:inline-flex">
-                            {typeLabels[tx.type] || tx.type}
-                          </Badge>
+                          {/* Color-coded type badge */}
+                          {(() => {
+                            const badgeCfg = typeBadgeConfig[tx.type]
+                            return badgeCfg ? (
+                              <Badge className={`text-[10px] shrink-0 hidden sm:inline-flex border ${badgeCfg.bg} ${badgeCfg.text} ${badgeCfg.border}`}>
+                                {typeLabels[tx.type] || tx.type}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] shrink-0 hidden sm:inline-flex">
+                                {typeLabels[tx.type] || tx.type}
+                              </Badge>
+                            )
+                          })()}
                         </div>
                         <span className="text-xs text-muted-foreground">{formatDate(tx.date)}</span>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className={`text-sm font-semibold ${isPositive ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                          {isPositive ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
-                        </p>
-                        <Badge variant={getStatusVariant(tx.status)} className="text-[10px]">
-                          {getStatusLabel(tx.status)}
-                        </Badge>
+                        <div className="flex items-center gap-1.5 justify-end">
+                          <p className={`text-sm font-semibold ${isPositive ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                            {isPositive ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
+                          </p>
+                        </div>
+                        {/* Status badge with enhanced colors */}
+                        {txStatusCfg ? (
+                          <Badge className={`text-[10px] border ${txStatusCfg.bgColor} ${txStatusCfg.color}`}>
+                            {txStatusCfg.label}
+                          </Badge>
+                        ) : (
+                          <Badge variant={getStatusVariant(tx.status)} className="text-[10px]">
+                            {getStatusLabel(tx.status)}
+                          </Badge>
+                        )}
                       </div>
-                    </div>
+                    </motion.div>
                   )
                 })}
               </div>

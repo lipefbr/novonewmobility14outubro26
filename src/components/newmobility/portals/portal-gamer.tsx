@@ -56,14 +56,23 @@ export function PortalGamer() {
         <p className="text-sm text-muted-foreground">Jogos, torneios e recompensas</p>
       </div>
 
-      {/* Hero Banner */}
+      {/* Hero Banner with gradient overlay */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="bg-gradient-to-r from-purple-600 via-violet-600 to-purple-700 animate-gradient-shift border-0 shadow-lg overflow-hidden relative">
+          {/* Gradient overlay for depth */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
           <div className="absolute inset-0 opacity-10" style={{
             backgroundImage: "url(\"data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIyMCIgY3k9IjIwIiByPSIxIiBmaWxsPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDgpIi8+PC9zdmc+\")"
           }} />
           <div className="absolute inset-0 animate-shimmer" />
-          <CardContent className="p-6 text-white relative">
+          {/* Coming Soon badge */}
+          <div className="absolute top-3 right-3 z-10">
+            <Badge className="bg-amber-500/90 text-white text-[10px] font-bold px-2.5 py-1 border-0 shadow-md animate-bounce-subtle">
+              <Sparkles className="h-3 w-3 mr-1" />
+              EM BREVE
+            </Badge>
+          </div>
+          <CardContent className="p-6 text-white relative z-10">
             <div className="flex items-center gap-3 mb-3">
               <div className="p-3 rounded-xl bg-white/15">
                 <Gamepad2 className="h-8 w-8" />
@@ -91,11 +100,11 @@ export function PortalGamer() {
         </Card>
       </motion.div>
 
-      {/* Game Stats */}
+      {/* Game Stats with hover scale */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {gameStats.map((stat, i) => (
           <motion.div key={stat.label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-            <Card className="shadow-sm bg-card hover:shadow-md transition-shadow group">
+            <Card className="shadow-sm bg-card hover:shadow-md hover:scale-[1.02] transition-all duration-200 group card-hover-lift">
               <CardContent className="p-4">
                 <div className={`p-1.5 rounded-lg ${stat.color} w-fit mb-2 group-hover:scale-105 transition-transform`}>
                   <stat.icon className="h-3.5 w-3.5" />
@@ -114,6 +123,7 @@ export function PortalGamer() {
           <CardTitle className="text-base font-bold flex items-center gap-2">
             <Swords className="h-4 w-4 text-purple-600" />
             Torneios
+            <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px]">Em Breve</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -123,7 +133,7 @@ export function PortalGamer() {
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.08 }}
-              className="bg-muted/50 rounded-lg p-4 flex items-center gap-3 border border-border hover:border-purple-200 dark:hover:border-purple-800 transition-colors"
+              className="bg-muted/50 rounded-lg p-4 flex items-center gap-3 border border-border hover:border-purple-200 dark:hover:border-purple-800 hover:scale-[1.01] transition-all duration-200"
             >
               <div className={`p-2.5 rounded-lg ${
                 tournament.status === 'active' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' :
@@ -137,13 +147,21 @@ export function PortalGamer() {
                   <h4 className="text-sm font-bold text-foreground">{tournament.name}</h4>
                   {tournament.status === 'active' && (
                     <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[10px] gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                      </span>
                       AO VIVO
                     </Badge>
                   )}
                   {tournament.status === 'starting' && (
                     <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[10px]">
                       EM BREVE
+                    </Badge>
+                  )}
+                  {tournament.status === 'upcoming' && (
+                    <Badge className="bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 text-[10px]">
+                      Em Breve
                     </Badge>
                   )}
                 </div>
@@ -209,6 +227,7 @@ export function PortalGamer() {
             <CardTitle className="text-base font-bold flex items-center gap-2">
               <Gift className="h-4 w-4 text-purple-600" />
               Loja de Recompensas
+              <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px]">Em Breve</Badge>
             </CardTitle>
             <div className="flex items-center gap-1 text-sm">
               <Coins className="h-4 w-4 text-amber-500" />
@@ -227,8 +246,13 @@ export function PortalGamer() {
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: i * 0.05 }}
-                  className={`rounded-lg p-3 text-center ${!reward.available ? 'opacity-50' : ''} bg-muted/50 border border-border hover:border-purple-200 dark:hover:border-purple-800 transition-colors`}
+                  className={`rounded-lg p-3 text-center ${!reward.available ? 'opacity-50' : ''} bg-muted/50 border border-border hover:border-purple-200 dark:hover:border-purple-800 hover:scale-[1.02] transition-all duration-200 relative`}
                 >
+                  {!reward.available && (
+                    <div className="absolute top-1 right-1">
+                      <Badge className="bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400 text-[8px] px-1 py-0 border-0">Em Breve</Badge>
+                    </div>
+                  )}
                   <div className="p-2 rounded-lg bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 w-fit mx-auto mb-2">
                     <Icon className="h-5 w-5" />
                   </div>
@@ -267,7 +291,7 @@ export function PortalGamer() {
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.05 }}
-                  className={`rounded-lg p-3 border ${ach.earned ? 'bg-purple-50 border-purple-200 dark:bg-purple-950/20 dark:border-purple-800' : 'bg-muted/50 border-border opacity-60'}`}
+                  className={`rounded-lg p-3 border ${ach.earned ? 'bg-purple-50 border-purple-200 dark:bg-purple-950/20 dark:border-purple-800' : 'bg-muted/50 border-border opacity-60'} hover:scale-[1.02] transition-all duration-200`}
                 >
                   <div className={`p-1.5 rounded-lg w-fit mb-2 ${
                     ach.earned ? 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-gray-200 text-gray-400 dark:bg-gray-700 dark:text-gray-500'
@@ -276,6 +300,9 @@ export function PortalGamer() {
                   </div>
                   <p className="text-xs font-bold text-foreground">{ach.name}</p>
                   <p className="text-[10px] text-muted-foreground mt-0.5">{ach.desc}</p>
+                  {!ach.earned && (
+                    <Badge className="bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 text-[8px] mt-1">Em Breve</Badge>
+                  )}
                   {ach.earned && <Badge className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 text-[10px] mt-1">Conquistado</Badge>}
                 </motion.div>
               )

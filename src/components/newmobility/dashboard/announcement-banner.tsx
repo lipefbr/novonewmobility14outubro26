@@ -3,76 +3,59 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/lib/i18n'
-import { Megaphone, X, ChevronRight } from 'lucide-react'
+import { useStore } from '@/lib/store'
+import { Megaphone, X, ChevronRight, AlertTriangle, Info, Sparkles, Wrench, Zap } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { announcementApi } from '@/lib/api'
 
 interface Announcement {
   id: string
-  type: 'info' | 'promo' | 'maintenance' | 'feature'
   title: string
-  description: string
+  message: string
+  type: string
+  priority: string
+  isActive: boolean
   actionLabel?: string
   actionUrl?: string
-  bgColor: string
-  textColor: string
-  iconBg: string
+  createdAt: string
 }
 
-const announcements: Announcement[] = [
-  {
-    id: 'promo-cashback-fev',
-    type: 'promo',
-    title: '🔥 CashBack em Dobro!',
-    description: 'Em fevereiro, todos os CashBacks de Entrada são dobrados. Aproveite!',
-    actionLabel: 'Saber mais',
-    bgColor: 'bg-gradient-to-r from-emerald-600 to-teal-600',
-    textColor: 'text-white',
-    iconBg: 'bg-white/20',
-  },
-  {
-    id: 'new-feature-2fa',
-    type: 'feature',
-    title: '🛡️ Autenticação em 2 Fatores',
-    description: 'Agora você pode ativar 2FA na sua conta para mais segurança.',
-    actionLabel: 'Configurar',
-    bgColor: 'bg-gradient-to-r from-blue-600 to-indigo-600',
-    textColor: 'text-white',
-    iconBg: 'bg-white/20',
-  },
-  {
-    id: 'maintenance-scheduled',
-    type: 'maintenance',
-    title: '⚠️ Manutenção Programada',
-    description: 'Dia 15/02 das 02h às 06h o sistema passará por manutenção.',
-    bgColor: 'bg-gradient-to-r from-amber-500 to-orange-500',
-    textColor: 'text-white',
-    iconBg: 'bg-white/20',
-  },
-]
+const typeConfig: Record<string, { bg: string; icon: React.ElementType; iconBg: string }> = {
+  info: { bg: 'bg-gradient-to-r from-blue-600 to-cyan-600', icon: Info, iconBg: 'bg-white/20' },
+  promo: { bg: 'bg-gradient-to-r from-emerald-600 to-teal-600', icon: Zap, iconBg: 'bg-white/20' },
+  maintenance: { bg: 'bg-gradient-to-r from-amber-500 to-orange-500', icon: Wrench, iconBg: 'bg-white/20' },
+  feature: { bg: 'bg-gradient-to-r from-purple-600 to-pink-600', icon: Sparkles, iconBg: 'bg-white/20' },
+  urgent: { bg: 'bg-gradient-to-r from-red-600 to-rose-600', icon: AlertTriangle, iconBg: 'bg-white/20' },
+}
 
 const STORAGE_KEY = 'newmobility-dismissed-announcements'
 
 export function AnnouncementBanner() {
   const { t } = useTranslation()
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [currentIdx, setCurrentIdx] = useState(0)
   const [dismissedIds, setDismissedIds] = useState<string[]>([])
   const [isMounted, setIsMounted] = useState(false)
 
   useEffect(() => {
-    // Using a callback in useState initializer would be better but
-    // localStorage is not available during SSR, so we need this pattern
     const mountState = () => {
       setIsMounted(true)
       try {
         const stored = localStorage.getItem(STORAGE_KEY)
-        if (stored) {
-          setDismissedIds(JSON.parse(stored))
-        }
-      } catch {
-        // ignore
-      }
+        if (stored) setDismissedIds(JSON.parse(stored))
+      } catch { /* ignore */ }
     }
     mountState()
+  }, [])
+
+  useEffect(() => {
+    const loadAnnouncements = async () => {
+      try {
+        const data = await announcementApi.getActive()
+        if (Array.isArray(data)) setAnnouncements(data)
+      } catch { /* ignore */ }
+    }
+    loadAnnouncements()
   }, [])
 
   const visibleAnnouncements = announcements.filter(a => !dismissedIds.includes(a.id))
@@ -83,21 +66,18 @@ export function AnnouncementBanner() {
     if (!current) return
     const newDismissed = [...dismissedIds, current.id]
     setDismissedIds(newDismissed)
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newDismissed))
-    } catch {
-      // ignore
-    }
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(newDismissed)) } catch { /* ignore */ }
     setCurrentIdx(0)
   }
 
   const handleNext = () => {
-    if (currentIdx < visibleAnnouncements.length - 1) {
-      setCurrentIdx(prev => prev + 1)
-    }
+    if (currentIdx < visibleAnnouncements.length - 1) setCurrentIdx(prev => prev + 1)
   }
 
   if (!isMounted || !current) return null
+
+  const config = typeConfig[current.type] || typeConfig.info
+  const Icon = config.icon
 
   return (
     <AnimatePresence mode="wait">
@@ -109,15 +89,18 @@ export function AnnouncementBanner() {
         transition={{ duration: 0.3 }}
         className="overflow-hidden"
       >
-        <div className={`${current.bgColor} ${current.textColor} relative`}>
+        <div className={`${config.bg} text-white relative`}>
           <div className="px-4 py-2.5 flex items-center gap-3 max-w-full">
-            <div className={`p-1.5 rounded-lg ${current.iconBg} shrink-0`}>
-              <Megaphone className="h-4 w-4" />
+            <div className={`p-1.5 rounded-lg ${config.iconBg} shrink-0`}>
+              <Icon className="h-4 w-4" />
             </div>
             <div className="flex-1 min-w-0 flex items-center gap-2">
               <span className="text-sm font-semibold truncate">{current.title}</span>
-              <span className="text-xs opacity-80 hidden sm:inline truncate">{current.description}</span>
+              <span className="text-xs opacity-80 hidden sm:inline truncate">{current.message}</span>
             </div>
+            {current.priority === 'urgent' && (
+              <span className="animate-pulse text-xs font-bold bg-white/20 rounded px-1.5 py-0.5">URGENTE</span>
+            )}
             {current.actionLabel && (
               <Button
                 variant="ghost"
@@ -136,10 +119,7 @@ export function AnnouncementBanner() {
                 {currentIdx + 1}/{visibleAnnouncements.length}
               </button>
             )}
-            <button
-              onClick={handleDismiss}
-              className="text-white/60 hover:text-white shrink-0 ml-1"
-            >
+            <button onClick={handleDismiss} className="text-white/60 hover:text-white shrink-0 ml-1">
               <X className="h-4 w-4" />
             </button>
           </div>

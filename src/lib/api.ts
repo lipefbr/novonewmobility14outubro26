@@ -200,6 +200,99 @@ export const userApi = {
       method: 'PUT',
       body: JSON.stringify({ userId, language }),
     }),
+  setup2FA: (userId: string) =>
+    apiFetch<any>('/user/2fa/setup', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    }),
+  verify2FA: (userId: string, code: string) =>
+    apiFetch<any>('/user/2fa/verify', {
+      method: 'POST',
+      body: JSON.stringify({ userId, code }),
+    }),
+  disable2FA: (userId: string, password: string) =>
+    apiFetch<any>('/user/2fa/disable', {
+      method: 'POST',
+      body: JSON.stringify({ userId, password }),
+    }),
+  verifyEmail: (userId: string) =>
+    apiFetch<any>('/user/verify-email', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    }),
+  verifyPhone: (userId: string) =>
+    apiFetch<any>('/user/verify-phone', {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    }),
+}
+
+// Admin
+export const adminApi = {
+  getStats: (userId: string) =>
+    apiFetch<any>(`/admin/stats?userId=${userId}`),
+  getUsers: (userId: string, params?: { search?: string; plan?: string; status?: string; page?: number }) => {
+    const p = new URLSearchParams({ userId })
+    if (params?.search) p.set('search', params.search)
+    if (params?.plan) p.set('plan', params.plan)
+    if (params?.status) p.set('status', params.status)
+    if (params?.page) p.set('page', String(params.page))
+    return apiFetch<any>(`/admin/users?${p}`)
+  },
+  getConfig: (userId: string) =>
+    apiFetch<any>(`/admin/config?userId=${userId}`),
+  updateConfig: (userId: string, configs: Record<string, string>) =>
+    apiFetch<any>('/admin/config', {
+      method: 'PUT',
+      body: JSON.stringify({ userId, configs }),
+    }),
+}
+
+// Notifications
+export const notificationApi = {
+  getNotifications: (userId: string) =>
+    apiFetch<any>(`/notifications?userId=${userId}`),
+  markAsRead: (notificationId: string) =>
+    apiFetch<any>('/notifications/read', {
+      method: 'PUT',
+      body: JSON.stringify({ notificationId }),
+    }),
+  markAllAsRead: (userId: string) =>
+    apiFetch<any>('/notifications/read-all', {
+      method: 'PUT',
+      body: JSON.stringify({ userId }),
+    }),
+}
+
+// Simulator
+export const simulatorApi = {
+  calculate: (plan: string, directReferrals: number) =>
+    apiFetch<any>('/simulator/calculate', {
+      method: 'POST',
+      body: JSON.stringify({ plan, directReferrals }),
+    }),
+}
+
+// Gamification
+export const gamificationApi = {
+  getStreak: (userId: string) =>
+    apiFetch<any>(`/gamification/streak?userId=${userId}`),
+  getLeaderboard: (period?: string) =>
+    apiFetch<any>(`/gamification/leaderboard${period ? `?period=${period}` : ''}`),
+  getChallenges: (userId: string) =>
+    apiFetch<any>(`/gamification/challenges?userId=${userId}`),
+}
+
+// Reports
+export const reportsApi = {
+  getAnalytics: (userId: string, period?: string) =>
+    apiFetch<any>(`/reports/analytics?userId=${userId}${period ? `&period=${period}` : ''}`),
+}
+
+// Announcements
+export const announcementApi = {
+  getActive: () =>
+    apiFetch<any>('/announcements'),
 }
 
 // Seed

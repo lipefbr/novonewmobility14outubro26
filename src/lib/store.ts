@@ -21,6 +21,10 @@ export type PageKey =
   | 'financial'
   | 'voucher'
   | 'support'
+  | 'admin'
+  | 'reports'
+  | 'gamification'
+  | 'simulator'
 
 export type AuthView = 'login' | 'register'
 

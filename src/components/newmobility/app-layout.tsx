@@ -1,6 +1,6 @@
 'use client'
 
-import { Menu, Globe, ChevronRight, Home, Moon, Sun, Search, Users, Wallet, DollarSign, TrendingUp, Headphones } from 'lucide-react'
+import { Menu, Globe, ChevronRight, Home, Moon, Sun, Search, Users, Wallet, DollarSign, TrendingUp, UserCircle } from 'lucide-react'
 import { useStore, type PageKey } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { languageNames, type Language } from '@/lib/i18n'
@@ -54,7 +54,7 @@ const mobileNavItems: { key: PageKey; icon: React.ElementType; label: string }[]
   { key: 'cashback', icon: DollarSign, label: 'CashBack' },
   { key: 'financial', icon: Wallet, label: 'Finanças' },
   { key: 'referrals', icon: Users, label: 'Rede' },
-  { key: 'support', icon: Headphones, label: 'Suporte' },
+  { key: 'profile', icon: UserCircle, label: 'Perfil' },
 ]
 
 interface AppLayoutProps {
@@ -147,7 +147,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                  className="h-9 w-9 text-muted-foreground hover:text-foreground relative"
                   onClick={toggleDarkMode}
                 >
                   <motion.div
@@ -208,8 +208,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.2, ease: 'easeOut' }}
-                className="p-4 md:p-6 pb-20 lg:pb-6"
+                transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
+                className="p-4 md:p-6 pb-20 md:pb-6"
               >
                 {children}
               </motion.div>
@@ -222,7 +222,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           </main>
 
           {/* Footer */}
-          <footer className="bg-card border-t border-border px-4 py-3 shrink-0 hidden lg:block">
+          <footer className="bg-card border-t border-border px-4 py-3 shrink-0 hidden md:block">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
               <p className="text-xs text-muted-foreground text-center">
                 {t('footer.copyright')}
@@ -238,7 +238,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       </div>
 
       {/* Mobile Bottom Navigation Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-card/95 backdrop-blur-md border-t border-border safe-area-inset-bottom">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-card/95 backdrop-blur-md border-t border-border safe-area-inset-bottom">
         <div className="grid grid-cols-5 gap-1 px-2 py-1.5">
           {mobileNavItems.map((item) => {
             const Icon = item.icon
@@ -247,16 +247,17 @@ export function AppLayout({ children }: AppLayoutProps) {
               <button
                 key={item.key}
                 onClick={() => setActivePage(item.key)}
-                className={`flex flex-col items-center gap-0.5 py-1.5 px-1 rounded-lg transition-colors ${
+                className={`flex flex-col items-center gap-0.5 py-1.5 px-1 rounded-lg transition-all duration-200 ${
                   isActive
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : 'text-muted-foreground hover:text-foreground'
+                    ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                 }`}
               >
-                <div className={`p-1 rounded-lg transition-colors ${isActive ? 'bg-emerald-100 dark:bg-emerald-950/40' : ''}`}>
-                  <Icon className="h-5 w-5" />
+                <div className={`p-1 rounded-lg transition-all duration-200 ${isActive ? 'bg-emerald-100 dark:bg-emerald-900/50' : ''}`}>
+                  <Icon className={`h-5 w-5 transition-transform duration-200 ${isActive ? 'scale-110' : ''}`} />
                 </div>
-                <span className="text-[9px] font-medium leading-none">{item.label}</span>
+                <span className={`text-[9px] font-medium leading-none transition-all duration-200 ${isActive ? 'font-bold' : ''}`}>{item.label}</span>
+                {isActive && <div className="w-1 h-1 rounded-full bg-emerald-500 mt-0.5" />}
               </button>
             )
           })}

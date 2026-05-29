@@ -47,6 +47,19 @@ const betStatusLabel = {
   pending: 'Pendente',
 }
 
+// Helper function to color-code odds: green for favorable (<2.0), yellow for moderate (2.0-3.0), red for unfavorable (>3.0)
+function getOddsColor(odds: number): string {
+  if (odds < 2.0) return 'text-emerald-600 dark:text-emerald-400'
+  if (odds <= 3.0) return 'text-amber-600 dark:text-amber-400'
+  return 'text-red-600 dark:text-red-400'
+}
+
+function getOddsBgColor(odds: number): string {
+  if (odds < 2.0) return 'hover:border-emerald-300 dark:hover:border-emerald-700'
+  if (odds <= 3.0) return 'hover:border-amber-300 dark:hover:border-amber-700'
+  return 'hover:border-red-300 dark:hover:border-red-700'
+}
+
 export function PortalSportBet() {
   return (
     <div className="space-y-6">
@@ -55,11 +68,20 @@ export function PortalSportBet() {
         <p className="text-sm text-muted-foreground">Apostas esportivas e CashBack</p>
       </div>
 
-      {/* Hero Banner */}
+      {/* Hero Banner with gradient overlay */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="bg-gradient-to-r from-emerald-600 via-green-600 to-emerald-600 animate-gradient-shift border-0 shadow-lg overflow-hidden relative">
+          {/* Gradient overlay for depth */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
           <div className="absolute inset-0 animate-shimmer" />
-          <CardContent className="p-6 text-white relative">
+          {/* Coming Soon badge */}
+          <div className="absolute top-3 right-3 z-10">
+            <Badge className="bg-amber-500/90 text-white text-[10px] font-bold px-2.5 py-1 border-0 shadow-md animate-bounce-subtle">
+              <Sparkles className="h-3 w-3 mr-1" />
+              EM BREVE
+            </Badge>
+          </div>
+          <CardContent className="p-6 text-white relative z-10">
             <div className="flex items-center gap-3 mb-3">
               <div className="p-3 rounded-xl bg-white/15">
                 <Trophy className="h-8 w-8" />
@@ -94,9 +116,13 @@ export function PortalSportBet() {
             <Activity className="h-4 w-4 text-red-500" />
             Eventos ao Vivo
             <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-[10px] gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+              </span>
               LIVE
             </Badge>
+            <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px]">Em Breve</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -106,13 +132,16 @@ export function PortalSportBet() {
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: i * 0.08 }}
-              className="bg-muted/50 rounded-lg p-4 border border-border hover:border-emerald-200 dark:hover:border-emerald-800 transition-colors"
+              className="bg-muted/50 rounded-lg p-4 border border-border hover:border-emerald-200 dark:hover:border-emerald-800 hover:scale-[1.01] transition-all duration-200"
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className="text-[10px]">{event.league}</Badge>
                   <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-[10px] gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+                    </span>
                     {event.time}
                   </Badge>
                 </div>
@@ -129,17 +158,17 @@ export function PortalSportBet() {
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2">
-                <button className="bg-card border border-border rounded-lg p-2 text-center hover:border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-all">
+                <button className={`bg-card border border-border rounded-lg p-2 text-center ${getOddsBgColor(event.homeOdds)} hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-all`}>
                   <p className="text-[10px] text-muted-foreground">Casa</p>
-                  <p className="text-sm font-bold text-foreground">{event.homeOdds.toFixed(2)}</p>
+                  <p className={`text-sm font-bold ${getOddsColor(event.homeOdds)}`}>{event.homeOdds.toFixed(2)}</p>
                 </button>
-                <button className="bg-card border border-border rounded-lg p-2 text-center hover:border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-all">
+                <button className={`bg-card border border-border rounded-lg p-2 text-center ${getOddsBgColor(event.drawOdds)} hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-all`}>
                   <p className="text-[10px] text-muted-foreground">Empate</p>
-                  <p className="text-sm font-bold text-foreground">{event.drawOdds.toFixed(2)}</p>
+                  <p className={`text-sm font-bold ${getOddsColor(event.drawOdds)}`}>{event.drawOdds.toFixed(2)}</p>
                 </button>
-                <button className="bg-card border border-border rounded-lg p-2 text-center hover:border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-all">
+                <button className={`bg-card border border-border rounded-lg p-2 text-center ${getOddsBgColor(event.awayOdds)} hover:bg-red-50 dark:hover:bg-red-950/30 transition-all`}>
                   <p className="text-[10px] text-muted-foreground">Fora</p>
-                  <p className="text-sm font-bold text-foreground">{event.awayOdds.toFixed(2)}</p>
+                  <p className={`text-sm font-bold ${getOddsColor(event.awayOdds)}`}>{event.awayOdds.toFixed(2)}</p>
                 </button>
               </div>
             </motion.div>
@@ -153,12 +182,19 @@ export function PortalSportBet() {
           <CardTitle className="text-base font-bold flex items-center gap-2">
             <Calendar className="h-4 w-4 text-emerald-600" />
             Próximos Eventos
+            <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[9px]">Em Breve</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <div className="divide-y">
             {upcomingEvents.map((event, i) => (
-              <div key={i} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors">
+              <motion.div
+                key={i}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: i * 0.05 }}
+                className="flex items-center gap-3 px-4 py-3 hover:bg-muted/50 hover:scale-[1.01] transition-all duration-200"
+              >
                 <div className="p-2 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
                   <Trophy className="h-4 w-4" />
                 </div>
@@ -173,7 +209,7 @@ export function PortalSportBet() {
                 <Button variant="outline" size="sm" className="h-7 text-xs border-emerald-200 dark:border-emerald-800 text-emerald-600">
                   Ver Odds
                 </Button>
-              </div>
+              </motion.div>
             ))}
           </div>
         </CardContent>
@@ -204,7 +240,7 @@ export function PortalSportBet() {
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <span>{bet.type}</span>
                     <span>·</span>
-                    <span>Odds: {bet.odds.toFixed(2)}</span>
+                    <span className={`font-medium ${getOddsColor(bet.odds)}`}>Odds: {bet.odds.toFixed(2)}</span>
                   </div>
                 </div>
                 <div className="text-right">
@@ -229,17 +265,17 @@ export function PortalSportBet() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-lg p-4 text-center border border-emerald-100 dark:border-emerald-900/50">
+            <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-lg p-4 text-center border border-emerald-100 dark:border-emerald-900/50 hover:scale-[1.02] transition-all duration-200">
               <p className="text-3xl font-bold text-emerald-700 dark:text-emerald-400">5%</p>
               <p className="text-xs text-muted-foreground mt-1">CashBack em apostas perdidas</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">Creditado em até 24h</p>
             </div>
-            <div className="bg-teal-50 dark:bg-teal-950/30 rounded-lg p-4 text-center border border-teal-100 dark:border-teal-900/50">
+            <div className="bg-teal-50 dark:bg-teal-950/30 rounded-lg p-4 text-center border border-teal-100 dark:border-teal-900/50 hover:scale-[1.02] transition-all duration-200">
               <p className="text-3xl font-bold text-teal-700 dark:text-teal-400">2%</p>
               <p className="text-xs text-muted-foreground mt-1">CashBack extra em apostas ganhas</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">Membros Blue 5 Premium</p>
             </div>
-            <div className="bg-amber-50 dark:bg-amber-950/30 rounded-lg p-4 text-center border border-amber-100 dark:border-amber-900/50">
+            <div className="bg-amber-50 dark:bg-amber-950/30 rounded-lg p-4 text-center border border-amber-100 dark:border-amber-900/50 hover:scale-[1.02] transition-all duration-200">
               <p className="text-3xl font-bold text-amber-700 dark:text-amber-400">10%</p>
               <p className="text-xs text-muted-foreground mt-1">Bônus em apostas acumuladas</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">4+ seleções no bilhete</p>

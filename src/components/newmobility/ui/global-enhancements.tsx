@@ -27,7 +27,7 @@ export function BackToTopButton() {
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.8 }}
           onClick={scrollToTop}
-          className="fixed bottom-20 right-4 z-40 lg:bottom-6 lg:right-6 h-10 w-10 rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-500/30 hover:bg-emerald-700 transition-colors flex items-center justify-center"
+          className="fixed bottom-20 right-4 z-40 md:bottom-6 md:right-6 h-10 w-10 rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-500/30 hover:bg-emerald-700 transition-colors flex items-center justify-center"
           aria-label="Voltar ao topo"
         >
           <ArrowUp className="h-5 w-5" />

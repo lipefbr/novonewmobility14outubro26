@@ -955,3 +955,200 @@ Stage Summary:
 - 100+ i18n keys added across 5 languages
 - Lint passes with 0 errors
 - Dev server compiles successfully
+
+---
+Task ID: 11-a1
+Agent: Full-Stack Developer (CSS + Dashboard Styling)
+Task: Improve styling for GLOBAL CSS, DASHBOARD PAGE, and SIDEBAR
+
+Work Log:
+
+### 1. Global CSS (globals.css) - Enhanced CSS Utility Classes & Animations
+
+- **Updated `.glass-card`**: Changed to spec values (bg-white/10, backdrop-blur-md/12px, border-white/20), updated dark mode variant to bg-white/5
+- **Updated `.gradient-border`**: Replaced static linear-gradient with animated rotating conic-gradient using ::before pseudo-element. Added ::after pseudo for inner background fill. Dark mode support included.
+- **Added `.shimmer` class**: New shimmer loading animation utility with linear-gradient and shimmer keyframe. Includes dark mode variant.
+- **Updated `.card-hover-lift`**: Adjusted hover to translateY(-2px) with shadow-lg (was -4px)
+- **Updated `.animate-shimmer-border`**: Changed to rotating gradient border using conic-gradient with ::before and ::after pseudo-elements.
+
+### 2. Dashboard Page (dashboard-page.tsx) - Enhanced Styling
+
+- **Visual separators**: Added border-b border-emerald-200/50 dark:border-emerald-800/30 dividers between all major sections
+- **Referral link animated border**: Added gradient-border rounded-xl p-3 to referral link container
+- **Quick Action micro-interactions**: Changed hover from scale-[1.03] to scale-[1.02]
+- **Trust badges**: Added 🔒 Dados Seguros, 🌐 SSL, 👥 +10k below download buttons
+- **Section header gradient underlines**: Added gradient underline spans to section headers
+- **New imports**: Shield, Globe, Lock icons
+
+### 3. Sidebar (sidebar.tsx) - Enhanced Styling
+
+- **Top fade gradient overlay**: Sticky gradient div at top of nav with from-gray-950 to-transparent
+- **Bottom fade gradient overlay**: Sticky gradient div at bottom of nav with from-gray-950 to-transparent
+
+### Files Modified
+- src/app/globals.css
+- src/components/newmobility/dashboard/dashboard-page.tsx
+- src/components/newmobility/sidebar.tsx
+
+### Verification
+- bun run lint passes with 0 errors
+- Dark mode support maintained
+
+Stage Summary:
+- Global CSS utility classes enhanced with proper specs
+- Dashboard enriched with separators, gradient underlines, animated border, trust badges
+- Sidebar enhanced with top/bottom fade gradient overlays
+- Lint passes with 0 errors
+
+---
+Task ID: 11-a2
+Agent: Full-Stack Developer (Financial + CashBack Styling)
+Task: Improve styling for Financial Page and CashBack Page
+
+Work Log:
+
+### Financial Page (financial-page.tsx)
+1. **Color-coded transaction type icons**: Added `typeIconConfig` mapping with ArrowDownLeft (green) for credit/entry, ArrowUpRight (red) for debit/withdrawal, RotateCcw (blue) for cashback/sales. Each type gets a colored icon + background container.
+2. **Transaction status indicators**: Added `statusConfig` mapping with CheckCircle2 (green) for completed/approved, Clock (yellow/amber) for pending, XCircle (red) for failed/rejected. Each status shows a small colored pill with icon.
+3. **Gradient top border accents on balance cards**: Added `<div className={cn('h-1 bg-gradient-to-r', balance.gradient)} />` as a thin gradient accent at the top of each balance card.
+4. **Micro-animation on transaction rows**: Changed from plain `<div>` to `<motion.div>` with `initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }}` for staggered fade-in. Added emerald-tinted hover background `hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20`.
+5. **Enhanced fee calculation display**: Upgraded withdrawal dialog fee section with gradient background, Info icon header "Resumo do saque", fee percentage calculation, red-colored fee amount, larger net amount text, and validation warning when amount is insufficient.
+6. **Removed unused `typeIcons` emoji map and `statusIconConfig`**: Replaced with the new structured `typeIconConfig` and `statusConfig` configs.
+
+### CashBack Page (cashback-page.tsx)
+1. **Circular progress indicators**: Added `progressPct` prop to `SummaryCard` component. Renders an SVG ring with animated `motion.circle` showing % completion. The icon sits in the center of the ring.
+2. **Subtle glow effect on active tab**: Already had `glow-tab-indicator` class (via CSS), maintained the existing implementation.
+3. **Card elevation on hover**: SummaryCard already uses `card-hover-lift` class which provides hover shadow + translate-y. Verified it works.
+4. **Monthly Earnings Trend mini banner**: Added a new card between the Tips Card and Tabs. Shows Zap icon, "Tendência Mensal" label, "Seus ganhos estão em alta" text, this month's total, and an ArrowUpRight badge showing the % change.
+5. **Background pattern in tips area**: Added a radial-gradient dots pattern overlay (`radial-gradient(circle, #059669 1px, transparent 1px)`) on the CashBack Tips Card with `opacity-[0.04]`.
+
+### Matrix Visualization (matrix-visualization.tsx)
+1. **Animated level bars with staggered animation**: Changed table progress bars from `<Progress>` component to custom `<motion.div>` with `initial={{ width: 0 }} animate={{ width: \`${fillPct}%\` }}` and staggered delays.
+2. **Gradient fills on progress bars**: Replaced solid `levelColors` with `levelGradientColors` array (e.g., `from-emerald-400 to-emerald-600`). Applied to both table progress bars and card grid progress bars.
+3. **Hover tooltips on level cards**: Added `LevelTooltip` component that shows on hover with exact values (level, users, percentage, earnings). Uses absolute positioning with arrow indicator.
+4. **Total earnings highlight card**: Added `AnimatedEarningsCounter` component at the top with a gradient emerald card. Shows total earnings with animated counting, total users stat box, and max possible earnings. Includes dots background pattern and shimmer overlay.
+5. **Background pattern in matrix area**: Added grid pattern (`linear-gradient` lines) overlay on the horizontal stacked bar card with `opacity-[0.03]`.
+6. **Card elevation on hover for level cards**: Changed from `hover:shadow-md` to `hover:shadow-lg hover:-translate-y-1` with `transition-all duration-200 cursor-pointer`.
+7. **Spring animation on card appear**: Changed from simple scale animation to spring physics with `type: 'spring', stiffness: 200` and added `y: 10` to initial for vertical entrance.
+
+### Files Modified
+- src/components/newmobility/financial/financial-page.tsx
+- src/components/newmobility/cashback/cashback-page.tsx
+- src/components/newmobility/cashback/matrix-visualization.tsx
+
+Stage Summary:
+- Financial Page: 6 styling enhancements (type icons, status indicators, gradient borders, micro-animations, fee display, cleanup)
+- CashBack Page: 5 styling enhancements (circular progress, glow effects, card elevation, trend banner, background pattern)
+- Matrix Visualization: 7 styling enhancements (animated bars, gradient fills, tooltips, earnings highlight, background pattern, card elevation, spring animations)
+- Lint passes with 0 errors
+
+---
+Task ID: 11-a3
+Agent: Full-Stack Developer (Profile + Career + Support Styling)
+Task: Improve styling for PROFILE, CAREER, and SUPPORT pages
+
+Work Log:
+
+### Profile Page Enhancements (profile-page.tsx)
+1. **Verification status badges next to user info**: Added inline verification icons (✓ green Check for verified email/phone, ? yellow HelpCircle for unverified document) directly next to the user's name
+2. **Profile completion progress bar at top**: Added "Perfil X% completo" progress bar at the top of the page with animated fill, shimmer effect, and verification breakdown badges (E-mail ✓, Telefone ✓, Documento ?)
+3. **Subtle hover effects on tab items**: Enhanced tab hover with `hover:scale-[1.02] active:scale-[0.98]` micro-animation in addition to existing color transitions
+4. **"Membro desde" badge**: Added a nicely formatted badge showing join date with Calendar icon, formatted date, and time-since in parentheses
+5. **Security score indicator**: Added small inline shield indicator in header showing security score (e.g., "3/4 Segurança") with color-coded icon (ShieldCheck=green, ShieldAlert=amber, ShieldX=red), plus an inline security badge next to the "Membro desde" badge in the profile card
+
+### Career Page Enhancements (career-page.tsx)
+1. **Shimmer effect on current rank badge**: Added `shimmer` prop to RankBadge component that applies an animate-shimmer overlay with radial gradient mask on the current rank badge
+2. **"Next Reward" preview card**: Added a new "PRÓXIMA RECOMPENSA" card with bounce animation (y-axis float), pulsing icon scale, rotating Sparkles, and reward amount display. Each career level now has `nextReward` and `nextRewardIcon` fields
+3. **Milestone achievement indicators**: Added animated gold star badges (⭐) with spring animation on achieved milestones in both desktop and mobile timeline views, plus Trophy icon next to "Conquistado" badge
+4. **Motivational quote/tip**: Added an amber-themed motivational quote card between the current rank progress and next rank section, with animated lightbulb emoji and context-aware message about next reward
+5. **Gradient accent on progress bar**: Enhanced progress bar gradient from `from-emerald-400 to-emerald-500` to `from-emerald-400 via-teal-400 to-emerald-500` with thicker top accent bar (h-1.5)
+
+### Support Page Enhancements (support-page.tsx)
+1. **Priority color coding on ticket list items**: Replaced status dots with priority-colored dots (red=Alta, amber=Média, green=Baixa, pulsing red=Urgente), plus priority badges with matching colors on each ticket
+2. **Response time indicator under each ticket**: Added "Resposta média: Xh" text with Clock icon under each ticket item, based on `responseTime` field in ticket data
+3. **Animated FAQ accordion with chevron rotation**: Added `[&[data-state=open]>svg]:rotate-180` for smooth chevron rotation, enhanced content animation with `height: 0 → auto` motion, and `overflow-hidden` for smooth transitions
+4. **"Métodos de Contato" section**: Renamed and enhanced the contact section with a header ("Métodos de Contato" with Headphones icon), hover effects (whileHover y:-2, card-hover-lift, icon scale+rotate on hover), and color-coded border hover states per card type
+5. **Satisfaction emoji indicators on closed tickets**: Added 😊 😐 😞 emoji indicators on closed/resolved tickets in the ticket list, plus satisfaction display in ticket detail view showing emoji + label with color
+
+### Files Modified
+- src/components/newmobility/profile/profile-page.tsx
+- src/components/newmobility/career/career-page.tsx
+- src/components/newmobility/support/support-page.tsx
+
+### Verification
+- Lint passes with 0 errors
+- All 3 pages enhanced with rich visual details
+- Dark mode support maintained throughout
+- Responsive design preserved
+- No new API routes created
+
+---
+Task ID: 11-a4
+Agent: Full-Stack Developer (Voucher + Login + Portals Styling)
+Task: Improve styling for VOUCHER, LOGIN, and PORTAL pages
+
+Work Log:
+
+### 1. Voucher Page (voucher-page.tsx)
+- **Holographic shine effect**: Added hover-triggered holographic sweep animation on active voucher cards using framer-motion. When hovering, a light gradient sweeps across the card from left to right.
+- **Urgency countdown colors**: Enhanced CountdownTimer component with 3-tier urgency color system: green (>30 days), yellow (7-30 days), red (<7 days). Red countdown also shows "urgente" label and pulse animation.
+- **QR code glow effect**: Improved QR scanning animation with smoother easing (cubic-bezier), added glow shadow on the scanning line, and added a subtle green glow trail that follows the scanner.
+- **Vouchers Populares section**: Added new section showing most-used voucher categories with usage count, growth percentage, and animated progress bars (Mobilidade: 3,420 usos, Refeição: 2,890, Farmácia: 2,150, Shopping: 1,680).
+- **Usage progress bar**: Added usedAmount mock data to all vouchers and rendered usage progress bars on active voucher cards. Progress bars are color-coded: green for <50%, amber for 50-80%, red for >80% used. Also added to featured voucher hero card.
+
+### 2. Login Page (login-page.tsx)
+- **Animated gradient border**: Login card already had `animated-gradient-border` class with conic-gradient rotation. Maintained and improved the effect.
+- **Trust badges**: Redesigned trust badges as pill-shaped items with icons: 🔒 Dados Seguros (LockIcon), 🌐 Criptografia 128-bit (Globe), 👥 +10.000 Membros (Users). Each badge has a subtle bg-muted/50 background with rounded-full styling.
+- **Typewriter cursor**: Subtitle already uses `typing-cursor-anim` CSS class for blinking cursor effect.
+- **Biometry button**: Added "Entrar com biometria" button with Fingerprint icon as 3rd social login option (grid changed from 2 cols to 3). Styled with emerald accent border.
+- **Pulsing demo credentials**: Enhanced demo section with thicker border-2, animate-shimmer-border class for subtle pulsing, DEMO badge overlay, structured credential display with Mail/Lock icons, and Zap icon on the demo button.
+
+### 3. Portal Lojista (portal-lojista.tsx)
+- **Hero banner gradient overlay**: Added `bg-gradient-to-t from-black/20 via-transparent to-transparent` overlay for depth.
+- **Hover scale effect**: Added `hover:scale-[1.02]` with transition-all duration-200 to sales metric cards and quick action cards.
+- **Em Breve badges**: Added "Em Breve" badges to CashBack Configuration, Product Catalog, and quick action cards (Settings, Reports).
+- **Vantagens (Benefits) section**: Added new icon-based benefits section with 6 items: CashBack Automático, Base de Clientes, Logística Integrada, Pagamento Seguro, Relatórios Detalhados, Suporte Dedicado. Each has icon, title, and description.
+
+### 4. Portal Gamer (portal-gamer.tsx)
+- **Hero banner gradient overlay**: Added `bg-gradient-to-t from-black/20 via-transparent to-transparent` overlay.
+- **Hover scale effect**: Added `hover:scale-[1.02]` on game stat cards, reward items, and achievement cards.
+- **Em Breve badges**: Added "Em Breve" badges on Tournaments header, Rewards Shop header, upcoming tournament items, locked achievements, and unavailable rewards.
+- **Live indicator pulse**: Enhanced LIVE badges with `animate-ping` ring animation (double-circle pulse effect) using relative/absolute positioning for smooth concentric pulse animation.
+
+### 5. Portal SportBet (portal-sportbet.tsx)
+- **Hero banner gradient overlay**: Added `bg-gradient-to-t from-black/20 via-transparent to-transparent` overlay.
+- **Hover scale effect**: Added `hover:scale-[1.01]` on live event cards, upcoming event items, and CashBack info cards.
+- **Em Breve badges**: Added "Em Breve" badges on Live Events header, Upcoming Events header.
+- **Odds highlighting**: Added color-coded odds values using getOddsColor() helper: green (<2.0 = favorable), yellow (2.0-3.0 = moderate), red (>3.0 = unfavorable). Also added corresponding hover border colors on odds buttons and odds display in bet history.
+
+### 6. App Layout (app-layout.tsx)
+- **Mobile bottom navigation**: Changed visibility breakpoint from `lg:hidden` to `md:hidden` so it shows on more screen sizes. Updated nav items: Home, CashBack, Financial, Referrals, Profile (changed from Support to Profile, changed icon from Headphones to UserCircle).
+- **Back to top button**: Updated positioning from `lg:bottom-6` to `md:bottom-6` to align with new mobile nav breakpoint.
+- **Page transition animation**: Already has AnimatePresence with motion.div wrapper. Maintained existing implementation.
+- **Footer**: Changed from `hidden lg:block` to `hidden md:block` to align with mobile nav visibility.
+- **Content padding**: Changed from `pb-20 lg:pb-6` to `pb-20 md:pb-6` to align with mobile nav breakpoint.
+
+### Files Modified
+- src/components/newmobility/voucher/voucher-page.tsx
+- src/components/newmobility/auth/login-page.tsx
+- src/components/newmobility/portals/portal-lojista.tsx
+- src/components/newmobility/portals/portal-gamer.tsx
+- src/components/newmobility/portals/portal-sportbet.tsx
+- src/components/newmobility/app-layout.tsx
+- src/components/newmobility/ui/global-enhancements.tsx
+
+### Verification
+- Lint passes with 0 errors
+- Dev server compiles successfully
+- No new API routes created
+- All changes are styling-only (no data/logic changes)
+
+Stage Summary:
+- All 6 files enhanced with requested styling improvements
+- Voucher page: holographic hover, urgency countdown, QR glow, popular section, usage progress bars
+- Login page: biometry button, pulsing demo creds, redesigned trust badges
+- Portal Lojista: benefits section, Em Breve badges, hover scale, gradient overlay
+- Portal Gamer: live pulse animation, Em Breve badges, hover scale, gradient overlay
+- Portal SportBet: color-coded odds, Em Breve badges, hover scale, gradient overlay
+- App Layout: mobile nav with Profile, breakpoint adjustments (lg → md)
+- Lint passes with 0 errors

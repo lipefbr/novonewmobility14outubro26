@@ -79,6 +79,8 @@ model User {
   matrixPositions      MatrixPosition[]
   gratifications       Gratification[]
   pointTransactions    PointTransaction[]
+  gamificationStreak   GamificationStreak?
+  userChallenges       UserChallenge[]
 }
 
 model MatrixPosition {
@@ -245,5 +247,61 @@ model SystemConfig {
   key             String   @unique
   value           String
   description     String?
+  updatedAt       DateTime @updatedAt
+}
+
+model Announcement {
+  id              String   @id @default(cuid())
+  title           String
+  message         String
+  type            String   @default("info") // info, promo, maintenance, feature, urgent
+  priority        String   @default("normal") // low, normal, high, urgent
+  isActive        Boolean  @default(true)
+  startDate       DateTime?
+  endDate         DateTime?
+  actionLabel     String?
+  actionUrl       String?
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model GamificationStreak {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id])
+  currentStreak   Int      @default(0)
+  longestStreak   Int      @default(0)
+  lastLoginDate   DateTime?
+  totalPoints     Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Challenge {
+  id              String   @id @default(cuid())
+  title           String
+  description     String
+  type            String   // daily, weekly, monthly
+  targetValue     Int
+  rewardPoints    Int
+  isActive        Boolean  @default(true)
+  startDate       DateTime?
+  endDate         DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  userChallenges  UserChallenge[]
+}
+
+model UserChallenge {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  challengeId     String
+  challenge       Challenge @relation(fields: [challengeId], references: [id])
+  currentValue    Int      @default(0)
+  completed       Boolean  @default(false)
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }

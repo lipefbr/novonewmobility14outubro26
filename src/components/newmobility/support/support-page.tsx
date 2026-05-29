@@ -14,7 +14,8 @@ import { formatDate, getStatusLabel, getStatusVariant, formatDateTime } from '@/
 import {
   Headphones, Plus, MessageCircle, Clock, CheckCircle2, AlertCircle,
   Send, Filter, Mail, Phone, MessageSquare, HelpCircle, Zap, CreditCard,
-  Smartphone, ShoppingBag, ChevronRight, Sparkles, Search, Star, ThumbsUp
+  Smartphone, ShoppingBag, ChevronRight, Sparkles, Search, Star, ThumbsUp,
+  ChevronDown, Smile, Meh, Frown
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
@@ -27,6 +28,8 @@ const mockTickets = [
     category: 'financial',
     status: 'open',
     priority: 'high',
+    responseTime: '~2h',
+    satisfaction: null,
     messages: [
       { id: '1', message: 'Não consigo solicitar saque há 3 dias. O botão está desabilitado.', isAdmin: false, date: '2025-01-15T10:00:00Z' },
       { id: '2', message: 'Olá! Vamos verificar seu caso. Pode nos informar o valor que tentou sacar?', isAdmin: true, date: '2025-01-15T11:30:00Z' },
@@ -40,6 +43,8 @@ const mockTickets = [
     category: 'technical',
     status: 'in_progress',
     priority: 'normal',
+    responseTime: '~4h',
+    satisfaction: null,
     messages: [
       { id: '3', message: 'O app fecha sozinho quando tento abrir o mapa.', isAdmin: false, date: '2025-01-13T09:00:00Z' },
       { id: '4', message: 'Nossa equipe técnica está investigando. Qual modelo do seu celular?', isAdmin: true, date: '2025-01-13T14:00:00Z' },
@@ -54,6 +59,8 @@ const mockTickets = [
     category: 'support',
     status: 'resolved',
     priority: 'normal',
+    responseTime: '~1h',
+    satisfaction: 'happy',
     messages: [
       { id: '6', message: 'Como funciona o CashBack Residual?', isAdmin: false, date: '2025-01-10T08:00:00Z' },
       { id: '7', message: 'O CashBack Residual é gerado a partir das atividades da sua rede. Cada nível tem uma porcentagem diferente.', isAdmin: true, date: '2025-01-10T10:00:00Z' },
@@ -67,6 +74,8 @@ const mockTickets = [
     category: 'shopping',
     status: 'closed',
     priority: 'low',
+    responseTime: '~6h',
+    satisfaction: 'neutral',
     messages: [
       { id: '8', message: 'Tentei usar um voucher mas não foi aplicado o desconto.', isAdmin: false, date: '2025-01-08T12:00:00Z' },
     ],
@@ -87,9 +96,22 @@ const categoryLabels: Record<string, string> = {
 
 const priorityLabels: Record<string, string> = {
   low: 'Baixa',
-  normal: 'Normal',
+  normal: 'Média',
   high: 'Alta',
   urgent: 'Urgente',
+}
+
+const priorityDots: Record<string, { dot: string; bg: string; text: string }> = {
+  low: { dot: 'bg-emerald-500', bg: 'bg-emerald-100 dark:bg-emerald-950/30', text: 'text-emerald-700 dark:text-emerald-400' },
+  normal: { dot: 'bg-amber-500', bg: 'bg-amber-100 dark:bg-amber-950/30', text: 'text-amber-700 dark:text-amber-400' },
+  high: { dot: 'bg-red-500', bg: 'bg-red-100 dark:bg-red-950/30', text: 'text-red-700 dark:text-red-400' },
+  urgent: { dot: 'bg-red-600 animate-pulse', bg: 'bg-red-100 dark:bg-red-950/30', text: 'text-red-700 dark:text-red-400' },
+}
+
+const satisfactionEmojis: Record<string, { emoji: string; label: string; color: string }> = {
+  happy: { emoji: '😊', label: 'Satisfeito', color: 'text-emerald-500' },
+  neutral: { emoji: '😐', label: 'Neutro', color: 'text-amber-500' },
+  unhappy: { emoji: '😞', label: 'Insatisfeito', color: 'text-red-500' },
 }
 
 const statusIcons: Record<string, React.ElementType> = {
@@ -336,29 +358,40 @@ export function SupportPage() {
         ))}
       </div>
 
-      {/* Contact Options */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {[
-          { icon: MessageSquare, title: 'Chat Online', desc: 'Atendimento em tempo real', detail: 'Disponível 9h-18h', color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400', gradient: 'from-emerald-500 to-emerald-600' },
-          { icon: Mail, title: 'E-mail', desc: 'suporte@newmobility.com.br', detail: 'Resposta em até 24h', color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400', gradient: 'from-blue-500 to-blue-600' },
-          { icon: Phone, title: 'Telefone', desc: '0800 123 4567', detail: 'Seg-Sex 8h-20h', color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400', gradient: 'from-amber-500 to-amber-600' },
-        ].map((contact, i) => (
-          <motion.div key={contact.title} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.05 }}>
-            <Card className="shadow-sm hover:shadow-md transition-all cursor-pointer group overflow-hidden bg-card">
-              <div className={`h-1 bg-gradient-to-r ${contact.gradient}`} />
-              <CardContent className="p-4 flex items-start gap-3">
-                <div className={`p-2.5 rounded-lg ${contact.color} group-hover:scale-105 transition-transform`}>
-                  <contact.icon className="h-5 w-5" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-foreground text-sm">{contact.title}</h4>
-                  <p className="text-xs text-muted-foreground mt-0.5">{contact.desc}</p>
-                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5 font-medium">{contact.detail}</p>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
+      {/* Métodos de Contato */}
+      <div>
+        <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2">
+          <Headphones className="h-4 w-4 text-emerald-600" />
+          Métodos de Contato
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {[
+            { icon: MessageSquare, title: 'Chat Online', desc: 'Atendimento em tempo real', detail: 'Disponível 9h-18h', responseTime: '< 2 min', color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400', gradient: 'from-emerald-500 to-emerald-600', hoverBorder: 'hover:border-emerald-300 dark:hover:border-emerald-700' },
+            { icon: Mail, title: 'E-mail', desc: 'suporte@newmobility.com.br', detail: 'Resposta em até 24h', responseTime: '~4h', color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400', gradient: 'from-blue-500 to-blue-600', hoverBorder: 'hover:border-blue-300 dark:hover:border-blue-700' },
+            { icon: Phone, title: 'Telefone', desc: '0800 123 4567', detail: 'Seg-Sex 8h-20h', responseTime: '< 5 min', color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400', gradient: 'from-amber-500 to-amber-600', hoverBorder: 'hover:border-amber-300 dark:hover:border-amber-700' },
+          ].map((contact, i) => (
+            <motion.div key={contact.title} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.05 }} whileHover={{ y: -2 }}>
+              <Card className={`shadow-sm hover:shadow-lg transition-all cursor-pointer group overflow-hidden bg-card card-hover-lift border border-border ${contact.hoverBorder}`}>
+                <div className={`h-1.5 bg-gradient-to-r ${contact.gradient}`} />
+                <CardContent className="p-4 flex items-start gap-3">
+                  <div className={`p-2.5 rounded-lg ${contact.color} group-hover:scale-110 group-hover:rotate-3 transition-all duration-200`}>
+                    <contact.icon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-foreground text-sm">{contact.title}</h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">{contact.desc}</p>
+                    <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5 font-medium">{contact.detail}</p>
+                    {/* Response time indicator */}
+                    <div className="flex items-center gap-1 mt-1.5">
+                      <Clock className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-[10px] text-muted-foreground">Tempo médio: <span className="font-semibold text-foreground">{contact.responseTime}</span></span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
+        </div>
       </div>
 
       {/* FAQ with Category Tabs and Quick Help Search */}
@@ -398,20 +431,20 @@ export function SupportPage() {
             ))}
           </div>
 
-          <Accordion type="single" collapsible className="w-full">
+          <Accordion type="single" collapsible className="w-full accordion-smooth">
             {filteredFaq.map((item, i) => (
-              <AccordionItem key={i} value={`faq-${i}`} className="border-border">
-                <AccordionTrigger className="text-sm text-left hover:text-emerald-700 dark:hover:text-emerald-400 hover:no-underline py-3">
+              <AccordionItem key={i} value={`faq-${i}`} className="border-border group/item">
+                <AccordionTrigger className="text-sm text-left hover:text-emerald-700 dark:hover:text-emerald-400 hover:no-underline py-3 [&[data-state=open]>svg]:rotate-180 [&>svg]:transition-transform duration-200">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
                     {item.question}
                   </div>
                 </AccordionTrigger>
-                <AccordionContent className="text-sm text-muted-foreground pb-4">
+                <AccordionContent className="text-sm text-muted-foreground pb-4 overflow-hidden">
                   <motion.div
-                    initial={{ opacity: 0, y: -5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.2 }}
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    transition={{ duration: 0.3, ease: 'easeInOut' }}
                     className="pl-5.5 border-l-2 border-emerald-200 dark:border-emerald-800 ml-1.5"
                   >
                     {item.answer}
@@ -464,6 +497,8 @@ export function SupportPage() {
                 filtered.map((ticket, i) => {
                   const StatusIcon = statusIcons[ticket.status] || Clock
                   const statusConfig = statusBadgeConfig[ticket.status]
+                  const priorityConfig = priorityDots[ticket.priority] || priorityDots.normal
+                  const satisfactionInfo = ticket.satisfaction ? satisfactionEmojis[ticket.satisfaction] : null
                   return (
                     <motion.button
                       key={ticket.id}
@@ -476,10 +511,16 @@ export function SupportPage() {
                       }`}
                     >
                       <div className="flex items-start gap-2">
-                        {/* Status dot */}
-                        <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${statusConfig.dot} ${ticket.status === 'open' ? 'animate-pulse' : ''}`} />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-foreground truncate">{ticket.subject}</p>
+                        {/* Priority color dot */}
+                        <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${priorityConfig.dot} ${ticket.priority === 'urgent' ? 'animate-pulse' : ''}`} title={`Prioridade: ${priorityLabels[ticket.priority] || ticket.priority}`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-foreground truncate">{ticket.subject}</p>
+                            {/* Satisfaction emoji for closed/resolved tickets */}
+                            {satisfactionInfo && (
+                              <span className="text-sm shrink-0" title={satisfactionInfo.label}>{satisfactionInfo.emoji}</span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <Badge variant="outline" className="text-[10px]">
                               {categoryLabels[ticket.category]}
@@ -487,10 +528,24 @@ export function SupportPage() {
                             <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${statusConfig.bg} ${statusConfig.text}`}>
                               {statusConfig.label}
                             </span>
+                            {/* Priority color coded badge */}
+                            <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${priorityConfig.bg} ${priorityConfig.text}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${priorityConfig.dot}`} />
+                              {priorityLabels[ticket.priority] || ticket.priority}
+                            </span>
                           </div>
-                          <p className="text-[10px] text-muted-foreground mt-1">
-                            Atualizado: {ticket.updatedAt ? formatDateTime(ticket.updatedAt) : formatDate(ticket.createdAt)}
-                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <p className="text-[10px] text-muted-foreground">
+                              {ticket.updatedAt ? formatDateTime(ticket.updatedAt) : formatDate(ticket.createdAt)}
+                            </p>
+                            {/* Response time indicator */}
+                            {ticket.responseTime && (
+                              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                                <Clock className="h-2.5 w-2.5" />
+                                Resposta média: <span className="font-semibold text-foreground">{ticket.responseTime}</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </motion.button>
@@ -518,7 +573,17 @@ export function SupportPage() {
                   <Badge variant="outline" className="text-[10px]">
                     {categoryLabels[activeTicket.category]}
                   </Badge>
-                  <span>Prioridade: {priorityLabels[activeTicket.priority]}</span>
+                  {/* Priority color coding */}
+                  <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                    activeTicket.priority === 'high' || activeTicket.priority === 'urgent'
+                      ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                      : activeTicket.priority === 'low'
+                      ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                      : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                  }`}>
+                    <AlertCircle className="h-3 w-3" />
+                    {priorityLabels[activeTicket.priority]}
+                  </span>
                   <span>·</span>
                   <span>{formatDate(activeTicket.createdAt)}</span>
                 </div>
@@ -568,7 +633,18 @@ export function SupportPage() {
 
                 {/* Satisfaction Rating for resolved/closed tickets */}
                 {(activeTicket.status === 'resolved' || activeTicket.status === 'closed') && (
-                  <SatisfactionRating ticketId={activeTicket.id} />
+                  <div className="mt-3">
+                    {/* Show existing satisfaction if present */}
+                    {activeTicket.satisfaction && satisfactionEmojis[activeTicket.satisfaction] && (
+                      <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg mb-2">
+                        <span className="text-lg">{satisfactionEmojis[activeTicket.satisfaction].emoji}</span>
+                        <span className={`text-xs font-medium ${satisfactionEmojis[activeTicket.satisfaction].color}`}>
+                          {satisfactionEmojis[activeTicket.satisfaction].label}
+                        </span>
+                      </div>
+                    )}
+                    <SatisfactionRating ticketId={activeTicket.id} />
+                  </div>
                 )}
               </CardContent>
             </Card>

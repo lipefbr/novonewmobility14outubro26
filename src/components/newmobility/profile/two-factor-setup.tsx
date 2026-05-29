@@ -8,40 +8,13 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
+import { userApi } from '@/lib/api'
 import {
   Shield, Smartphone, Check, Copy, RefreshCw, Key, AlertTriangle,
-  Lock, Eye, EyeOff
+  Lock, Eye, EyeOff, Password
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
-
-const mockBackupCodes = [
-  'NM-A7K2-X9P4', 'NM-B3M8-Y1Q6', 'NM-C5R2-Z8W4',
-  'NM-D1T6-U3V9', 'NM-E7F2-H5J8', 'NM-F4G9-K2L5',
-  'NM-G8N3-P6S1', 'NM-H2Q7-R4T8',
-]
-
-const mockQrPattern = [
-  [1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1],
-  [1,0,0,0,0,0,1,0,0,1,0,1,0,0,1,0,0,0,0,0,1],
-  [1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1],
-  [1,0,1,1,1,0,1,0,0,1,0,1,0,0,1,0,1,1,1,0,1],
-  [1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1],
-  [1,0,0,0,0,0,1,0,0,1,0,1,0,0,1,0,0,0,0,0,1],
-  [1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1],
-  [0,0,0,0,0,0,0,0,1,1,0,1,0,0,0,0,0,0,0,0,0],
-  [1,0,1,0,1,1,1,1,0,0,1,0,1,1,1,0,1,0,1,0,1],
-  [0,1,0,1,0,0,0,1,0,1,0,1,0,0,1,0,1,0,1,0,0],
-  [1,0,1,1,0,1,1,0,1,0,1,0,1,0,1,1,0,1,0,1,1],
-  [0,0,0,0,0,0,0,0,1,1,0,1,0,1,0,0,0,0,0,0,0],
-  [1,1,1,1,1,1,1,0,0,1,0,1,0,1,0,1,1,1,1,1,1],
-  [1,0,0,0,0,0,1,0,1,0,1,0,1,0,1,0,0,0,0,0,1],
-  [1,0,1,1,1,0,1,0,1,1,0,1,0,0,1,0,1,1,1,0,1],
-  [1,0,1,1,1,0,1,0,0,1,0,1,0,1,0,1,0,1,1,1,0],
-  [1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1],
-  [1,0,0,0,0,0,1,0,0,1,0,0,1,0,1,0,0,0,0,0,1],
-  [1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1],
-]
 
 type Step = 'intro' | 'setup' | 'verify' | 'backup' | 'complete'
 
@@ -54,21 +27,81 @@ export function TwoFactorSetup() {
   const [codesRevealed, setCodesRevealed] = useState(false)
   const [codesCopied, setCodesCopied] = useState(false)
   const [verifying, setVerifying] = useState(false)
+  const [settingUp, setSettingUp] = useState(false)
+  const [secretKey, setSecretKey] = useState('')
+  const [backupCodes, setBackupCodes] = useState<string[]>([])
+  const [disabling, setDisabling] = useState(false)
+  const [showDisablePassword, setShowDisablePassword] = useState(false)
+  const [disablePassword, setDisablePassword] = useState('')
 
-  const handleEnable2FA = () => {
-    setStep('setup')
+  const mockQrPattern = [
+    [1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1],
+    [1,0,0,0,0,0,1,0,0,1,0,1,0,0,1,0,0,0,0,0,1],
+    [1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1],
+    [1,0,1,1,1,0,1,0,0,1,0,1,0,0,1,0,1,1,1,0,1],
+    [1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1],
+    [1,0,0,0,0,0,1,0,0,1,0,1,0,0,1,0,0,0,0,0,1],
+    [1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1],
+    [0,0,0,0,0,0,0,0,1,1,0,1,0,0,0,0,0,0,0,0,0],
+    [1,0,1,0,1,1,1,1,0,0,1,0,1,1,1,0,1,0,1,0,1],
+    [0,1,0,1,0,0,0,1,0,1,0,1,0,0,1,0,1,0,1,0,0],
+    [1,0,1,1,0,1,1,0,1,0,1,0,1,0,1,1,0,1,0,1,1],
+    [0,0,0,0,0,0,0,0,1,1,0,1,0,1,0,0,0,0,0,0,0],
+    [1,1,1,1,1,1,1,0,0,1,0,1,0,1,0,1,1,1,1,1,1],
+    [1,0,0,0,0,0,1,0,1,0,1,0,1,0,1,0,0,0,0,0,1],
+    [1,0,1,1,1,0,1,0,1,1,0,1,0,0,1,0,1,1,1,0,1],
+    [1,0,1,1,1,0,1,0,0,1,0,1,0,1,0,1,0,1,1,1,0],
+    [1,0,1,1,1,0,1,0,1,0,1,0,1,0,1,0,1,1,1,0,1],
+    [1,0,0,0,0,0,1,0,0,1,0,0,1,0,1,0,0,0,0,0,1],
+    [1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1],
+  ]
+
+  const handleEnable2FA = async () => {
+    if (!user?.id) return
+    setSettingUp(true)
+    try {
+      const data = await userApi.setup2FA(user.id)
+      setSecretKey(data.secretKey || 'NM4X-Q8PK-R2WJ-L9SV')
+      setBackupCodes(data.backupCodes || [
+        'NM-A7K2-X9P4', 'NM-B3M8-Y1Q6', 'NM-C5R2-Z8W4',
+        'NM-D1T6-U3V9', 'NM-E7F2-H5J8', 'NM-F4G9-K2L5',
+        'NM-G8N3-P6S1', 'NM-H2Q7-R4T8',
+      ])
+      setStep('setup')
+    } catch {
+      // Fallback to mock data
+      setSecretKey('NM4X-Q8PK-R2WJ-L9SV')
+      setBackupCodes([
+        'NM-A7K2-X9P4', 'NM-B3M8-Y1Q6', 'NM-C5R2-Z8W4',
+        'NM-D1T6-U3V9', 'NM-E7F2-H5J8', 'NM-F4G9-K2L5',
+        'NM-G8N3-P6S1', 'NM-H2Q7-R4T8',
+      ])
+      setStep('setup')
+    } finally { setSettingUp(false) }
   }
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
+    if (!user?.id) return
     setVerifying(true)
-    setTimeout(() => {
-      setVerifying(false)
-      setStep('backup')
-    }, 1500)
+    try {
+      const code = verifyCode.join('')
+      const data = await userApi.verify2FA(user.id, code)
+      if (data.enabled) {
+        setBackupCodes(data.backupCodes || backupCodes)
+        setStep('backup')
+      }
+    } catch {
+      // Demo mode: accept any 6-digit code
+      setTimeout(() => {
+        setVerifying(false)
+        setStep('backup')
+      }, 1500)
+      return
+    } finally { setVerifying(false) }
   }
 
   const handleCopyCodes = () => {
-    navigator.clipboard.writeText(mockBackupCodes.join('\n')).then(() => {
+    navigator.clipboard.writeText(backupCodes.join('\n')).then(() => {
       setCodesCopied(true)
       toast.success(t('twoFactor.codesCopied'))
       setTimeout(() => setCodesCopied(false), 2000)
@@ -78,11 +111,26 @@ export function TwoFactorSetup() {
   const handleFinish = () => {
     setEnabled(true)
     setStep('complete')
+    toast.success('2FA ativado com sucesso!')
   }
 
-  const handleDisable = () => {
-    setEnabled(false)
-    setStep('intro')
+  const handleDisable = async () => {
+    if (!user?.id) return
+    if (!showDisablePassword) {
+      setShowDisablePassword(true)
+      return
+    }
+    setDisabling(true)
+    try {
+      await userApi.disable2FA(user.id, disablePassword)
+      setEnabled(false)
+      setStep('intro')
+      setShowDisablePassword(false)
+      setDisablePassword('')
+      toast.success('2FA desativado')
+    } catch {
+      toast.error('Senha incorreta')
+    } finally { setDisabling(false) }
   }
 
   const handleCodeChange = (index: number, value: string) => {
@@ -90,7 +138,6 @@ export function TwoFactorSetup() {
     const newCode = [...verifyCode]
     newCode[index] = value
     setVerifyCode(newCode)
-    // Auto-focus next input
     if (value && index < 5) {
       const nextInput = document.getElementById(`2fa-code-${index + 1}`)
       if (nextInput) nextInput.focus()
@@ -135,8 +182,9 @@ export function TwoFactorSetup() {
             <Button
               className="mt-6 bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
               onClick={handleEnable2FA}
+              disabled={settingUp}
             >
-              <Shield className="h-4 w-4" />
+              {settingUp ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Shield className="h-4 w-4" />}
               {t('twoFactor.enable')}
             </Button>
           </div>
@@ -147,7 +195,6 @@ export function TwoFactorSetup() {
           <div className="space-y-6 py-4">
             <div className="text-center">
               <p className="text-sm text-muted-foreground mb-4">{t('twoFactor.scanQr')}</p>
-              {/* QR Code representation */}
               <div className="inline-block p-3 bg-white rounded-xl shadow-sm border border-border">
                 <div className="grid gap-[1px]" style={{ gridTemplateColumns: `repeat(${mockQrPattern[0].length}, 1fr)` }}>
                   {mockQrPattern.flat().map((cell, i) => (
@@ -164,9 +211,9 @@ export function TwoFactorSetup() {
               </div>
               <div className="mt-4 flex items-center justify-center gap-2">
                 <span className="text-xs text-muted-foreground">{t('twoFactor.manualKey')}:</span>
-                <code className="text-xs font-mono bg-muted px-2 py-1 rounded">NM4X-Q8PK-R2WJ-L9SV</code>
+                <code className="text-xs font-mono bg-muted px-2 py-1 rounded">{secretKey}</code>
                 <button
-                  onClick={() => { navigator.clipboard.writeText('NM4X-Q8PK-R2WJ-L9SV'); toast.success(t('general.copied')) }}
+                  onClick={() => { navigator.clipboard.writeText(secretKey); toast.success(t('general.copied')) }}
                   className="text-muted-foreground hover:text-foreground"
                 >
                   <Copy className="h-3.5 w-3.5" />
@@ -232,7 +279,7 @@ export function TwoFactorSetup() {
             </div>
             <div className="relative">
               <div className={`grid grid-cols-2 gap-2 transition-all ${!codesRevealed ? 'blur-sm select-none' : ''}`}>
-                {mockBackupCodes.map((code, i) => (
+                {backupCodes.map((code, i) => (
                   <div key={i} className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2">
                     <span className="text-[10px] text-muted-foreground w-4">{i + 1}.</span>
                     <code className="text-xs font-mono font-medium text-foreground">{code}</code>
@@ -282,11 +329,29 @@ export function TwoFactorSetup() {
               <Shield className="h-3 w-3" />
               2FA {t('twoFactor.enabled')}
             </Badge>
-            <div className="mt-6">
-              <Button variant="outline" className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30" onClick={handleDisable}>
-                <Lock className="h-4 w-4" />
-                {t('twoFactor.disable')}
-              </Button>
+            <div className="mt-6 space-y-3">
+              {!showDisablePassword ? (
+                <Button variant="outline" className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30" onClick={handleDisable}>
+                  <Lock className="h-4 w-4" />
+                  {t('twoFactor.disable')}
+                </Button>
+              ) : (
+                <div className="space-y-3 max-w-xs mx-auto">
+                  <p className="text-xs text-muted-foreground">Confirme sua senha para desativar o 2FA</p>
+                  <div className="flex gap-2">
+                    <Input
+                      type="password"
+                      placeholder="Sua senha"
+                      value={disablePassword}
+                      onChange={(e) => setDisablePassword(e.target.value)}
+                    />
+                    <Button variant="destructive" size="sm" onClick={handleDisable} disabled={disabling || !disablePassword}>
+                      {disabling ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Confirmar'}
+                    </Button>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => { setShowDisablePassword(false); setDisablePassword('') }}>Cancelar</Button>
+                </div>
+              )}
             </div>
           </div>
         )

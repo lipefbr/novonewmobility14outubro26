@@ -16,10 +16,14 @@ import {
   User, Building2, Lock, Save, Check, Camera, Shield, Calendar,
   CreditCard, Users, DollarSign, Copy, Check as CheckIcon, ArrowUpRight, Link2, Award,
   Verified, Mail, Phone, MapPin, Pencil, Eye, EyeOff, Smartphone, Globe, Key,
-  ShieldCheck, ShieldAlert, ShieldX, Chrome, Apple
+  ShieldCheck, ShieldAlert, ShieldX, Chrome, Apple, Send, FileCheck, Hash,
+  AlertTriangle, HelpCircle,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
+import { TwoFactorSetup } from './two-factor-setup'
+import { userApi } from '@/lib/api'
+import { toast as sonnerToast } from 'sonner'
 
 // Inline Editable Field component
 function InlineField({ label, value, onChange, icon: Icon, type = 'text', disabled = false }: {
@@ -266,22 +270,100 @@ export function ProfilePage() {
   }
 
   const memberSince = user?.createdAt ? timeSince(user.createdAt) : '0 dias'
+  const memberSinceDate = user?.createdAt ? formatDate(user.createdAt) : ''
   const totalEarned = (user?.balanceWithdrawal || 0) + (user?.balanceMobility || 0) +
     (user?.balanceShopping || 0) + (user?.balanceFood || 0) + (user?.balancePharmacy || 0) +
     (user?.balanceGratification || 0)
+
+  // Verification status
+  const verificationItems = [
+    { label: 'E-mail', verified: true, icon: Mail },
+    { label: 'Telefone', verified: true, icon: Phone },
+    { label: 'Documento', verified: false, icon: Hash },
+  ]
+  const verifiedCount = verificationItems.filter(v => v.verified).length
+  const profileCompletion = Math.round((verifiedCount / verificationItems.length) * 100)
+
+  // Security score for inline indicator
+  const securityChecks = [
+    { label: 'Senha forte', passed: true },
+    { label: '2FA ativado', passed: false },
+    { label: 'E-mail verificado', passed: true },
+    { label: 'Telefone verificado', passed: true },
+  ]
+  const securityScore = securityChecks.filter(c => c.passed).length
+  const securityTotal = securityChecks.length
+  const securityPercentage = (securityScore / securityTotal) * 100
+  const securityLevel = securityPercentage >= 75 ? 'secure' : securityPercentage >= 50 ? 'partial' : 'insecure'
+  const securityColor = securityLevel === 'secure' ? 'text-emerald-500' : securityLevel === 'partial' ? 'text-amber-500' : 'text-red-500'
+  const securityBg = securityLevel === 'secure' ? 'bg-emerald-100 dark:bg-emerald-950/30' : securityLevel === 'partial' ? 'bg-amber-100 dark:bg-amber-950/30' : 'bg-red-100 dark:bg-red-950/30'
+  const SecurityIcon = securityLevel === 'secure' ? ShieldCheck : securityLevel === 'partial' ? ShieldAlert : ShieldX
 
   const tabs = [
     { value: 'personal', label: 'Informações Pessoais', shortLabel: 'Pessoal', icon: User },
     { value: 'bank', label: 'Dados Bancários', shortLabel: 'Bancário', icon: Building2 },
     { value: 'password', label: 'Alterar Senha', shortLabel: 'Senha', icon: Lock },
+    { value: 'security', label: 'Segurança', shortLabel: 'Segurança', icon: Shield },
   ]
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h2 className="text-xl font-bold text-foreground">Dados Pessoais</h2>
-        <p className="text-sm text-muted-foreground">Gerencie suas informações pessoais e configurações</p>
+      {/* Header with Profile Completion */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-foreground">Dados Pessoais</h2>
+            <p className="text-sm text-muted-foreground">Gerencie suas informações pessoais e configurações</p>
+          </div>
+          {/* Inline Security Score Indicator */}
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${securityBg} border border-border`}>
+            <SecurityIcon className={`h-4 w-4 ${securityColor}`} />
+            <span className={`text-xs font-semibold ${securityColor}`}>{securityScore}/{securityTotal}</span>
+            <span className="text-[10px] text-muted-foreground">Segurança</span>
+          </div>
+        </div>
+        {/* Profile Completion Progress Bar */}
+        <div className="bg-muted/50 rounded-lg p-3 border border-border">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Award className="h-4 w-4 text-emerald-600" />
+              <span className="text-sm font-medium text-foreground">Perfil {profileCompletion}% completo</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {verificationItems.map((item) => {
+                const VIcon = item.icon
+                return (
+                  <span key={item.label} className="flex items-center gap-1 text-[10px]">
+                    <VIcon className={`h-3 w-3 ${item.verified ? 'text-emerald-500' : 'text-amber-500'}`} />
+                    {item.verified ? (
+                      <Check className="h-3 w-3 text-emerald-500" />
+                    ) : (
+                      <HelpCircle className="h-3 w-3 text-amber-500" />
+                    )}
+                  </span>
+                )
+              })}
+            </div>
+          </div>
+          <div className="h-2 bg-muted rounded-full overflow-hidden">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${profileCompletion}%` }}
+              transition={{ duration: 1, ease: 'easeOut' }}
+              className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full relative"
+            >
+              <div className="absolute inset-0 animate-shimmer" />
+            </motion.div>
+          </div>
+          <div className="flex items-center gap-3 mt-2">
+            {verificationItems.map((item) => (
+              <div key={item.label} className={`verification-badge ${item.verified ? 'verified' : 'pending'}`}>
+                {item.verified ? <Check className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+                {item.label}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Profile Overview Card with enhanced cover */}
@@ -315,23 +397,37 @@ export function ProfilePage() {
               <div className="flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="text-lg font-bold text-foreground">{user?.name}</h3>
-                  <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 gap-1">
-                    <Verified className="h-3 w-3" />
-                    Verificado
-                  </Badge>
+                  {/* Verification status badges next to name */}
+                  <span className="inline-flex items-center gap-0.5 text-emerald-500" title="E-mail verificado">
+                    <Mail className="h-3.5 w-3.5" /><Check className="h-2.5 w-2.5" />
+                  </span>
+                  <span className="inline-flex items-center gap-0.5 text-emerald-500" title="Telefone verificado">
+                    <Phone className="h-3.5 w-3.5" /><Check className="h-2.5 w-2.5" />
+                  </span>
+                  <span className="inline-flex items-center gap-0.5 text-amber-500" title="Documento não verificado">
+                    <Hash className="h-3.5 w-3.5" /><HelpCircle className="h-2.5 w-2.5" />
+                  </span>
                   <Badge className={user?.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}>
                     <Shield className="h-3 w-3 mr-1" />
                     {user?.isActive ? 'Ativo' : 'Inativo'}
                   </Badge>
                 </div>
-                <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Calendar className="h-3.5 w-3.5" />
-                    Membro há {memberSince}
+                <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground flex-wrap">
+                  {/* Membro desde badge with nice format */}
+                  <span className="inline-flex items-center gap-1.5 bg-muted/60 px-2.5 py-1 rounded-full border border-border">
+                    <Calendar className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="text-xs font-medium">Membro desde</span>
+                    <span className="text-xs font-bold text-foreground">{memberSinceDate}</span>
+                    <span className="text-[10px] text-muted-foreground">({memberSince})</span>
                   </span>
                   <span className="flex items-center gap-1">
                     <CreditCard className="h-3.5 w-3.5" />
                     {getPlanName(user?.plan || 'free')}
+                  </span>
+                  {/* Inline security shield indicator */}
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full ${securityBg}`}>
+                    <SecurityIcon className={`h-3.5 w-3.5 ${securityColor}`} />
+                    <span className={`text-[10px] font-semibold ${securityColor}`}>Segurança {securityScore}/{securityTotal}</span>
                   </span>
                 </div>
               </div>
@@ -368,6 +464,35 @@ export function ProfilePage() {
               </div>
             </div>
 
+            {/* Profile Completion Progress Bar (moved to top, kept here as summary) */}
+            <div className="mt-4 bg-muted/50 rounded-lg p-3 border border-border">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-foreground">Completude do Perfil</span>
+                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{profileCompletion}%</span>
+              </div>
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${profileCompletion}%` }}
+                  transition={{ duration: 1, ease: 'easeOut' }}
+                  className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full relative"
+                >
+                  <div className="absolute inset-0 animate-shimmer" />
+                </motion.div>
+              </div>
+              <div className="flex items-center gap-4 mt-2">
+                <div className="verification-badge verified">
+                  <Check className="h-3 w-3" /> E-mail
+                </div>
+                <div className="verification-badge verified">
+                  <Check className="h-3 w-3" /> Telefone
+                </div>
+                <div className="verification-badge pending">
+                  <HelpCircle className="h-3 w-3" /> Documento
+                </div>
+              </div>
+            </div>
+
             <div className="mt-4 bg-muted/50 rounded-lg p-3 flex items-center justify-between border border-border">
               <div className="flex items-center gap-2">
                 <Link2 className="h-4 w-4 text-emerald-600" />
@@ -399,7 +524,7 @@ export function ProfilePage() {
                 <TabsTrigger
                   key={tab.value}
                   value={tab.value}
-                  className="gap-1.5 data-[state=active]:bg-transparent data-[state=active]:text-emerald-600 data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-600 px-4 py-2.5 text-sm font-medium text-muted-foreground data-[state=active]:font-semibold flex-1 sm:flex-none transition-all"
+                  className="gap-1.5 data-[state=active]:bg-transparent data-[state=active]:text-emerald-600 data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-600 px-4 py-2.5 text-sm font-medium text-muted-foreground data-[state=active]:font-semibold flex-1 sm:flex-none transition-all hover:text-emerald-600 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 hover:scale-[1.02] active:scale-[0.98]"
                 >
                   <Icon className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">{tab.label}</span>
@@ -553,6 +678,111 @@ export function ProfilePage() {
           </motion.div>
         </TabsContent>
       </Tabs>
+
+      {/* Security Tab Content - shown when security tab is active */}
+      {activeTab === 'security' && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+          {/* Profile Completion */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base font-bold flex items-center gap-2">
+                <FileCheck className="h-4 w-4 text-emerald-600" />
+                Verificação de Conta
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Completion progress */}
+              <div className="flex items-center gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium text-foreground">Progresso de Verificação</span>
+                    <span className="text-sm font-bold text-emerald-600">75%</span>
+                  </div>
+                  <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: '75%' }}
+                      className="h-full bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full"
+                      transition={{ duration: 1 }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Verification items */}
+              <div className="space-y-3">
+                {/* Email Verification */}
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-950/30">
+                      <Mail className="h-4 w-4 text-emerald-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Verificação de E-mail</p>
+                      <p className="text-[10px] text-muted-foreground">{user?.email}</p>
+                    </div>
+                  </div>
+                  <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 gap-1">
+                    <Check className="h-3 w-3" /> Verificado
+                  </Badge>
+                </div>
+
+                {/* Phone Verification */}
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-950/30">
+                      <Phone className="h-4 w-4 text-emerald-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Verificação de Telefone</p>
+                      <p className="text-[10px] text-muted-foreground">{user?.phone || 'Não informado'}</p>
+                    </div>
+                  </div>
+                  <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 gap-1">
+                    <Check className="h-3 w-3" /> Verificado
+                  </Badge>
+                </div>
+
+                {/* CPF/Document Verification */}
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-950/30">
+                      <Hash className="h-4 w-4 text-amber-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Verificação de CPF</p>
+                      <p className="text-[10px] text-muted-foreground">{user?.cpf ? `${user.cpf.substring(0, 3)}.***.***-**` : 'Não informado'}</p>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => sonnerToast.info('Verificação de CPF simulada - em produção enviaria para análise')}>
+                    <Send className="h-3 w-3" /> Verificar
+                  </Button>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" className="gap-1" onClick={async () => {
+                  try { await userApi.verifyEmail(user?.id || ''); sonnerToast.success('Código de verificação enviado para seu e-mail!') } catch { sonnerToast.error('Erro ao enviar verificação') }
+                }}>
+                  <Mail className="h-3.5 w-3.5" /> Reenviar verificação e-mail
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1" onClick={async () => {
+                  try { await userApi.verifyPhone(user?.id || ''); sonnerToast.success('Código SMS enviado para seu telefone!') } catch { sonnerToast.error('Erro ao enviar verificação') }
+                }}>
+                  <Phone className="h-3.5 w-3.5" /> Reenviar SMS
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Two-Factor Authentication */}
+          <TwoFactorSetup />
+        </motion.div>
+      )}
     </div>
   )
 }

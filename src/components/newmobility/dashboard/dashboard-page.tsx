@@ -41,6 +41,9 @@ import {
   Trophy,
   ArrowRight,
   Play,
+  Shield,
+  Globe,
+  Lock,
 } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { DashboardSkeleton } from '../ui/loading-skeletons'
@@ -147,12 +150,12 @@ export function DashboardPage() {
     newReferrals: Math.max(1, Math.floor((dashboardData?.directReferralCount ?? dashboardData?.directReferrals ?? 4) * 0.3)),
   }
 
-  // Quick stats for mini-bar
+  // Quick stats for mini-bar with count-up values
   const quickStats = [
-    { label: 'Ganhos Hoje', value: 'R$ 127,50', icon: DollarSign, color: 'text-emerald-600 dark:text-emerald-400' },
-    { label: 'Novos Indicados', value: '2', icon: UserPlus, color: 'text-blue-600 dark:text-blue-400' },
-    { label: 'CashBack Pendente', value: 'R$ 890,00', icon: Clock, color: 'text-amber-600 dark:text-amber-400' },
-    { label: 'Pontos Hoje', value: '+5', icon: Star, color: 'text-purple-600 dark:text-purple-400' },
+    { label: 'Ganhos Hoje', value: 'R$ 127,50', rawValue: 12750, icon: DollarSign, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+    { label: 'Novos Indicados', value: '2', rawValue: 2, icon: UserPlus, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-950/30' },
+    { label: 'CashBack Pendente', value: 'R$ 890,00', rawValue: 89000, icon: Clock, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/30' },
+    { label: 'Pontos Hoje', value: '+5', rawValue: 5, icon: Star, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-950/30' },
   ]
 
   // Activity timeline with more detail
@@ -182,6 +185,9 @@ export function DashboardPage() {
     <div className="space-y-6">
       {/* Announcement Banner */}
       <AnnouncementBanner />
+
+      {/* Visual separator */}
+      <div className="border-b border-emerald-200/50 dark:border-emerald-800/30" />
 
       {/* Greeting Card based on time of day */}
       <motion.div
@@ -217,7 +223,7 @@ export function DashboardPage() {
                     </Badge>
                   </div>
                 </div>
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 gradient-border rounded-xl p-3">
                   <div className="flex items-center gap-2 bg-white/15 backdrop-blur-sm rounded-lg px-3 py-2">
                     <Link2 className="h-4 w-4 text-emerald-200 shrink-0" />
                     <span className="text-sm text-white truncate max-w-[200px] md:max-w-[260px]">
@@ -267,12 +273,12 @@ export function DashboardPage() {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.05 + i * 0.03, duration: 0.2 }}
-                className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 shadow-sm"
+                className={`flex items-center gap-2 ${stat.bg} border border-border rounded-lg px-3 py-2 shadow-sm card-hover`}
               >
                 <Icon className={`h-4 w-4 shrink-0 ${stat.color}`} />
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground truncate">{stat.label}</p>
-                  <p className="text-sm font-bold text-foreground animate-pulse-soft">{stat.value}</p>
+                  <p className="text-sm font-bold text-foreground">{stat.value}</p>
                 </div>
               </motion.div>
             )
@@ -280,12 +286,22 @@ export function DashboardPage() {
         </div>
       </motion.div>
 
+      {/* Visual separator */}
+      <div className="border-b border-emerald-200/50 dark:border-emerald-800/30" />
+
       {/* Quick Actions */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1, duration: 0.3 }}
       >
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+            <Zap className="h-4 w-4 text-emerald-600" />
+            Ações Rápidas
+            <span className="flex-1 h-px bg-gradient-to-r from-emerald-400/60 to-transparent ml-2" />
+          </h3>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {quickActions.map((action, i) => {
             const Icon = action.icon
@@ -296,10 +312,15 @@ export function DashboardPage() {
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.1 + i * 0.05, duration: 0.2 }}
                 onClick={() => setActivePage(action.page)}
-                className="group relative overflow-hidden rounded-xl p-4 text-left transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                className="group relative overflow-hidden rounded-xl p-4 text-left transition-all duration-200 hover:scale-[1.02] active:scale-[0.97] hover:shadow-lg"
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
               >
-                <div className={`absolute inset-0 bg-gradient-to-br ${action.color} opacity-90`} />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                <div className={`absolute inset-0 bg-gradient-to-br ${action.color} opacity-90 group-hover:opacity-100 transition-opacity duration-200`} />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors duration-200" />
+                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <div className="absolute inset-0 animate-shimmer" />
+                </div>
                 <div className="relative">
                   <div className="p-2 rounded-lg bg-white/20 w-fit mb-2">
                     <Icon className="h-5 w-5 text-white" />
@@ -312,8 +333,14 @@ export function DashboardPage() {
         </div>
       </motion.div>
 
+      {/* Visual separator */}
+      <div className="border-b border-emerald-200/50 dark:border-emerald-800/30" />
+
       {/* Stats Cards */}
       <StatsCards data={dashboardData} />
+
+      {/* Section Separator with visual detail */}
+      <div className="section-separator" />
 
       {/* Data Comparison Widget */}
       <ComparisonWidget />
@@ -326,7 +353,7 @@ export function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.3 }}
         >
-          <Card className="shadow-sm h-full bg-card">
+          <Card className="shadow-sm h-full bg-card card-hover-lift">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
                 <Activity className="h-5 w-5 text-emerald-600" />
@@ -361,7 +388,7 @@ export function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25, duration: 0.3 }}
         >
-          <Card className="shadow-sm h-full bg-card">
+          <Card className="shadow-sm h-full bg-card card-hover-lift">
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
                 <TrendingUp className="h-5 w-5 text-emerald-600" />
@@ -456,10 +483,17 @@ export function DashboardPage() {
         </motion.div>
       </div>
 
+      {/* Visual separator */}
+      <div className="border-b border-emerald-200/50 dark:border-emerald-800/30" />
+
       {/* Financial Cards */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-bold text-foreground">{t('dashboard.financial')}</h3>
+          <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
+            <DollarSign className="h-5 w-5 text-emerald-600" />
+            {t('dashboard.financial')}
+            <span className="flex-1 h-px bg-gradient-to-r from-emerald-400/60 to-transparent ml-2" />
+          </h3>
           <Button
             variant="ghost"
             size="sm"
@@ -473,6 +507,12 @@ export function DashboardPage() {
         <FinancialCards data={dashboardData} />
       </div>
 
+      {/* Section Separator with visual detail */}
+      <div className="section-separator" />
+
+      {/* Visual separator */}
+      <div className="border-b border-emerald-200/50 dark:border-emerald-800/30" />
+
       {/* Activity Feed + App Download */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         <ActivityFeed />
@@ -483,11 +523,12 @@ export function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.3 }}
         >
-          <Card className="shadow-sm h-full bg-card">
+          <Card className="shadow-sm h-full bg-card card-hover-lift">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
                 <Smartphone className="h-5 w-5 text-emerald-600" />
                 {t('dashboard.download.title')}
+                <span className="flex-1 h-px bg-gradient-to-r from-emerald-400/60 to-transparent ml-2" />
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -529,6 +570,21 @@ export function DashboardPage() {
               <div className="mt-3 flex items-center justify-center gap-2 bg-muted/50 rounded-lg p-2.5">
                 <Play className="h-4 w-4 text-emerald-600" />
                 <span className="text-[10px] text-muted-foreground font-medium">Disponível na Google Play e App Store</span>
+              </div>
+              {/* Trust Badges */}
+              <div className="mt-3 flex items-center justify-center gap-4">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Lock className="h-3.5 w-3.5 text-emerald-600" />
+                  <span className="text-[10px] font-medium">Dados Seguros</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Globe className="h-3.5 w-3.5 text-emerald-600" />
+                  <span className="text-[10px] font-medium">SSL</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Users className="h-3.5 w-3.5 text-emerald-600" />
+                  <span className="text-[10px] font-medium">+10k</span>
+                </div>
               </div>
             </CardContent>
           </Card>

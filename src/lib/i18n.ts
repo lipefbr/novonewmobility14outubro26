@@ -361,6 +361,13 @@ export const translations: Record<Language, Record<string, string>> = {
     'feedback.placeholder': 'Conte-nos mais... (opcional)',
     'feedback.submit': 'Enviar',
     'feedback.thankYou': 'Obrigado pelo seu feedback!',
+
+    // New pages
+    'sidebar.admin': 'Administração',
+    'sidebar.reports': 'Relatórios',
+    'sidebar.gamification': 'Gamificação',
+    'sidebar.simulator': 'Simulador',
+    'sidebar.group.system': 'Sistema',
   },
   en: {
     'sidebar.dashboard': 'Dashboard Home',
@@ -691,6 +698,13 @@ export const translations: Record<Language, Record<string, string>> = {
     'feedback.placeholder': 'Tell us more... (optional)',
     'feedback.submit': 'Submit',
     'feedback.thankYou': 'Thank you for your feedback!',
+
+    // New pages
+    'sidebar.admin': 'Administration',
+    'sidebar.reports': 'Reports',
+    'sidebar.gamification': 'Gamification',
+    'sidebar.simulator': 'Simulator',
+    'sidebar.group.system': 'System',
   },
   es: {
     'sidebar.dashboard': 'Inicio Dashboard',
@@ -983,6 +997,13 @@ export const translations: Record<Language, Record<string, string>> = {
     'feedback.placeholder': 'Cuéntanos más... (opcional)',
     'feedback.submit': 'Enviar',
     'feedback.thankYou': '¡Gracias por tu feedback!',
+
+    // New pages
+    'sidebar.admin': 'Administración',
+    'sidebar.reports': 'Informes',
+    'sidebar.gamification': 'Gamificación',
+    'sidebar.simulator': 'Simulador',
+    'sidebar.group.system': 'Sistema',
   },
   fr: {
     'sidebar.dashboard': 'Accueil Tableau de Bord',
@@ -1196,6 +1217,11 @@ export const translations: Record<Language, Record<string, string>> = {
     'feedback.trigger': 'Envoyer un commentaire', 'feedback.title': 'Comment allons-nous?',
     'feedback.question': 'Comment est votre expérience?', 'feedback.placeholder': 'Dites-nous plus... (optionnel)',
     'feedback.submit': 'Envoyer', 'feedback.thankYou': 'Merci pour votre commentaire!',
+
+    // New pages
+    'sidebar.admin': 'Administration', 'sidebar.reports': 'Rapports',
+    'sidebar.gamification': 'Gamification', 'sidebar.simulator': 'Simulateur',
+    'sidebar.group.system': 'Système',
   },
   it: {
     'sidebar.dashboard': 'Home Dashboard',
@@ -1409,6 +1435,11 @@ export const translations: Record<Language, Record<string, string>> = {
     'feedback.trigger': 'Invia feedback', 'feedback.title': 'Come stiamo facendo?',
     'feedback.question': 'Com\'è la tua esperienza?', 'feedback.placeholder': 'Raccontaci di più... (opzionale)',
     'feedback.submit': 'Invia', 'feedback.thankYou': 'Grazie per il tuo feedback!',
+
+    // New pages
+    'sidebar.admin': 'Amministrazione', 'sidebar.reports': 'Report',
+    'sidebar.gamification': 'Gamification', 'sidebar.simulator': 'Simulatore',
+    'sidebar.group.system': 'Sistema',
   },
 }
 

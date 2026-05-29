@@ -17,7 +17,8 @@ import { NetworkModal } from './network-modal'
 import {
   Users, UserPlus, UserCheck, TrendingUp, Search, Link2, Copy, Check as CheckIcon,
   Share2, Eye, ChevronDown, ChevronUp, Calendar, CreditCard, Award, ArrowUpRight,
-  ArrowRight, MessageCircle, Target, Medal, Maximize2
+  ArrowRight, MessageCircle, Target, Medal, Maximize2, Activity, Download, Filter,
+  FileSpreadsheet, Heart, HeartOff,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ResponsiveContainer, LineChart, Line, XAxis, Tooltip as RechartsTooltip } from 'recharts'
@@ -69,6 +70,8 @@ export function ReferralsPage() {
   const [loading, setLoading] = useState(true)
   const [networkModalOpen, setNetworkModalOpen] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
+  const [planFilter, setPlanFilter] = useState<string>('all')
+  const [statusFilterVal, setStatusFilterVal] = useState<string>('all')
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 800)
@@ -84,7 +87,9 @@ export function ReferralsPage() {
   const filtered = mockReferrals.filter((r) => {
     const matchesSearch = r.name.toLowerCase().includes(search.toLowerCase())
     const matchesLevel = levelFilter === null || r.level === levelFilter
-    return matchesSearch && matchesLevel
+    const matchesPlan = planFilter === 'all' || r.plan === planFilter
+    const matchesStatus = statusFilterVal === 'all' || r.status === statusFilterVal
+    return matchesSearch && matchesLevel && matchesPlan && matchesStatus
   })
 
   const totalDirect = mockReferrals.filter((r) => r.level === 1).length
@@ -114,6 +119,26 @@ export function ReferralsPage() {
       setTimeout(() => setCopied(false), 2000)
     })
   }
+
+  const handleExportCSV = () => {
+    const headers = 'Nome,Email,Plano,Status,Nível,CashBack,Data\n'
+    const rows = mockReferrals.map(r =>
+      `"${r.name}","${r.email}","${r.plan}","${r.status}",${r.level},"${formatCurrency(r.cashback)}","${r.date}"`
+    ).join('\n')
+    const blob = new Blob([headers + rows], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'referrals-export.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // Network Health indicator
+  const healthRatio = activeCount / totalNetwork
+  const healthLabel = healthRatio >= 0.7 ? 'Saudável' : healthRatio >= 0.4 ? 'Moderado' : 'Crítico'
+  const healthColor = healthRatio >= 0.7 ? 'text-emerald-600' : healthRatio >= 0.4 ? 'text-amber-600' : 'text-red-600'
+  const healthBg = healthRatio >= 0.7 ? 'bg-emerald-100 dark:bg-emerald-950/30' : healthRatio >= 0.4 ? 'bg-amber-100 dark:bg-amber-950/30' : 'bg-red-100 dark:bg-red-950/30'
 
   const handleShare = () => {
     if (navigator.share) {
@@ -155,9 +180,10 @@ export function ReferralsPage() {
         <p className="text-sm text-muted-foreground">Gerencie e acompanhe sua rede de indicações</p>
       </div>
 
-      {/* Referral Link Section with gradient border */}
+      {/* Referral Link Section with animated gradient border */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <Card className="shadow-sm bg-card overflow-hidden relative gradient-border">
+        <Card className="shadow-sm bg-card overflow-hidden relative animate-shimmer-border">
+          <div className="h-1 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400 animate-gradient-shift" />
           <CardContent className="p-5">
             <div className="flex items-center gap-2 mb-3">
               <Link2 className="h-5 w-5 text-emerald-600" />
@@ -192,6 +218,39 @@ export function ReferralsPage() {
         </Card>
       </motion.div>
 
+      {/* Recent Activity Feed */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+        <Card className="shadow-sm bg-card">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Activity className="h-4 w-4 text-emerald-600" />
+              <h4 className="text-sm font-bold text-foreground">Atividade Recente</h4>
+            </div>
+            <div className="space-y-2">
+              {[
+                { name: 'Thiago Nascimento', action: 'Entrou na rede', time: '3h atrás', plan: 'blue3' },
+                { name: 'Carla Ferreira', action: 'Upgrade para Blue 5', time: '1 dia', plan: 'blue5' },
+                { name: 'Marcos Ribeiro', action: 'Entrou na rede', time: '3 dias', plan: 'blue3' },
+              ].map((item, i) => (
+                <div key={i} className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg">
+                  <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 flex items-center justify-center text-[10px] font-bold shrink-0">
+                    {item.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-foreground truncate">{item.name}</p>
+                    <p className="text-[10px] text-muted-foreground">{item.action}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <Badge className={`text-[8px] border ${planBadgeColor(item.plan)}`}>{getPlanName(item.plan)}</Badge>
+                    <span className="text-[10px] text-muted-foreground">{item.time}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
@@ -199,6 +258,7 @@ export function ReferralsPage() {
           { icon: Users, label: 'TOTAL DA REDE', value: totalNetwork, color: 'bg-teal-100 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400', trend: `+${newThisMonth} novos` },
           { icon: UserCheck, label: 'NOVOS ESTE MÊS', value: newThisMonth, color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400', trend: 'Crescendo!' },
           { icon: TrendingUp, label: 'TAXA CONVERSÃO', value: `${conversionRate}%`, color: 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400', trend: 'Ativos/Total' },
+          { icon: Heart, label: 'SAÚDE DA REDE', value: healthLabel, color: healthBg + ' ' + healthColor, trend: `${activeCount}/${totalNetwork} ativos` },
         ].map((stat, i) => (
           <motion.div
             key={stat.label}
@@ -378,7 +438,7 @@ export function ReferralsPage() {
               </div>
             </motion.div>
             <div className="w-px h-6 bg-gradient-to-b from-emerald-400 to-border" />
-            <div className="hidden sm:flex w-64 h-px bg-border" />
+            <div className="hidden sm:flex w-64 h-px bg-gradient-to-r from-transparent via-emerald-300 to-transparent" />
             
             {Array.from({ length: maxLevelWithData }, (_, idx) => {
               const lvl = idx + 1
@@ -401,7 +461,7 @@ export function ReferralsPage() {
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
                         transition={{ delay: idx * 0.08 + ri * 0.03, type: "spring", stiffness: 400, damping: 20 }}
-                        className={`w-10 h-10 rounded-full flex items-center justify-center text-[10px] font-bold border-2 cursor-pointer hover:scale-110 transition-transform shadow-sm ${
+                        className={`w-10 h-10 rounded-full flex items-center justify-center text-[10px] font-bold border-2 cursor-pointer hover:scale-110 transition-transform shadow-sm relative ${
                           r.status === 'active'
                             ? r.plan === 'blue5'
                               ? 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-900/40 dark:text-emerald-400 dark:border-emerald-700'
@@ -414,6 +474,12 @@ export function ReferralsPage() {
                         onClick={() => setDetailReferral(r)}
                       >
                         {r.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                        {/* Plan badge dot */}
+                        {r.status === 'active' && (
+                          <span className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-white dark:border-gray-900 ${
+                            r.plan === 'blue5' ? 'bg-emerald-500' : r.plan === 'blue3' ? 'bg-teal-500' : 'bg-gray-400'
+                          }`} />
+                        )}
                       </motion.div>
                     ))}
                   </div>
@@ -507,6 +573,20 @@ export function ReferralsPage() {
               {level === null ? 'Todos' : `Nível ${level}`}
             </button>
           ))}
+          <select value={planFilter} onChange={(e) => setPlanFilter(e.target.value)} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
+            <option value="all">Todos os Planos</option>
+            <option value="free">Gratuito</option>
+            <option value="blue3">Blue 3</option>
+            <option value="blue5">Blue 5</option>
+          </select>
+          <select value={statusFilterVal} onChange={(e) => setStatusFilterVal(e.target.value)} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
+            <option value="all">Todos</option>
+            <option value="active">Ativos</option>
+            <option value="inactive">Inativos</option>
+          </select>
+          <Button variant="outline" size="sm" className="h-8 text-xs gap-1" onClick={handleExportCSV}>
+            <Download className="h-3 w-3" /> Exportar CSV
+          </Button>
         </div>
       </div>
 

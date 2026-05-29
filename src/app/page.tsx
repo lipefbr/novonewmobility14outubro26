@@ -23,6 +23,10 @@ import { PortalSportBet } from '@/components/newmobility/portals/portal-sportbet
 import { AppsPage } from '@/components/newmobility/portals/apps-page'
 import { BankPage } from '@/components/newmobility/portals/bank-page'
 import { PurchasesPage } from '@/components/newmobility/portals/purchases-page'
+import { AdminPage } from '@/components/newmobility/admin/admin-page'
+import { ReportsPage } from '@/components/newmobility/reports/reports-page'
+import { GamificationPage } from '@/components/newmobility/gamification/gamification-page'
+import { EarningsSimulator } from '@/components/newmobility/simulator/earnings-simulator'
 
 function PageContent() {
   const { activePage } = useStore()
@@ -62,6 +66,14 @@ function PageContent() {
       return <VoucherPage />
     case 'support':
       return <SupportPage />
+    case 'admin':
+      return <AdminPage />
+    case 'reports':
+      return <ReportsPage />
+    case 'gamification':
+      return <GamificationPage />
+    case 'simulator':
+      return <EarningsSimulator />
     default:
       return <DashboardPage />
   }

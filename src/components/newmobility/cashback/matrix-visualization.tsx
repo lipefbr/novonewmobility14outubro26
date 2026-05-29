@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -8,7 +9,58 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { motion } from 'framer-motion'
 import { formatCurrency, cn } from '@/lib/utils'
-import { Users, DollarSign, TrendingUp, Layers } from 'lucide-react'
+import { Users, DollarSign, TrendingUp, Layers, Sparkles } from 'lucide-react'
+
+// Animated counter component for total earnings highlight
+function AnimatedEarningsCounter({ value }: { value: number }) {
+  const [display, setDisplay] = useState(0)
+  const hasAnimated = useRef(false)
+
+  useEffect(() => {
+    if (hasAnimated.current) return
+    hasAnimated.current = true
+    const duration = 1500
+    const steps = 60
+    const increment = value / steps
+    let current = 0
+    const timer = setInterval(() => {
+      current += increment
+      if (current >= value) {
+        setDisplay(value)
+        clearInterval(timer)
+      } else {
+        setDisplay(Math.floor(current))
+      }
+    }, duration / steps)
+    return () => clearInterval(timer)
+  }, [value])
+
+  return (
+    <span className="font-bold tabular-nums text-2xl md:text-3xl text-white">
+      {formatCurrency(display)}
+    </span>
+  )
+}
+
+// Tooltip component for level cards
+function LevelTooltip({ children, content }: { children: React.ReactNode; content: string }) {
+  const [show, setShow] = useState(false)
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      {children}
+      {show && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-[10px] rounded-lg whitespace-nowrap z-50 shadow-lg">
+          {content}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-100" />
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface MatrixLevelData {
   level: number
@@ -85,6 +137,18 @@ const levelColors = [
   'bg-indigo-500',
 ]
 
+const levelGradientColors = [
+  'from-emerald-400 to-emerald-600',
+  'from-teal-400 to-teal-600',
+  'from-cyan-400 to-cyan-600',
+  'from-amber-400 to-amber-600',
+  'from-orange-400 to-orange-600',
+  'from-rose-400 to-rose-600',
+  'from-purple-400 to-purple-600',
+  'from-pink-400 to-pink-600',
+  'from-indigo-400 to-indigo-600',
+]
+
 export function MatrixVisualization({ type }: MatrixVisualizationProps) {
   const config = matrixConfig[type]
   const totalUsers = config.levels.reduce((sum, l) => sum + l.filled, 0)
@@ -93,6 +157,40 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
 
   return (
     <div className="space-y-5">
+      {/* Total Earnings Highlight Card */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+      >
+        <Card className="border-0 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 shadow-lg overflow-hidden relative">
+          <div className="absolute inset-0 opacity-10 pointer-events-none" style={{
+            backgroundImage: `radial-gradient(circle, #fff 1px, transparent 1px)`,
+            backgroundSize: '20px 20px',
+          }} />
+          <div className="absolute inset-0 animate-shimmer" />
+          <CardContent className="p-4 md:p-5 relative flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Sparkles className="h-4 w-4 text-emerald-200" />
+                <p className="text-sm text-emerald-100 font-medium">Total de Ganhos - {config.title}</p>
+              </div>
+              <AnimatedEarningsCounter value={totalEarnings} />
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center border border-white/10">
+                <p className="text-[10px] text-emerald-200 uppercase tracking-wide">Usuários</p>
+                <p className="text-lg font-bold text-white">{totalUsers.toLocaleString('pt-BR')}</p>
+              </div>
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center border border-white/10">
+                <p className="text-[10px] text-emerald-200 uppercase tracking-wide">Máx. Possível</p>
+                <p className="text-sm font-bold text-white">{config.maxEarnings}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* Summary row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0 }}>
@@ -149,10 +247,15 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
         </motion.div>
       </div>
 
-      {/* Horizontal stacked bar */}
+      {/* Horizontal stacked bar with background pattern */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-        <Card className="bg-card shadow-sm">
-          <CardContent className="p-4">
+        <Card className="bg-card shadow-sm overflow-hidden relative">
+          {/* Subtle grid background pattern */}
+          <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{
+            backgroundImage: `linear-gradient(rgba(0,0,0,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.1) 1px, transparent 1px)`,
+            backgroundSize: '24px 24px',
+          }} />
+          <CardContent className="p-4 relative">
             <p className="text-xs font-medium text-muted-foreground mb-2">Proporção de Ganhos por Nível</p>
             <div className="flex h-5 rounded-full overflow-hidden gap-0.5">
               {config.levels.map((lvl, i) => {
@@ -163,7 +266,7 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
                     initial={{ width: 0 }}
                     animate={{ width: `${Math.max(widthPct, 0.5)}%` }}
                     transition={{ delay: 0.3 + i * 0.05, duration: 0.4, ease: 'easeOut' }}
-                    className={cn('rounded-sm', levelColors[i % levelColors.length])}
+                    className={cn('rounded-sm bg-gradient-to-r', levelGradientColors[i % levelGradientColors.length])}
                     title={`Nível ${lvl.level}: ${formatCurrency(lvl.earnings)}`}
                   />
                 )
@@ -218,7 +321,14 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
                         <div className="flex items-center gap-2">
-                          <Progress value={fillPct} className="h-2 flex-1" />
+                          <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${fillPct}%` }}
+                              transition={{ delay: 0.3 + i * 0.06, duration: 0.6, ease: 'easeOut' }}
+                              className={cn('h-full rounded-full bg-gradient-to-r', levelGradientColors[i % levelGradientColors.length])}
+                            />
+                          </div>
                           <span className="text-[10px] text-muted-foreground w-8 text-right">{fillPct}%</span>
                         </div>
                       </TableCell>
@@ -231,7 +341,7 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
         </Card>
       </motion.div>
 
-      {/* Card Grid */}
+      {/* Card Grid with hover tooltips and card elevation */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
           {config.levels.map((lvl, i) => {
@@ -239,35 +349,45 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
             return (
               <motion.div
                 key={lvl.level}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.35 + i * 0.04 }}
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ delay: 0.35 + i * 0.05, type: 'spring', stiffness: 200 }}
               >
-                <Card className="shadow-sm bg-card hover:shadow-md transition-shadow">
-                  <CardContent className="p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <Badge variant="secondary" className={cn('text-white text-xs', levelColors[i % levelColors.length])}>
-                        Nível {lvl.level}
-                      </Badge>
-                      <span className="text-[10px] text-muted-foreground">{lvl.percentage}</span>
-                    </div>
-                    <div className="space-y-1.5">
-                      <div>
-                        <p className="text-[10px] text-muted-foreground">Usuários</p>
-                        <p className="text-sm font-bold text-foreground">
-                          {lvl.filled}<span className="text-muted-foreground font-normal">/{lvl.positions}</span>
-                        </p>
+                <LevelTooltip content={`Nível ${lvl.level}: ${lvl.filled}/${lvl.positions} usuários · ${lvl.percentage} · ${formatCurrency(lvl.earnings)}`}>
+                  <Card className="shadow-sm bg-card hover:shadow-lg hover:-translate-y-1 transition-all duration-200 cursor-pointer">
+                    <CardContent className="p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <Badge variant="secondary" className={cn('text-white text-xs', levelColors[i % levelColors.length])}>
+                          Nível {lvl.level}
+                        </Badge>
+                        <span className="text-[10px] text-muted-foreground">{lvl.percentage}</span>
                       </div>
-                      <div>
-                        <p className="text-[10px] text-muted-foreground">Ganhos</p>
-                        <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                          {formatCurrency(lvl.earnings)}
-                        </p>
+                      <div className="space-y-1.5">
+                        <div>
+                          <p className="text-[10px] text-muted-foreground">Usuários</p>
+                          <p className="text-sm font-bold text-foreground">
+                            {lvl.filled}<span className="text-muted-foreground font-normal">/{lvl.positions}</span>
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground">Ganhos</p>
+                          <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                            {formatCurrency(lvl.earnings)}
+                          </p>
+                        </div>
+                        {/* Gradient progress bar */}
+                        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${fillPct}%` }}
+                            transition={{ delay: 0.5 + i * 0.05, duration: 0.6, ease: 'easeOut' }}
+                            className={cn('h-full rounded-full bg-gradient-to-r', levelGradientColors[i % levelGradientColors.length])}
+                          />
+                        </div>
                       </div>
-                      <Progress value={fillPct} className="h-1.5" />
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                </LevelTooltip>
               </motion.div>
             )
           })}

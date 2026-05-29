@@ -1,14 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import {
   Ticket, Check, Clock, Car, ShoppingBag, Gift, Copy, Check as CheckIcon,
   Pill, UtensilsCrossed, ShoppingCart, Plus, QrCode, Filter, Timer, Sparkles,
-  Share2, ChevronDown, ChevronUp, Star, Info
+  Share2, ChevronDown, ChevronUp, Star, Info, TrendingUp, Zap
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
@@ -18,15 +19,15 @@ type VoucherStatus = 'active' | 'used' | 'expired'
 type VoucherCategory = 'mobility' | 'pharmacy' | 'food' | 'shopping'
 
 const mockVouchers = [
-  { id: '1', code: 'NM-MOB-2025-001', amount: 5000, category: 'mobility' as VoucherCategory, expiresAt: '2025-03-15', status: 'active' as VoucherStatus, usedAt: null },
-  { id: '2', code: 'NM-FAR-2025-002', amount: 10000, category: 'pharmacy' as VoucherCategory, expiresAt: '2025-02-28', status: 'active' as VoucherStatus, usedAt: null },
-  { id: '3', code: 'NM-REF-2025-003', amount: 25000, category: 'food' as VoucherCategory, expiresAt: '2025-06-30', status: 'active' as VoucherStatus, usedAt: null },
-  { id: '4', code: 'NM-SHO-2025-004', amount: 3000, category: 'shopping' as VoucherCategory, expiresAt: '2025-04-30', status: 'active' as VoucherStatus, usedAt: null },
-  { id: '5', code: 'NM-MOB-2025-005', amount: 15000, category: 'mobility' as VoucherCategory, expiresAt: '2025-01-20', status: 'used' as VoucherStatus, usedAt: '2025-01-18' },
-  { id: '6', code: 'NM-FAR-2025-006', amount: 5000, category: 'pharmacy' as VoucherCategory, expiresAt: '2025-01-10', status: 'used' as VoucherStatus, usedAt: '2025-01-08' },
-  { id: '7', code: 'NM-REF-2025-007', amount: 8000, category: 'food' as VoucherCategory, expiresAt: '2024-12-31', status: 'expired' as VoucherStatus, usedAt: null },
-  { id: '8', code: 'NM-SHO-2025-008', amount: 2000, category: 'shopping' as VoucherCategory, expiresAt: '2024-11-30', status: 'expired' as VoucherStatus, usedAt: null },
-  { id: '9', code: 'NM-MOB-2025-009', amount: 12000, category: 'mobility' as VoucherCategory, expiresAt: '2025-05-15', status: 'active' as VoucherStatus, usedAt: null },
+  { id: '1', code: 'NM-MOB-2025-001', amount: 5000, category: 'mobility' as VoucherCategory, expiresAt: '2025-03-15', status: 'active' as VoucherStatus, usedAt: null, usedAmount: 1500 },
+  { id: '2', code: 'NM-FAR-2025-002', amount: 10000, category: 'pharmacy' as VoucherCategory, expiresAt: '2025-02-28', status: 'active' as VoucherStatus, usedAt: null, usedAmount: 7500 },
+  { id: '3', code: 'NM-REF-2025-003', amount: 25000, category: 'food' as VoucherCategory, expiresAt: '2025-06-30', status: 'active' as VoucherStatus, usedAt: null, usedAmount: 2000 },
+  { id: '4', code: 'NM-SHO-2025-004', amount: 3000, category: 'shopping' as VoucherCategory, expiresAt: '2025-04-30', status: 'active' as VoucherStatus, usedAt: null, usedAmount: 500 },
+  { id: '5', code: 'NM-MOB-2025-005', amount: 15000, category: 'mobility' as VoucherCategory, expiresAt: '2025-01-20', status: 'used' as VoucherStatus, usedAt: '2025-01-18', usedAmount: 15000 },
+  { id: '6', code: 'NM-FAR-2025-006', amount: 5000, category: 'pharmacy' as VoucherCategory, expiresAt: '2025-01-10', status: 'used' as VoucherStatus, usedAt: '2025-01-08', usedAmount: 5000 },
+  { id: '7', code: 'NM-REF-2025-007', amount: 8000, category: 'food' as VoucherCategory, expiresAt: '2024-12-31', status: 'expired' as VoucherStatus, usedAt: null, usedAmount: 0 },
+  { id: '8', code: 'NM-SHO-2025-008', amount: 2000, category: 'shopping' as VoucherCategory, expiresAt: '2024-11-30', status: 'expired' as VoucherStatus, usedAt: null, usedAmount: 0 },
+  { id: '9', code: 'NM-MOB-2025-009', amount: 12000, category: 'mobility' as VoucherCategory, expiresAt: '2025-05-15', status: 'active' as VoucherStatus, usedAt: null, usedAmount: 3000 },
 ]
 
 const categoryConfig: Record<VoucherCategory, { label: string; icon: React.ElementType; color: string; bgGradient: string; darkBg: string }> = {
@@ -36,9 +37,18 @@ const categoryConfig: Record<VoucherCategory, { label: string; icon: React.Eleme
   shopping: { label: 'Shopping', icon: ShoppingCart, color: 'text-emerald-600 dark:text-emerald-400', bgGradient: 'from-emerald-500 to-emerald-600', darkBg: 'dark:from-emerald-800 dark:to-emerald-900' },
 }
 
-// Countdown timer component
+// Popular categories with usage count
+const popularCategories = [
+  { category: 'Mobilidade' as const, icon: Car, usage: 3420, color: 'bg-blue-500', lightBg: 'bg-blue-50 dark:bg-blue-950/30', textColor: 'text-blue-700 dark:text-blue-400', growth: '+18%' },
+  { category: 'Refeição' as const, icon: UtensilsCrossed, usage: 2890, color: 'bg-amber-500', lightBg: 'bg-amber-50 dark:bg-amber-950/30', textColor: 'text-amber-700 dark:text-amber-400', growth: '+12%' },
+  { category: 'Farmácia' as const, icon: Pill, usage: 2150, color: 'bg-rose-500', lightBg: 'bg-rose-50 dark:bg-rose-950/30', textColor: 'text-rose-700 dark:text-rose-400', growth: '+9%' },
+  { category: 'Shopping' as const, icon: ShoppingCart, usage: 1680, color: 'bg-emerald-500', lightBg: 'bg-emerald-50 dark:bg-emerald-950/30', textColor: 'text-emerald-700 dark:text-emerald-400', growth: '+15%' },
+]
+
+// Countdown timer component with urgency color transitions
 function CountdownTimer({ expiresAt }: { expiresAt: string }) {
   const [timeLeft, setTimeLeft] = useState('')
+  const [daysLeft, setDaysLeft] = useState(999)
 
   useEffect(() => {
     const update = () => {
@@ -48,12 +58,15 @@ function CountdownTimer({ expiresAt }: { expiresAt: string }) {
 
       if (diff <= 0) {
         setTimeLeft('Expirado')
+        setDaysLeft(0)
         return
       }
 
       const days = Math.floor(diff / (1000 * 60 * 60 * 24))
       const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
       const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+
+      setDaysLeft(days)
 
       if (days > 0) {
         setTimeLeft(`${days}d ${hours}h`)
@@ -69,12 +82,28 @@ function CountdownTimer({ expiresAt }: { expiresAt: string }) {
     return () => clearInterval(timer)
   }, [expiresAt])
 
-  const isUrgent = timeLeft && !timeLeft.includes('d') && timeLeft !== 'Expirado'
+  // Urgency color logic: green >30, yellow 7-30, red <7
+  const urgencyClass = useMemo(() => {
+    if (timeLeft === 'Expirado') return 'text-gray-400'
+    if (daysLeft > 30) return 'text-emerald-600 dark:text-emerald-400'
+    if (daysLeft >= 7) return 'text-amber-600 dark:text-amber-400'
+    return 'text-red-600 dark:text-red-400 animate-countdown-pulse'
+  }, [daysLeft, timeLeft])
+
+  const timerIconClass = useMemo(() => {
+    if (timeLeft === 'Expirado') return 'text-gray-400'
+    if (daysLeft > 30) return 'text-emerald-600 dark:text-emerald-400'
+    if (daysLeft >= 7) return 'text-amber-600 dark:text-amber-400'
+    return 'text-red-600 dark:text-red-400'
+  }, [daysLeft, timeLeft])
 
   return (
-    <div className={`flex items-center gap-1 text-xs font-medium ${isUrgent ? 'text-red-600 dark:text-red-400 animate-countdown-pulse' : 'text-muted-foreground'}`}>
-      <Timer className="h-3 w-3" />
+    <div className={`flex items-center gap-1 text-xs font-medium ${urgencyClass}`}>
+      <Timer className={`h-3 w-3 ${timerIconClass}`} />
       <span>{timeLeft}</span>
+      {daysLeft < 7 && daysLeft > 0 && (
+        <span className="text-[9px] opacity-70 ml-0.5">urgente</span>
+      )}
     </div>
   )
 }
@@ -85,6 +114,7 @@ export function VoucherPage() {
   const [statusFilter, setStatusFilter] = useState<VoucherStatus | 'all'>('all')
   const [categoryFilter, setCategoryFilter] = useState<VoucherCategory | 'all'>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
 
   const filtered = mockVouchers.filter((v) => {
     const matchesStatus = statusFilter === 'all' || v.status === statusFilter
@@ -138,7 +168,7 @@ export function VoucherPage() {
         {branded && (
           <div className="absolute -inset-2 rounded-xl border-2 border-emerald-400 dark:border-emerald-600 shadow-lg shadow-emerald-500/20" />
         )}
-        <div className={`grid grid-cols-4 gap-0.5 ${branded ? 'w-20 h-20 p-1.5' : 'w-14 h-14 p-1'} bg-white dark:bg-gray-800 rounded-md relative`}>
+        <div className={`grid grid-cols-4 gap-0.5 ${branded ? 'w-20 h-20 p-1.5' : 'w-14 h-14 p-1'} bg-white dark:bg-gray-800 rounded-md relative overflow-hidden`}>
           {cells.map((filled, i) => (
             <motion.div
               key={i}
@@ -148,11 +178,18 @@ export function VoucherPage() {
               className={`rounded-[1px] ${filled ? 'bg-gray-900 dark:bg-gray-100' : 'bg-gray-200 dark:bg-gray-600'}`}
             />
           ))}
-          {/* QR scanning animation */}
+          {/* QR scanning animation - smoother with glow effect */}
           <motion.div
             className="absolute left-1 right-1 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent"
+            style={{ boxShadow: '0 0 8px 2px rgba(52, 211, 153, 0.4)' }}
             animate={{ top: ['4px', branded ? '68px' : '52px', '4px'] }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+            transition={{ duration: 2.5, repeat: Infinity, ease: [0.45, 0, 0.55, 1] }}
+          />
+          {/* Subtle glow overlay */}
+          <motion.div
+            className="absolute left-1 right-1 h-4 bg-gradient-to-b from-emerald-400/10 to-transparent pointer-events-none"
+            animate={{ top: ['0px', branded ? '64px' : '48px', '0px'] }}
+            transition={{ duration: 2.5, repeat: Infinity, ease: [0.45, 0, 0.55, 1] }}
           />
         </div>
         {branded && (
@@ -212,6 +249,56 @@ export function VoucherPage() {
         ))}
       </div>
 
+      {/* Vouchers Populares (Popular Vouchers) Section */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
+        <Card className="shadow-sm bg-card">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-emerald-500" />
+              Vouchers Populares
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {popularCategories.map((cat, i) => {
+                const CatIcon = cat.icon
+                const maxUsage = Math.max(...popularCategories.map(c => c.usage))
+                const barWidth = Math.round((cat.usage / maxUsage) * 100)
+                return (
+                  <motion.div
+                    key={cat.category}
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.06 }}
+                    className={`p-3 rounded-lg border ${cat.lightBg} border-border hover:shadow-md transition-all duration-200 cursor-pointer group`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="p-1.5 rounded-lg bg-white dark:bg-gray-800 shadow-sm group-hover:scale-105 transition-transform">
+                        <CatIcon className="h-4 w-4 text-emerald-600" />
+                      </div>
+                      <Badge variant="outline" className="text-[9px] ml-auto text-emerald-600 border-emerald-200 dark:border-emerald-800">
+                        {cat.growth}
+                      </Badge>
+                    </div>
+                    <p className="text-sm font-bold text-foreground">{cat.category}</p>
+                    <p className={`text-lg font-bold ${cat.textColor} mt-0.5`}>{cat.usage.toLocaleString('pt-BR')}</p>
+                    <p className="text-[10px] text-muted-foreground">usos este mês</p>
+                    <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
+                      <motion.div
+                        className={`h-full rounded-full ${cat.color}`}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${barWidth}%` }}
+                        transition={{ delay: 0.3 + i * 0.1, duration: 0.6, ease: 'easeOut' }}
+                      />
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* Featured Voucher Hero Card */}
       {featuredVoucher && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
@@ -234,6 +321,24 @@ export function VoucherPage() {
                     </Badge>
                     <CountdownTimer expiresAt={featuredVoucher.expiresAt} />
                   </div>
+                  {/* Usage Progress Bar */}
+                  {featuredVoucher.usedAmount > 0 && (
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between text-[10px] mb-1">
+                        <span className="text-muted-foreground">Valor utilizado</span>
+                        <span className="font-medium text-foreground">{formatCurrency(featuredVoucher.usedAmount)} / {formatCurrency(featuredVoucher.amount)}</span>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <motion.div
+                          className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.round((featuredVoucher.usedAmount / featuredVoucher.amount) * 100)}%` }}
+                          transition={{ delay: 0.5, duration: 0.8, ease: 'easeOut' }}
+                        />
+                      </div>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">{Math.round((featuredVoucher.usedAmount / featuredVoucher.amount) * 100)}% utilizado</p>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex gap-2 mt-4 pt-4 border-t border-border">
@@ -260,6 +365,48 @@ export function VoucherPage() {
           </Card>
         </motion.div>
       )}
+
+      {/* Recommended Vouchers Section */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
+        <Card className="shadow-sm bg-card">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Star className="h-4 w-4 text-amber-500" />
+              Vouchers Recomendados
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {[
+                { name: 'CashBack Mobilidade', desc: 'Use em corridas e viagens', amount: 'R$ 25,00', category: 'Mobilidade', icon: Car, color: 'bg-blue-50 dark:bg-blue-950/30 border-blue-100 dark:border-blue-900/50' },
+                { name: 'Farmácia Popular', desc: 'Desconto em medicamentos', amount: 'R$ 50,00', category: 'Farmácia', icon: Pill, color: 'bg-rose-50 dark:bg-rose-950/30 border-rose-100 dark:border-rose-900/50' },
+                { name: 'Refeição Executiva', desc: 'Restaurantes parceiros', amount: 'R$ 30,00', category: 'Refeição', icon: UtensilsCrossed, color: 'bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900/50' },
+              ].map((rec, i) => {
+                const RecIcon = rec.icon
+                return (
+                  <motion.div
+                    key={rec.name}
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className={`p-3 rounded-lg border ${rec.color} card-hover cursor-pointer`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="p-1.5 rounded-lg bg-white dark:bg-gray-800">
+                        <RecIcon className="h-4 w-4 text-emerald-600" />
+                      </div>
+                      <span className="text-[10px] text-muted-foreground">{rec.category}</span>
+                    </div>
+                    <p className="text-sm font-bold text-foreground">{rec.name}</p>
+                    <p className="text-[10px] text-muted-foreground">{rec.desc}</p>
+                    <p className="text-base font-bold text-emerald-600 dark:text-emerald-400 mt-1">{rec.amount}</p>
+                  </motion.div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
 
       {/* How to Use - Expandable Section */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
@@ -363,6 +510,7 @@ export function VoucherPage() {
             const Icon = config.icon
             const isActive = voucher.status === 'active'
             const isExpired = voucher.status === 'expired'
+            const usagePercent = voucher.amount > 0 ? Math.round((voucher.usedAmount / voucher.amount) * 100) : 0
 
             return (
               <motion.div
@@ -371,11 +519,30 @@ export function VoucherPage() {
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ delay: i * 0.03 }}
+                transition={{ delay: i * 0.03, duration: 0.3 }}
               >
-                <Card className={`shadow-sm overflow-hidden relative holographic ${
-                  !isActive ? 'opacity-60' : 'hover:shadow-lg transition-shadow'
-                } ${isExpired ? 'border-red-200 dark:border-red-800' : 'border-border'}`}>
+                <Card
+                  className={`shadow-sm overflow-hidden relative group ${
+                    !isActive ? 'opacity-60' : 'hover:shadow-lg transition-all duration-200 card-hover-lift'
+                  } ${isExpired ? 'border-red-200 dark:border-red-800' : 'border-border'}`}
+                  onMouseEnter={() => setHoveredId(voucher.id)}
+                  onMouseLeave={() => setHoveredId(null)}
+                >
+                  {/* Holographic shine effect on active vouchers - sweeps across on hover */}
+                  {isActive && (
+                    <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden">
+                      <motion.div
+                        className="absolute inset-0"
+                        initial={{ x: '-100%' }}
+                        animate={hoveredId === voucher.id ? { x: '100%' } : { x: '-100%' }}
+                        transition={{ duration: 0.8, ease: [0.25, 0.46, 0.45, 0.94] }}
+                        style={{
+                          background: 'linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.15) 45%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0.15) 55%, transparent 70%)',
+                        }}
+                      />
+                    </div>
+                  )}
+
                   <div className={`h-2 bg-gradient-to-r ${config.bgGradient} relative`}>
                     {isActive && <div className="absolute inset-0 animate-shimmer" />}
                   </div>
@@ -415,6 +582,29 @@ export function VoucherPage() {
                           </p>
                           {isActive && <CountdownTimer expiresAt={voucher.expiresAt} />}
                         </div>
+
+                        {/* Usage Progress Bar */}
+                        {isActive && voucher.usedAmount > 0 && (
+                          <div className="mt-2">
+                            <div className="flex items-center justify-between text-[9px] mb-0.5">
+                              <span className="text-muted-foreground">Utilizado</span>
+                              <span className="font-medium text-foreground">{formatCurrency(voucher.usedAmount)}</span>
+                            </div>
+                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                              <motion.div
+                                className={`h-full rounded-full ${
+                                  usagePercent > 80 ? 'bg-gradient-to-r from-amber-400 to-red-500' :
+                                  usagePercent > 50 ? 'bg-gradient-to-r from-emerald-400 to-amber-400' :
+                                  'bg-gradient-to-r from-emerald-400 to-emerald-600'
+                                }`}
+                                initial={{ width: 0 }}
+                                animate={{ width: `${usagePercent}%` }}
+                                transition={{ delay: 0.3 + i * 0.05, duration: 0.6, ease: 'easeOut' }}
+                              />
+                            </div>
+                            <p className="text-[8px] text-muted-foreground mt-0.5">{usagePercent}% utilizado</p>
+                          </div>
+                        )}
                       </div>
                     </div>
 

@@ -1,79 +1,75 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
+import { db } from '@/lib/db'
+import { success, error } from '@/lib/api-utils'
 
-export async function GET(request: NextRequest) {
-  const userId = request.nextUrl.searchParams.get('userId')
-  
-  if (!userId) {
-    return NextResponse.json({ error: 'userId is required' }, { status: 400 })
+export async function GET(req: NextRequest) {
+  try {
+    const userId = req.nextUrl.searchParams.get('userId')
+    if (!userId) return error('userId is required', 400)
+
+    const withdrawals = await db.transaction.findMany({
+      where: { userId, type: 'withdrawal' },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    })
+
+    const withdrawalsWithTimeline = withdrawals.map(w => {
+      const createdAt = new Date(w.createdAt)
+      const processingDays = w.status === 'pending' ? 1 : w.status === 'approved' ? 2 : 0
+      const estimatedDate = new Date(createdAt.getTime() + processingDays * 24 * 60 * 60 * 1000)
+
+      let steps: { status: string; label: string; completed: boolean; date: string | null }[] = []
+
+      if (w.status === 'pending') {
+        steps = [
+          { status: 'pending', label: 'Solicitado', completed: true, date: w.createdAt.toISOString() },
+          { status: 'processing', label: 'Processando', completed: false, date: null },
+          { status: 'completed', label: 'Concluído', completed: false, date: null },
+        ]
+      } else if (w.status === 'approved' || w.status === 'paid') {
+        steps = [
+          { status: 'pending', label: 'Solicitado', completed: true, date: w.createdAt.toISOString() },
+          { status: 'processing', label: 'Processando', completed: true, date: w.updatedAt.toISOString() },
+          { status: 'completed', label: 'Concluído', completed: w.status === 'paid', date: w.status === 'paid' ? w.updatedAt.toISOString() : null },
+        ]
+      } else {
+        steps = [
+          { status: 'pending', label: 'Solicitado', completed: true, date: w.createdAt.toISOString() },
+          { status: 'rejected', label: 'Rejeitado', completed: true, date: w.updatedAt.toISOString() },
+        ]
+      }
+
+      const fee = Math.round(w.amount * 0.02)
+
+      return {
+        ...w,
+        fee,
+        netAmount: w.amount - fee,
+        estimatedDate: estimatedDate.toISOString(),
+        steps,
+        processingTime: w.status === 'paid' ? '1-3 dias úteis' : 'Pendente',
+      }
+    })
+
+    // Get limits from SystemConfig
+    let minWithdrawal = 5000 // R$ 50 default
+    let maxWithdrawal = 500000 // R$ 5000 default
+    let withdrawalFee = 2 // 2% default
+
+    try {
+      const minConfig = await db.systemConfig.findUnique({ where: { key: 'min_withdrawal' } })
+      const maxConfig = await db.systemConfig.findUnique({ where: { key: 'max_withdrawal' } })
+      const feeConfig = await db.systemConfig.findUnique({ where: { key: 'withdrawal_fee_pct' } })
+      if (minConfig) minWithdrawal = parseInt(minConfig.value)
+      if (maxConfig) maxWithdrawal = parseInt(maxConfig.value)
+      if (feeConfig) withdrawalFee = parseFloat(feeConfig.value)
+    } catch { /* use defaults */ }
+
+    return success({
+      withdrawals: withdrawalsWithTimeline,
+      limits: { minWithdrawal, maxWithdrawal, withdrawalFee },
+    })
+  } catch (err) {
+    return error('Failed to fetch withdrawals', 500)
   }
-
-  const withdrawals = [
-    {
-      id: 'wd_001',
-      amount: 200000,
-      status: 'completed',
-      requestedAt: '2025-01-13T10:30:00Z',
-      processedAt: '2025-01-14T14:22:00Z',
-      completedAt: '2025-01-16T09:00:00Z',
-      estimatedCompletion: null,
-      category: 'withdrawal',
-      bankInfo: 'Banco do Brasil - Ag 1234-5 / CC 67890-1',
-      fee: 350,
-      notes: 'Saque processado normalmente.',
-    },
-    {
-      id: 'wd_002',
-      amount: 150000,
-      status: 'completed',
-      requestedAt: '2024-12-20T15:45:00Z',
-      processedAt: '2024-12-21T08:30:00Z',
-      completedAt: '2024-12-23T11:15:00Z',
-      estimatedCompletion: null,
-      category: 'withdrawal',
-      bankInfo: 'Banco do Brasil - Ag 1234-5 / CC 67890-1',
-      fee: 350,
-      notes: 'Saque processado normalmente.',
-    },
-    {
-      id: 'wd_003',
-      amount: 500000,
-      status: 'processing',
-      requestedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-      processedAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-      completedAt: null,
-      estimatedCompletion: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-      category: 'withdrawal',
-      bankInfo: 'Banco do Brasil - Ag 1234-5 / CC 67890-1',
-      fee: 850,
-      notes: 'Saque em processamento bancário.',
-    },
-    {
-      id: 'wd_004',
-      amount: 100000,
-      status: 'requested',
-      requestedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      processedAt: null,
-      completedAt: null,
-      estimatedCompletion: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-      category: 'withdrawal',
-      bankInfo: 'Banco do Brasil - Ag 1234-5 / CC 67890-1',
-      fee: 350,
-      notes: 'Aguardando processamento.',
-    },
-    {
-      id: 'wd_005',
-      amount: 75000,
-      status: 'rejected',
-      requestedAt: '2024-11-10T09:00:00Z',
-      processedAt: '2024-11-10T16:45:00Z',
-      completedAt: null,
-      estimatedCompletion: null,
-      category: 'withdrawal',
-      bankInfo: 'Banco do Brasil - Ag 1234-5 / CC 67890-1',
-      fee: 0,
-      notes: 'Valor mínimo de saque não atingido (R$ 50,00).',
-    },
-  ]
-
-  return NextResponse.json({ withdrawals })
 }

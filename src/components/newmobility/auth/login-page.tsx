@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Eye, EyeOff, Mail, Lock, ArrowRight, DollarSign, TrendingUp, Users, Smartphone, Apple, Quote, Sparkles } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { Eye, EyeOff, Mail, Lock, ArrowRight, DollarSign, TrendingUp, Users, Smartphone, Apple, Quote, Sparkles, Shield, Fingerprint, Globe, Lock as LockIcon, Zap } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { ResetPasswordFlow } from './reset-password-flow'
@@ -44,7 +45,9 @@ function mapApiUserToUserData(apiUser: Record<string, unknown>, balances?: Recor
 // Seeded pseudo-random for consistent SSR/client rendering
 // Uses integer-based calculation to avoid floating-point differences between server/client
 function seededRandom(seed: number) {
-  const x = ((Math.sin(seed + 1) * 10000) | 0) % 10000
+  // Math.abs ensures the result is always non-negative
+  // (JavaScript modulo can return negative values for negative operands)
+  const x = Math.abs(((Math.sin(seed + 1) * 10000) | 0) % 10000)
   return x / 10000
 }
 
@@ -55,8 +58,8 @@ function FloatingParticles() {
     x: seededRandom(i * 7 + 1) * 100,
     y: seededRandom(i * 13 + 2) * 100,
     size: seededRandom(i * 3 + 5) * 4 + 2,
-    duration: seededRandom(i * 11 + 3) * 20 + 15,
-    delay: seededRandom(i * 5 + 7) * 10,
+    duration: Math.max(0.5, seededRandom(i * 11 + 3) * 20 + 15),
+    delay: Math.max(0, seededRandom(i * 5 + 7) * 10),
     opacity: seededRandom(i * 17 + 4) * 0.3 + 0.1,
   }))
 
@@ -97,7 +100,7 @@ function NetworkLines() {
     y1: seededRandom(i * 29 + 11) * 100,
     x2: seededRandom(i * 31 + 12) * 100,
     y2: seededRandom(i * 37 + 13) * 100,
-    delay: seededRandom(i * 41 + 14) * 5,
+    delay: Math.max(0, seededRandom(i * 41 + 14) * 5),
   }))
 
   return (
@@ -303,10 +306,10 @@ export function LoginPage() {
         {showResetPassword ? (
           <ResetPasswordFlow onBack={() => setShowResetPassword(false)} />
         ) : (
-          <Card className="shadow-xl border-0 shadow-emerald-100/50 dark:shadow-emerald-900/20 bg-card/80 backdrop-blur-sm">
+          <Card className="shadow-xl border-0 shadow-emerald-100/50 dark:shadow-emerald-900/20 bg-card/80 backdrop-blur-sm animated-gradient-border">
             <CardHeader className="space-y-1 pb-4">
               <CardTitle className="text-xl font-bold text-center text-foreground">{t('auth.login.title')}</CardTitle>
-              <CardDescription className="text-center text-muted-foreground">
+              <CardDescription className="text-center text-muted-foreground typing-cursor-anim">
                 {t('auth.login.subtitle')}
               </CardDescription>
             </CardHeader>
@@ -393,7 +396,7 @@ export function LoginPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 mt-4">
+                <div className="grid grid-cols-3 gap-3 mt-4">
                   <Button
                     type="button"
                     variant="outline"
@@ -429,6 +432,15 @@ export function LoginPage() {
                     <Apple className="h-4 w-4" />
                     <span className="text-sm">Apple</span>
                   </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-2 h-10 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                    onClick={() => toast.info('Login com biometria em breve!')}
+                  >
+                    <Fingerprint className="h-4 w-4" />
+                    <span className="text-sm">Biometria</span>
+                  </Button>
                 </div>
               </div>
 
@@ -444,20 +456,47 @@ export function LoginPage() {
                 </p>
               </div>
 
-              <div className="mt-4 p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg border border-emerald-200 dark:border-emerald-800">
-                <p className="text-xs text-emerald-700 dark:text-emerald-300 font-medium mb-1">🔑 Demo:</p>
-                <p className="text-xs text-emerald-600 dark:text-emerald-400">Email: carlos.silva@email.com</p>
-                <p className="text-xs text-emerald-600 dark:text-emerald-400">Senha: 123456</p>
+              {/* Demo credentials with pulsing border */}
+              <div className="mt-4 p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg border-2 border-emerald-300 dark:border-emerald-700 animate-shimmer-border relative">
+                <div className="absolute -top-2 left-3">
+                  <Badge className="bg-emerald-600 text-white text-[9px] px-2 py-0.5 border-0 shadow-sm">DEMO</Badge>
+                </div>
+                <p className="text-xs text-emerald-700 dark:text-emerald-300 font-semibold mb-1.5 mt-0.5">🔑 Acesso de Demonstração</p>
+                <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
+                  <Mail className="h-3 w-3" />
+                  <span>carlos.silva@email.com</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">
+                  <Lock className="h-3 w-3" />
+                  <span>123456</span>
+                </div>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="mt-2 w-full border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 text-xs"
+                  className="mt-2 w-full border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 text-xs bg-white/50 dark:bg-black/20"
                   onClick={() => handleLogin('carlos.silva@email.com', '123456')}
                   disabled={loading}
                 >
+                  <Zap className="h-3.5 w-3.5 mr-1" />
                   {t('auth.login.demo')}
                 </Button>
+              </div>
+
+              {/* Trust badges */}
+              <div className="mt-5 flex items-center justify-center gap-3 text-muted-foreground">
+                <div className="flex items-center gap-1.5 bg-muted/50 rounded-full px-2.5 py-1">
+                  <LockIcon className="h-3 w-3 text-emerald-500" />
+                  <span className="text-[10px] font-medium">Dados Seguros</span>
+                </div>
+                <div className="flex items-center gap-1.5 bg-muted/50 rounded-full px-2.5 py-1">
+                  <Globe className="h-3 w-3 text-emerald-500" />
+                  <span className="text-[10px] font-medium">Criptografia 128-bit</span>
+                </div>
+                <div className="flex items-center gap-1.5 bg-muted/50 rounded-full px-2.5 py-1">
+                  <Users className="h-3 w-3 text-emerald-500" />
+                  <span className="text-[10px] font-medium">+10.000 Membros</span>
+                </div>
               </div>
             </CardContent>
           </Card>
