@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
-import { createHash, randomBytes } from 'crypto'
+import { randomBytes } from 'crypto'
 
 export async function POST(req: Request) {
   try {
@@ -8,7 +8,7 @@ export async function POST(req: Request) {
     const { userId } = body
     if (!userId) return error('userId is required', 400)
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) return error('User not found', 404)
 
     // Generate a secret key for TOTP
@@ -21,18 +21,21 @@ export async function POST(req: Request) {
       return `NM-${code.substring(0, 4)}-${code.substring(4, 8)}`
     })
 
-    // Store the setup temporarily in SystemConfig (in production, use a proper store)
+    // Store the setup temporarily in SystemConfig using upsert via raw SQL
     const setupKey = `2fa_setup_${userId}`
-    await db.systemConfig.upsert({
-      where: { key: setupKey },
-      update: { value: JSON.stringify({ secretKey, backupCodes, enabled: false }) },
-      create: { key: setupKey, value: JSON.stringify({ secretKey, backupCodes, enabled: false }), description: `2FA setup for user ${userId}` },
-    })
+    const setupValue = JSON.stringify({ secretKey, backupCodes, enabled: false })
+    const description = `2FA setup for user ${userId}`
+
+    await db.execute(
+      `INSERT INTO "SystemConfig" ("key", "value", "description") VALUES ($1, $2, $3)
+       ON CONFLICT ("key") DO UPDATE SET "value" = $2, "description" = $3`,
+      [setupKey, setupValue, description]
+    )
 
     return success({
       secretKey,
       backupCodes,
-      otpauthUrl: `otpauth://totp/NewMobility:${user.email}?secret=${secret}&issuer=NewMobility`,
+      otpauthUrl: `otpauth://totp/NewMobility:${(user as any).email}?secret=${secret}&issuer=NewMobility`,
     })
   } catch (err) {
     return error('Failed to setup 2FA', 500)

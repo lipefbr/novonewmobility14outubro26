@@ -10,7 +10,7 @@ export async function POST(request: Request) {
       return error('Email and password are required')
     }
 
-    const user = await db.user.findUnique({ where: { email } })
+    const user = await db.findOne('User', '"email" = $1', [email])
     if (!user) {
       return error('Invalid credentials', 401)
     }
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
       return error('Invalid credentials', 401)
     }
 
-    const safeUser = sanitizeUser(user as unknown as Record<string, unknown>)
+    const safeUser = sanitizeUser(user)
 
     return success({
       user: safeUser,

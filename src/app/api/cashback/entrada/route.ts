@@ -10,18 +10,20 @@ export async function GET(request: Request) {
       return error('userId is required')
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('User not found', 404)
     }
 
     // Get user's entrada matrix position
-    const matrixPosition = await db.matrixPosition.findFirst({
-      where: { userId, matrixType: 'entrada' },
-    })
+    const matrixPosition = await db.findOne(
+      'MatrixPosition',
+      '"userId" = $1 AND "matrixType" = $2',
+      [userId, 'entrada']
+    )
 
     // Get all cashback entries
-    const entries = await db.cashbackEntry.findMany({ where: { userId } })
+    const entries = await db.find('CashbackEntry', '"userId" = $1', [userId]) as any[]
 
     // Calculate earned per level
     const earnedPerLevel: Record<number, number> = {}
@@ -44,18 +46,21 @@ export async function GET(request: Request) {
     }))
 
     // Get matrix children counts
-    const directChildren = matrixPosition
-      ? await db.matrixPosition.count({
-          where: { parentId: matrixPosition.id, matrixType: 'entrada' },
-        })
-      : 0
+    let directChildren = 0
+    if (matrixPosition) {
+      directChildren = await db.count(
+        'MatrixPosition',
+        '"parentId" = $1 AND "matrixType" = $2',
+        [(matrixPosition as any).id, 'entrada']
+      )
+    }
 
     return success({
       matrixPosition: matrixPosition
         ? {
-            id: matrixPosition.id,
-            level: matrixPosition.level,
-            position: matrixPosition.position,
+            id: (matrixPosition as any).id,
+            level: (matrixPosition as any).level,
+            position: (matrixPosition as any).position,
           }
         : null,
       userLevel: user.entradaLevel,

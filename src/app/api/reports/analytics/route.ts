@@ -12,10 +12,12 @@ export async function GET(req: NextRequest) {
     const startDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000)
 
     // Revenue trends (monthly)
-    const transactions = await db.transaction.findMany({
-      where: { userId, createdAt: { gte: startDate }, status: 'paid' },
-      orderBy: { createdAt: 'asc' },
-    })
+    const transactions = await db.find(
+      'Transaction',
+      '"userId" = $1 AND "createdAt" >= $2 AND status = $3',
+      [userId, startDate, 'paid'],
+      'ORDER BY "createdAt" ASC'
+    ) as any[]
 
     // Group by month for revenue trends
     const monthlyRevenue: Record<string, number> = {}
@@ -41,43 +43,48 @@ export async function GET(req: NextRequest) {
       total: data.entrada + data.residual + data.vendas,
     }))
 
-    // Network growth
-    const user = await db.user.findUnique({ where: { id: userId } })
+    // Network growth - get all downline recursively
+    const user = await db.findOne('User', '"id" = $1', [userId])
     const getAllDownline = async (uid: string, depth = 10): Promise<string[]> => {
       if (depth <= 0) return []
-      const direct = await db.user.findMany({ where: { referredById: uid }, select: { id: true, createdAt: true } })
+      const direct = await db.find('User', '"referredById" = $1', [uid]) as any[]
       const ids = direct.map(d => d.id)
       const nested = await Promise.all(ids.map(id => getAllDownline(id, depth - 1)))
       return [...ids, ...nested.flat()]
     }
     const downlineIds = await getAllDownline(userId)
-    const networkMembers = await db.user.findMany({
-      where: { id: { in: downlineIds }, createdAt: { gte: startDate } },
-      select: { createdAt: true },
-    })
 
-    const networkGrowth: Record<string, number> = {}
-    networkMembers.forEach(m => {
-      const monthKey = `${new Date(m.createdAt).getFullYear()}-${String(new Date(m.createdAt).getMonth() + 1).padStart(2, '0')}`
-      networkGrowth[monthKey] = (networkGrowth[monthKey] || 0) + 1
-    })
+    // Network growth within period
+    let networkGrowthData: { month: string; count: number }[] = []
+    if (downlineIds.length > 0) {
+      const networkMembers = await db.execute(
+        `SELECT "createdAt" FROM "User" WHERE id = ANY($1) AND "createdAt" >= $2`,
+        [downlineIds, startDate]
+      ) as any[]
 
-    const networkGrowthData = Object.entries(networkGrowth).map(([month, count]) => ({ month, count }))
+      const networkGrowth: Record<string, number> = {}
+      networkMembers.forEach(m => {
+        const monthKey = `${new Date(m.createdAt).getFullYear()}-${String(new Date(m.createdAt).getMonth() + 1).padStart(2, '0')}`
+        networkGrowth[monthKey] = (networkGrowth[monthKey] || 0) + 1
+      })
+      networkGrowthData = Object.entries(networkGrowth).map(([month, count]) => ({ month, count }))
+    }
 
     // Plan distribution
-    const planDistribution = await db.user.groupBy({
-      by: ['plan'],
-      _count: { plan: true },
-      where: { id: { in: [userId, ...downlineIds] } },
-    })
+    const allIds = [userId, ...downlineIds]
+    const planDistribution = await db.execute(
+      `SELECT plan, COUNT(*)::int as count FROM "User" WHERE id = ANY($1) GROUP BY plan`,
+      [allIds]
+    ) as any[]
 
     // Category spending
-    const categorySpending = await db.transaction.groupBy({
-      by: ['category'],
-      _sum: { amount: true },
-      _count: { id: true },
-      where: { userId, createdAt: { gte: startDate }, status: 'paid' },
-    })
+    const categorySpending = await db.execute(
+      `SELECT category, SUM(amount)::int as amount, COUNT(id)::int as count
+       FROM "Transaction"
+       WHERE "userId" = $1 AND "createdAt" >= $2 AND status = $3
+       GROUP BY category`,
+      [userId, startDate, 'paid']
+    ) as any[]
 
     return success({
       period,
@@ -85,11 +92,11 @@ export async function GET(req: NextRequest) {
       revenueTrends,
       cashbackDistribution,
       networkGrowth: networkGrowthData,
-      planDistribution: planDistribution.map(p => ({ plan: p.plan, count: p._count.plan })),
+      planDistribution: planDistribution.map(p => ({ plan: p.plan, count: p.count })),
       categorySpending: categorySpending.map(c => ({
         category: c.category || 'other',
-        amount: c._sum.amount || 0,
-        count: c._count.id,
+        amount: c.amount || 0,
+        count: c.count,
       })),
       totalNetworkSize: downlineIds.length + 1,
       summary: {

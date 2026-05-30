@@ -8,11 +8,15 @@ export async function GET(req: NextRequest) {
     if (!userId) return error('userId is required', 400)
 
     // Get or create streak
-    let streak = await db.gamificationStreak.findUnique({ where: { userId } })
+    let streak = await db.findOne('GamificationStreak', '"userId" = $1', [userId]) as any
 
     if (!streak) {
-      streak = await db.gamificationStreak.create({
-        data: { userId, currentStreak: 1, longestStreak: 1, lastLoginDate: new Date(), totalPoints: 10 },
+      streak = await db.insert('GamificationStreak', {
+        userId,
+        currentStreak: 1,
+        longestStreak: 1,
+        lastLoginDate: new Date(),
+        totalPoints: 10,
       })
     }
 
@@ -27,41 +31,45 @@ export async function GET(req: NextRequest) {
       if (diffDays === 1) {
         // Consecutive day - increment streak
         const newStreak = streak.currentStreak + 1
-        streak = await db.gamificationStreak.update({
-          where: { userId },
-          data: {
+        streak = await db.update(
+          'GamificationStreak',
+          '"userId" = $1',
+          {
             currentStreak: newStreak,
             longestStreak: Math.max(newStreak, streak.longestStreak),
             lastLoginDate: new Date(),
             totalPoints: streak.totalPoints + (newStreak >= 7 ? 20 : 10),
           },
-        })
+          [userId]
+        )
       } else if (diffDays > 1) {
         // Streak broken - reset
-        streak = await db.gamificationStreak.update({
-          where: { userId },
-          data: {
+        streak = await db.update(
+          'GamificationStreak',
+          '"userId" = $1',
+          {
             currentStreak: 1,
             lastLoginDate: new Date(),
             totalPoints: streak.totalPoints + 5,
           },
-        })
+          [userId]
+        )
       }
     }
 
     // Streak rewards
     const streakRewards = [
-      { days: 3, points: 10, claimed: streak.currentStreak >= 3 },
-      { days: 7, points: 50, claimed: streak.currentStreak >= 7 },
-      { days: 14, points: 100, claimed: streak.currentStreak >= 14 },
-      { days: 30, points: 500, claimed: streak.currentStreak >= 30 },
+      { days: 3, points: 10, claimed: (streak as any).currentStreak >= 3 },
+      { days: 7, points: 50, claimed: (streak as any).currentStreak >= 7 },
+      { days: 14, points: 100, claimed: (streak as any).currentStreak >= 14 },
+      { days: 30, points: 500, claimed: (streak as any).currentStreak >= 30 },
     ]
 
     return success({
-      currentStreak: streak.currentStreak,
-      longestStreak: streak.longestStreak,
-      totalPoints: streak.totalPoints,
-      lastLoginDate: streak.lastLoginDate,
+      currentStreak: (streak as any).currentStreak,
+      longestStreak: (streak as any).longestStreak,
+      totalPoints: (streak as any).totalPoints,
+      lastLoginDate: (streak as any).lastLoginDate,
       streakRewards,
     })
   } catch (err) {

@@ -10,12 +10,7 @@ export async function GET(request: Request) {
       return error('userId is required')
     }
 
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      include: {
-        careerMilestones: { orderBy: { pointsRequired: 'asc' } },
-      },
-    })
+    const user = await db.findOne('User', '"id" = $1', [userId])
 
     if (!user) {
       return error('User not found', 404)
@@ -27,15 +22,23 @@ export async function GET(request: Request) {
       ? Math.min(((user.careerPoints / nextRank.minPoints) * 100), 100)
       : 100
 
+    // Get career milestones
+    const milestones = await db.find(
+      'CareerMilestone',
+      '"userId" = $1',
+      [userId],
+      'ORDER BY "pointsRequired" ASC'
+    )
+
     // If milestones don't exist yet, create the default list
-    let milestones = user.careerMilestones
-    if (milestones.length === 0) {
-      milestones = CAREER_RANKS.map((rank) => ({
+    let milestoneData = milestones as any[]
+    if (milestoneData.length === 0) {
+      milestoneData = CAREER_RANKS.map((rank) => ({
         milestone: rank.name,
         pointsRequired: rank.minPoints,
         achieved: user.careerPoints >= rank.minPoints,
         achievedAt: user.careerPoints >= rank.minPoints ? new Date() : null,
-      })) as typeof milestones
+      })) as any[]
     }
 
     return success({
@@ -51,7 +54,7 @@ export async function GET(request: Request) {
           }
         : null,
       progress,
-      milestones: milestones.map((m) => ({
+      milestones: milestoneData.map((m: any) => ({
         id: m.id,
         milestone: m.milestone,
         pointsRequired: m.pointsRequired,

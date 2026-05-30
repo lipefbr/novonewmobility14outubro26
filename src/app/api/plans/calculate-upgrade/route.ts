@@ -17,7 +17,7 @@ export async function POST(request: Request) {
       return error('Invalid target plan. Must be blue3 or blue5')
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('User not found', 404)
     }

@@ -4,14 +4,16 @@ import { success, error } from '@/lib/api-utils'
 
 export async function GET(req: NextRequest) {
   try {
-    const announcements = await db.announcement.findMany({
-      where: { isActive: true },
-      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
-    })
+    const announcements = await db.find(
+      'Announcement',
+      '"isActive" = true',
+      [],
+      'ORDER BY priority DESC, "createdAt" DESC'
+    ) as any[]
     const now = new Date()
     const active = announcements.filter(a => {
-      if (a.startDate && a.startDate > now) return false
-      if (a.endDate && a.endDate < now) return false
+      if (a.startDate && new Date(a.startDate) > now) return false
+      if (a.endDate && new Date(a.endDate) < now) return false
       return true
     })
     return success(active)

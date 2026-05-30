@@ -10,23 +10,36 @@ export async function GET(request: Request) {
       return error('userId is required')
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('User not found', 404)
     }
 
-    const tickets = await db.ticket.findMany({
-      where: { userId },
-      include: {
-        messages: {
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-        },
-      },
-      orderBy: { updatedAt: 'desc' },
-    })
+    // Get tickets with latest message
+    const tickets = await db.find(
+      'Ticket',
+      '"userId" = $1',
+      [userId],
+      'ORDER BY "updatedAt" DESC'
+    ) as any[]
 
-    return success({ tickets })
+    // For each ticket, get the latest message
+    const ticketsWithMessages = await Promise.all(
+      tickets.map(async (ticket) => {
+        const messages = await db.find(
+          'TicketMessage',
+          '"ticketId" = $1',
+          [ticket.id],
+          'ORDER BY "createdAt" DESC LIMIT 1'
+        ) as any[]
+        return {
+          ...ticket,
+          messages,
+        }
+      })
+    )
+
+    return success({ tickets: ticketsWithMessages })
   } catch (err) {
     console.error('Tickets error:', err)
     return error('Internal server error', 500)
@@ -42,31 +55,33 @@ export async function POST(request: Request) {
       return error('userId, subject, category, and message are required')
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('User not found', 404)
     }
 
-    const ticket = await db.ticket.create({
-      data: {
-        userId,
-        subject,
-        category,
-        status: 'open',
-        messages: {
-          create: {
-            userId,
-            message,
-            isAdmin: false,
-          },
-        },
-      },
-      include: {
-        messages: true,
-      },
+    // Create ticket
+    const ticket = await db.insert('Ticket', {
+      userId,
+      subject,
+      category,
+      status: 'open',
     })
 
-    return success({ ticket }, 201)
+    // Create first message
+    const ticketMessage = await db.insert('TicketMessage', {
+      ticketId: (ticket as any).id,
+      userId,
+      message,
+      isAdmin: false,
+    })
+
+    return success({
+      ticket: {
+        ...ticket,
+        messages: [ticketMessage],
+      },
+    }, 201)
   } catch (err) {
     console.error('Create ticket error:', err)
     return error('Internal server error', 500)

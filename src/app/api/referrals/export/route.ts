@@ -14,10 +14,11 @@ export async function GET(req: NextRequest) {
     // Get the user's downline recursively (up to 10 levels)
     const getAllDownline = async (uid: string, depth = 10): Promise<string[]> => {
       if (depth <= 0) return []
-      const direct = await db.user.findMany({
-        where: { referredById: uid },
-        select: { id: true },
-      })
+      const direct = await db.find(
+        'User',
+        '"referredById" = $1',
+        [uid]
+      ) as any[]
       const ids = direct.map(d => d.id)
       const nested = await Promise.all(ids.map(id => getAllDownline(id, depth - 1)))
       return [...ids, ...nested.flat()]
@@ -25,31 +26,43 @@ export async function GET(req: NextRequest) {
 
     const downlineIds = await getAllDownline(userId)
 
-    const where: Record<string, unknown> = { id: { in: downlineIds } }
-    if (plan !== 'all') where.plan = plan
-    if (status === 'active') where.isActive = true
-    if (status === 'inactive') where.isActive = false
+    // Build WHERE clause dynamically
+    const conditions: string[] = []
+    const params: any[] = []
+    let paramIdx = 1
 
-    const referrals = await db.user.findMany({
-      where,
-      select: {
-        name: true, email: true, plan: true, isActive: true,
-        createdAt: true, referralCode: true,
-        _count: { select: { referrals: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+    conditions.push(`"id" = ANY($${paramIdx})`)
+    params.push(downlineIds.length > 0 ? downlineIds : ['__none__'])
+    paramIdx++
 
-    // Get level info for each referral
-    const userReferrals = await db.user.findMany({
-      where: { referredById: userId },
-      select: { id: true },
-    })
+    if (plan !== 'all') {
+      conditions.push(`"plan" = $${paramIdx}`)
+      params.push(plan)
+      paramIdx++
+    }
+    if (status === 'active') {
+      conditions.push('"isActive" = true')
+    }
+    if (status === 'inactive') {
+      conditions.push('"isActive" = false')
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+
+    // Get referrals with referral count via subquery
+    const referrals = await db.execute(
+      `SELECT u."name", u."email", u."plan", u."isActive", u."createdAt", u."referralCode",
+        (SELECT COUNT(*)::int FROM "User" r WHERE r."referredById" = u.id) as "directReferrals"
+      FROM "User" u
+      ${whereClause}
+      ORDER BY u."createdAt" DESC`,
+      params
+    ) as any[]
 
     if (format === 'csv') {
       const headers = 'Nome,Email,Plano,Status,Código de Indicação,Indicados Diretos,Data de Cadastro\n'
       const rows = referrals.map(r =>
-        `"${r.name}","${r.email}","${r.plan}","${r.isActive ? 'Ativo' : 'Inativo'}","${r.referralCode}",${r._count.referrals},"${new Date(r.createdAt).toLocaleDateString('pt-BR')}"`
+        `"${r.name}","${r.email}","${r.plan}","${r.isActive ? 'Ativo' : 'Inativo'}","${r.referralCode}",${r.directReferrals},"${new Date(r.createdAt).toLocaleDateString('pt-BR')}"`
       ).join('\n')
 
       return new Response(headers + rows, {

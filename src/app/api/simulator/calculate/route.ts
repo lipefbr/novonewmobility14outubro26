@@ -26,7 +26,6 @@ export async function POST(req: Request) {
 
     // Calculate Entrada 4x5 matrix projections
     const entradaProjections = ENTRADA_LEVELS.map(level => {
-      const totalUsersAtLevel = Math.min(level.users, directReferrals * Math.pow(4, level.level - 1) / directReferrals)
       const actualUsers = Math.min(level.users, Math.floor(directReferrals * Math.pow(4, level.level - 1)))
       const earningPerUser = planPrice * (level.percentage / 100) * multiplier
       const levelEarning = earningPerUser * actualUsers

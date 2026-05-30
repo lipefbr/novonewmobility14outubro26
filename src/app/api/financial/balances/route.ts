@@ -10,7 +10,7 @@ export async function GET(request: Request) {
       return error('userId is required')
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('User not found', 404)
     }

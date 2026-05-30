@@ -7,10 +7,10 @@ export async function PUT(req: Request) {
     const { userId } = body
     if (!userId) return error('userId is required', 400)
 
-    await db.notification.updateMany({
-      where: { userId, isRead: false },
-      data: { isRead: true },
-    })
+    await db.execute(
+      `UPDATE "Notification" SET "isRead" = true WHERE "userId" = $1 AND "isRead" = false`,
+      [userId]
+    )
 
     return success({ message: 'All notifications marked as read' })
   } catch (err) {

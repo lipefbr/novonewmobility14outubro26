@@ -16,7 +16,7 @@ export async function POST(request: Request) {
       return error('Amount must be positive')
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('User not found', 404)
     }
@@ -29,30 +29,28 @@ export async function POST(request: Request) {
     else if (category === 'pharmacy') balanceField = 'balancePharmacy'
     else if (category === 'gratification') balanceField = 'balanceGratification'
 
-    const currentBalance = user[balanceField as keyof typeof user] as number
+    const currentBalance = user[balanceField] as number
     if (currentBalance < amountCents) {
       return error('Insufficient balance', 400)
     }
 
     // Create transaction
-    const transaction = await db.transaction.create({
-      data: {
-        userId,
-        type: 'withdrawal',
-        amount: -amountCents,
-        status: 'pending',
-        category: category || 'withdrawal',
-        description: `Solicitação de saque - ${category || 'withdrawal'}`,
-      },
+    const transaction = await db.insert('Transaction', {
+      userId,
+      type: 'withdrawal',
+      amount: -amountCents,
+      status: 'pending',
+      category: category || 'withdrawal',
+      description: `Solicitação de saque - ${category || 'withdrawal'}`,
     })
 
     // Deduct from balance
-    await db.user.update({
-      where: { id: userId },
-      data: {
-        [balanceField]: currentBalance - amountCents,
-      },
-    })
+    await db.update(
+      'User',
+      '"id" = $1',
+      { [balanceField]: currentBalance - amountCents },
+      [userId]
+    )
 
     return success({ transaction }, 201)
   } catch (err) {

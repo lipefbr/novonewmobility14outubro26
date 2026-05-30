@@ -7,10 +7,12 @@ export async function PUT(req: Request) {
     const { notificationId } = body
     if (!notificationId) return error('notificationId is required', 400)
 
-    const notification = await db.notification.update({
-      where: { id: notificationId },
-      data: { isRead: true },
-    })
+    const notification = await db.update(
+      'Notification',
+      '"id" = $1',
+      { isRead: true },
+      [notificationId]
+    )
 
     return success(notification)
   } catch (err) {

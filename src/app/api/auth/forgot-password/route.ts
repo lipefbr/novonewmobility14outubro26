@@ -1,8 +1,6 @@
 import { db } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
-
-// In-memory store for reset codes (mock - in production would use email + DB)
-const resetCodes = new Map<string, { code: string; expires: number }>()
+import { resetCodes } from '@/lib/reset-codes'
 
 export async function POST(request: Request) {
   try {
@@ -13,7 +11,7 @@ export async function POST(request: Request) {
       return error('Email is required')
     }
 
-    const user = await db.user.findUnique({ where: { email } })
+    const user = await db.findOne('User', '"email" = $1', [email])
     if (!user) {
       // Don't reveal if email exists - always return success for security
       return success({ message: 'If an account with this email exists, a reset code has been sent.' })
@@ -38,6 +36,3 @@ export async function POST(request: Request) {
     return error('Internal server error', 500)
   }
 }
-
-// Export for use in reset-password route
-export { resetCodes }

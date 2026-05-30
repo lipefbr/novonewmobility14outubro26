@@ -14,37 +14,35 @@ export async function POST(
       return error('userId and message are required')
     }
 
-    const ticket = await db.ticket.findUnique({
-      where: { id: ticketId },
-    })
+    const ticket = await db.findOne('Ticket', '"id" = $1', [ticketId])
 
     if (!ticket) {
       return error('Ticket not found', 404)
     }
 
-    if (ticket.userId !== userId) {
+    if ((ticket as any).userId !== userId) {
       return error('Ticket does not belong to this user', 403)
     }
 
-    if (ticket.status === 'closed') {
+    if ((ticket as any).status === 'closed') {
       return error('Cannot reply to a closed ticket', 400)
     }
 
-    const ticketMessage = await db.ticketMessage.create({
-      data: {
-        ticketId,
-        userId,
-        message,
-        isAdmin: false,
-      },
+    const ticketMessage = await db.insert('TicketMessage', {
+      ticketId,
+      userId,
+      message,
+      isAdmin: false,
     })
 
     // Update ticket status to in_progress if it was open
-    if (ticket.status === 'open') {
-      await db.ticket.update({
-        where: { id: ticketId },
-        data: { status: 'in_progress' },
-      })
+    if ((ticket as any).status === 'open') {
+      await db.update(
+        'Ticket',
+        '"id" = $1',
+        { status: 'in_progress' },
+        [ticketId]
+      )
     }
 
     return success({ message: ticketMessage }, 201)

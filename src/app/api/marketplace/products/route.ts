@@ -11,32 +11,42 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '12')
     const featured = searchParams.get('featured')
 
-    const where: any = { isActive: true }
+    // Build WHERE clause
+    const conditions: string[] = ['"isActive" = true']
+    const params: any[] = []
+    let paramIdx = 1
+
     if (search) {
-      where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-      ]
+      conditions.push(`("name" ILIKE $${paramIdx} OR description ILIKE $${paramIdx})`)
+      params.push(`%${search}%`)
+      paramIdx++
     }
     if (category && category !== 'all') {
-      where.category = category
+      conditions.push(`category = $${paramIdx}`)
+      params.push(category)
+      paramIdx++
     }
     if (featured === 'true') {
-      where.isFeatured = true
+      conditions.push('"isFeatured" = true')
     }
 
-    const [products, total] = await Promise.all([
-      db.marketplaceProduct.findMany({
-        where,
-        orderBy: [
-          { isFeatured: 'desc' },
-          { createdAt: 'desc' },
-        ],
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      db.marketplaceProduct.count({ where }),
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+    const offset = (page - 1) * limit
+
+    const [products, countResult] = await Promise.all([
+      db.execute(
+        `SELECT * FROM "MarketplaceProduct" ${whereClause}
+         ORDER BY "isFeatured" DESC, "createdAt" DESC
+         LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
+        [...params, limit, offset]
+      ),
+      db.execute(
+        `SELECT COUNT(*)::int as count FROM "MarketplaceProduct" ${whereClause}`,
+        params
+      ),
     ])
+
+    const total = (countResult as any[])?.[0]?.count ?? 0
 
     return success({
       products,
@@ -56,7 +66,7 @@ export async function POST(request: NextRequest) {
     const { userId, name, description, price, originalPrice, category, imageUrl, images, stock, cashbackPercent, sellerName, tags, isFeatured } = body
 
     // Check admin
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user || user.role !== 'admin') {
       return error('Unauthorized - Admin only', 403)
     }
@@ -65,21 +75,19 @@ export async function POST(request: NextRequest) {
       return error('Name, price, and category are required')
     }
 
-    const product = await db.marketplaceProduct.create({
-      data: {
-        name,
-        description: description || null,
-        price,
-        originalPrice: originalPrice || null,
-        category,
-        imageUrl: imageUrl || null,
-        images: images ? JSON.stringify(images) : null,
-        stock: stock || 0,
-        cashbackPercent: cashbackPercent || 0,
-        sellerName: sellerName || null,
-        tags: tags ? JSON.stringify(tags) : null,
-        isFeatured: isFeatured || false,
-      },
+    const product = await db.insert('MarketplaceProduct', {
+      name,
+      description: description || null,
+      price,
+      originalPrice: originalPrice || null,
+      category,
+      imageUrl: imageUrl || null,
+      images: images ? JSON.stringify(images) : null,
+      stock: stock || 0,
+      cashbackPercent: cashbackPercent || 0,
+      sellerName: sellerName || null,
+      tags: tags ? JSON.stringify(tags) : null,
+      isFeatured: isFeatured || false,
     })
 
     return success({ product }, 201)

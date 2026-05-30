@@ -10,18 +10,20 @@ export async function GET(request: Request) {
       return error('userId is required')
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('User not found', 404)
     }
 
-    const vouchers = await db.voucher.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-    })
+    const vouchers = await db.find(
+      'Voucher',
+      '"userId" = $1',
+      [userId],
+      'ORDER BY "createdAt" DESC'
+    )
 
-    const active = vouchers.filter((v) => !v.isUsed)
-    const used = vouchers.filter((v) => v.isUsed)
+    const active = (vouchers as any[]).filter((v) => !v.isUsed)
+    const used = (vouchers as any[]).filter((v) => v.isUsed)
 
     return success({
       active,

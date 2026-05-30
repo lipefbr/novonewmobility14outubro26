@@ -10,20 +10,22 @@ export async function GET(request: Request) {
       return error('userId is required')
     }
 
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      include: {
-        pointTransactions: { orderBy: { createdAt: 'desc' } },
-      },
-    })
+    const user = await db.findOne('User', '"id" = $1', [userId])
 
     if (!user) {
       return error('User not found', 404)
     }
 
+    const pointTransactions = await db.find(
+      'PointTransaction',
+      '"userId" = $1',
+      [userId],
+      'ORDER BY "createdAt" DESC'
+    ) as any[]
+
     // Group points by type
     const pointsByType: Record<string, number> = {}
-    for (const pt of user.pointTransactions) {
+    for (const pt of pointTransactions) {
       pointsByType[pt.type] = (pointsByType[pt.type] || 0) + pt.amount
     }
 
@@ -32,7 +34,7 @@ export async function GET(request: Request) {
       personalPoints: user.personalPoints,
       stars: user.stars,
       pointsByType,
-      history: user.pointTransactions,
+      history: pointTransactions,
     })
   } catch (err) {
     console.error('Points error:', err)

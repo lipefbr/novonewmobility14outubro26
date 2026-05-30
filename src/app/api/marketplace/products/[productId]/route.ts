@@ -8,9 +8,7 @@ export async function GET(
 ) {
   try {
     const { productId } = await params
-    const product = await db.marketplaceProduct.findUnique({
-      where: { id: productId },
-    })
+    const product = await db.findOne('MarketplaceProduct', '"id" = $1', [productId])
     if (!product) {
       return error('Product not found', 404)
     }
@@ -31,12 +29,12 @@ export async function PUT(
     const { userId, ...data } = body
 
     // Check admin
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user || user.role !== 'admin') {
       return error('Unauthorized - Admin only', 403)
     }
 
-    const updateData: any = {}
+    const updateData: Record<string, any> = {}
     const allowedFields = ['name', 'description', 'price', 'originalPrice', 'category', 'imageUrl', 'images', 'stock', 'cashbackPercent', 'sellerName', 'tags', 'isFeatured', 'isActive']
     for (const field of allowedFields) {
       if (data[field] !== undefined) {
@@ -48,10 +46,12 @@ export async function PUT(
       }
     }
 
-    const product = await db.marketplaceProduct.update({
-      where: { id: productId },
-      data: updateData,
-    })
+    const product = await db.update(
+      'MarketplaceProduct',
+      '"id" = $1',
+      updateData,
+      [productId]
+    )
 
     return success({ product })
   } catch (err) {
@@ -70,15 +70,17 @@ export async function DELETE(
     const userId = searchParams.get('userId')
 
     // Check admin
-    const user = await db.user.findUnique({ where: { id: userId || '' } })
+    const user = await db.findOne('User', '"id" = $1', [userId || ''])
     if (!user || user.role !== 'admin') {
       return error('Unauthorized - Admin only', 403)
     }
 
-    await db.marketplaceProduct.update({
-      where: { id: productId },
-      data: { isActive: false },
-    })
+    await db.update(
+      'MarketplaceProduct',
+      '"id" = $1',
+      { isActive: false },
+      [productId]
+    )
 
     return success({ message: 'Product deactivated' })
   } catch (err) {

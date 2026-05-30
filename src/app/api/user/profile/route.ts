@@ -10,22 +10,32 @@ export async function GET(request: Request) {
       return error('userId is required')
     }
 
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      include: {
-        referrals: {
-          select: { id: true, name: true, email: true, createdAt: true, isActive: true, plan: true },
-          take: 10,
-          orderBy: { createdAt: 'desc' },
-        },
-      },
-    })
+    const user = await db.findOne('User', '"id" = $1', [userId])
 
     if (!user) {
       return error('User not found', 404)
     }
 
-    return success(sanitizeUser(user as unknown as Record<string, unknown>))
+    // Fetch referrals (users whose referredById matches this user's id)
+    const referrals = await db.find(
+      'User',
+      '"referredById" = $1',
+      [userId],
+      'ORDER BY "createdAt" DESC LIMIT 10'
+    )
+
+    // Select only the fields that were included in the original Prisma select
+    const safeUser = sanitizeUser(user)
+    const mappedReferrals = (referrals as any[]).map((r) => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      createdAt: r.createdAt,
+      isActive: r.isActive,
+      plan: r.plan,
+    }))
+
+    return success({ ...safeUser, referrals: mappedReferrals })
   } catch (err) {
     console.error('Profile fetch error:', err)
     return error('Internal server error', 500)
@@ -35,13 +45,28 @@ export async function GET(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json()
-    const { userId, name, username, phone, address, city, state, bankCode, bankAgency, bankAccount, bankType, language, pixKey, pixEnabled } = body
+    const {
+      userId,
+      name,
+      username,
+      phone,
+      address,
+      city,
+      state,
+      bankCode,
+      bankAgency,
+      bankAccount,
+      bankType,
+      language,
+      pixKey,
+      pixEnabled,
+    } = body
 
     if (!userId) {
       return error('userId is required')
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('User not found', 404)
     }
@@ -61,12 +86,9 @@ export async function PUT(request: Request) {
     if (pixKey !== undefined) updateData.pixKey = pixKey
     if (pixEnabled !== undefined) updateData.pixEnabled = pixEnabled
 
-    const updatedUser = await db.user.update({
-      where: { id: userId },
-      data: updateData,
-    })
+    const updatedUser = await db.update('User', '"id" = $1', updateData, [userId])
 
-    return success(sanitizeUser(updatedUser as unknown as Record<string, unknown>))
+    return success(sanitizeUser(updatedUser))
   } catch (err) {
     console.error('Profile update error:', err)
     return error('Internal server error', 500)

@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
       return error('Valor deve ser positivo')
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('Usuário não encontrado', 404)
     }
@@ -68,36 +68,29 @@ export async function POST(req: NextRequest) {
       return error('Valor insuficiente para cobrir a taxa')
     }
 
-    // Update balances
-    await db.user.update({
-      where: { id: userId },
-      data: {
-        [sourceField]: { decrement: amountCents },
-        [destField]: { increment: netAmount },
-      },
-    })
+    // Update balances with decrement/increment using raw SQL
+    await db.execute(
+      `UPDATE "User" SET "${sourceField}" = "${sourceField}" - $1, "${destField}" = "${destField}" + $2 WHERE "id" = $3`,
+      [amountCents, netAmount, userId]
+    )
 
     // Create transaction records
-    await db.transaction.create({
-      data: {
-        userId,
-        type: 'transfer_out',
-        amount: -amountCents,
-        status: 'paid',
-        category: source,
-        description: `Transferência de ${source} para ${destination}`,
-      },
+    await db.insert('Transaction', {
+      userId,
+      type: 'transfer_out',
+      amount: -amountCents,
+      status: 'paid',
+      category: source,
+      description: `Transferência de ${source} para ${destination}`,
     })
 
-    await db.transaction.create({
-      data: {
-        userId,
-        type: 'transfer_in',
-        amount: netAmount,
-        status: 'paid',
-        category: destination,
-        description: `Transferência recebida de ${source} (taxa: ${feePercent}%)`,
-      },
+    await db.insert('Transaction', {
+      userId,
+      type: 'transfer_in',
+      amount: netAmount,
+      status: 'paid',
+      category: destination,
+      description: `Transferência recebida de ${source} (taxa: ${feePercent}%)`,
     })
 
     return success({

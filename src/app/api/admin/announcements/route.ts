@@ -4,14 +4,16 @@ import { success, error } from '@/lib/api-utils'
 
 export async function GET(req: NextRequest) {
   try {
-    const announcements = await db.announcement.findMany({
-      where: { isActive: true },
-      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
-    })
+    const announcements = await db.find(
+      'Announcement',
+      '"isActive" = $1',
+      [true],
+      'ORDER BY "priority" DESC, "createdAt" DESC'
+    )
     const now = new Date()
-    const active = announcements.filter(a => {
-      if (a.startDate && a.startDate > now) return false
-      if (a.endDate && a.endDate < now) return false
+    const active = (announcements as any[]).filter(a => {
+      if (a.startDate && new Date(a.startDate) > now) return false
+      if (a.endDate && new Date(a.endDate) < now) return false
       return true
     })
     return success(active)
@@ -26,23 +28,21 @@ export async function POST(req: NextRequest) {
     const { userId, title, message, type, priority, actionLabel, actionUrl, startDate, endDate } = body
     if (!userId) return error('userId is required', 400)
 
-    const user = await db.user.findUnique({ where: { id: userId } })
-    if (!user || user.role !== 'admin') return error('Unauthorized', 403)
+    const user = await db.findOne('User', '"id" = $1', [userId])
+    if (!user || (user as any).role !== 'admin') return error('Unauthorized', 403)
 
     if (!title || !message) return error('title and message are required', 400)
 
-    const announcement = await db.announcement.create({
-      data: {
-        title,
-        message,
-        type: type || 'info',
-        priority: priority || 'normal',
-        actionLabel,
-        actionUrl,
-        startDate: startDate ? new Date(startDate) : null,
-        endDate: endDate ? new Date(endDate) : null,
-        createdBy: userId,
-      },
+    const announcement = await db.insert('Announcement', {
+      title,
+      message,
+      type: type || 'info',
+      priority: priority || 'normal',
+      actionLabel: actionLabel || null,
+      actionUrl: actionUrl || null,
+      startDate: startDate ? new Date(startDate) : null,
+      endDate: endDate ? new Date(endDate) : null,
+      createdBy: userId,
     })
 
     return success(announcement, 201)

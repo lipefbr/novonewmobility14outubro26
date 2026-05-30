@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { success, error, formatTimeSince, ENTRADA_LEVELS, RESIDUAL_LEVELS, CAREER_RANKS, getCareerRank, getNextRank } from '@/lib/api-utils'
+import { success, error, formatTimeSince, getCareerRank, getNextRank } from '@/lib/api-utils'
 
 export async function GET(request: Request) {
   try {
@@ -10,12 +10,7 @@ export async function GET(request: Request) {
       return error('userId is required')
     }
 
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      include: {
-        referrals: { select: { id: true } },
-      },
-    })
+    const user = await db.findOne('User', '"id" = $1', [userId])
 
     if (!user) {
       return error('User not found', 404)
@@ -25,62 +20,80 @@ export async function GET(request: Request) {
     const timeSinceRegistration = formatTimeSince(new Date(user.createdAt))
 
     // Direct referral count
-    const directReferralCount = user.referrals.length
+    const referralCountResult = await db.execute(
+      'SELECT COUNT(*)::int as count FROM "User" WHERE "referredById" = $1',
+      [userId]
+    )
+    const directReferralCount = referralCountResult[0]?.count || 0
 
-    // Cashback entrada stats
-    const entradaEntries = await db.cashbackEntry.findMany({ where: { userId } })
-    const totalEntradaEarned = entradaEntries.reduce((sum, e) => sum + e.amount, 0)
+    // Cashback entrada stats - use SQL aggregation for efficiency
+    const entradaStats = await db.execute(
+      'SELECT COALESCE(SUM("amount"), 0) as total, "level", COUNT(*)::int as cnt FROM "CashbackEntry" WHERE "userId" = $1 GROUP BY "level"',
+      [userId]
+    )
+    const totalEntradaEarned = (entradaStats as any[]).reduce((sum: number, e: any) => sum + Number(e.total), 0)
     const entradaUsersByLevel: Record<number, number> = {}
-    for (const e of entradaEntries) {
-      entradaUsersByLevel[e.level] = (entradaUsersByLevel[e.level] || 0) + 1
+    let totalEntradaUsers = 0
+    for (const e of entradaStats as any[]) {
+      entradaUsersByLevel[e.level] = e.cnt
+      totalEntradaUsers += e.cnt
     }
-    const totalEntradaUsers = Object.values(entradaUsersByLevel).reduce((s, c) => s + c, 0)
 
     // Cashback residual stats
-    const residualEntries = await db.cashbackResidual.findMany({ where: { userId } })
-    const totalResidualEarned = residualEntries.reduce((sum, e) => sum + e.amount, 0)
+    const residualStats = await db.execute(
+      'SELECT COALESCE(SUM("amount"), 0) as total, "level", COUNT(*)::int as cnt FROM "CashbackResidual" WHERE "userId" = $1 GROUP BY "level"',
+      [userId]
+    )
+    const totalResidualEarned = (residualStats as any[]).reduce((sum: number, e: any) => sum + Number(e.total), 0)
     const residualUsersByLevel: Record<number, number> = {}
-    for (const e of residualEntries) {
-      residualUsersByLevel[e.level] = (residualUsersByLevel[e.level] || 0) + 1
+    let totalResidualUsers = 0
+    for (const e of residualStats as any[]) {
+      residualUsersByLevel[e.level] = e.cnt
+      totalResidualUsers += e.cnt
     }
-    const totalResidualUsers = Object.values(residualUsersByLevel).reduce((s, c) => s + c, 0)
 
     // Cashback vendas stats
-    const vendasEntries = await db.cashbackSales.findMany({ where: { userId } })
-    const totalVendasEarned = vendasEntries.reduce((sum, e) => sum + e.amount, 0)
+    const vendasStats = await db.execute(
+      'SELECT COALESCE(SUM("amount"), 0) as total, "level", COUNT(*)::int as cnt FROM "CashbackSales" WHERE "userId" = $1 GROUP BY "level"',
+      [userId]
+    )
+    const totalVendasEarned = (vendasStats as any[]).reduce((sum: number, e: any) => sum + Number(e.total), 0)
     const vendasUsersByLevel: Record<number, number> = {}
-    for (const e of vendasEntries) {
-      vendasUsersByLevel[e.level] = (vendasUsersByLevel[e.level] || 0) + 1
+    let totalVendasUsers = 0
+    for (const e of vendasStats as any[]) {
+      vendasUsersByLevel[e.level] = e.cnt
+      totalVendasUsers += e.cnt
     }
-    const totalVendasUsers = Object.values(vendasUsersByLevel).reduce((s, c) => s + c, 0)
 
     // Recent transactions
-    const recentTransactions = await db.transaction.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-    })
+    const recentTransactions = await db.find(
+      'Transaction',
+      '"userId" = $1',
+      [userId],
+      'ORDER BY "createdAt" DESC LIMIT 10'
+    )
 
     // Career info
     const currentRank = getCareerRank(user.careerPoints)
     const nextRank = getNextRank(user.careerPoints)
 
     // User distribution for chart (by plan)
-    const allUsers = await db.user.findMany({ select: { plan: true } })
+    const planDistribution = await db.execute(
+      'SELECT "plan", COUNT(*)::int as count FROM "User" GROUP BY "plan"'
+    )
     const usersByPlan: Record<string, number> = {}
-    for (const u of allUsers) {
-      usersByPlan[u.plan] = (usersByPlan[u.plan] || 0) + 1
+    for (const u of planDistribution as any[]) {
+      usersByPlan[u.plan] = u.count
     }
 
     // Revenue by category for chart
-    const allTransactions = await db.transaction.findMany({
-      where: { userId, status: 'approved' },
-      select: { category: true, amount: true },
-    })
+    const categoryRevenue = await db.execute(
+      'SELECT COALESCE("category", \'other\') as cat, SUM("amount") as total FROM "Transaction" WHERE "userId" = $1 AND "status" = $2 GROUP BY "category"',
+      [userId, 'approved']
+    )
     const revenueByCategory: Record<string, number> = {}
-    for (const t of allTransactions) {
-      const cat = t.category || 'other'
-      revenueByCategory[cat] = (revenueByCategory[cat] || 0) + t.amount
+    for (const t of categoryRevenue as any[]) {
+      revenueByCategory[t.cat] = Number(t.total)
     }
 
     return success({

@@ -15,15 +15,12 @@ export async function PUT(request: Request) {
       return error(`Invalid language. Must be one of: ${validLanguages.join(', ')}`)
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('User not found', 404)
     }
 
-    const updatedUser = await db.user.update({
-      where: { id: userId },
-      data: { language },
-    })
+    const updatedUser = await db.update('User', '"id" = $1', { language }, [userId])
 
     return success(sanitizeUser(updatedUser as unknown as Record<string, unknown>))
   } catch (err) {

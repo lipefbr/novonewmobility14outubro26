@@ -13,9 +13,7 @@ export async function GET(
       return NextResponse.json({ error: 'userId is required' }, { status: 400 })
     }
 
-    const invoice = await db.invoice.findFirst({
-      where: { id: invoiceId, userId },
-    })
+    const invoice = await db.findOne('Invoice', '"id" = $1 AND "userId" = $2', [invoiceId, userId])
 
     if (!invoice) {
       // Generate mock invoice if not found in DB

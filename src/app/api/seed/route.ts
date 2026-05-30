@@ -13,118 +13,108 @@ function seededReferralCode(name: string, idx: number): string {
 
 export async function POST() {
   try {
-    // Clear all existing data
-    await db.pointTransaction.deleteMany()
-    await db.ticketMessage.deleteMany()
-    await db.ticket.deleteMany()
-    await db.notification.deleteMany()
-    await db.gratification.deleteMany()
-    await db.careerMilestone.deleteMany()
-    await db.cashbackEntry.deleteMany()
-    await db.cashbackResidual.deleteMany()
-    await db.cashbackSales.deleteMany()
-    await db.transaction.deleteMany()
-    await db.voucher.deleteMany()
-    await db.invoice.deleteMany()
-    await db.matrixPosition.deleteMany()
-    await db.user.deleteMany()
-
-    // Clear marketplace data
-    await db.marketplaceOrderItem.deleteMany()
-    await db.marketplaceOrder.deleteMany()
-    await db.marketplaceProduct.deleteMany()
+    // Clear all existing data using raw SQL (respecting FK order)
+    await db.execute(`DELETE FROM "MarketplaceOrderItem"`)
+    await db.execute(`DELETE FROM "MarketplaceOrder"`)
+    await db.execute(`DELETE FROM "MarketplaceProduct"`)
+    await db.execute(`DELETE FROM "EventRegistration"`)
+    await db.execute(`DELETE FROM "UserChallenge"`)
+    await db.execute(`DELETE FROM "Challenge"`)
+    await db.execute(`DELETE FROM "GamificationStreak"`)
+    await db.execute(`DELETE FROM "PointTransaction"`)
+    await db.execute(`DELETE FROM "TicketMessage"`)
+    await db.execute(`DELETE FROM "Ticket"`)
+    await db.execute(`DELETE FROM "Notification"`)
+    await db.execute(`DELETE FROM "Gratification"`)
+    await db.execute(`DELETE FROM "CareerMilestone"`)
+    await db.execute(`DELETE FROM "CashbackEntry"`)
+    await db.execute(`DELETE FROM "CashbackResidual"`)
+    await db.execute(`DELETE FROM "CashbackSales"`)
+    await db.execute(`DELETE FROM "Transaction"`)
+    await db.execute(`DELETE FROM "Voucher"`)
+    await db.execute(`DELETE FROM "Invoice"`)
+    await db.execute(`DELETE FROM "MatrixPosition"`)
+    await db.execute(`DELETE FROM "User"`)
 
     const password = hashPassword('123456')
 
     // ============== CREATE ADMIN USER ==============
-    const admin = await db.user.create({
-      data: {
-        name: 'Admin NewMobility',
-        email: 'admin@newmobility.com',
-        phone: '(11) 99999-0000',
-        cpf: '000.000.000-00',
-        password,
-        role: 'admin',
-        referralCode: 'ADMIN2025',
-        plan: 'blue5',
-        isActive: true,
-        balanceWithdrawal: 500000,
-        balanceMobility: 200000,
-        balanceShopping: 300000,
-        balanceFood: 150000,
-        balancePharmacy: 100000,
-        balanceGratification: 80000,
-        careerPoints: 300,
-        personalPoints: 50,
-        stars: 5,
-        city: 'São Paulo',
-        state: 'SP',
-        country: 'BR',
-      },
-    })
+    const admin = await db.insert('User', {
+      name: 'Admin NewMobility',
+      email: 'admin@newmobility.com',
+      phone: '(11) 99999-0000',
+      cpf: '000.000.000-00',
+      password,
+      role: 'admin',
+      referralCode: 'ADMIN2025',
+      plan: 'blue5',
+      isActive: true,
+      balanceWithdrawal: 500000,
+      balanceMobility: 200000,
+      balanceShopping: 300000,
+      balanceFood: 150000,
+      balancePharmacy: 100000,
+      balanceGratification: 80000,
+      careerPoints: 300,
+      personalPoints: 50,
+      stars: 5,
+      city: 'São Paulo',
+      state: 'SP',
+      country: 'BR',
+    }) as any
 
     // Create admin matrix positions
-    await db.matrixPosition.createMany({
-      data: [
-        { userId: admin.id, matrixType: 'entrada', level: 0, position: 0 },
-        { userId: admin.id, matrixType: 'residual', level: 0, position: 0 },
-        { userId: admin.id, matrixType: 'vendas', level: 0, position: 0 },
-      ],
-    })
+    await db.insert('MatrixPosition', { userId: admin.id, matrixType: 'entrada', level: 0, position: 0 })
+    const adminEntradaPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [admin.id, 'entrada']) as any
+
+    await db.insert('MatrixPosition', { userId: admin.id, matrixType: 'residual', level: 0, position: 0 })
+    const adminResidualPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [admin.id, 'residual']) as any
+
+    await db.insert('MatrixPosition', { userId: admin.id, matrixType: 'vendas', level: 0, position: 0 })
+    const adminVendasPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [admin.id, 'vendas']) as any
 
     // ============== CREATE MAIN DEMO USER ==============
-    const mainUser = await db.user.create({
-      data: {
-        name: 'Carlos Eduardo Silva',
-        email: 'carlos.silva@email.com',
-        phone: '(11) 99876-5432',
-        cpf: '123.456.789-00',
-        password,
-        role: 'user',
-        referralCode: 'CARLOS2025',
-        referredById: admin.id,
-        plan: 'blue5',
-        isActive: true,
-        balanceWithdrawal: 3258000,
-        balanceMobility: 727000,
-        balanceShopping: 2727000,
-        balanceFood: 687000,
-        balancePharmacy: 558000,
-        balanceGratification: 845000,
-        careerPoints: 42,
-        personalPoints: 18,
-        stars: 3,
-        isDriver: true,
-        city: 'São Paulo',
-        state: 'SP',
-        country: 'BR',
-        address: 'Rua Augusta, 1500',
-        bankCode: '001',
-        bankAgency: '1234',
-        bankAccount: '56789-0',
-        bankType: 'cc',
-        createdAt: new Date('2023-06-15T10:00:00Z'),
-      },
-    })
+    const mainUser = await db.insert('User', {
+      name: 'Carlos Eduardo Silva',
+      email: 'carlos.silva@email.com',
+      phone: '(11) 99876-5432',
+      cpf: '123.456.789-00',
+      password,
+      role: 'user',
+      referralCode: 'CARLOS2025',
+      referredById: admin.id,
+      plan: 'blue5',
+      isActive: true,
+      balanceWithdrawal: 3258000,
+      balanceMobility: 727000,
+      balanceShopping: 2727000,
+      balanceFood: 687000,
+      balancePharmacy: 558000,
+      balanceGratification: 845000,
+      careerPoints: 42,
+      personalPoints: 18,
+      stars: 3,
+      isDriver: true,
+      city: 'São Paulo',
+      state: 'SP',
+      country: 'BR',
+      address: 'Rua Augusta, 1500',
+      bankCode: '001',
+      bankAgency: '1234',
+      bankAccount: '56789-0',
+      bankType: 'cc',
+      createdAt: new Date('2023-06-15T10:00:00Z'),
+    }) as any
 
     // Main user matrix positions
-    const adminEntradaPos = await db.matrixPosition.findFirst({
-      where: { userId: admin.id, matrixType: 'entrada' },
-    })
-    const adminResidualPos = await db.matrixPosition.findFirst({
-      where: { userId: admin.id, matrixType: 'residual' },
-    })
-    const adminVendasPos = await db.matrixPosition.findFirst({
-      where: { userId: admin.id, matrixType: 'vendas' },
-    })
+    await db.insert('MatrixPosition', { userId: mainUser.id, matrixType: 'entrada', parentId: adminEntradaPos?.id, level: 1, position: 0 })
+    const mainEntradaPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [mainUser.id, 'entrada']) as any
 
-    await db.matrixPosition.createMany({
-      data: [
-        { userId: mainUser.id, matrixType: 'entrada', parentId: adminEntradaPos?.id, level: 1, position: 0 },
-        { userId: mainUser.id, matrixType: 'residual', parentId: adminResidualPos?.id, level: 1, position: 0 },
-        { userId: mainUser.id, matrixType: 'vendas', parentId: adminVendasPos?.id, level: 1, position: 0 },
-      ],
-    })
+    await db.insert('MatrixPosition', { userId: mainUser.id, matrixType: 'residual', parentId: adminResidualPos?.id, level: 1, position: 0 })
+    const mainResidualPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [mainUser.id, 'residual']) as any
+
+    await db.insert('MatrixPosition', { userId: mainUser.id, matrixType: 'vendas', parentId: adminVendasPos?.id, level: 1, position: 0 })
+    const mainVendasPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [mainUser.id, 'vendas']) as any
 
     // ============== CREATE DIRECT REFERRALS (Level 1) ==============
     const directReferralNames = [
@@ -140,54 +130,48 @@ export async function POST() {
       const code = seededReferralCode(name, i + 1)
       const plan = i < 2 ? 'blue5' : 'blue3'
 
-      const ref = await db.user.create({
-        data: {
-          name,
-          email: name.toLowerCase().replace(/\s/g, '.') + '@email.com',
-          phone: `(11) 99${String(100 + i).padStart(4, '0')}-${String(5000 + i).padStart(4, '0')}`,
-          cpf: `${String(100 + i).padStart(3, '0')}.${String(200 + i).padStart(3, '0')}.${String(300 + i).padStart(3, '0')}-${String(10 + i).padStart(2, '0')}`,
-          password,
-          role: 'user',
-          referralCode: code,
-          referredById: mainUser.id,
-          plan,
-          isActive: true,
-          balanceWithdrawal: Math.floor(Math.random() * 2000000) + 500000,
-          balanceMobility: Math.floor(Math.random() * 500000) + 100000,
-          balanceShopping: Math.floor(Math.random() * 1000000) + 200000,
-          balanceFood: Math.floor(Math.random() * 300000) + 50000,
-          balancePharmacy: Math.floor(Math.random() * 200000) + 30000,
-          balanceGratification: Math.floor(Math.random() * 500000) + 100000,
-          careerPoints: Math.floor(Math.random() * 50) + 5,
-          personalPoints: Math.floor(Math.random() * 20) + 2,
-          stars: Math.floor(Math.random() * 4) + 1,
-          isDriver: i % 2 === 0,
-          city: ['São Paulo', 'Rio de Janeiro', 'Belo Horizonte', 'Curitiba'][i],
-          state: ['SP', 'RJ', 'MG', 'PR'][i],
-          country: 'BR',
-        },
-      })
+      const ref = await db.insert('User', {
+        name,
+        email: name.toLowerCase().replace(/\s/g, '.') + '@email.com',
+        phone: `(11) 99${String(100 + i).padStart(4, '0')}-${String(5000 + i).padStart(4, '0')}`,
+        cpf: `${String(100 + i).padStart(3, '0')}.${String(200 + i).padStart(3, '0')}.${String(300 + i).padStart(3, '0')}-${String(10 + i).padStart(2, '0')}`,
+        password,
+        role: 'user',
+        referralCode: code,
+        referredById: mainUser.id,
+        plan,
+        isActive: true,
+        balanceWithdrawal: Math.floor(Math.random() * 2000000) + 500000,
+        balanceMobility: Math.floor(Math.random() * 500000) + 100000,
+        balanceShopping: Math.floor(Math.random() * 1000000) + 200000,
+        balanceFood: Math.floor(Math.random() * 300000) + 50000,
+        balancePharmacy: Math.floor(Math.random() * 200000) + 30000,
+        balanceGratification: Math.floor(Math.random() * 500000) + 100000,
+        careerPoints: Math.floor(Math.random() * 50) + 5,
+        personalPoints: Math.floor(Math.random() * 20) + 2,
+        stars: Math.floor(Math.random() * 4) + 1,
+        isDriver: i % 2 === 0,
+        city: ['São Paulo', 'Rio de Janeiro', 'Belo Horizonte', 'Curitiba'][i],
+        state: ['SP', 'RJ', 'MG', 'PR'][i],
+        country: 'BR',
+      }) as any
 
       directReferrals.push(ref)
 
       // Create matrix positions for each direct referral
-      const mainEntradaPos = await db.matrixPosition.findFirst({
-        where: { userId: mainUser.id, matrixType: 'entrada' },
-      })
-      const mainResidualPos = await db.matrixPosition.findFirst({
-        where: { userId: mainUser.id, matrixType: 'residual' },
-      })
-      const mainVendasPos = await db.matrixPosition.findFirst({
-        where: { userId: mainUser.id, matrixType: 'vendas' },
-      })
+      await db.insert('MatrixPosition', { userId: ref.id, matrixType: 'entrada', parentId: mainEntradaPos?.id, level: 2, position: i })
+      const refEntradaPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [ref.id, 'entrada']) as any
 
-      await db.matrixPosition.createMany({
-        data: [
-          { userId: ref.id, matrixType: 'entrada', parentId: mainEntradaPos?.id, level: 2, position: i },
-          { userId: ref.id, matrixType: 'residual', parentId: mainResidualPos?.id, level: 2, position: i },
-          { userId: ref.id, matrixType: 'vendas', parentId: mainVendasPos?.id, level: 2, position: i },
-        ],
-      })
+      await db.insert('MatrixPosition', { userId: ref.id, matrixType: 'residual', parentId: mainResidualPos?.id, level: 2, position: i })
+      const refResidualPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [ref.id, 'residual']) as any
+
+      await db.insert('MatrixPosition', { userId: ref.id, matrixType: 'vendas', parentId: mainVendasPos?.id, level: 2, position: i })
+      const refVendasPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [ref.id, 'vendas']) as any
+
+      // Store for level 2 lookups
+      ;(ref as any)._entradaPos = refEntradaPos
+      ;(ref as any)._residualPos = refResidualPos
+      ;(ref as any)._vendasPos = refVendasPos
     }
 
     // ============== CREATE LEVEL 2 REFERRALS (16 users) ==============
@@ -205,78 +189,63 @@ export async function POST() {
       const code = seededReferralCode(name, i + 10)
       const plan = i % 3 === 0 ? 'blue5' : i % 3 === 1 ? 'blue3' : 'free'
 
-      const user = await db.user.create({
-        data: {
-          name,
-          email: name.toLowerCase().replace(/\s/g, '.') + '@email.com',
-          phone: `(11) 98${String(2000 + i).padStart(4, '0')}-${String(6000 + i).padStart(4, '0')}`,
-          cpf: `${String(400 + i).padStart(3, '0')}.${String(500 + i).padStart(3, '0')}.${String(600 + i).padStart(3, '0')}-${String(20 + i).padStart(2, '0')}`,
-          password,
-          role: 'user',
-          referralCode: code,
-          referredById: parentRef.id,
-          plan,
-          isActive: plan !== 'free',
-          balanceWithdrawal: Math.floor(Math.random() * 1000000) + 100000,
-          balanceMobility: Math.floor(Math.random() * 300000) + 50000,
-          balanceShopping: Math.floor(Math.random() * 500000) + 100000,
-          balanceFood: Math.floor(Math.random() * 200000) + 20000,
-          balancePharmacy: Math.floor(Math.random() * 100000) + 10000,
-          balanceGratification: Math.floor(Math.random() * 300000) + 50000,
-          careerPoints: Math.floor(Math.random() * 20) + 1,
-          personalPoints: Math.floor(Math.random() * 10),
-          stars: Math.floor(Math.random() * 3),
-          isDriver: i % 3 === 0,
-          city: ['São Paulo', 'Rio de Janeiro', 'Salvador', 'Fortaleza', 'Porto Alegre'][i % 5],
-          state: ['SP', 'RJ', 'BA', 'CE', 'RS'][i % 5],
-          country: 'BR',
-        },
-      })
+      const l2User = await db.insert('User', {
+        name,
+        email: name.toLowerCase().replace(/\s/g, '.') + '@email.com',
+        phone: `(11) 98${String(2000 + i).padStart(4, '0')}-${String(6000 + i).padStart(4, '0')}`,
+        cpf: `${String(400 + i).padStart(3, '0')}.${String(500 + i).padStart(3, '0')}.${String(600 + i).padStart(3, '0')}-${String(20 + i).padStart(2, '0')}`,
+        password,
+        role: 'user',
+        referralCode: code,
+        referredById: parentRef.id,
+        plan,
+        isActive: plan !== 'free',
+        balanceWithdrawal: Math.floor(Math.random() * 1000000) + 100000,
+        balanceMobility: Math.floor(Math.random() * 300000) + 50000,
+        balanceShopping: Math.floor(Math.random() * 500000) + 100000,
+        balanceFood: Math.floor(Math.random() * 200000) + 20000,
+        balancePharmacy: Math.floor(Math.random() * 100000) + 10000,
+        balanceGratification: Math.floor(Math.random() * 300000) + 50000,
+        careerPoints: Math.floor(Math.random() * 20) + 1,
+        personalPoints: Math.floor(Math.random() * 10),
+        stars: Math.floor(Math.random() * 3),
+        isDriver: i % 3 === 0,
+        city: ['São Paulo', 'Rio de Janeiro', 'Salvador', 'Fortaleza', 'Porto Alegre'][i % 5],
+        state: ['SP', 'RJ', 'BA', 'CE', 'RS'][i % 5],
+        country: 'BR',
+      }) as any
 
-      level2Users.push(user)
+      level2Users.push(l2User)
 
       // Create matrix positions for level 2
-      const parentEntradaPos = await db.matrixPosition.findFirst({
-        where: { userId: parentRef.id, matrixType: 'entrada' },
-      })
-      const parentResidualPos = await db.matrixPosition.findFirst({
-        where: { userId: parentRef.id, matrixType: 'residual' },
-      })
-      const parentVendasPos = await db.matrixPosition.findFirst({
-        where: { userId: parentRef.id, matrixType: 'vendas' },
-      })
+      const parentEntradaPos = (parentRef as any)._entradaPos
+      const parentResidualPos = (parentRef as any)._residualPos
+      const parentVendasPos = (parentRef as any)._vendasPos
 
-      await db.matrixPosition.createMany({
-        data: [
-          { userId: user.id, matrixType: 'entrada', parentId: parentEntradaPos?.id, level: 3, position: i },
-          { userId: user.id, matrixType: 'residual', parentId: parentResidualPos?.id, level: 3, position: i },
-          { userId: user.id, matrixType: 'vendas', parentId: parentVendasPos?.id, level: 3, position: i },
-        ],
-      })
+      await db.insert('MatrixPosition', { userId: l2User.id, matrixType: 'entrada', parentId: parentEntradaPos?.id, level: 3, position: i })
+      await db.insert('MatrixPosition', { userId: l2User.id, matrixType: 'residual', parentId: parentResidualPos?.id, level: 3, position: i })
+      await db.insert('MatrixPosition', { userId: l2User.id, matrixType: 'vendas', parentId: parentVendasPos?.id, level: 3, position: i })
     }
 
     // ============== CREATE CASHBACK ENTRADA ENTRIES ==============
-    // Simulate the 1,066 users in the cashback entrada matrix
     const entradaPercentages = [5, 10, 10, 5, 5]
     const entradaUserCounts = [4, 16, 64, 256, 1024]
-    const entradaEarnedPerLevel = [48500, 194000, 388000, 194000, 388000] // in cents
+    const entradaEarnedPerLevel = [48500, 194000, 388000, 194000, 388000]
 
     for (let level = 1; level <= 5; level++) {
-      const numEntries = Math.min(entradaUserCounts[level - 1], 50) // Create representative entries
+      const numEntries = Math.min(entradaUserCounts[level - 1], 50)
       for (let j = 0; j < numEntries; j++) {
         const fromUser = level === 1
           ? directReferrals[j % directReferrals.length]
           : level2Users[j % level2Users.length]
 
-        await db.cashbackEntry.create({
-          data: {
-            userId: mainUser.id,
-            fromUserId: fromUser.id,
-            amount: Math.floor(entradaEarnedPerLevel[level - 1] / numEntries),
-            level,
-            percentage: entradaPercentages[level - 1],
-            description: `Cashback entrada nível ${level}`,
-          },
+        await db.insert('CashbackEntry', {
+          userId: mainUser.id,
+          fromUserId: fromUser.id,
+          amount: Math.floor(entradaEarnedPerLevel[level - 1] / numEntries),
+          level,
+          percentage: entradaPercentages[level - 1],
+          description: `Cashback entrada nível ${level}`,
         })
       }
     }
@@ -287,15 +256,13 @@ export async function POST() {
       const numEntries = level <= 2 ? 2 : 1
       for (let j = 0; j < numEntries; j++) {
         const fromUser = j < directReferrals.length ? directReferrals[j] : level2Users[j % level2Users.length]
-        await db.cashbackResidual.create({
-          data: {
-            userId: mainUser.id,
-            fromUserId: fromUser.id,
-            amount: Math.floor(Math.random() * 50000) + 10000,
-            level,
-            percentage: residualPercentages[level - 1],
-            description: `Cashback residual nível ${level}`,
-          },
+        await db.insert('CashbackResidual', {
+          userId: mainUser.id,
+          fromUserId: fromUser.id,
+          amount: Math.floor(Math.random() * 50000) + 10000,
+          level,
+          percentage: residualPercentages[level - 1],
+          description: `Cashback residual nível ${level}`,
         })
       }
     }
@@ -307,16 +274,14 @@ export async function POST() {
       const numEntries = level <= 3 ? 5 : 3
       for (let j = 0; j < numEntries; j++) {
         const fromUser = j < directReferrals.length ? directReferrals[j] : level2Users[j % level2Users.length]
-        await db.cashbackSales.create({
-          data: {
-            userId: mainUser.id,
-            fromUserId: fromUser.id,
-            amount: Math.floor(Math.random() * 30000) + 5000,
-            level,
-            percentage: vendasPercentages[level - 1],
-            category: vendasCategories[(level + j) % vendasCategories.length],
-            description: `Cashback vendas nível ${level}`,
-          },
+        await db.insert('CashbackSales', {
+          userId: mainUser.id,
+          fromUserId: fromUser.id,
+          amount: Math.floor(Math.random() * 30000) + 5000,
+          level,
+          percentage: vendasPercentages[level - 1],
+          category: vendasCategories[(level + j) % vendasCategories.length],
+          description: `Cashback vendas nível ${level}`,
         })
       }
     }
@@ -343,16 +308,14 @@ export async function POST() {
     for (const tx of transactionTypes) {
       const daysAgo = Math.floor(Math.random() * 90) + 1
       const createdAt = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000)
-      await db.transaction.create({
-        data: {
-          userId: mainUser.id,
-          type: tx.type,
-          amount: tx.amount,
-          status: tx.status,
-          category: tx.category,
-          description: tx.desc,
-          createdAt,
-        },
+      await db.insert('Transaction', {
+        userId: mainUser.id,
+        type: tx.type,
+        amount: tx.amount,
+        status: tx.status,
+        category: tx.category,
+        description: tx.desc,
+        createdAt,
       })
     }
 
@@ -368,16 +331,14 @@ export async function POST() {
     for (const v of voucherData) {
       const expiresAt = new Date()
       expiresAt.setDate(expiresAt.getDate() + (v.isUsed ? -30 : 90))
-      await db.voucher.create({
-        data: {
-          userId: mainUser.id,
-          code: v.code,
-          amount: v.amount,
-          type: v.type,
-          isUsed: v.isUsed,
-          usedAt: v.isUsed ? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) : null,
-          expiresAt,
-        },
+      await db.insert('Voucher', {
+        userId: mainUser.id,
+        code: v.code,
+        amount: v.amount,
+        type: v.type,
+        isUsed: v.isUsed,
+        usedAt: v.isUsed ? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) : null,
+        expiresAt,
       })
     }
 
@@ -391,29 +352,25 @@ export async function POST() {
     for (const inv of invoiceData) {
       const dueDate = new Date()
       dueDate.setDate(dueDate.getDate() + (inv.status === 'paid' ? -30 : 15))
-      await db.invoice.create({
-        data: {
-          userId: mainUser.id,
-          amount: inv.amount,
-          type: inv.type,
-          status: inv.status,
-          dueDate,
-          paidAt: inv.status === 'paid' ? new Date(dueDate.getTime() - 2 * 24 * 60 * 60 * 1000) : null,
-        },
+      await db.insert('Invoice', {
+        userId: mainUser.id,
+        amount: inv.amount,
+        type: inv.type,
+        status: inv.status,
+        dueDate,
+        paidAt: inv.status === 'paid' ? new Date(dueDate.getTime() - 2 * 24 * 60 * 60 * 1000) : null,
       })
     }
 
     // ============== CREATE CAREER MILESTONES ==============
     for (const rank of CAREER_RANKS) {
       const achieved = mainUser.careerPoints >= rank.minPoints
-      await db.careerMilestone.create({
-        data: {
-          userId: mainUser.id,
-          milestone: rank.name,
-          pointsRequired: rank.minPoints,
-          achieved,
-          achievedAt: achieved ? new Date() : null,
-        },
+      await db.insert('CareerMilestone', {
+        userId: mainUser.id,
+        milestone: rank.name,
+        pointsRequired: rank.minPoints,
+        achieved,
+        achievedAt: achieved ? new Date() : null,
       })
     }
 
@@ -430,16 +387,14 @@ export async function POST() {
 
     for (const g of gratificationData) {
       const isClaimed = Math.random() > 0.5
-      await db.gratification.create({
-        data: {
-          userId: mainUser.id,
-          type: g.type,
-          amount: g.amount,
-          category: g.category,
-          description: g.description,
-          isClaimed,
-          claimedAt: isClaimed ? new Date() : null,
-        },
+      await db.insert('Gratification', {
+        userId: mainUser.id,
+        type: g.type,
+        amount: g.amount,
+        category: g.category,
+        description: g.description,
+        isClaimed,
+        claimedAt: isClaimed ? new Date() : null,
       })
     }
 
@@ -457,14 +412,12 @@ export async function POST() {
 
     for (const pt of pointTypes) {
       const daysAgo = Math.floor(Math.random() * 60) + 1
-      await db.pointTransaction.create({
-        data: {
-          userId: mainUser.id,
-          amount: pt.amount,
-          type: pt.type,
-          description: pt.description,
-          createdAt: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000),
-        },
+      await db.insert('PointTransaction', {
+        userId: mainUser.id,
+        amount: pt.amount,
+        type: pt.type,
+        description: pt.description,
+        createdAt: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000),
       })
     }
 
@@ -476,36 +429,30 @@ export async function POST() {
     ]
 
     for (const t of ticketData) {
-      const ticket = await db.ticket.create({
-        data: {
-          userId: mainUser.id,
-          subject: t.subject,
-          category: t.category,
-          status: 'open',
-          messages: {
-            create: {
-              userId: mainUser.id,
-              message: t.message,
-              isAdmin: false,
-            },
-          },
-        },
+      const ticket = await db.insert('Ticket', {
+        userId: mainUser.id,
+        subject: t.subject,
+        category: t.category,
+        status: 'open',
+      }) as any
+
+      // Create first message
+      await db.insert('TicketMessage', {
+        ticketId: ticket.id,
+        userId: mainUser.id,
+        message: t.message,
+        isAdmin: false,
       })
 
       // Add admin reply to some tickets
       if (Math.random() > 0.3) {
-        await db.ticketMessage.create({
-          data: {
-            ticketId: ticket.id,
-            userId: admin.id,
-            message: 'Olá! Estamos analisando sua solicitação. Em breve retornaremos com uma resposta.',
-            isAdmin: true,
-          },
+        await db.insert('TicketMessage', {
+          ticketId: ticket.id,
+          userId: admin.id,
+          message: 'Olá! Estamos analisando sua solicitação. Em breve retornaremos com uma resposta.',
+          isAdmin: true,
         })
-        await db.ticket.update({
-          where: { id: ticket.id },
-          data: { status: 'in_progress' },
-        })
+        await db.update('Ticket', '"id" = $1', { status: 'in_progress' }, [ticket.id])
       }
     }
 
@@ -519,14 +466,12 @@ export async function POST() {
     ]
 
     for (const n of notificationData) {
-      await db.notification.create({
-        data: {
-          userId: mainUser.id,
-          title: n.title,
-          message: n.message,
-          type: n.type,
-          isRead: Math.random() > 0.5,
-        },
+      await db.insert('Notification', {
+        userId: mainUser.id,
+        title: n.title,
+        message: n.message,
+        type: n.type,
+        isRead: Math.random() > 0.5,
       })
     }
 
@@ -541,31 +486,29 @@ export async function POST() {
       const code = seededReferralCode(name, i + 30)
       const plan = i < 3 ? 'free' : i < 6 ? 'blue3' : 'blue5'
 
-      await db.user.create({
-        data: {
-          name,
-          email: name.toLowerCase().replace(/\s/g, '.') + '@email.com',
-          phone: `(21) 9${String(3000 + i).padStart(4, '0')}-${String(7000 + i).padStart(4, '0')}`,
-          cpf: `${String(700 + i).padStart(3, '0')}.${String(800 + i).padStart(3, '0')}.${String(900 + i).padStart(3, '0')}-${String(30 + i).padStart(2, '0')}`,
-          password,
-          role: 'user',
-          referralCode: code,
-          referredById: level2Users[i % level2Users.length]?.id || mainUser.id,
-          plan,
-          isActive: plan !== 'free',
-          balanceWithdrawal: Math.floor(Math.random() * 200000),
-          balanceMobility: Math.floor(Math.random() * 100000),
-          balanceShopping: Math.floor(Math.random() * 150000),
-          balanceFood: Math.floor(Math.random() * 80000),
-          balancePharmacy: Math.floor(Math.random() * 50000),
-          balanceGratification: Math.floor(Math.random() * 100000),
-          careerPoints: Math.floor(Math.random() * 10),
-          personalPoints: Math.floor(Math.random() * 5),
-          stars: plan === 'free' ? 0 : 1,
-          city: 'Rio de Janeiro',
-          state: 'RJ',
-          country: 'BR',
-        },
+      await db.insert('User', {
+        name,
+        email: name.toLowerCase().replace(/\s/g, '.') + '@email.com',
+        phone: `(21) 9${String(3000 + i).padStart(4, '0')}-${String(7000 + i).padStart(4, '0')}`,
+        cpf: `${String(700 + i).padStart(3, '0')}.${String(800 + i).padStart(3, '0')}.${String(900 + i).padStart(3, '0')}-${String(30 + i).padStart(2, '0')}`,
+        password,
+        role: 'user',
+        referralCode: code,
+        referredById: level2Users[i % level2Users.length]?.id || mainUser.id,
+        plan,
+        isActive: plan !== 'free',
+        balanceWithdrawal: Math.floor(Math.random() * 200000),
+        balanceMobility: Math.floor(Math.random() * 100000),
+        balanceShopping: Math.floor(Math.random() * 150000),
+        balanceFood: Math.floor(Math.random() * 80000),
+        balancePharmacy: Math.floor(Math.random() * 50000),
+        balanceGratification: Math.floor(Math.random() * 100000),
+        careerPoints: Math.floor(Math.random() * 10),
+        personalPoints: Math.floor(Math.random() * 5),
+        stars: plan === 'free' ? 0 : 1,
+        city: 'Rio de Janeiro',
+        state: 'RJ',
+        country: 'BR',
       })
     }
 
@@ -586,13 +529,15 @@ export async function POST() {
     ]
 
     for (const mp of marketplaceProducts) {
-      await db.marketplaceProduct.create({ data: mp })
+      await db.insert('MarketplaceProduct', mp)
     }
+
+    const totalUsers = await db.count('User')
 
     return success({
       message: 'Database seeded successfully',
       users: {
-        total: (await db.user.count()),
+        total: totalUsers,
         admin: admin.email,
         mainUser: mainUser.email,
       },

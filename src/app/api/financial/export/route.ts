@@ -15,33 +15,41 @@ export async function GET(request: Request) {
       return error('userId is required')
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('User not found', 404)
     }
 
-    // Build filter
-    const where: Record<string, unknown> = { userId }
+    // Build SQL conditions
+    const conditions: string[] = ['"userId" = $1']
+    const params: any[] = [userId]
+    let paramIdx = 1
+
     if (type !== 'all') {
-      where.type = type
-    }
-    if (startDate || endDate) {
-      where.createdAt = {}
-      const dateFilter = where.createdAt as Record<string, unknown>
-      if (startDate) dateFilter.gte = new Date(startDate)
-      if (endDate) dateFilter.lte = new Date(endDate)
+      paramIdx++
+      conditions.push(`"type" = $${paramIdx}`)
+      params.push(type)
     }
 
-    const transactions = await db.transaction.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: 1000,
-    })
+    if (startDate) {
+      paramIdx++
+      conditions.push(`"createdAt" >= $${paramIdx}`)
+      params.push(new Date(startDate))
+    }
+
+    if (endDate) {
+      paramIdx++
+      conditions.push(`"createdAt" <= $${paramIdx}`)
+      params.push(new Date(endDate))
+    }
+
+    const whereClause = conditions.join(' AND ')
+    const transactions = await db.find('Transaction', whereClause, params, 'ORDER BY "createdAt" DESC LIMIT 1000')
 
     if (format === 'csv') {
       // Generate CSV
       const headers = 'Data,Descrição,Tipo,Categoria,Valor (centavos),Status\n'
-      const rows = transactions.map(tx => {
+      const rows = (transactions as any[]).map(tx => {
         const date = tx.createdAt ? new Date(tx.createdAt).toISOString().split('T')[0] : ''
         const desc = `"${(tx.description || '').replace(/"/g, '""')}"`
         return `${date},${desc},${tx.type},${tx.category || ''},${tx.amount},${tx.status}`

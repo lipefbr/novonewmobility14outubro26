@@ -13,26 +13,20 @@ export async function GET(req: NextRequest) {
       return error('userId é obrigatório')
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('Usuário não encontrado', 404)
     }
 
-    // Get all users for ranking calculations
-    const allUsers = await db.user.findMany({
-      where: { isActive: true },
-      select: {
-        id: true,
-        name: true,
-        plan: true,
-        profileImage: true,
-        balanceWithdrawal: true,
-        careerPoints: true,
-        personalPoints: true,
-        referrals: { select: { id: true } },
-      },
-      take: 500,
-    })
+    // Get all active users with referral count
+    const allUsers = await db.execute(
+      `SELECT u.id, u.name, u.plan, u."profileImage", u."balanceWithdrawal", u."careerPoints", u."personalPoints",
+        (SELECT COUNT(*)::int FROM "User" r WHERE r."referredById" = u.id) as "directReferrals"
+      FROM "User" u
+      WHERE u."isActive" = true
+      LIMIT 500`,
+      []
+    ) as any[]
 
     // Compute date range for period filtering
     const now = new Date()
@@ -49,15 +43,17 @@ export async function GET(req: NextRequest) {
     }
 
     // Get transactions for the period for earnings-based ranking
-    const transactions = await db.transaction.findMany({
-      where: {
-        userId: { in: allUsers.map(u => u.id) },
-        type: { in: ['cashback_entry', 'cashback_residual', 'cashback_sales', 'gratification', 'bonus'] },
-        status: 'paid',
-        createdAt: { gte: periodStart },
-      },
-      select: { userId: true, amount: true },
-    })
+    const userIds = allUsers.map(u => u.id)
+    const transactions = userIds.length > 0 ? await db.execute(
+      `SELECT "userId", amount FROM "Transaction"
+       WHERE "userId" = ANY($1) AND type = ANY($2) AND status = $3 AND "createdAt" >= $4`,
+      [
+        userIds,
+        ['cashback_entry', 'cashback_residual', 'cashback_sales', 'gratification', 'bonus'],
+        'paid',
+        periodStart,
+      ]
+    ) as any[] : []
 
     // Calculate earnings per user
     const earningsMap = new Map<string, number>()
@@ -76,8 +72,8 @@ export async function GET(req: NextRequest) {
           name: u.name,
           plan: u.plan,
           profileImage: u.profileImage,
-          value: u.referrals.length,
-          valueDisplay: `${u.referrals.length}`,
+          value: u.directReferrals,
+          valueDisplay: `${u.directReferrals}`,
         })).sort((a, b) => b.value - a.value)
         break
 
@@ -118,8 +114,9 @@ export async function GET(req: NextRequest) {
 
     // User rank summary for all categories
     const userEarnings = earningsMap.get(userId) || 0
-    const userReferrals = allUsers.find(u => u.id === userId)?.referrals.length || 0
-    const userPoints = allUsers.find(u => u.id === userId)?.careerPoints || 0
+    const userRefData = allUsers.find(u => u.id === userId)
+    const userReferrals = userRefData?.directReferrals || 0
+    const userPoints = userRefData?.careerPoints || 0
 
     return success({
       type,
@@ -128,11 +125,11 @@ export async function GET(req: NextRequest) {
       userRank: {
         position: userPosition,
         earnings: {
-          position: rankedUsers.sort((a, b) => b.value - a.value).findIndex(u => u.id === userId) + 1,
+          position: [...rankedUsers].sort((a, b) => b.value - a.value).findIndex(u => u.id === userId) + 1,
           value: `R$ ${centsToReais(userEarnings).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
         },
         referrals: {
-          position: allUsers.map(u => ({ id: u.id, count: u.referrals.length })).sort((a, b) => b.count - a.count).findIndex(u => u.id === userId) + 1,
+          position: allUsers.map(u => ({ id: u.id, count: u.directReferrals })).sort((a, b) => b.count - a.count).findIndex(u => u.id === userId) + 1,
           value: `${userReferrals}`,
         },
         points: {

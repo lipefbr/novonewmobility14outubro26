@@ -17,25 +17,28 @@ export async function GET(req: NextRequest) {
     const userId = req.nextUrl.searchParams.get('userId')
 
     // Ensure challenges exist
-    const existing = await db.challenge.count()
+    const existing = await db.count('Challenge')
     if (existing === 0) {
-      await db.challenge.createMany({
-        data: DEFAULT_CHALLENGES.map(c => ({ ...c, isActive: true })),
-      })
+      for (const c of DEFAULT_CHALLENGES) {
+        await db.insert('Challenge', { ...c, isActive: true })
+      }
     }
 
-    const challenges = await db.challenge.findMany({
-      where: { isActive: true },
-      orderBy: [{ type: 'asc' }, { rewardPoints: 'asc' }],
-    })
+    const challenges = await db.find(
+      'Challenge',
+      '"isActive" = true',
+      [],
+      'ORDER BY type ASC, "rewardPoints" ASC'
+    ) as any[]
 
     let userChallenges: { challengeId: string; currentValue: number; completed: boolean }[] = []
 
     if (userId) {
-      userChallenges = await db.userChallenge.findMany({
-        where: { userId },
-        select: { challengeId: true, currentValue: true, completed: true },
-      })
+      userChallenges = await db.find(
+        'UserChallenge',
+        '"userId" = $1',
+        [userId]
+      ) as any[]
     }
 
     const challengesWithProgress = challenges.map(c => {

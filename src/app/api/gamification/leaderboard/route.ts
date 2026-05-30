@@ -6,21 +6,16 @@ export async function GET(req: NextRequest) {
   try {
     const period = req.nextUrl.searchParams.get('period') || '30d'
 
-    // Get top earners based on transaction amounts
-    const topEarners = await db.user.findMany({
-      where: { isActive: true },
-      select: {
-        id: true,
-        name: true,
-        plan: true,
-        profileImage: true,
-        careerPoints: true,
-        balanceWithdrawal: true,
-        _count: { select: { referrals: true } },
-      },
-      orderBy: { balanceWithdrawal: 'desc' },
-      take: 20,
-    })
+    // Get top earners with referral count via subquery
+    const topEarners = await db.execute(
+      `SELECT u.id, u.name, u.plan, u."profileImage", u."careerPoints", u."balanceWithdrawal",
+        (SELECT COUNT(*)::int FROM "User" r WHERE r."referredById" = u.id) as "directReferrals"
+      FROM "User" u
+      WHERE u."isActive" = true
+      ORDER BY u."balanceWithdrawal" DESC
+      LIMIT 20`,
+      []
+    ) as any[]
 
     const leaderboard = topEarners.map((user, index) => ({
       rank: index + 1,
@@ -29,7 +24,7 @@ export async function GET(req: NextRequest) {
       plan: user.plan,
       careerPoints: user.careerPoints,
       totalEarnings: user.balanceWithdrawal,
-      directReferrals: user._count.referrals,
+      directReferrals: user.directReferrals,
       badge: index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : null,
     }))
 

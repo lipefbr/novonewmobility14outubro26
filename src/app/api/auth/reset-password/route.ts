@@ -1,8 +1,6 @@
 import { db } from '@/lib/db'
 import { success, error, hashPassword } from '@/lib/api-utils'
-
-// Simple in-memory store matching forgot-password route
-const resetCodes = new Map<string, { code: string; expires: number }>()
+import { resetCodes } from '@/lib/reset-codes'
 
 export async function POST(request: Request) {
   try {
@@ -33,17 +31,14 @@ export async function POST(request: Request) {
     }
 
     // Find user
-    const user = await db.user.findUnique({ where: { email } })
+    const user = await db.findOne('User', '"email" = $1', [email])
     if (!user) {
       return error('User not found', 404)
     }
 
     // Update password
     const hashedPassword = hashPassword(newPassword)
-    await db.user.update({
-      where: { id: user.id },
-      data: { password: hashedPassword },
-    })
+    await db.update('User', '"id" = $1', { password: hashedPassword }, [user.id])
 
     // Clear used code
     resetCodes.delete(email)

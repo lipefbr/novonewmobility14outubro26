@@ -7,15 +7,18 @@ export async function GET(req: NextRequest) {
     const userId = req.nextUrl.searchParams.get('userId')
     if (!userId) return error('userId is required', 400)
 
-    const notifications = await db.notification.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-    })
+    const notifications = await db.find(
+      'Notification',
+      '"userId" = $1',
+      [userId],
+      'ORDER BY "createdAt" DESC LIMIT 20'
+    )
 
-    const unreadCount = await db.notification.count({
-      where: { userId, isRead: false },
-    })
+    const unreadCount = await db.count(
+      'Notification',
+      '"userId" = $1 AND "isRead" = false',
+      [userId]
+    )
 
     return success({ notifications, unreadCount })
   } catch (err) {

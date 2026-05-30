@@ -8,11 +8,11 @@ export async function POST(req: Request) {
     const { userId, password } = body
     if (!userId || !password) return error('userId and password are required', 400)
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) return error('User not found', 404)
 
     // Verify password
-    if (!verifyPassword(password, user.password)) {
+    if (!verifyPassword(password, (user as any).password)) {
       return error('Invalid password', 401)
     }
 
@@ -21,8 +21,8 @@ export async function POST(req: Request) {
     const enabledKey = `2fa_enabled_${userId}`
 
     await Promise.all([
-      db.systemConfig.deleteMany({ where: { key: setupKey } }),
-      db.systemConfig.deleteMany({ where: { key: enabledKey } }),
+      db.deleteFrom('SystemConfig', '"key" = $1', [setupKey]),
+      db.deleteFrom('SystemConfig', '"key" = $1', [enabledKey]),
     ])
 
     return success({ enabled: false, message: '2FA has been disabled' })

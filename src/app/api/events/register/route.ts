@@ -11,23 +11,23 @@ export async function POST(req: NextRequest) {
       return error('userId e eventId são obrigatórios')
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('Usuário não encontrado', 404)
     }
 
-    // Check if event exists (could be mock or real)
-    const existingReg = await db.eventRegistration.findUnique({
-      where: { eventId_userId: { eventId, userId } },
-    })
+    // Check if already registered
+    const existingReg = await db.findOne(
+      'EventRegistration',
+      '"eventId" = $1 AND "userId" = $2',
+      [eventId, userId]
+    )
 
     if (existingReg) {
       return error('Você já está inscrito neste evento')
     }
 
-    await db.eventRegistration.create({
-      data: { eventId, userId },
-    })
+    await db.insert('EventRegistration', { eventId, userId })
 
     return success({ message: 'Inscrição realizada com sucesso', eventId, userId })
   } catch (err: any) {

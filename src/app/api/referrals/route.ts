@@ -10,36 +10,41 @@ export async function GET(request: Request) {
       return error('userId is required')
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('User not found', 404)
     }
 
     // Direct referrals
-    const directReferrals = await db.user.findMany({
-      where: { referredById: userId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        plan: true,
-        isActive: true,
-        createdAt: true,
-        profileImage: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+    const directReferrals = await db.find(
+      'User',
+      '"referredById" = $1',
+      [userId],
+      'ORDER BY "createdAt" DESC'
+    ) as any[]
+
+    // Map to select fields
+    const directReferralData = directReferrals.map((r) => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      plan: r.plan,
+      isActive: r.isActive,
+      createdAt: r.createdAt,
+      profileImage: r.profileImage,
+    }))
 
     // Network stats
-    const totalDirect = directReferrals.length
-    const activeDirect = directReferrals.filter((r) => r.isActive).length
+    const totalDirect = directReferralData.length
+    const activeDirect = directReferralData.filter((r) => r.isActive).length
 
     // Count total network (all descendants)
     async function countNetwork(parentId: string): Promise<number> {
-      const children = await db.user.findMany({
-        where: { referredById: parentId },
-        select: { id: true },
-      })
+      const children = await db.find(
+        'User',
+        '"referredById" = $1',
+        [parentId]
+      ) as any[]
       let total = children.length
       for (const child of children) {
         total += await countNetwork(child.id)
@@ -52,21 +57,20 @@ export async function GET(request: Request) {
     // Build simple referral tree for visualization
     async function buildTree(parentId: string, depth: number, maxDepth: number) {
       if (depth > maxDepth) return []
-      const children = await db.user.findMany({
-        where: { referredById: parentId },
-        select: {
-          id: true,
-          name: true,
-          plan: true,
-          isActive: true,
-          createdAt: true,
-        },
-      })
+      const children = await db.find(
+        'User',
+        '"referredById" = $1',
+        [parentId]
+      ) as any[]
       const tree = []
       for (const child of children) {
         const subTree = await buildTree(child.id, depth + 1, maxDepth)
         tree.push({
-          ...child,
+          id: child.id,
+          name: child.name,
+          plan: child.plan,
+          isActive: child.isActive,
+          createdAt: child.createdAt,
           children: subTree,
         })
       }
@@ -76,7 +80,7 @@ export async function GET(request: Request) {
     const referralTree = await buildTree(userId, 1, 3)
 
     return success({
-      directReferrals,
+      directReferrals: directReferralData,
       stats: {
         totalDirect,
         totalNetwork,

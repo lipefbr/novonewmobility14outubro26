@@ -14,14 +14,14 @@ export async function POST(request: Request) {
       return error('Invalid plan. Must be blue3 or blue5')
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('User not found', 404)
     }
 
     // Check if it's actually an upgrade
-    const planOrder = { free: 0, blue3: 1, blue5: 2 }
-    if (planOrder[plan as keyof typeof planOrder] <= planOrder[user.plan as keyof typeof planOrder]) {
+    const planOrder: Record<string, number> = { free: 0, blue3: 1, blue5: 2 }
+    if (planOrder[plan] <= (planOrder[user.plan] ?? 0)) {
       return error('Can only upgrade to a higher plan')
     }
 
@@ -32,47 +32,47 @@ export async function POST(request: Request) {
     const dueDate = new Date()
     dueDate.setDate(dueDate.getDate() + 3)
 
-    const invoice = await db.invoice.create({
-      data: {
-        userId,
-        amount: price,
-        type: `plan_${plan}`,
-        status: 'pending',
-        dueDate,
-      },
+    const invoice = await db.insert('Invoice', {
+      userId,
+      amount: price,
+      type: `plan_${plan}`,
+      status: 'pending',
+      dueDate,
     })
 
     // For demo purposes, auto-approve the upgrade
-    await db.user.update({
-      where: { id: userId },
-      data: {
+    await db.update(
+      'User',
+      '"id" = $1',
+      {
         plan,
         isActive: true,
       },
-    })
+      [userId]
+    )
 
     // Mark invoice as paid
-    await db.invoice.update({
-      where: { id: invoice.id },
-      data: {
+    await db.update(
+      'Invoice',
+      '"id" = $1',
+      {
         status: 'paid',
         paidAt: new Date(),
       },
-    })
+      [(invoice as any).id]
+    )
 
     // Create transaction
-    await db.transaction.create({
-      data: {
-        userId,
-        type: 'deposit',
-        amount: price,
-        status: 'approved',
-        category: 'plan_upgrade',
-        description: `Upgrade para plano ${plan === 'blue3' ? 'Blue 3' : 'Blue 5'}`,
-      },
+    await db.insert('Transaction', {
+      userId,
+      type: 'deposit',
+      amount: price,
+      status: 'approved',
+      category: 'plan_upgrade',
+      description: `Upgrade para plano ${plan === 'blue3' ? 'Blue 3' : 'Blue 5'}`,
     })
 
-    const updatedUser = await db.user.findUnique({ where: { id: userId } })
+    const updatedUser = await db.findOne('User', '"id" = $1', [userId])
 
     return success({
       invoice,

@@ -10,7 +10,7 @@ export async function PUT(request: Request) {
       return error('userId, currentPassword, and newPassword are required')
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('User not found', 404)
     }
@@ -20,10 +20,7 @@ export async function PUT(request: Request) {
     }
 
     const hashedNewPassword = hashPassword(newPassword)
-    await db.user.update({
-      where: { id: userId },
-      data: { password: hashedNewPassword },
-    })
+    await db.update('User', '"id" = $1', { password: hashedNewPassword }, [userId])
 
     return success({ message: 'Password updated successfully' })
   } catch (err) {

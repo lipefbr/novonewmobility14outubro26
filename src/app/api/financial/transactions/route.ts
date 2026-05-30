@@ -13,19 +13,23 @@ export async function GET(request: Request) {
       return error('userId is required')
     }
 
-    const where: Record<string, unknown> = { userId }
+    // Build conditions and params
+    const params: any[] = [userId]
+    let conditions = '"userId" = $1'
+
     if (type && type !== 'all') {
-      where.type = type
+      params.push(type)
+      conditions += ` AND "type" = $${params.length}`
     }
 
-    const total = await db.transaction.count({ where })
+    const total = await db.count('Transaction', conditions, params)
 
-    const transactions = await db.transaction.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit,
-    })
+    // Add pagination params
+    const offset = (page - 1) * limit
+    params.push(offset, limit)
+    const extra = `ORDER BY "createdAt" DESC OFFSET $${params.length - 1} LIMIT $${params.length}`
+
+    const transactions = await db.find('Transaction', conditions, params, extra)
 
     return success({
       transactions,

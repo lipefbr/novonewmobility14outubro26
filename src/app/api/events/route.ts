@@ -9,18 +9,24 @@ export async function GET(req: NextRequest) {
     const status = url.searchParams.get('status') || 'upcoming'
     const limit = parseInt(url.searchParams.get('limit') || '20')
 
+    // Build conditions
+    const conditions: string[] = ['"isActive" = true']
+    const params: any[] = []
+    let paramIdx = 1
+
+    if (status !== 'all') {
+      conditions.push(`status = $${paramIdx}`)
+      params.push(status)
+      paramIdx++
+    }
+
     // Try to get real events from database, fall back to mock data
-    let events = await db.event.findMany({
-      where: {
-        isActive: true,
-        ...(status !== 'all' ? { status } : {}),
-      },
-      include: {
-        registrations: userId ? { where: { userId } } : true,
-      },
-      orderBy: { eventDate: 'asc' },
-      take: limit,
-    })
+    let events = await db.find(
+      'Event',
+      conditions.join(' AND '),
+      params,
+      `ORDER BY "eventDate" ASC LIMIT ${limit}`
+    ) as any[]
 
     // If no events in DB, return mock data
     if (events.length === 0) {
@@ -42,8 +48,8 @@ export async function GET(req: NextRequest) {
           createdBy: null,
           createdAt: now,
           updatedAt: now,
-          registrations: userId ? await db.eventRegistration.findMany({ where: { eventId: 'evt_01', userId } }) : [],
-          _count: { registrations: 45 },
+          registrationCount: 45,
+          isRegistered: false,
         },
         {
           id: 'evt_02',
@@ -61,8 +67,8 @@ export async function GET(req: NextRequest) {
           createdBy: null,
           createdAt: now,
           updatedAt: now,
-          registrations: [],
-          _count: { registrations: 0 },
+          registrationCount: 0,
+          isRegistered: false,
         },
         {
           id: 'evt_03',
@@ -80,8 +86,8 @@ export async function GET(req: NextRequest) {
           createdBy: null,
           createdAt: now,
           updatedAt: now,
-          registrations: userId ? await db.eventRegistration.findMany({ where: { eventId: 'evt_03', userId } }) : [],
-          _count: { registrations: 128 },
+          registrationCount: 128,
+          isRegistered: false,
         },
         {
           id: 'evt_04',
@@ -99,8 +105,8 @@ export async function GET(req: NextRequest) {
           createdBy: null,
           createdAt: now,
           updatedAt: now,
-          registrations: userId ? await db.eventRegistration.findMany({ where: { eventId: 'evt_04', userId } }) : [],
-          _count: { registrations: 67 },
+          registrationCount: 67,
+          isRegistered: false,
         },
         {
           id: 'evt_05',
@@ -118,8 +124,8 @@ export async function GET(req: NextRequest) {
           createdBy: null,
           createdAt: now,
           updatedAt: now,
-          registrations: [],
-          _count: { registrations: 0 },
+          registrationCount: 0,
+          isRegistered: false,
         },
         {
           id: 'evt_06',
@@ -137,10 +143,38 @@ export async function GET(req: NextRequest) {
           createdBy: null,
           createdAt: now,
           updatedAt: now,
-          registrations: userId ? await db.eventRegistration.findMany({ where: { eventId: 'evt_06', userId } }) : [],
-          _count: { registrations: 89 },
+          registrationCount: 89,
+          isRegistered: false,
         },
       ] as any
+
+      // Check registrations for mock events if userId provided
+      if (userId) {
+        for (const evt of events) {
+          const reg = await db.findOne(
+            'EventRegistration',
+            '"eventId" = $1 AND "userId" = $2',
+            [evt.id, userId]
+          )
+          evt.isRegistered = !!reg
+        }
+      }
+    } else {
+      // Real events from DB - get registration counts and user registration status
+      for (const evt of events) {
+        const regCount = await db.count('EventRegistration', '"eventId" = $1', [evt.id])
+        let isRegistered = false
+        if (userId) {
+          const reg = await db.findOne(
+            'EventRegistration',
+            '"eventId" = $1 AND "userId" = $2',
+            [evt.id, userId]
+          )
+          isRegistered = !!reg
+        }
+        evt.registrationCount = regCount
+        evt.isRegistered = isRegistered
+      }
     }
 
     const formattedEvents = events.map((evt: any) => ({
@@ -154,8 +188,8 @@ export async function GET(req: NextRequest) {
       location: evt.location,
       meetingUrl: evt.meetingUrl,
       maxAttendees: evt.maxAttendees,
-      registrationCount: evt._count?.registrations ?? evt.registrations?.length ?? 0,
-      isRegistered: evt.registrations?.length > 0,
+      registrationCount: evt.registrationCount ?? 0,
+      isRegistered: evt.isRegistered ?? false,
     }))
 
     return success({ events: formattedEvents, total: formattedEvents.length })

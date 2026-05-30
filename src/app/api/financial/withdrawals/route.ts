@@ -7,13 +7,14 @@ export async function GET(req: NextRequest) {
     const userId = req.nextUrl.searchParams.get('userId')
     if (!userId) return error('userId is required', 400)
 
-    const withdrawals = await db.transaction.findMany({
-      where: { userId, type: 'withdrawal' },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    })
+    const withdrawals = await db.find(
+      'Transaction',
+      '"userId" = $1 AND "type" = $2',
+      [userId, 'withdrawal'],
+      'ORDER BY "createdAt" DESC LIMIT 50'
+    )
 
-    const withdrawalsWithTimeline = withdrawals.map(w => {
+    const withdrawalsWithTimeline = (withdrawals as any[]).map(w => {
       const createdAt = new Date(w.createdAt)
       const processingDays = w.status === 'pending' ? 1 : w.status === 'approved' ? 2 : 0
       const estimatedDate = new Date(createdAt.getTime() + processingDays * 24 * 60 * 60 * 1000)
@@ -22,20 +23,20 @@ export async function GET(req: NextRequest) {
 
       if (w.status === 'pending') {
         steps = [
-          { status: 'pending', label: 'Solicitado', completed: true, date: w.createdAt.toISOString() },
+          { status: 'pending', label: 'Solicitado', completed: true, date: new Date(w.createdAt).toISOString() },
           { status: 'processing', label: 'Processando', completed: false, date: null },
           { status: 'completed', label: 'Concluído', completed: false, date: null },
         ]
       } else if (w.status === 'approved' || w.status === 'paid') {
         steps = [
-          { status: 'pending', label: 'Solicitado', completed: true, date: w.createdAt.toISOString() },
-          { status: 'processing', label: 'Processando', completed: true, date: w.updatedAt.toISOString() },
-          { status: 'completed', label: 'Concluído', completed: w.status === 'paid', date: w.status === 'paid' ? w.updatedAt.toISOString() : null },
+          { status: 'pending', label: 'Solicitado', completed: true, date: new Date(w.createdAt).toISOString() },
+          { status: 'processing', label: 'Processando', completed: true, date: new Date(w.updatedAt).toISOString() },
+          { status: 'completed', label: 'Concluído', completed: w.status === 'paid', date: w.status === 'paid' ? new Date(w.updatedAt).toISOString() : null },
         ]
       } else {
         steps = [
-          { status: 'pending', label: 'Solicitado', completed: true, date: w.createdAt.toISOString() },
-          { status: 'rejected', label: 'Rejeitado', completed: true, date: w.updatedAt.toISOString() },
+          { status: 'pending', label: 'Solicitado', completed: true, date: new Date(w.createdAt).toISOString() },
+          { status: 'rejected', label: 'Rejeitado', completed: true, date: new Date(w.updatedAt).toISOString() },
         ]
       }
 
@@ -57,12 +58,12 @@ export async function GET(req: NextRequest) {
     let withdrawalFee = 2 // 2% default
 
     try {
-      const minConfig = await db.systemConfig.findUnique({ where: { key: 'min_withdrawal' } })
-      const maxConfig = await db.systemConfig.findUnique({ where: { key: 'max_withdrawal' } })
-      const feeConfig = await db.systemConfig.findUnique({ where: { key: 'withdrawal_fee_pct' } })
-      if (minConfig) minWithdrawal = parseInt(minConfig.value)
-      if (maxConfig) maxWithdrawal = parseInt(maxConfig.value)
-      if (feeConfig) withdrawalFee = parseFloat(feeConfig.value)
+      const minConfig = await db.findOne('SystemConfig', '"key" = $1', ['min_withdrawal'])
+      const maxConfig = await db.findOne('SystemConfig', '"key" = $1', ['max_withdrawal'])
+      const feeConfig = await db.findOne('SystemConfig', '"key" = $1', ['withdrawal_fee_pct'])
+      if (minConfig) minWithdrawal = parseInt((minConfig as any).value)
+      if (maxConfig) maxWithdrawal = parseInt((maxConfig as any).value)
+      if (feeConfig) withdrawalFee = parseFloat((feeConfig as any).value)
     } catch { /* use defaults */ }
 
     return success({
