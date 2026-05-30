@@ -138,7 +138,7 @@ const testimonials = [
 ]
 
 export function LoginPage() {
-  const { setAuthView, login } = useStore()
+  const { setAuthView, login, setActivePage } = useStore()
   const { t } = useTranslation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -155,13 +155,16 @@ export function LoginPage() {
     return () => clearInterval(interval)
   }, [])
 
-  const handleLogin = async (emailArg: string, passwordArg: string) => {
+  const handleLogin = async (emailArg: string, passwordArg: string, isAdmin = false) => {
     setLoading(true)
     try {
       const data = await authApi.login(emailArg, passwordArg)
       if (data.user) {
         const userData = mapApiUserToUserData(data.user, data.balances)
         login(userData)
+        if (isAdmin) {
+          setActivePage('admin')
+        }
         toast.success(t('auth.login.success'))
       }
     } catch (err: unknown) {
@@ -480,6 +483,54 @@ export function LoginPage() {
                 >
                   <Zap className="h-3.5 w-3.5 mr-1" />
                   {t('auth.login.demo')}
+                </Button>
+
+                </div>
+
+              {/* Admin demo credentials */}
+              <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border-2 border-amber-300 dark:border-amber-700 relative">
+                <div className="absolute -top-2 left-3">
+                  <Badge className="bg-amber-600 text-white text-[9px] px-2 py-0.5 border-0 shadow-sm">ADMIN</Badge>
+                </div>
+                <p className="text-xs text-amber-700 dark:text-amber-300 font-semibold mb-1.5 mt-0.5 flex items-center gap-1.5">
+                  <Shield className="h-3.5 w-3.5" />
+                  Acesso Administrador
+                </p>
+                <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+                  <Mail className="h-3 w-3" />
+                  <span>admin@newmobility.com</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                  <Lock className="h-3 w-3" />
+                  <span>123456</span>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 w-full border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/30 text-xs bg-white/50 dark:bg-black/20"
+                  onClick={async () => {
+                    setLoading(true)
+                    try {
+                      const data = await authApi.login('admin@newmobility.com', '123456')
+                      if (data.user) {
+                        const userData = mapApiUserToUserData(data.user, data.balances)
+                        login(userData)
+                        // Navigate to admin page after login
+                        const { useStore } = await import('@/lib/store')
+                        useStore.getState().setActivePage('admin')
+                        toast.success('Acesso Admin realizado!')
+                      }
+                    } catch (err: unknown) {
+                      toast.error(err instanceof Error ? err.message : 'Erro ao acessar como admin')
+                    } finally {
+                      setLoading(false)
+                    }
+                  }}
+                  disabled={loading}
+                >
+                  <Shield className="h-3.5 w-3.5 mr-1" />
+                  Entrar como Admin
                 </Button>
               </div>
 

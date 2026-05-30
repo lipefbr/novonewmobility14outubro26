@@ -334,3 +334,41 @@ export const leaderboardApi = {
     return apiFetch<any>(`/leaderboard?${params}`)
   },
 }
+
+// Marketplace
+export const marketplaceApi = {
+  getProducts: (params?: { search?: string; category?: string; page?: number; featured?: boolean }) => {
+    const p = new URLSearchParams()
+    if (params?.search) p.set('search', params.search)
+    if (params?.category && params.category !== 'all') p.set('category', params.category)
+    if (params?.page) p.set('page', String(params.page))
+    if (params?.featured) p.set('featured', 'true')
+    return apiFetch<any>(`/marketplace/products?${p}`)
+  },
+  getProduct: (productId: string) =>
+    apiFetch<any>(`/marketplace/products/${productId}`),
+  createProduct: (userId: string, data: any) =>
+    apiFetch<any>('/marketplace/products', {
+      method: 'POST',
+      body: JSON.stringify({ userId, ...data }),
+    }),
+  updateProduct: (userId: string, productId: string, data: any) =>
+    apiFetch<any>(`/marketplace/products/${productId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ userId, ...data }),
+    }),
+  deleteProduct: (userId: string, productId: string) =>
+    apiFetch<any>(`/marketplace/products/${productId}?userId=${userId}`, {
+      method: 'DELETE',
+    }),
+  getOrders: (userId: string, status?: string) => {
+    const p = new URLSearchParams({ userId })
+    if (status) p.set('status', status)
+    return apiFetch<any>(`/marketplace/orders?${p}`)
+  },
+  createOrder: (userId: string, items: any[], shippingAddress?: string, paymentMethod?: string) =>
+    apiFetch<any>('/marketplace/orders', {
+      method: 'POST',
+      body: JSON.stringify({ userId, items, shippingAddress, paymentMethod }),
+    }),
+}

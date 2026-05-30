@@ -35,7 +35,7 @@ export async function GET(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json()
-    const { userId, name, phone, address, city, state, bankCode, bankAgency, bankAccount, bankType, language } = body
+    const { userId, name, username, phone, address, city, state, bankCode, bankAgency, bankAccount, bankType, language, pixKey, pixEnabled } = body
 
     if (!userId) {
       return error('userId is required')
@@ -48,6 +48,7 @@ export async function PUT(request: Request) {
 
     const updateData: Record<string, unknown> = {}
     if (name !== undefined) updateData.name = name
+    if (username !== undefined) updateData.username = username
     if (phone !== undefined) updateData.phone = phone
     if (address !== undefined) updateData.address = address
     if (city !== undefined) updateData.city = city
@@ -57,6 +58,8 @@ export async function PUT(request: Request) {
     if (bankAccount !== undefined) updateData.bankAccount = bankAccount
     if (bankType !== undefined) updateData.bankType = bankType
     if (language !== undefined) updateData.language = language
+    if (pixKey !== undefined) updateData.pixKey = pixKey
+    if (pixEnabled !== undefined) updateData.pixEnabled = pixEnabled
 
     const updatedUser = await db.user.update({
       where: { id: userId },

@@ -372,6 +372,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Transfer
     'sidebar.events': 'Eventos',
     'sidebar.leaderboard': 'Ranking',
+    'sidebar.marketplace': 'Marketplace',
     'transfer.title': 'Transferir entre Saldos',
     'transfer.subtitle': 'Transfira fundos entre suas categorias de saldo',
     'transfer.source': 'Saldo de Origem',
@@ -777,6 +778,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Transfer
     'sidebar.events': 'Events',
     'sidebar.leaderboard': 'Leaderboard',
+    'sidebar.marketplace': 'Marketplace',
     'transfer.title': 'Transfer Between Balances',
     'transfer.subtitle': 'Transfer funds between your balance categories',
     'transfer.source': 'Source Balance',
@@ -1144,6 +1146,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Transfer
     'sidebar.events': 'Eventos',
     'sidebar.leaderboard': 'Ranking',
+    'sidebar.marketplace': 'Marketplace',
     'transfer.title': 'Transferir entre Saldos',
     'transfer.subtitle': 'Transfiera fondos entre sus categorías de saldo',
     'transfer.source': 'Saldo de Origen',
@@ -1430,6 +1433,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Transfer
     'sidebar.events': 'Événements',
     'sidebar.leaderboard': 'Classement',
+    'sidebar.marketplace': 'Marketplace',
     'transfer.title': 'Transférer entre Soldes',
     'transfer.subtitle': 'Transférez des fonds entre vos catégories de solde',
     'transfer.source': 'Solde Source',
@@ -1712,7 +1716,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'sidebar.admin': 'Amministrazione', 'sidebar.reports': 'Report',
     'sidebar.gamification': 'Gamification', 'sidebar.simulator': 'Simulatore',
     'sidebar.group.system': 'Sistema',
-    'sidebar.events': 'Eventi', 'sidebar.leaderboard': 'Classifica',
+    'sidebar.events': 'Eventi', 'sidebar.leaderboard': 'Classifica', 'sidebar.marketplace': 'Marketplace',
 
     // Transfer
     'transfer.title': 'Trasferisci tra Saldi', 'transfer.subtitle': 'Trasferisci fondi tra le categorie di saldo',

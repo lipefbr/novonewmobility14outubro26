@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Progress } from '@/components/ui/progress'
 import {
   Eye, EyeOff, Mail, Lock, User, Phone, CreditCard, Users, ArrowLeft, ArrowRight, Check,
-  Shield, Sparkles, Gift, Crown, Star, Zap, MessageSquare, ShoppingCart, Gamepad2, Dices,
+  Shield, Sparkles, Gift, Crown, Star, Zap, MessageSquare, ShoppingCart, Gamepad2, Dices, LockKeyhole,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
@@ -332,7 +332,15 @@ export function RegisterPage() {
                   className="space-y-4"
                 >
                   <div className="space-y-2">
-                    <Label htmlFor="name">Nome Completo</Label>
+                    <Label htmlFor="name" className="flex items-center gap-1.5">
+                      Nome Completo
+                      {hasReferral && (
+                        <span className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-normal">
+                          <LockKeyhole className="h-3 w-3" />
+                          definido pelo indicador
+                        </span>
+                      )}
+                    </Label>
                     <div className="relative">
                       <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
@@ -341,8 +349,12 @@ export function RegisterPage() {
                         value={formData.name}
                         onChange={(e) => handleChange('name', e.target.value)}
                         className="pl-10"
+                        disabled={hasReferral}
                         required
                       />
+                      {hasReferral && (
+                        <LockKeyhole className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-amber-500" />
+                      )}
                     </div>
                   </div>
 
@@ -459,16 +471,28 @@ export function RegisterPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="referral">Código de Indicação</Label>
+                    <Label htmlFor="referral" className="flex items-center gap-1.5">
+                      Código de Indicação
+                      {hasReferral && (
+                        <span className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-normal">
+                          <LockKeyhole className="h-3 w-3" />
+                          definido pelo indicador
+                        </span>
+                      )}
+                    </Label>
                     <div className="relative">
                       <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="referral"
                         placeholder="Código de quem te indicou"
                         value={formData.referralCode}
-                        onChange={(e) => handleChange('referral', e.target.value.toUpperCase())}
+                        onChange={(e) => handleChange('referralCode', e.target.value.toUpperCase())}
                         className="pl-10 uppercase"
+                        disabled={hasReferral}
                       />
+                      {hasReferral && (
+                        <LockKeyhole className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-amber-500" />
+                      )}
                     </div>
                   </div>
 

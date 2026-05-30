@@ -1496,3 +1496,71 @@ Stage Summary:
 9. Performance optimization: lazy loading for heavy pages, code splitting
 10. Add E2E testing with Playwright
 
+
+---
+Task ID: 12
+Agent: Main Agent
+Task: Connect Neon PostgreSQL, Create Marketplace, Fix Login/Admin, Lock Username on Affiliate Registration
+
+Work Log:
+
+### 1. Database Migration: SQLite → Neon PostgreSQL
+- Changed Prisma datasource from `sqlite` to `postgresql` with `relationMode = "prisma"`
+- Added `onDelete: Restrict, onUpdate: Restrict` to all User relations (required for PostgreSQL self-referential relations)
+- Added `username`, `pixKey`, `pixEnabled` fields to User model
+- Added Marketplace models: `MarketplaceProduct`, `MarketplaceOrder`, `MarketplaceOrderItem`
+- Updated `src/lib/db.ts` to use `NEON_DATABASE_URL` env var (to avoid conflict with system `DATABASE_URL`)
+- Created `.env.local` with `NEON_DATABASE_URL=postgresql://neondb_owner:...`
+- Ran `prisma db push` to create all tables on Neon
+- Seeded database with 7 users (admin + demo + 5 regular) and 12 marketplace products
+- Used `datasourceUrl` option in PrismaClient constructor to override the default DATABASE_URL
+
+### 2. Login Page Fix - ADMIN Demo Button
+- Added dedicated "Acesso Administrador" section on login page with amber/orange styling
+- ADMIN button logs in with `admin@newmobility.com / 123456`
+- After login, navigates directly to admin page via `useStore.getState().setActivePage('admin')`
+- Admin credentials displayed in separate box below DEMO credentials
+
+### 3. Register Page - Username Lock on Affiliate Link
+- The name field is already locked (`disabled={hasReferral}`) when registering via affiliate link
+- Added lock icon and "definido pelo indicador" text to indicate the field is locked
+- The referral code field is also locked when coming from an affiliate URL
+- Fixed: the referral code onChange handler correctly uses `handleChange('referralCode', ...)` (was already fixed)
+
+### 4. Marketplace Page & API
+- Created `src/components/newmobility/marketplace/marketplace-page.tsx` with:
+  - Product grid with category-colored cards and emoji placeholders
+  - Search bar and category filter (9 categories)
+  - Product detail modal with description, price, cashback info
+  - Cart sidebar with quantity controls and total calculation
+  - Checkout flow: address input → payment method selection → confirm
+  - "Meus Pedidos" tab with order history and status tracking
+  - Support for PIX, Credit Card, and Balance payment methods
+- Created API routes:
+  - `GET/POST /api/marketplace/products` - List/create products
+  - `GET/PUT/DELETE /api/marketplace/products/[productId]` - Product CRUD
+  - `GET/POST /api/marketplace/orders` - List/create orders
+- Added marketplace to sidebar (ShoppingBag icon with "NOVO" badge)
+- Added marketplace to PageKey type, page.tsx router, and api.ts service
+
+### 5. Profile & Registration Data Verification
+- Verified that `PUT /api/user/profile` saves all fields including `username`, `pixKey`, `pixEnabled`
+- Verified that `POST /api/auth/register` creates users with all fields
+- Verified `sanitizeUser()` strips only the password field
+
+### Key Decisions
+- Used `NEON_DATABASE_URL` instead of `DATABASE_URL` because the system env var was set to SQLite path and overrides `.env` files
+- Used standard PrismaClient (not Neon adapter) for better compatibility with Node.js runtime
+- The `datasourceUrl` option in PrismaClient constructor allows runtime override of the connection string
+
+### Credentials
+- Demo: carlos.silva@email.com / 123456
+- Admin: admin@newmobility.com / 123456
+
+Stage Summary:
+- Database fully migrated to Neon PostgreSQL and working
+- Admin login button on login page working
+- Marketplace page created with product browsing, cart, and checkout
+- Username locked on affiliate registration
+- All fields verified to save correctly
+- Lint passes with 0 errors

@@ -6,14 +6,16 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider     = "postgresql"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
 }
 
 model User {
   id                String   @id @default(cuid())
   email             String   @unique
   name              String
+  username          String?  @unique
   phone             String?
   cpf               String?  @unique
   password          String
@@ -25,7 +27,7 @@ model User {
   // Referral system
   referralCode      String   @unique
   referredById      String?
-  referredBy        User?    @relation("Referrals", fields: [referredById], references: [id])
+  referredBy        User?    @relation("Referrals", fields: [referredById], references: [id], onDelete: Restrict, onUpdate: Restrict)
   referrals         User[]   @relation("Referrals")
   
   // Matrix positions
@@ -61,6 +63,8 @@ model User {
   bankAgency        String?
   bankAccount       String?
   bankType          String?  // cc, cp
+  pixKey            String?
+  pixEnabled        Boolean  @default(true)
   
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -81,12 +85,14 @@ model User {
   pointTransactions    PointTransaction[]
   gamificationStreak   GamificationStreak?
   userChallenges       UserChallenge[]
+  marketplaceOrders    MarketplaceOrder[]
+  marketplaceOrderItems MarketplaceOrderItem[]
 }
 
 model MatrixPosition {
   id              String   @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
+  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   matrixType      String   // entrada, residual, vendas
   parentId        String?
   level           Int      @default(0)
@@ -98,7 +104,7 @@ model MatrixPosition {
 model CashbackEntry {
   id              String   @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
+  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   fromUserId      String
   amount          Int      // in cents
   level           Int      // 1-5
@@ -110,7 +116,7 @@ model CashbackEntry {
 model CashbackResidual {
   id              String   @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
+  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   fromUserId      String
   amount          Int      // in cents
   level           Int      // 1-7
@@ -122,7 +128,7 @@ model CashbackResidual {
 model CashbackSales {
   id              String   @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
+  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   fromUserId      String
   amount          Int      // in cents
   level           Int      // 1-9
@@ -135,11 +141,11 @@ model CashbackSales {
 model Transaction {
   id              String   @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  type            String   // deposit, withdrawal, cashback_entry, cashback_residual, cashback_sales, gratification, voucher, bonus
+  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  type            String   // deposit, withdrawal, cashback_entry, cashback_residual, cashback_sales, gratification, voucher, bonus, marketplace_purchase
   amount          Int      // in cents
   status          String   @default("pending") // pending, approved, rejected, paid
-  category        String?  // withdrawal, mobility, shopping, food, pharmacy, gratification
+  category        String?  // withdrawal, mobility, shopping, food, pharmacy, gratification, marketplace
   description     String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -148,9 +154,9 @@ model Transaction {
 model Invoice {
   id              String   @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
+  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   amount          Int      // in cents
-  type            String   // plan_blue3, plan_blue5, upgrade, monthly_fee, residual_entry
+  type            String   // plan_blue3, plan_blue5, upgrade, monthly_fee, residual_entry, marketplace
   status          String   @default("pending") // pending, paid, overdue, cancelled
   dueDate         DateTime
   paidAt          DateTime?
@@ -161,10 +167,10 @@ model Invoice {
 model Voucher {
   id              String   @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
+  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   code            String   @unique
   amount          Int      // in cents
-  type            String   // mobility, payment, bonus
+  type            String   // mobility, payment, bonus, marketplace
   isUsed          Boolean  @default(false)
   usedAt          DateTime?
   expiresAt       DateTime?
@@ -174,9 +180,9 @@ model Voucher {
 model Ticket {
   id              String   @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
+  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   subject         String
-  category        String   // support, financial, mobility, shopping, food, pharmacy, technical
+  category        String   // support, financial, mobility, shopping, food, pharmacy, technical, marketplace
   status          String   @default("open") // open, in_progress, resolved, closed
   priority        String   @default("normal") // low, normal, high, urgent
   messages        TicketMessage[]
@@ -187,9 +193,9 @@ model Ticket {
 model TicketMessage {
   id              String   @id @default(cuid())
   ticketId        String
-  ticket          Ticket   @relation(fields: [ticketId], references: [id])
+  ticket          Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade, onUpdate: Restrict)
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
+  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   message         String
   isAdmin         Boolean  @default(false)
   attachments     String?  // JSON array of file paths
@@ -199,7 +205,7 @@ model TicketMessage {
 model Notification {
   id              String   @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
+  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   title           String
   message         String
   type            String   // info, success, warning, error
@@ -210,7 +216,7 @@ model Notification {
 model CareerMilestone {
   id              String   @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
+  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   milestone       String   // bronze, silver, gold, sapphire, diamond, platinum
   pointsRequired  Int
   achieved        Boolean  @default(false)
@@ -221,7 +227,7 @@ model CareerMilestone {
 model Gratification {
   id              String   @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
+  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   type            String   // mobility_team, shopping, leadership, residual_activation, career_evolution, insurance_car, insurance_life, insurance_phone, telemedicine, dental, fuel_aid, food_ticket, mimo_kit, tow_truck, home_assistance, retirement_fund, motorcycle_choice
   amount          Int      // in cents
   category        String   // mobility, shopping, withdrawal, service
@@ -234,7 +240,7 @@ model Gratification {
 model PointTransaction {
   id              String   @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
+  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   amount          Int      // positive or negative
   type            String   // service_use, purchase, evaluation_received, evaluation_upline, payment, direct_referral
   description     String?
@@ -269,7 +275,7 @@ model Announcement {
 model GamificationStreak {
   id              String   @id @default(cuid())
   userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id])
+  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   currentStreak   Int      @default(0)
   longestStreak   Int      @default(0)
   lastLoginDate   DateTime?
@@ -296,9 +302,9 @@ model Challenge {
 model UserChallenge {
   id              String   @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
+  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   challengeId     String
-  challenge       Challenge @relation(fields: [challengeId], references: [id])
+  challenge       Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade, onUpdate: Restrict)
   currentValue    Int      @default(0)
   completed       Boolean  @default(false)
   completedAt     DateTime?
@@ -328,9 +334,64 @@ model Event {
 model EventRegistration {
   id              String   @id @default(cuid())
   eventId         String
-  event           Event    @relation(fields: [eventId], references: [id])
+  event           Event    @relation(fields: [eventId], references: [id], onDelete: Cascade, onUpdate: Restrict)
   userId          String
   registeredAt    DateTime @default(now())
 
   @@unique([eventId, userId])
+}
+
+// Marketplace models
+model MarketplaceProduct {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  price           Int      // in cents
+  originalPrice   Int?     // in cents (for discounts)
+  category        String   // electronics, fashion, home, health, beauty, food, services, mobility, digital
+  imageUrl        String?
+  images          String?  // JSON array of image URLs
+  stock           Int      @default(0)
+  isActive        Boolean  @default(true)
+  isFeatured      Boolean  @default(false)
+  cashbackPercent Float    @default(0)
+  rating          Float    @default(0)
+  reviewCount     Int      @default(0)
+  sellerName      String?
+  tags            String?  // JSON array of tags
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  orderItems      MarketplaceOrderItem[]
+}
+
+model MarketplaceOrder {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  status          String   @default("pending") // pending, processing, shipped, delivered, cancelled
+  totalAmount     Int      // in cents
+  cashbackEarned  Int      @default(0) // in cents
+  shippingAddress String?
+  paymentMethod   String?  // pix, credit_card, balance
+  paidAt          DateTime?
+  shippedAt       DateTime?
+  deliveredAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  items           MarketplaceOrderItem[]
+}
+
+model MarketplaceOrderItem {
+  id              String   @id @default(cuid())
+  orderId         String
+  order           MarketplaceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  productId       String
+  product         MarketplaceProduct @relation(fields: [productId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  productName     String
+  quantity        Int      @default(1)
+  unitPrice       Int      // in cents
+  cashbackPercent Float    @default(0)
+  createdAt       DateTime @default(now())
 }

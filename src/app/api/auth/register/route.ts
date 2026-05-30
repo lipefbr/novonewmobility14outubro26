@@ -51,6 +51,7 @@ export async function POST(request: Request) {
       data: {
         name,
         email,
+        username: email.split('@')[0], // Auto-generate username from email
         phone: phone || null,
         cpf: cpf || null,
         password: hashedPassword,

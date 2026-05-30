@@ -29,6 +29,11 @@ export async function POST() {
     await db.matrixPosition.deleteMany()
     await db.user.deleteMany()
 
+    // Clear marketplace data
+    await db.marketplaceOrderItem.deleteMany()
+    await db.marketplaceOrder.deleteMany()
+    await db.marketplaceProduct.deleteMany()
+
     const password = hashPassword('123456')
 
     // ============== CREATE ADMIN USER ==============
@@ -562,6 +567,26 @@ export async function POST() {
           country: 'BR',
         },
       })
+    }
+
+    // ============== CREATE MARKETPLACE PRODUCTS ==============
+    const marketplaceProducts = [
+      { name: 'Smartphone X Pro', description: 'Smartphone premium com câmera de 108MP, tela AMOLED 6.7" e bateria de 5000mAh. Compre e ganhe CashBack na sua conta NewMobility!', price: 299900, originalPrice: 349900, category: 'electronics', cashbackPercent: 5, rating: 4.5, reviewCount: 128, sellerName: 'TechStore', isFeatured: true, stock: 50 },
+      { name: 'Fone Bluetooth Elite', description: 'Fone de ouvido Bluetooth com cancelamento de ruído ativo, 30h de bateria e áudio Hi-Res. CashBack NewMobility!', price: 19900, originalPrice: 29900, category: 'electronics', cashbackPercent: 8, rating: 4.2, reviewCount: 89, sellerName: 'AudioMax', isFeatured: true, stock: 200 },
+      { name: 'Camiseta Premium', description: 'Camiseta 100% algodão egípcio, corte moderno e confortável. Disponível em várias cores. Ganhe CashBack!', price: 8900, originalPrice: 12900, category: 'fashion', cashbackPercent: 10, rating: 4.0, reviewCount: 56, sellerName: 'ModaFit', isFeatured: false, stock: 500 },
+      { name: 'Tênis Esportivo Run', description: 'Tênis de corrida com tecnologia de amortecimento responsive e palmilha anatômica. CashBack NewMobility!', price: 29900, originalPrice: 39900, category: 'fashion', cashbackPercent: 7, rating: 4.7, reviewCount: 203, sellerName: 'SportLife', isFeatured: true, stock: 150 },
+      { name: 'Purificador de Ar', description: 'Purificador de ar com filtro HEPA, ideal para quartos e salas até 40m². CashBack NewMobility!', price: 45900, originalPrice: 59900, category: 'home', cashbackPercent: 6, rating: 4.3, reviewCount: 42, sellerName: 'HomeClean', isFeatured: false, stock: 80 },
+      { name: 'Kit Organização', description: 'Kit completo de organização para casa com 12 peças em plástico premium. Ganhe CashBack!', price: 7900, originalPrice: 11900, category: 'home', cashbackPercent: 12, rating: 4.1, reviewCount: 34, sellerName: 'OrgBrasil', isFeatured: false, stock: 300 },
+      { name: 'Vitamínico Complex', description: 'Suplemento vitamínico com 25 vitaminas e minerais essenciais. 60 cápsulas. CashBack NewMobility!', price: 6900, originalPrice: 8900, category: 'health', cashbackPercent: 15, rating: 4.6, reviewCount: 167, sellerName: 'VidaSaúde', isFeatured: true, stock: 1000 },
+      { name: 'Kit Skincare', description: 'Kit de cuidados com a pele: sérum, hidratante e protetor solar FPS 50. CashBack NewMobility!', price: 12900, originalPrice: 18900, category: 'beauty', cashbackPercent: 10, rating: 4.4, reviewCount: 95, sellerName: 'BeautyPro', isFeatured: false, stock: 200 },
+      { name: 'Café Especial 500g', description: 'Café especial 100% arábica, torra média, moído. Direto do produtor. CashBack NewMobility!', price: 4500, originalPrice: 5900, category: 'food', cashbackPercent: 8, rating: 4.8, reviewCount: 312, sellerName: 'CaféBrasil', isFeatured: false, stock: 5000 },
+      { name: 'Acesso Streaming 1 ano', description: 'Assinatura anual de plataforma de streaming. Acesso ilimitado a filmes e séries. CashBack 20%!', price: 19900, originalPrice: 29900, category: 'digital', cashbackPercent: 20, rating: 4.0, reviewCount: 78, sellerName: 'DigitalPlus', isFeatured: false, stock: 9999 },
+      { name: 'Recarga Celular R$50', description: 'Recarga de celular instantânea para qualquer operadora. Valor: R$ 50,00. CashBack 3%!', price: 5000, originalPrice: null, category: 'services', cashbackPercent: 3, rating: 5.0, reviewCount: 520, sellerName: 'RecargaFast', isFeatured: false, stock: 9999 },
+      { name: 'Corrida Premium 30km', description: 'Crédito de corrida premium no app de mobilidade. Válido para 30km. CashBack 5%!', price: 4500, originalPrice: 6000, category: 'mobility', cashbackPercent: 5, rating: 4.3, reviewCount: 89, sellerName: 'NMobilidade', isFeatured: false, stock: 9999 },
+    ]
+
+    for (const mp of marketplaceProducts) {
+      await db.marketplaceProduct.create({ data: mp })
     }
 
     return success({
