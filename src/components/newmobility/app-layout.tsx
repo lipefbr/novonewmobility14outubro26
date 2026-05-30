@@ -35,6 +35,7 @@ const sidebarLabelKeys: Record<PageKey, string> = {
   'profile': 'sidebar.profile',
   'myplan': 'sidebar.myplan',
   'purchases': 'sidebar.purchases',
+  'marketplace': 'sidebar.marketplace',
   'portal-lojista': 'sidebar.portal-lojista',
   'portal-gamer': 'sidebar.portal-gamer',
   'portal-sportbet': 'sidebar.portal-sportbet',
@@ -45,7 +46,13 @@ const sidebarLabelKeys: Record<PageKey, string> = {
   'cashback': 'sidebar.cashback',
   'financial': 'sidebar.financial',
   'voucher': 'sidebar.voucher',
+  'simulator': 'sidebar.simulator',
+  'leaderboard': 'sidebar.leaderboard',
+  'gamification': 'sidebar.gamification',
+  'events': 'sidebar.events',
+  'reports': 'sidebar.reports',
   'support': 'sidebar.support',
+  'admin': 'sidebar.admin',
 }
 
 // Mobile bottom navigation items

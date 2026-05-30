@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
+import { useStore } from '@/lib/store'
 import { EmptyState } from '../ui/empty-states'
 
 type VoucherStatus = 'active' | 'used' | 'expired'
@@ -110,6 +111,7 @@ function CountdownTimer({ expiresAt }: { expiresAt: string }) {
 
 export function VoucherPage() {
   const { toast } = useToast()
+  const { setActivePage } = useStore()
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<VoucherStatus | 'all'>('all')
   const [categoryFilter, setCategoryFilter] = useState<VoucherCategory | 'all'>('all')
@@ -140,9 +142,10 @@ export function VoucherPage() {
   }
 
   const handleBuyVoucher = () => {
+    setActivePage('marketplace')
     toast({
-      title: 'Em breve',
-      description: 'A compra de vouchers será disponibilizada em breve!',
+      title: 'Marketplace',
+      description: 'Navegue pelo Marketplace para comprar vouchers e produtos!',
     })
   }
 

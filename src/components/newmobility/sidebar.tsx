@@ -400,10 +400,10 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Desktop Sidebar */}
+      {/* Desktop Sidebar - Fixed position */}
       <aside
         className={cn(
-          "hidden lg:flex flex-col border-r border-white/10 shrink-0 relative",
+          "hidden lg:flex flex-col fixed top-0 left-0 bottom-0 z-30 border-r border-white/10",
           sidebarCollapsed ? "w-[68px]" : "w-64"
         )}
       >
@@ -411,6 +411,8 @@ export function Sidebar() {
         <div className="absolute right-0 top-0 bottom-0 w-px bg-gradient-to-b from-emerald-500/40 via-emerald-500/10 to-emerald-500/40" />
         {sidebarContent}
       </aside>
+      {/* Spacer to account for fixed sidebar */}
+      <div className={cn("hidden lg:block shrink-0", sidebarCollapsed ? "w-[68px]" : "w-64")} />
 
       {/* Mobile Overlay */}
       {mobileSidebarOpen && (

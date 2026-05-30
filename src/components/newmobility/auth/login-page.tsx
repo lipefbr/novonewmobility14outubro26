@@ -163,7 +163,10 @@ export function LoginPage() {
         const userData = mapApiUserToUserData(data.user, data.balances)
         login(userData)
         if (isAdmin) {
-          setActivePage('admin')
+          // Use setTimeout to avoid state update conflicts
+          setTimeout(() => {
+            useStore.getState().setActivePage('admin')
+          }, 100)
         }
         toast.success(t('auth.login.success'))
       }
@@ -509,24 +512,7 @@ export function LoginPage() {
                   variant="outline"
                   size="sm"
                   className="mt-2 w-full border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/30 text-xs bg-white/50 dark:bg-black/20"
-                  onClick={async () => {
-                    setLoading(true)
-                    try {
-                      const data = await authApi.login('admin@newmobility.com', '123456')
-                      if (data.user) {
-                        const userData = mapApiUserToUserData(data.user, data.balances)
-                        login(userData)
-                        // Navigate to admin page after login
-                        const { useStore } = await import('@/lib/store')
-                        useStore.getState().setActivePage('admin')
-                        toast.success('Acesso Admin realizado!')
-                      }
-                    } catch (err: unknown) {
-                      toast.error(err instanceof Error ? err.message : 'Erro ao acessar como admin')
-                    } finally {
-                      setLoading(false)
-                    }
-                  }}
+                  onClick={() => handleLogin('admin@newmobility.com', '123456', true)}
                   disabled={loading}
                 >
                   <Shield className="h-3.5 w-3.5 mr-1" />
