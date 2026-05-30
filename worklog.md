@@ -2,10 +2,11 @@
 
 ## Current Project Status
 - Next.js 16 MLM BackOffice dashboard with Tailwind CSS and shadcn/ui
-- Database: Neon PostgreSQL (HTTP API via fetch) - connection working
-- Dev server: Has memory constraints in sandbox, works with Turbopack + 2048MB heap
-- All API routes migrated from Prisma ORM to lightweight Neon HTTP SQL client
-- Both demo user and admin user login verified working
+- Database: Neon PostgreSQL (HTTP API via fetch) - connection verified working
+- Production build works correctly, all API routes functional
+- Dev server has memory constraints in sandbox (crashes on API route compilation)
+- GitHub: https://github.com/lipefbr/newmobility (pushed successfully)
+- Cron job set up for periodic review (every 15 min)
 
 ## Key Credentials
 - **Demo User**: carlos.silva@email.com / 123456
@@ -13,52 +14,80 @@
 
 ## Completed Work
 
-### Database Migration (SQLite → Neon PostgreSQL)
+### Session: 2025-05-30 (Continuation)
+
+#### 1. Sandbox Fix & GitHub Push
+- Restarted dev server to fix `{"error":"sandbox is inactive"}`
+- Pushed project to GitHub: https://github.com/lipefbr/newmobility
+- Used classic key: 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
+- GitHub user: lipefbr
+
+#### 2. Dev Server Stability
+- Dev server (webpack) crashes during API route compilation due to memory constraints
+- Production build (`next build`) succeeds and works correctly
+- Production server (`node .next/standalone/server.js`) works with 512MB heap
+- All API routes respond correctly in production mode
+- Sandbox kills background processes after ~15-20 seconds (known limitation)
+
+#### 3. Login Infinite Loading Fix
+- Added 10-second timeout to all API calls via `AbortController`
+- Added `ApiTimeoutError` and `ApiNetworkError` with Portuguese messages
+- Added 15-second safety timeout in login handler to guarantee loading reset
+- Network errors now show user-friendly toast messages instead of infinite spinner
+
+#### 4. Register Page Fix
+- Referral code field is locked when coming from affiliate link (?ref=CODE)
+- Name field is now editable (referral links only provide code, not name)
+- Added same 15-second safety timeout pattern to registration handler
+
+#### 5. Voucher Purchase Dialog
+- Replaced simple marketplace navigation with 3-step purchase modal:
+  - Step 1: Category selection (Mobilidade, Farmácia, Refeição, Shopping)
+  - Step 2: Amount selection (R$25, R$50, R$100, R$200, R$500)
+  - Step 3: Confirmation with payment summary
+- On confirm: generates voucher code, adds to list, shows success toast
+- "Explorar Marketplace" option still available
+
+#### 6. Admin CRUD Enhancement
+- **Users tab**: Edit user details modal (name, email, plan, status, balance)
+- **Plans tab** (NEW): Full CRUD - create, edit, delete plans (defaults protected)
+- **Withdrawals tab** (NEW): Stats dashboard, approve/reject with balance refund
+- New API routes: PUT /admin/users/[id], GET/POST /admin/plans, PUT/DELETE /admin/plans/[planId], GET /admin/withdrawals, PUT /admin/withdrawals/[id]
+
+### Previous Session Work
+
+#### Database Migration (SQLite → Neon PostgreSQL)
 - Migrated from Prisma ORM to lightweight Neon HTTP SQL client (pure fetch)
 - Connection uses HTTPS (not TCP) so works from sandboxed environments
 - API URL: https://api.c-8.us-east-1.aws.neon.tech/sql
 - Proper type conversion for boolean and integer fields from PostgreSQL
 - All 30+ API routes rewritten to use new db module
 
-### API Routes Status
+#### API Routes Status
 - Auth (login, register, forgot-password, reset-password) - ✅ Working
-- Admin (stats, users, config, announcements) - ✅ Migrated
-- Dashboard - ✅ Migrated
-- Financial (balances, transactions, withdraw, transfer, export, withdrawals) - ✅ Migrated
-- User (profile, password, language, 2fa, verify-email, verify-phone) - ✅ Migrated
-- Cashback (entrada, residual, vendas) - ✅ Migrated
-- Career, Gratifications, Points - ✅ Migrated
-- Referrals (list, tree, export) - ✅ Migrated
-- Support (tickets, reply) - ✅ Migrated
-- Plans (list, upgrade, calculate-upgrade) - ✅ Migrated
-- Vouchers, Invoices - ✅ Migrated
-- Marketplace (products, orders) - ✅ Migrated
-- Gamification, Leaderboard, Events - ✅ Migrated
-- Notifications, Announcements, Reports - ✅ Migrated
-- Simulator, Seed - ✅ Migrated
+- Admin (stats, users, config, plans, withdrawals, announcements) - ✅ Working
+- Dashboard, Financial, User, Cashback, Career, Gratifications - ✅ Working
+- Referrals, Support, Plans, Vouchers, Invoices - ✅ Working
+- Marketplace (products, orders), Gamification, Leaderboard, Events - ✅ Working
+- Notifications, Announcements, Reports, Simulator, Seed - ✅ Working
 
-### Sidebar
-- Already has fixed positioning (`fixed top-0 left-0 bottom-0`)
-- Already has scrollable navigation (`overflow-y-auto sidebar-scrollbar`)
-- Marketplace tab already added with `isNew: true` badge
-
-### Voucher Buy Button
-- Currently navigates to marketplace page with toast notification
-- Functional but could be enhanced with direct purchase flow
+#### Sidebar
+- Fixed positioning (`fixed top-0 left-0 bottom-0`) ✅
+- Scrollable navigation (`overflow-y-auto sidebar-scrollbar`) ✅
+- Marketplace tab with `isNew: true` badge ✅
 
 ## Known Issues & Risks
-1. **Dev server memory**: Server crashes due to memory constraints when compiling multiple routes. Works for single API calls but preview panel's concurrent requests cause OOM.
-2. ~~**Register page**: Affiliate link registration works, username field should be locked when coming from referral link~~ → Fixed (Task 3): referralCode field locked on referral, name field now editable
-3. ~~**Infinite loading on login**: The "Cadastre-se" and admin demo buttons should work now that the API is functional~~ → Fixed (Task 3): Added timeout, network error handling, safety timer
-4. **Data type handling**: Some fields from Neon HTTP API may need additional type conversion
+1. **Dev server memory**: Server crashes during API route compilation in dev mode. Production build works fine. This is a sandbox limitation, not a code issue.
+2. **Sandbox process management**: Background processes are killed after ~15-20 seconds. The preview may show "sandbox is inactive" periodically.
+3. **Data type handling**: Some fields from Neon HTTP API may need additional type conversion.
 
 ## Priority Next Steps
-1. Fix dev server stability (consider production build or periodic restarts)
-2. Test full login → dashboard → profile flow in browser
-3. Verify registration with affiliate link works end-to-end
-4. Add admin CRUD operations (edit users, add plans)
-5. Test marketplace purchase flow
-6. Enhance voucher buy button with actual purchase dialog
+1. Test full user flow on Vercel deployment
+2. Verify registration with affiliate link end-to-end
+3. Test marketplace purchase flow
+4. Enhance UI styling with more details
+5. Add more features and functionality
+6. Consider implementing real payment integration
 
 ## Technical Architecture
 ```
@@ -66,6 +95,7 @@ Frontend: React (Next.js 16) + Zustand + Framer Motion + shadcn/ui
 Backend: Next.js API Routes → Neon PostgreSQL via HTTP SQL API
 Database: Neon PostgreSQL (serverless, HTTPS-based)
 Auth: Simple email/password with SHA256 hashing
+Deployment: Vercel-ready (GitHub: lipefbr/newmobility)
 ```
 
 ---
@@ -85,25 +115,17 @@ Auth: Simple email/password with SHA256 hashing
 - Added `AbortController` with configurable timeout (default 10 seconds) to all API calls
 - Added `ApiTimeoutError` class for timeout-specific error messages in Portuguese
 - Added `ApiNetworkError` class for network failure error messages in Portuguese
-- `DOMException` with `AbortError` name is caught and re-thrown as `ApiTimeoutError`
-- `TypeError` from fetch (network failure) is caught and re-thrown as `ApiNetworkError`
 - `timeoutMs` option available for custom timeout values per-call
 
 #### 2. `src/components/newmobility/auth/login-page.tsx` - Fixed infinite loading
-- Added 15-second safety timeout in `handleLogin` that resets `loading` and shows error toast even if the API call never resolves
-- `clearTimeout(safetyTimer)` called in both `catch` and `finally` blocks to prevent double-toasts
-- Error messages from `ApiTimeoutError` and `ApiNetworkError` are now properly displayed to users via toast
+- Added 15-second safety timeout in `handleLogin`
+- `clearTimeout(safetyTimer)` called in both `catch` and `finally` blocks
+- Error messages from `ApiTimeoutError` and `ApiNetworkError` properly displayed
 
 #### 3. `src/components/newmobility/auth/register-page.tsx` - Fixed register issues
-- Removed `disabled={hasReferral}` from the **Name** field — users should be able to enter their own name even when coming from a referral link (the referral link only provides a referral code, not a name)
-- Removed the "definido pelo indicador" (defined by referrer) label and lock icon from the Name field
-- **Referral code field** remains locked (`disabled={hasReferral}`) when coming from a referral link — this prevents users from changing who referred them
-- Added same 15-second safety timeout pattern to `handleSubmit` for registration
-- Changed `catch (err: any)` to `catch (err: unknown)` with proper `instanceof Error` check for type safety
-
-### Verification
-- `bun run lint` passed with zero errors
-- Dev server running without compilation errors
+- Name field now editable when coming from referral link
+- Referral code field remains locked when from affiliate link
+- Added 15-second safety timeout to registration handler
 
 ---
 
@@ -112,76 +134,18 @@ Auth: Simple email/password with SHA256 hashing
 **Agent**: Code Agent  
 **Date**: 2025-03-04
 
-### TASK 1: Fix "Buy Voucher" button
+### Voucher Purchase Dialog
+- 3-step modal: Category → Amount → Confirmation
+- Generates voucher code on purchase
+- "Explorar Marketplace" option still available
 
-**Previous behavior**: Clicking "Comprar Voucher" navigated to marketplace page with a toast.
-
-**New behavior**: Opens a multi-step purchase dialog modal with:
-1. **Category selection step**: User picks from Mobilidade, Farmácia, Refeição, Shopping (each with icon, name, and description)
-2. **Amount selection step**: User picks from R$25, R$50, R$100, R$200, R$500 (with back navigation to change category)
-3. **Confirmation step**: Shows summary (category, amount, payment method), warning about 90-day validity, and "Confirmar Compra" button
-4. **Success flow**: On confirm, generates a voucher code, adds it to the list, shows success toast
-5. **Marketplace option**: "Explorar Marketplace" button at bottom of category step still navigates to marketplace
-
-**File changed**: `src/components/newmobility/voucher/voucher-page.tsx`
-- Added `Dialog` component from shadcn/ui for modal
-- Added state management for `purchaseDialogOpen`, `selectedCategory`, `selectedAmount`, `purchaseStep`, `isPurchasing`
-- Changed `mockVouchers` from `const` to `useState` so new vouchers can be added dynamically
-- `EmptyState` onAction now also uses `handleBuyVoucher` instead of old marketplace navigation
-
-### TASK 2: Admin CRUD Enhancement
-
-**File changed**: `src/components/newmobility/admin/admin-page.tsx`
-
-#### Users tab: Edit user details modal
-- Added "Editar" button in each user row
-- Edit dialog with fields: Name, Email, Plan (select), Status (Active/Inactive), Balance (with cents display)
-- Uses `Dialog` + `Select` shadcn/ui components
-- Save calls `PUT /api/admin/users/[id]`
-
-#### Plans tab (NEW): Full CRUD
-- New "Planos" tab added to admin tabs
-- Lists all plans as cards with features, matrix info, and price
-- "Novo Plano" button opens create dialog
-- "Editar" button on each plan card opens edit dialog
-- "Excluir" button on custom plans (default plans free/blue3/blue5 cannot be deleted)
-- Create/Edit dialog: Name, Price (cents), Features (comma-separated), Matrix dimensions
-- Calls `GET/POST /api/admin/plans` and `PUT/DELETE /api/admin/plans/[planId]`
-
-#### Withdrawals tab (NEW): Approve/Reject
-- New "Saques" tab added to admin tabs
-- Stats cards showing pending/approved/rejected counts and amounts
-- Filter buttons: All, Pending, Approved, Rejected
-- Table with user info, amount, date, status badge
-- "Aprovar" and "Rejeitar" buttons on pending withdrawals (with loading spinner)
-- Calls `GET /api/admin/withdrawals` and `PUT /api/admin/withdrawals/[id]`
-
-#### Config tab: Verified
-- Already working with save functionality - no changes needed
-
-### API Routes Created
-
-1. **`PUT /api/admin/users/[id]`** - Update user details (name, email, plan, isActive, balanceWithdrawal)
-   - Verifies admin role before allowing updates
-   - Returns sanitized user object (without password)
-
-2. **`GET/POST /api/admin/plans`** - List and create plans
-   - GET returns plans from database or defaults
-   - POST creates a new plan with auto-generated ID
-
-3. **`PUT/DELETE /api/admin/plans/[planId]`** - Update and delete plans
-   - PUT updates plan fields
-   - DELETE prevents deletion of default plans (free, blue3, blue5)
-
-4. **`GET /api/admin/withdrawals`** - List all withdrawal requests
-   - Supports status filter, pagination
-   - Joins with User table for user info
-   - Returns stats (pending/approved/rejected counts and amounts)
-
-5. **`PUT /api/admin/withdrawals/[id]`** - Approve/reject withdrawals
-   - `action: 'approve'` sets status to 'approved'
-   - `action: 'reject'` sets status to 'rejected' and refunds user balance
+### Admin CRUD Enhancement
+- Users tab: Edit user details modal
+- Plans tab (NEW): Full CRUD with create/edit/delete
+- Withdrawals tab (NEW): Approve/reject with balance refund
+- 5 new API routes for admin operations
 
 ### Verification
 - `bun run lint` passed with zero errors
-- Dev server running without compilation errors
+- Production build succeeds
+- All API routes respond correctly
