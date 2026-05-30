@@ -149,3 +149,62 @@ Deployment: Vercel-ready (GitHub: lipefbr/newmobility)
 - `bun run lint` passed with zero errors
 - Production build succeeds
 - All API routes respond correctly
+
+---
+
+## Task 5 - Full Admin Panel (Admin Geral)
+
+**Agent**: Code Agent  
+**Date**: 2025-03-05
+
+### Summary
+Upgraded the admin panel to a full "Admin Geral" (super admin) panel with complete control over all user fields, cashback management, and a detailed user view modal.
+
+### Changes Made
+
+#### 1. `src/app/api/admin/users/route.ts` - Expanded user query
+- GET now returns ALL user fields: phone, cpf, all 6 balances, career/personal points, stars, city/state/country, bank details (code, agency, account, type, pixKey, pixEnabled), isDriver, isDelivery, role
+- Proper defaults for nullable fields (empty string, 0, false)
+
+#### 2. `src/app/api/admin/users/[id]/route.ts` - Full user edit + view
+- Added GET handler for single user detail view (includes referrer info and referral count)
+- PUT handler now accepts ALL editable fields: name, email, phone, cpf, plan, isActive, all 6 balances, careerPoints, personalPoints, stars, city, state, country, bankCode, bankAgency, bankAccount, bankType, pixKey, pixEnabled, isDriver, isDelivery, role
+
+#### 3. `src/app/api/admin/cashback/route.ts` - NEW cashback management API
+- GET: Lists all cashback entries across CashbackEntry, CashbackResidual, CashbackSales tables
+  - Filter by type (entrada/residual/vendas/all) and userId
+  - Returns enriched entries with user names and emails
+  - Includes totals per type and per-user summary (top 20)
+  - Pagination support
+- POST: Add manual cashback entry to any user
+  - Supports all 3 cashback types
+  - Validates admin, target user, and amount
+  - Auto-sets fromUserId to admin
+
+#### 4. `src/components/newmobility/admin/admin-page.tsx` - Complete rewrite
+- **AdminUser interface**: Now includes all 30+ user fields
+- **Edit User Dialog**: Completely rebuilt with 6 organized sections:
+  - Dados Pessoais (name, email, phone, cpf)
+  - Plano & Status (plan, status, role, isDriver, isDelivery checkboxes)
+  - Saldos (all 6 balances with centavos input and formatted display)
+  - Carreira (careerPoints, personalPoints, stars)
+  - Localização (city, state, country)
+  - Dados Bancários (bankCode, bankAgency, bankAccount, bankType, pixKey, pixEnabled)
+- **View User Modal**: New "Visualizar" button on each user row
+  - Shows ALL user info in read-only format with organized sections
+  - Includes referrer info and registration date
+  - Fetches full user details via GET /admin/users/[id]
+- **Cashback Tab**: New tab with:
+  - Total cards (Entrada/Residual/Vendas/Geral)
+  - Type filter buttons (all/entrada/residual/vendas)
+  - User ID filter input
+  - Top users by cashback summary
+  - Full cashback entries table with type badge, from-user, level, description
+  - "Adicionar Cashback" dialog for manual entry
+- Badge updated from "Admin" to "Admin Geral"
+- Added Cashback tab trigger with Receipt icon
+- View button (blue eye icon) alongside Edit button on user rows
+
+### Verification
+- `bun run lint` passed with zero errors
+- Dev server running correctly
