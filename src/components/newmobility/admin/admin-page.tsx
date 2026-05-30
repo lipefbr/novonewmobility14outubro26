@@ -8,6 +8,12 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils'
@@ -16,7 +22,7 @@ import {
   Shield, Users, DollarSign, TrendingUp, Activity, Settings, Search,
   ChevronLeft, ChevronRight, BarChart3, Clock, Mail, Check, X,
   ToggleLeft, ToggleRight, Save, RefreshCw, AlertTriangle, Info, Megaphone,
-  Plus, Trash2, Edit, Eye,
+  Plus, Trash2, Edit, Eye, Wallet, CreditCard, FileText, Ban,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -57,6 +63,22 @@ interface AdminAnnouncement {
   actionLabel?: string; actionUrl?: string;
 }
 
+interface AdminPlan {
+  id: string; name: string; price: number; features: string[] | string;
+  matrixEntrada: string; matrixResidual: string; matrixVendas: string;
+  isActive: boolean;
+}
+
+interface AdminWithdrawal {
+  id: string; userId: string; userName?: string; userEmail?: string;
+  amount: number; status: string; category?: string; createdAt: string;
+}
+
+interface WithdrawalStats {
+  pendingCount: number; approvedCount: number; rejectedCount: number;
+  pendingAmount: number; approvedAmount: number;
+}
+
 export function AdminPage() {
   const { t } = useTranslation()
   const { user } = useStore()
@@ -65,6 +87,8 @@ export function AdminPage() {
   const [users, setUsers] = useState<{ users: AdminUser[]; total: number; page: number; totalPages: number } | null>(null)
   const [configs, setConfigs] = useState<SystemConfigs>({})
   const [announcements, setAnnouncements] = useState<AdminAnnouncement[]>([])
+  const [plans, setPlans] = useState<AdminPlan[]>([])
+  const [withdrawals, setWithdrawals] = useState<{ withdrawals: AdminWithdrawal[]; total: number; page: number; totalPages: number; stats: WithdrawalStats } | null>(null)
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [planFilter, setPlanFilter] = useState('all')
@@ -73,8 +97,24 @@ export function AdminPage() {
   const [savingConfig, setSavingConfig] = useState(false)
   const [showNewAnnouncement, setShowNewAnnouncement] = useState(false)
   const [newAnnouncement, setNewAnnouncement] = useState({ title: '', message: '', type: 'info', priority: 'normal', actionLabel: '', actionUrl: '' })
+  const [withdrawalStatusFilter, setWithdrawalStatusFilter] = useState('all')
 
-  const isAdmin = user?.id === 'usr_demo_admin' || user?.email === 'carlos.silva@email.com'
+  // User edit dialog
+  const [editUserDialogOpen, setEditUserDialogOpen] = useState(false)
+  const [editingUser, setEditingUser] = useState<AdminUser | null>(null)
+  const [editUserData, setEditUserData] = useState({ name: '', email: '', plan: '', isActive: true, balanceWithdrawal: 0 })
+  const [savingUser, setSavingUser] = useState(false)
+
+  // Plan dialog
+  const [planDialogOpen, setPlanDialogOpen] = useState(false)
+  const [editingPlan, setEditingPlan] = useState<AdminPlan | null>(null)
+  const [planFormData, setPlanFormData] = useState({ name: '', price: 0, features: '', matrixEntrada: '-', matrixResidual: '-', matrixVendas: '-', isActive: true })
+  const [savingPlan, setSavingPlan] = useState(false)
+
+  // Withdrawal action
+  const [processingWithdrawal, setProcessingWithdrawal] = useState<string | null>(null)
+
+  const isAdmin = user?.id === 'usr_demo_admin' || user?.email === 'carlos.silva@email.com' || user?.email === 'admin@newmobility.com'
 
   useEffect(() => {
     loadStats()
@@ -84,7 +124,9 @@ export function AdminPage() {
     if (activeTab === 'users') loadUsers()
     if (activeTab === 'config') loadConfigs()
     if (activeTab === 'announcements') loadAnnouncements()
-  }, [activeTab, searchQuery, planFilter, statusFilter, userPage])
+    if (activeTab === 'plans') loadPlans()
+    if (activeTab === 'withdrawals') loadWithdrawals()
+  }, [activeTab, searchQuery, planFilter, statusFilter, userPage, withdrawalStatusFilter])
 
   const loadStats = async () => {
     try {
@@ -113,6 +155,21 @@ export function AdminPage() {
     try {
       const data = await apiFetch<AdminAnnouncement[]>('/announcements')
       setAnnouncements(Array.isArray(data) ? data : [])
+    } catch { /* ignore */ }
+  }
+
+  const loadPlans = async () => {
+    try {
+      const data = await apiFetch<{ plans: AdminPlan[] }>(`/admin/plans?userId=${user?.id}`)
+      setPlans(data.plans || [])
+    } catch { /* ignore */ }
+  }
+
+  const loadWithdrawals = async () => {
+    try {
+      const params = new URLSearchParams({ userId: user?.id || '', status: withdrawalStatusFilter })
+      const data = await apiFetch<{ withdrawals: AdminWithdrawal[]; total: number; page: number; totalPages: number; stats: WithdrawalStats }>(`/admin/withdrawals?${params}`)
+      setWithdrawals(data)
     } catch { /* ignore */ }
   }
 
@@ -158,6 +215,141 @@ export function AdminPage() {
     } catch { /* ignore */ }
   }
 
+  // --- User Edit ---
+  const handleOpenEditUser = (u: AdminUser) => {
+    setEditingUser(u)
+    setEditUserData({
+      name: u.name,
+      email: u.email,
+      plan: u.plan,
+      isActive: u.isActive,
+      balanceWithdrawal: u.balanceWithdrawal,
+    })
+    setEditUserDialogOpen(true)
+  }
+
+  const handleSaveUser = async () => {
+    if (!editingUser) return
+    setSavingUser(true)
+    try {
+      await apiFetch(`/admin/users/${editingUser.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ userId: user?.id, ...editUserData }),
+      })
+      setEditUserDialogOpen(false)
+      setEditingUser(null)
+      loadUsers()
+      toast.success('Usuário atualizado com sucesso!')
+    } catch {
+      toast.error('Erro ao atualizar usuário')
+    } finally {
+      setSavingUser(false)
+    }
+  }
+
+  // --- Plans CRUD ---
+  const handleOpenNewPlan = () => {
+    setEditingPlan(null)
+    setPlanFormData({ name: '', price: 0, features: '', matrixEntrada: '-', matrixResidual: '-', matrixVendas: '-', isActive: true })
+    setPlanDialogOpen(true)
+  }
+
+  const handleOpenEditPlan = (plan: AdminPlan) => {
+    setEditingPlan(plan)
+    const featuresList = typeof plan.features === 'string'
+      ? JSON.parse(plan.features || '[]').join(', ')
+      : (plan.features || []).join(', ')
+    setPlanFormData({
+      name: plan.name,
+      price: plan.price,
+      features: featuresList,
+      matrixEntrada: plan.matrixEntrada || '-',
+      matrixResidual: plan.matrixResidual || '-',
+      matrixVendas: plan.matrixVendas || '-',
+      isActive: plan.isActive,
+    })
+    setPlanDialogOpen(true)
+  }
+
+  const handleSavePlan = async () => {
+    setSavingPlan(true)
+    try {
+      const featuresArray = planFormData.features
+        .split(',')
+        .map(f => f.trim())
+        .filter(f => f.length > 0)
+
+      if (editingPlan) {
+        await apiFetch(`/admin/plans/${editingPlan.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            userId: user?.id,
+            name: planFormData.name,
+            price: planFormData.price,
+            features: featuresArray,
+            matrixEntrada: planFormData.matrixEntrada,
+            matrixResidual: planFormData.matrixResidual,
+            matrixVendas: planFormData.matrixVendas,
+            isActive: planFormData.isActive,
+          }),
+        })
+        toast.success('Plano atualizado com sucesso!')
+      } else {
+        await apiFetch('/admin/plans', {
+          method: 'POST',
+          body: JSON.stringify({
+            userId: user?.id,
+            name: planFormData.name,
+            price: planFormData.price,
+            features: featuresArray,
+            matrixEntrada: planFormData.matrixEntrada,
+            matrixResidual: planFormData.matrixResidual,
+            matrixVendas: planFormData.matrixVendas,
+          }),
+        })
+        toast.success('Plano criado com sucesso!')
+      }
+      setPlanDialogOpen(false)
+      setEditingPlan(null)
+      loadPlans()
+    } catch {
+      toast.error('Erro ao salvar plano')
+    } finally {
+      setSavingPlan(false)
+    }
+  }
+
+  const handleDeletePlan = async (planId: string) => {
+    if (planId === 'free' || planId === 'blue3' || planId === 'blue5') {
+      toast.error('Não é possível excluir planos padrão')
+      return
+    }
+    try {
+      await apiFetch(`/admin/plans/${planId}?userId=${user?.id}`, { method: 'DELETE' })
+      loadPlans()
+      toast.success('Plano excluído!')
+    } catch {
+      toast.error('Erro ao excluir plano')
+    }
+  }
+
+  // --- Withdrawals ---
+  const handleWithdrawalAction = async (withdrawalId: string, action: 'approve' | 'reject') => {
+    setProcessingWithdrawal(withdrawalId)
+    try {
+      await apiFetch(`/admin/withdrawals/${withdrawalId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ userId: user?.id, action }),
+      })
+      loadWithdrawals()
+      toast.success(action === 'approve' ? 'Saque aprovado!' : 'Saque rejeitado!')
+    } catch {
+      toast.error('Erro ao processar saque')
+    } finally {
+      setProcessingWithdrawal(null)
+    }
+  }
+
   const getPlanBadge = (plan: string) => {
     const colors: Record<string, string> = { free: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300', blue3: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', blue5: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' }
     return colors[plan] || colors.free
@@ -171,6 +363,21 @@ export function AdminPage() {
   const getTypeColor = (type: string) => {
     const colors: Record<string, string> = { info: 'bg-blue-100 text-blue-700', promo: 'bg-emerald-100 text-emerald-700', maintenance: 'bg-amber-100 text-amber-700', feature: 'bg-purple-100 text-purple-700', urgent: 'bg-red-100 text-red-700' }
     return colors[type] || colors.info
+  }
+
+  const getWithdrawalStatusBadge = (status: string) => {
+    const map: Record<string, string> = {
+      pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+      approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+      rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+      paid: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+    }
+    return map[status] || 'bg-gray-100 text-gray-700'
+  }
+
+  const getWithdrawalStatusLabel = (status: string) => {
+    const map: Record<string, string> = { pending: 'Pendente', approved: 'Aprovado', rejected: 'Rejeitado', paid: 'Pago' }
+    return map[status] || status
   }
 
   return (
@@ -192,15 +399,21 @@ export function AdminPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="bg-muted/50 p-1">
+        <TabsList className="bg-muted/50 p-1 flex flex-wrap">
           <TabsTrigger value="stats" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
             <BarChart3 className="h-3.5 w-3.5" /> Estatísticas
           </TabsTrigger>
           <TabsTrigger value="users" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
             <Users className="h-3.5 w-3.5" /> Usuários
           </TabsTrigger>
+          <TabsTrigger value="plans" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+            <CreditCard className="h-3.5 w-3.5" /> Planos
+          </TabsTrigger>
+          <TabsTrigger value="withdrawals" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+            <Wallet className="h-3.5 w-3.5" /> Saques
+          </TabsTrigger>
           <TabsTrigger value="config" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
-            <Settings className="h-3.5 w-3.5" /> Configurações
+            <Settings className="h-3.5 w-3.5" /> Config
           </TabsTrigger>
           <TabsTrigger value="announcements" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
             <Megaphone className="h-3.5 w-3.5" /> Anúncios
@@ -348,6 +561,7 @@ export function AdminPage() {
                       <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden md:table-cell">Indicados</th>
                       <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden md:table-cell">Saldo</th>
                       <th className="text-left text-xs font-semibold text-muted-foreground p-3">Status</th>
+                      <th className="text-right text-xs font-semibold text-muted-foreground p-3">Ações</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -367,6 +581,12 @@ export function AdminPage() {
                             {u.isActive ? 'Ativo' : 'Inativo'}
                           </Badge>
                         </td>
+                        <td className="p-3 text-right">
+                          <Button variant="ghost" size="sm" className="h-7 gap-1 text-emerald-600 hover:text-emerald-700" onClick={() => handleOpenEditUser(u)}>
+                            <Edit className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">Editar</span>
+                          </Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -383,6 +603,208 @@ export function AdminPage() {
                   </div>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Plans Tab */}
+        <TabsContent value="plans" className="mt-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">{plans.length} planos cadastrados</p>
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleOpenNewPlan}>
+              <Plus className="h-4 w-4" /> Novo Plano
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {plans.map((plan, i) => {
+              const features = typeof plan.features === 'string'
+                ? JSON.parse(plan.features || '[]')
+                : plan.features || []
+              const isDefault = ['free', 'blue3', 'blue5'].includes(plan.id)
+
+              return (
+                <motion.div
+                  key={plan.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                >
+                  <Card className={`shadow-sm hover:shadow-md transition-shadow ${plan.id === 'blue5' ? 'border-2 border-emerald-300 dark:border-emerald-700' : ''}`}>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-base font-bold text-foreground">{plan.name}</CardTitle>
+                        {isDefault && (
+                          <Badge variant="outline" className="text-[9px]">Padrão</Badge>
+                        )}
+                      </div>
+                      <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                        {plan.price === 0 ? 'Grátis' : formatCurrency(plan.price)}
+                      </p>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="space-y-1.5 mb-4 max-h-48 overflow-y-auto">
+                        {features.map((f: string, fi: number) => (
+                          <div key={fi} className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Check className="h-3 w-3 text-emerald-500 shrink-0" />
+                            <span>{f}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground mb-3">
+                        <span>Entrada: {plan.matrixEntrada}</span>
+                        <span>•</span>
+                        <span>Residual: {plan.matrixResidual}</span>
+                        <span>•</span>
+                        <span>Vendas: {plan.matrixVendas}</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" className="flex-1 h-8 text-xs gap-1" onClick={() => handleOpenEditPlan(plan)}>
+                          <Edit className="h-3 w-3" /> Editar
+                        </Button>
+                        {!isDefault && (
+                          <Button variant="outline" size="sm" className="h-8 text-xs text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30" onClick={() => handleDeletePlan(plan.id)}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              )
+            })}
+          </div>
+        </TabsContent>
+
+        {/* Withdrawals Tab */}
+        <TabsContent value="withdrawals" className="mt-4 space-y-4">
+          {/* Withdrawal Stats */}
+          {withdrawals?.stats && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { label: 'Pendentes', value: withdrawals.stats.pendingCount, amount: formatCurrency(withdrawals.stats.pendingAmount), icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30' },
+                { label: 'Aprovados', value: withdrawals.stats.approvedCount, amount: formatCurrency(withdrawals.stats.approvedAmount), icon: Check, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+                { label: 'Rejeitados', value: withdrawals.stats.rejectedCount, amount: '', icon: X, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30' },
+                { label: 'Total Solicitado', value: '', amount: formatCurrency(withdrawals.stats.pendingAmount + withdrawals.stats.approvedAmount), icon: DollarSign, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
+              ].map((stat, i) => (
+                <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
+                  <Card className={`${stat.bg} border-0`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <stat.icon className={`h-4 w-4 ${stat.color}`} />
+                        <span className="text-xs font-medium text-muted-foreground">{stat.label}</span>
+                      </div>
+                      {stat.value > 0 && <p className="text-xl font-bold text-foreground">{stat.value}</p>}
+                      {stat.amount && <p className="text-sm font-semibold text-foreground">{stat.amount}</p>}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </div>
+          )}
+
+          {/* Filter */}
+          <div className="flex gap-2">
+            {(['all', 'pending', 'approved', 'rejected'] as const).map((s) => {
+              const labels: Record<string, string> = { all: 'Todos', pending: 'Pendentes', approved: 'Aprovados', rejected: 'Rejeitados' }
+              return (
+                <button
+                  key={s}
+                  onClick={() => setWithdrawalStatusFilter(s)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    withdrawalStatusFilter === s ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  }`}
+                >
+                  {labels[s]}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Withdrawals Table */}
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left text-xs font-semibold text-muted-foreground p-3">Usuário</th>
+                      <th className="text-left text-xs font-semibold text-muted-foreground p-3">Valor</th>
+                      <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden sm:table-cell">Data</th>
+                      <th className="text-left text-xs font-semibold text-muted-foreground p-3">Status</th>
+                      <th className="text-right text-xs font-semibold text-muted-foreground p-3">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {withdrawals?.withdrawals.map(w => (
+                      <tr key={w.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                        <td className="p-3">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{w.userName || 'Usuário'}</p>
+                            <p className="text-[10px] text-muted-foreground">{w.userEmail || w.userId}</p>
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <span className="text-sm font-semibold text-foreground">{formatCurrency(w.amount)}</span>
+                        </td>
+                        <td className="p-3 hidden sm:table-cell">
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(w.createdAt).toLocaleDateString('pt-BR')}
+                          </span>
+                        </td>
+                        <td className="p-3">
+                          <Badge className={getWithdrawalStatusBadge(w.status)}>
+                            {getWithdrawalStatusLabel(w.status)}
+                          </Badge>
+                        </td>
+                        <td className="p-3 text-right">
+                          {w.status === 'pending' && (
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 gap-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                                disabled={processingWithdrawal === w.id}
+                                onClick={() => handleWithdrawalAction(w.id, 'approve')}
+                              >
+                                {processingWithdrawal === w.id
+                                  ? <span className="h-3.5 w-3.5 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+                                  : <Check className="h-3.5 w-3.5" />}
+                                <span className="hidden sm:inline">Aprovar</span>
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 gap-1 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                disabled={processingWithdrawal === w.id}
+                                onClick={() => handleWithdrawalAction(w.id, 'reject')}
+                              >
+                                {processingWithdrawal === w.id
+                                  ? <span className="h-3.5 w-3.5 border-2 border-red-500/30 border-t-red-500 rounded-full animate-spin" />
+                                  : <Ban className="h-3.5 w-3.5" />}
+                                <span className="hidden sm:inline">Rejeitar</span>
+                              </Button>
+                            </div>
+                          )}
+                          {w.status !== 'pending' && (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {(!withdrawals?.withdrawals || withdrawals.withdrawals.length === 0) && (
+                      <tr>
+                        <td colSpan={5} className="p-8 text-center text-sm text-muted-foreground">
+                          <div className="flex flex-col items-center gap-2">
+                            <Wallet className="h-8 w-8 text-muted-foreground/50" />
+                            <p>Nenhum saque encontrado</p>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -517,6 +939,178 @@ export function AdminPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Edit User Dialog */}
+      <Dialog open={editUserDialogOpen} onOpenChange={setEditUserDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit className="h-4 w-4 text-emerald-600" />
+              Editar Usuário
+            </DialogTitle>
+            <DialogDescription>
+              Atualize os dados do usuário. As alterações serão salvas imediatamente.
+            </DialogDescription>
+          </DialogHeader>
+          {editingUser && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Nome</Label>
+                <Input
+                  value={editUserData.name}
+                  onChange={(e) => setEditUserData(d => ({ ...d, name: e.target.value }))}
+                  placeholder="Nome completo"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Email</Label>
+                <Input
+                  value={editUserData.email}
+                  onChange={(e) => setEditUserData(d => ({ ...d, email: e.target.value }))}
+                  placeholder="email@exemplo.com"
+                  type="email"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium">Plano</Label>
+                  <Select value={editUserData.plan} onValueChange={(v) => setEditUserData(d => ({ ...d, plan: v }))}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="free">Gratuito</SelectItem>
+                      <SelectItem value="blue3">Blue 3</SelectItem>
+                      <SelectItem value="blue5">Blue 5</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium">Status</Label>
+                  <Select value={String(editUserData.isActive)} onValueChange={(v) => setEditUserData(d => ({ ...d, isActive: v === 'true' }))}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="true">Ativo</SelectItem>
+                      <SelectItem value="false">Inativo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Saldo de Saque (centavos)</Label>
+                <Input
+                  value={editUserData.balanceWithdrawal}
+                  onChange={(e) => setEditUserData(d => ({ ...d, balanceWithdrawal: parseInt(e.target.value) || 0 }))}
+                  type="number"
+                  placeholder="3258000"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Valor atual: {formatCurrency(editUserData.balanceWithdrawal)}
+                </p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditUserDialogOpen(false)} disabled={savingUser}>
+                  Cancelar
+                </Button>
+                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleSaveUser} disabled={savingUser}>
+                  {savingUser ? (
+                    <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  Salvar
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Plan Create/Edit Dialog */}
+      <Dialog open={planDialogOpen} onOpenChange={setPlanDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="h-4 w-4 text-emerald-600" />
+              {editingPlan ? 'Editar Plano' : 'Novo Plano'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingPlan ? 'Atualize os dados do plano.' : 'Preencha os dados do novo plano.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-xs font-medium">Nome do Plano</Label>
+              <Input
+                value={planFormData.name}
+                onChange={(e) => setPlanFormData(d => ({ ...d, name: e.target.value }))}
+                placeholder="Ex: Blue 7"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-medium">Preço (centavos)</Label>
+              <Input
+                value={planFormData.price}
+                onChange={(e) => setPlanFormData(d => ({ ...d, price: parseInt(e.target.value) || 0 }))}
+                type="number"
+                placeholder="9700"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                {planFormData.price > 0 ? formatCurrency(planFormData.price) : 'Grátis'}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-medium">Features (separadas por vírgula)</Label>
+              <Input
+                value={planFormData.features}
+                onChange={(e) => setPlanFormData(d => ({ ...d, features: e.target.value }))}
+                placeholder="CashBack Entrada, App Mobilidade, Telemedicina"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Matriz Entrada</Label>
+                <Input
+                  value={planFormData.matrixEntrada}
+                  onChange={(e) => setPlanFormData(d => ({ ...d, matrixEntrada: e.target.value }))}
+                  placeholder="4x5"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Matriz Residual</Label>
+                <Input
+                  value={planFormData.matrixResidual}
+                  onChange={(e) => setPlanFormData(d => ({ ...d, matrixResidual: e.target.value }))}
+                  placeholder="4x7"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Matriz Vendas</Label>
+                <Input
+                  value={planFormData.matrixVendas}
+                  onChange={(e) => setPlanFormData(d => ({ ...d, matrixVendas: e.target.value }))}
+                  placeholder="4x9"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPlanDialogOpen(false)} disabled={savingPlan}>
+                Cancelar
+              </Button>
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleSavePlan} disabled={savingPlan || !planFormData.name}>
+                {savingPlan ? (
+                  <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                {editingPlan ? 'Salvar' : 'Criar Plano'}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

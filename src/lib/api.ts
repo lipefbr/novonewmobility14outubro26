@@ -2,6 +2,7 @@
 
 // API service for NewMobility frontend
 const API_BASE = '/api'
+const DEFAULT_TIMEOUT_MS = 10_000
 
 export class ApiError extends Error {
   status: number
@@ -13,25 +14,61 @@ export class ApiError extends Error {
   }
 }
 
-export async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const url = `${API_BASE}${endpoint}`
-  const res = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-    ...options,
-  })
-  
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido' }))
-    throw new ApiError(
-      errorData.error || `Erro ${res.status}`,
-      res.status
-    )
+export class ApiTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`A requisição expirou após ${Math.round(timeoutMs / 1000)}s. Tente novamente.`)
+    this.name = 'ApiTimeoutError'
   }
-  
-  return res.json()
+}
+
+export class ApiNetworkError extends Error {
+  constructor() {
+    super('Erro de conexão. Verifique sua internet e tente novamente.')
+    this.name = 'ApiNetworkError'
+  }
+}
+
+export async function apiFetch<T>(
+  endpoint: string,
+  options?: RequestInit & { timeoutMs?: number }
+): Promise<T> {
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, ...fetchOptions } = options ?? {}
+  const url = `${API_BASE}${endpoint}`
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...fetchOptions?.headers,
+      },
+      ...fetchOptions,
+      signal: controller.signal,
+    })
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({ error: 'Erro desconhecido' }))
+      throw new ApiError(
+        errorData.error || `Erro ${res.status}`,
+        res.status
+      )
+    }
+
+    return res.json()
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new ApiTimeoutError(timeoutMs)
+    }
+    if (err instanceof TypeError) {
+      // fetch() throws TypeError on network failures (no server response at all)
+      throw new ApiNetworkError()
+    }
+    throw err
+  } finally {
+    clearTimeout(timeoutId)
+  }
 }
 
 // Auth

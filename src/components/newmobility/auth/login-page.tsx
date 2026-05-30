@@ -157,8 +157,16 @@ export function LoginPage() {
 
   const handleLogin = async (emailArg: string, passwordArg: string, isAdmin = false) => {
     setLoading(true)
+
+    // Safety timeout: ensure loading is always reset even if the API call never resolves
+    const safetyTimer = setTimeout(() => {
+      setLoading(false)
+      toast.error('A requisição demorou demais. Tente novamente.')
+    }, 15_000)
+
     try {
       const data = await authApi.login(emailArg, passwordArg)
+      clearTimeout(safetyTimer)
       if (data.user) {
         const userData = mapApiUserToUserData(data.user, data.balances)
         login(userData)
@@ -171,9 +179,11 @@ export function LoginPage() {
         toast.success(t('auth.login.success'))
       }
     } catch (err: unknown) {
+      clearTimeout(safetyTimer)
       const errorMsg = err instanceof Error ? err.message : t('auth.login.error')
       toast.error(errorMsg)
     } finally {
+      clearTimeout(safetyTimer)
       setLoading(false)
     }
   }

@@ -5,11 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import {
   Ticket, Check, Clock, Car, ShoppingBag, Gift, Copy, Check as CheckIcon,
   Pill, UtensilsCrossed, ShoppingCart, Plus, QrCode, Filter, Timer, Sparkles,
-  Share2, ChevronDown, ChevronUp, Star, Info, TrendingUp, Zap
+  Share2, ChevronDown, ChevronUp, Star, Info, TrendingUp, Zap, Store, CreditCard, Wallet,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
@@ -19,16 +22,27 @@ import { EmptyState } from '../ui/empty-states'
 type VoucherStatus = 'active' | 'used' | 'expired'
 type VoucherCategory = 'mobility' | 'pharmacy' | 'food' | 'shopping'
 
-const mockVouchers = [
-  { id: '1', code: 'NM-MOB-2025-001', amount: 5000, category: 'mobility' as VoucherCategory, expiresAt: '2025-03-15', status: 'active' as VoucherStatus, usedAt: null, usedAmount: 1500 },
-  { id: '2', code: 'NM-FAR-2025-002', amount: 10000, category: 'pharmacy' as VoucherCategory, expiresAt: '2025-02-28', status: 'active' as VoucherStatus, usedAt: null, usedAmount: 7500 },
-  { id: '3', code: 'NM-REF-2025-003', amount: 25000, category: 'food' as VoucherCategory, expiresAt: '2025-06-30', status: 'active' as VoucherStatus, usedAt: null, usedAmount: 2000 },
-  { id: '4', code: 'NM-SHO-2025-004', amount: 3000, category: 'shopping' as VoucherCategory, expiresAt: '2025-04-30', status: 'active' as VoucherStatus, usedAt: null, usedAmount: 500 },
-  { id: '5', code: 'NM-MOB-2025-005', amount: 15000, category: 'mobility' as VoucherCategory, expiresAt: '2025-01-20', status: 'used' as VoucherStatus, usedAt: '2025-01-18', usedAmount: 15000 },
-  { id: '6', code: 'NM-FAR-2025-006', amount: 5000, category: 'pharmacy' as VoucherCategory, expiresAt: '2025-01-10', status: 'used' as VoucherStatus, usedAt: '2025-01-08', usedAmount: 5000 },
-  { id: '7', code: 'NM-REF-2025-007', amount: 8000, category: 'food' as VoucherCategory, expiresAt: '2024-12-31', status: 'expired' as VoucherStatus, usedAt: null, usedAmount: 0 },
-  { id: '8', code: 'NM-SHO-2025-008', amount: 2000, category: 'shopping' as VoucherCategory, expiresAt: '2024-11-30', status: 'expired' as VoucherStatus, usedAt: null, usedAmount: 0 },
-  { id: '9', code: 'NM-MOB-2025-009', amount: 12000, category: 'mobility' as VoucherCategory, expiresAt: '2025-05-15', status: 'active' as VoucherStatus, usedAt: null, usedAmount: 3000 },
+interface Voucher {
+  id: string
+  code: string
+  amount: number
+  category: VoucherCategory
+  expiresAt: string
+  status: VoucherStatus
+  usedAt: string | null
+  usedAmount: number
+}
+
+const mockVouchers: Voucher[] = [
+  { id: '1', code: 'NM-MOB-2025-001', amount: 5000, category: 'mobility', expiresAt: '2025-03-15', status: 'active', usedAt: null, usedAmount: 1500 },
+  { id: '2', code: 'NM-FAR-2025-002', amount: 10000, category: 'pharmacy', expiresAt: '2025-02-28', status: 'active', usedAt: null, usedAmount: 7500 },
+  { id: '3', code: 'NM-REF-2025-003', amount: 25000, category: 'food', expiresAt: '2025-06-30', status: 'active', usedAt: null, usedAmount: 2000 },
+  { id: '4', code: 'NM-SHO-2025-004', amount: 3000, category: 'shopping', expiresAt: '2025-04-30', status: 'active', usedAt: null, usedAmount: 500 },
+  { id: '5', code: 'NM-MOB-2025-005', amount: 15000, category: 'mobility', expiresAt: '2025-01-20', status: 'used', usedAt: '2025-01-18', usedAmount: 15000 },
+  { id: '6', code: 'NM-FAR-2025-006', amount: 5000, category: 'pharmacy', expiresAt: '2025-01-10', status: 'used', usedAt: '2025-01-08', usedAmount: 5000 },
+  { id: '7', code: 'NM-REF-2025-007', amount: 8000, category: 'food', expiresAt: '2024-12-31', status: 'expired', usedAt: null, usedAmount: 0 },
+  { id: '8', code: 'NM-SHO-2025-008', amount: 2000, category: 'shopping', expiresAt: '2024-11-30', status: 'expired', usedAt: null, usedAmount: 0 },
+  { id: '9', code: 'NM-MOB-2025-009', amount: 12000, category: 'mobility', expiresAt: '2025-05-15', status: 'active', usedAt: null, usedAmount: 3000 },
 ]
 
 const categoryConfig: Record<VoucherCategory, { label: string; icon: React.ElementType; color: string; bgGradient: string; darkBg: string }> = {
@@ -37,6 +51,15 @@ const categoryConfig: Record<VoucherCategory, { label: string; icon: React.Eleme
   food: { label: 'Refeição', icon: UtensilsCrossed, color: 'text-amber-600 dark:text-amber-400', bgGradient: 'from-amber-500 to-amber-600', darkBg: 'dark:from-amber-800 dark:to-amber-900' },
   shopping: { label: 'Shopping', icon: ShoppingCart, color: 'text-emerald-600 dark:text-emerald-400', bgGradient: 'from-emerald-500 to-emerald-600', darkBg: 'dark:from-emerald-800 dark:to-emerald-900' },
 }
+
+// Voucher amounts available for purchase (in cents)
+const voucherAmounts = [
+  { label: 'R$ 25,00', value: 2500 },
+  { label: 'R$ 50,00', value: 5000 },
+  { label: 'R$ 100,00', value: 10000 },
+  { label: 'R$ 200,00', value: 20000 },
+  { label: 'R$ 500,00', value: 50000 },
+]
 
 // Popular categories with usage count
 const popularCategories = [
@@ -111,22 +134,30 @@ function CountdownTimer({ expiresAt }: { expiresAt: string }) {
 
 export function VoucherPage() {
   const { toast } = useToast()
-  const { setActivePage } = useStore()
+  const { setActivePage, user } = useStore()
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<VoucherStatus | 'all'>('all')
   const [categoryFilter, setCategoryFilter] = useState<VoucherCategory | 'all'>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const [vouchers, setVouchers] = useState<Voucher[]>(mockVouchers)
 
-  const filtered = mockVouchers.filter((v) => {
+  // Purchase dialog state
+  const [purchaseDialogOpen, setPurchaseDialogOpen] = useState(false)
+  const [selectedCategory, setSelectedCategory] = useState<VoucherCategory | null>(null)
+  const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
+  const [purchaseStep, setPurchaseStep] = useState<'category' | 'amount' | 'confirm'>('category')
+  const [isPurchasing, setIsPurchasing] = useState(false)
+
+  const filtered = vouchers.filter((v) => {
     const matchesStatus = statusFilter === 'all' || v.status === statusFilter
     const matchesCategory = categoryFilter === 'all' || v.category === categoryFilter
     return matchesStatus && matchesCategory
   })
 
-  const activeVouchers = mockVouchers.filter((v) => v.status === 'active')
-  const usedVouchers = mockVouchers.filter((v) => v.status === 'used')
-  const expiredVouchers = mockVouchers.filter((v) => v.status === 'expired')
+  const activeVouchers = vouchers.filter((v) => v.status === 'active')
+  const usedVouchers = vouchers.filter((v) => v.status === 'used')
+  const expiredVouchers = vouchers.filter((v) => v.status === 'expired')
   const totalActiveValue = activeVouchers.reduce((acc, v) => acc + v.amount, 0)
 
   // Featured voucher (highest value active)
@@ -142,10 +173,55 @@ export function VoucherPage() {
   }
 
   const handleBuyVoucher = () => {
+    setSelectedCategory(null)
+    setSelectedAmount(null)
+    setPurchaseStep('category')
+    setPurchaseDialogOpen(true)
+  }
+
+  const handleBrowseMarketplace = () => {
+    setPurchaseDialogOpen(false)
     setActivePage('marketplace')
     toast({
       title: 'Marketplace',
       description: 'Navegue pelo Marketplace para comprar vouchers e produtos!',
+    })
+  }
+
+  const handleConfirmPurchase = async () => {
+    if (!selectedCategory || !selectedAmount) return
+
+    setIsPurchasing(true)
+
+    // Simulate purchase delay
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
+    // Generate a voucher code
+    const categoryPrefixes: Record<VoucherCategory, string> = {
+      mobility: 'MOB', pharmacy: 'FAR', food: 'REF', shopping: 'SHO',
+    }
+    const prefix = categoryPrefixes[selectedCategory]
+    const code = `NM-${prefix}-2025-${String(Math.floor(100 + Math.random() * 900))}`
+    const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+    const newVoucher: Voucher = {
+      id: String(Date.now()),
+      code,
+      amount: selectedAmount,
+      category: selectedCategory,
+      expiresAt,
+      status: 'active',
+      usedAt: null,
+      usedAmount: 0,
+    }
+
+    setVouchers(prev => [newVoucher, ...prev])
+    setIsPurchasing(false)
+    setPurchaseDialogOpen(false)
+
+    toast({
+      title: 'Voucher comprado com sucesso! 🎉',
+      description: `Voucher ${categoryConfig[selectedCategory].label} de ${formatCurrency(selectedAmount)} adicionado à sua conta. Código: ${code}`,
     })
   }
 
@@ -227,10 +303,228 @@ export function VoucherPage() {
         </Button>
       </div>
 
+      {/* Purchase Dialog */}
+      <Dialog open={purchaseDialogOpen} onOpenChange={setPurchaseDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
+                <Ticket className="h-4 w-4 text-emerald-600" />
+              </div>
+              Comprar Voucher
+            </DialogTitle>
+            <DialogDescription>
+              {purchaseStep === 'category' && 'Escolha a categoria do voucher'}
+              {purchaseStep === 'amount' && 'Selecione o valor do voucher'}
+              {purchaseStep === 'confirm' && 'Confirme sua compra'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Step 1: Category Selection */}
+          {purchaseStep === 'category' && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                {(Object.entries(categoryConfig) as [VoucherCategory, typeof categoryConfig[VoucherCategory]][]).map(([key, config]) => {
+                  const Icon = config.icon
+                  const isSelected = selectedCategory === key
+                  return (
+                    <motion.button
+                      key={key}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => {
+                        setSelectedCategory(key)
+                        setPurchaseStep('amount')
+                      }}
+                      className={`p-4 rounded-xl border-2 text-left transition-all duration-200 ${
+                        isSelected
+                          ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 shadow-md'
+                          : 'border-border hover:border-emerald-300 dark:hover:border-emerald-700 hover:shadow-sm'
+                      }`}
+                    >
+                      <div className={`p-2 rounded-lg w-fit mb-2 ${
+                        key === 'mobility' ? 'bg-blue-100 dark:bg-blue-900/30' :
+                        key === 'pharmacy' ? 'bg-rose-100 dark:bg-rose-900/30' :
+                        key === 'food' ? 'bg-amber-100 dark:bg-amber-900/30' :
+                        'bg-emerald-100 dark:bg-emerald-900/30'
+                      }`}>
+                        <Icon className={`h-5 w-5 ${config.color}`} />
+                      </div>
+                      <p className="font-semibold text-sm text-foreground">{config.label}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {key === 'mobility' && 'Corridas e viagens'}
+                        {key === 'pharmacy' && 'Medicamentos e saúde'}
+                        {key === 'food' && 'Restaurantes parceiros'}
+                        {key === 'shopping' && 'Compras e lojas'}
+                      </p>
+                    </motion.button>
+                  )
+                })}
+              </div>
+
+              <div className="border-t border-border pt-3">
+                <button
+                  onClick={handleBrowseMarketplace}
+                  className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors text-sm font-medium"
+                >
+                  <Store className="h-4 w-4" />
+                  Explorar Marketplace
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Amount Selection */}
+          {purchaseStep === 'amount' && selectedCategory && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50">
+                {(() => {
+                  const config = categoryConfig[selectedCategory]
+                  const Icon = config.icon
+                  return (
+                    <>
+                      <div className={`p-1.5 rounded-lg ${
+                        selectedCategory === 'mobility' ? 'bg-blue-100 dark:bg-blue-900/30' :
+                        selectedCategory === 'pharmacy' ? 'bg-rose-100 dark:bg-rose-900/30' :
+                        selectedCategory === 'food' ? 'bg-amber-100 dark:bg-amber-900/30' :
+                        'bg-emerald-100 dark:bg-emerald-900/30'
+                      }`}>
+                        <Icon className={`h-4 w-4 ${config.color}`} />
+                      </div>
+                      <span className="text-sm font-medium text-foreground">{config.label}</span>
+                    </>
+                  )
+                })()}
+                <button
+                  onClick={() => setPurchaseStep('category')}
+                  className="ml-auto text-xs text-emerald-600 hover:text-emerald-700 font-medium"
+                >
+                  Alterar
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {voucherAmounts.map((amt) => {
+                  const isSelected = selectedAmount === amt.value
+                  return (
+                    <motion.button
+                      key={amt.value}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => {
+                        setSelectedAmount(amt.value)
+                        setPurchaseStep('confirm')
+                      }}
+                      className={`p-3 rounded-xl border-2 text-center transition-all duration-200 ${
+                        isSelected
+                          ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30'
+                          : 'border-border hover:border-emerald-300 dark:hover:border-emerald-700'
+                      }`}
+                    >
+                      <p className="text-base font-bold text-foreground">{amt.label}</p>
+                    </motion.button>
+                  )
+                })}
+              </div>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full text-muted-foreground"
+                onClick={() => setPurchaseStep('category')}
+              >
+                Voltar
+              </Button>
+            </div>
+          )}
+
+          {/* Step 3: Confirm Purchase */}
+          {purchaseStep === 'confirm' && selectedCategory && selectedAmount && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-950/30 dark:to-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
+                <div className="flex items-center gap-3">
+                  {(() => {
+                    const config = categoryConfig[selectedCategory]
+                    const Icon = config.icon
+                    return (
+                      <div className={`p-2.5 rounded-xl ${
+                        selectedCategory === 'mobility' ? 'bg-blue-100 dark:bg-blue-900/30' :
+                        selectedCategory === 'pharmacy' ? 'bg-rose-100 dark:bg-rose-900/30' :
+                        selectedCategory === 'food' ? 'bg-amber-100 dark:bg-amber-900/30' :
+                        'bg-emerald-100 dark:bg-emerald-900/30'
+                      }`}>
+                        <Icon className={`h-6 w-6 ${config.color}`} />
+                      </div>
+                    )
+                  })()}
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Categoria</p>
+                    <p className="font-semibold text-foreground">{categoryConfig[selectedCategory].label}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-emerald-600" />
+                  <span className="text-sm text-muted-foreground">Valor</span>
+                </div>
+                <span className="text-xl font-bold text-foreground">
+                  {formatCurrency(selectedAmount)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                <div className="flex items-center gap-2">
+                  <Wallet className="h-4 w-4 text-emerald-600" />
+                  <span className="text-sm text-muted-foreground">Pagamento</span>
+                </div>
+                <span className="text-sm font-medium text-foreground">Saldo disponível</span>
+              </div>
+
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                <Info className="h-4 w-4 text-amber-600 shrink-0" />
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  O voucher será creditado na categoria {categoryConfig[selectedCategory].label} e válido por 90 dias.
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setPurchaseStep('amount')}
+                  disabled={isPurchasing}
+                >
+                  Voltar
+                </Button>
+                <Button
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                  onClick={handleConfirmPurchase}
+                  disabled={isPurchasing}
+                >
+                  {isPurchasing ? (
+                    <>
+                      <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Processando...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4" />
+                      Confirmar Compra
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { icon: Ticket, label: 'TOTAL', value: mockVouchers.length, color: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
+          { icon: Ticket, label: 'TOTAL', value: vouchers.length, color: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
           { icon: Check, label: 'ATIVOS', value: activeVouchers.length, color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400', sub: formatCurrency(totalActiveValue) },
           { icon: Clock, label: 'USADOS', value: usedVouchers.length, color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' },
           { icon: Filter, label: 'EXPIRADOS', value: expiredVouchers.length, color: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' },
@@ -252,7 +546,7 @@ export function VoucherPage() {
         ))}
       </div>
 
-      {/* Vouchers Populares (Popular Vouchers) Section */}
+      {/* Vouchers Populares Section */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
         <Card className="shadow-sm bg-card">
           <CardHeader className="pb-3">
@@ -486,7 +780,7 @@ export function VoucherPage() {
         {(['all', 'active', 'used', 'expired'] as const).map((status) => {
           const labels: Record<string, string> = { all: 'Todos', active: 'Ativos', used: 'Usados', expired: 'Expirados' }
           const counts: Record<string, number> = {
-            all: mockVouchers.length,
+            all: vouchers.length,
             active: activeVouchers.length,
             used: usedVouchers.length,
             expired: expiredVouchers.length,

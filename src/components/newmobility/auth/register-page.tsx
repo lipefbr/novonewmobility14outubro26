@@ -148,6 +148,13 @@ export function RegisterPage() {
   const handleSubmit = async () => {
     if (!formData.terms) return
     setLoading(true)
+
+    // Safety timeout: ensure loading is always reset even if the API call never resolves
+    const safetyTimer = setTimeout(() => {
+      setLoading(false)
+      toast.error('A requisição demorou demais. Tente novamente.')
+    }, 15_000)
+
     try {
       const data = await authApi.register({
         name: formData.name,
@@ -158,6 +165,7 @@ export function RegisterPage() {
         referralCode: formData.referralCode || undefined,
         plan: formData.plan,
       })
+      clearTimeout(safetyTimer)
       if (data.user) {
         setSuccess(true)
         setTimeout(() => {
@@ -165,9 +173,12 @@ export function RegisterPage() {
           toast.success('Conta criada com sucesso! Bem-vindo(a)!')
         }, 2000)
       }
-    } catch (err: any) {
-      toast.error(err.message || 'Erro ao criar conta. Tente novamente.')
+    } catch (err: unknown) {
+      clearTimeout(safetyTimer)
+      const errorMsg = err instanceof Error ? err.message : 'Erro ao criar conta. Tente novamente.'
+      toast.error(errorMsg)
     } finally {
+      clearTimeout(safetyTimer)
       setLoading(false)
     }
   }
@@ -332,15 +343,7 @@ export function RegisterPage() {
                   className="space-y-4"
                 >
                   <div className="space-y-2">
-                    <Label htmlFor="name" className="flex items-center gap-1.5">
-                      Nome Completo
-                      {hasReferral && (
-                        <span className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-normal">
-                          <LockKeyhole className="h-3 w-3" />
-                          definido pelo indicador
-                        </span>
-                      )}
-                    </Label>
+                    <Label htmlFor="name">Nome Completo</Label>
                     <div className="relative">
                       <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
@@ -349,12 +352,8 @@ export function RegisterPage() {
                         value={formData.name}
                         onChange={(e) => handleChange('name', e.target.value)}
                         className="pl-10"
-                        disabled={hasReferral}
                         required
                       />
-                      {hasReferral && (
-                        <LockKeyhole className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-amber-500" />
-                      )}
                     </div>
                   </div>
 
