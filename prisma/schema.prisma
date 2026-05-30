@@ -87,6 +87,7 @@ model User {
   userChallenges       UserChallenge[]
   marketplaceOrders    MarketplaceOrder[]
   marketplaceOrderItems MarketplaceOrderItem[]
+  beneficiaries        Beneficiary[]
 }
 
 model MatrixPosition {
@@ -342,6 +343,18 @@ model EventRegistration {
 }
 
 // Marketplace models
+model Beneficiary {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  name         String
+  cpf          String?
+  relationship String   // spouse, child, parent, sibling, other
+  percentage   Int      // 1-100
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model MarketplaceProduct {
   id              String   @id @default(cuid())
   name            String

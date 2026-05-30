@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,12 +10,13 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import {
   Search, ShoppingCart, Star, Tag, Heart, Package, Truck, CreditCard,
   QrCode, Wallet, X, Plus, Minus, Check, ChevronRight, Filter,
-  Zap, Shield, ArrowLeft, ShoppingBag, Clock, MapPin
+  Zap, Shield, ArrowLeft, ShoppingBag, Clock, MapPin, Store, Users
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { apiFetch } from '@/lib/api'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
 interface Product {
   id: string
@@ -101,6 +102,30 @@ export function MarketplacePage() {
   const [paymentMethod, setPaymentMethod] = useState<string>('')
   const [address, setAddress] = useState('')
   const [processing, setProcessing] = useState(false)
+
+  // Compute sellers with product counts from products data
+  const sellers = useMemo(() => {
+    const sellerMap = new Map<string, { name: string; productCount: number; categories: Set<string>; avgRating: number; totalRatings: number }>()
+    for (const p of products) {
+      if (!p.sellerName) continue
+      const existing = sellerMap.get(p.sellerName)
+      if (existing) {
+        existing.productCount++
+        existing.categories.add(p.category)
+        existing.totalRatings += p.reviewCount
+        existing.avgRating = Math.round(((existing.avgRating * (existing.productCount - 1)) + p.rating) / existing.productCount * 10) / 10
+      } else {
+        sellerMap.set(p.sellerName, {
+          name: p.sellerName,
+          productCount: 1,
+          categories: new Set([p.category]),
+          avgRating: p.rating,
+          totalRatings: p.reviewCount,
+        })
+      }
+    }
+    return Array.from(sellerMap.values()).sort((a, b) => b.productCount - a.productCount)
+  }, [products])
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -304,6 +329,40 @@ export function MarketplacePage() {
               )
             })}
           </div>
+
+          {/* Vendedores Section */}
+          {sellers.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Store className="h-4 w-4 text-emerald-600" />
+                <h2 className="text-sm font-semibold text-foreground">Vendedores</h2>
+                <Badge variant="secondary" className="text-[10px]">{sellers.length}</Badge>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                {sellers.map((seller) => (
+                  <button
+                    key={seller.name}
+                    onClick={() => setSearch(seller.name)}
+                    className="flex flex-col items-center gap-2 min-w-[100px] p-3 rounded-xl bg-card border border-border hover:border-emerald-300 dark:hover:border-emerald-700 hover:shadow-md transition-all group"
+                  >
+                    <Avatar className="h-12 w-12 border-2 border-emerald-100 dark:border-emerald-900 group-hover:border-emerald-400 transition-colors">
+                      <AvatarFallback className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400 text-sm font-bold">
+                        {seller.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="text-center">
+                      <p className="text-xs font-semibold text-foreground line-clamp-1">{seller.name.split(' ')[0]}</p>
+                      <p className="text-[10px] text-muted-foreground">{seller.productCount} {seller.productCount === 1 ? 'produto' : 'produtos'}</p>
+                    </div>
+                    <div className="flex items-center gap-0.5">
+                      <Star className="h-2.5 w-2.5 text-amber-400 fill-amber-400" />
+                      <span className="text-[10px] font-medium text-foreground">{seller.avgRating}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Products Grid */}
           {loading ? (

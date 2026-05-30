@@ -24,7 +24,7 @@ import {
   ToggleLeft, ToggleRight, Save, RefreshCw, AlertTriangle, Info, Megaphone,
   Plus, Trash2, Edit, Eye, Wallet, CreditCard, FileText, Ban,
   MapPin, Phone, Star, Car, Bike, Banknote, UserCheck, UserX,
-  ArrowUpDown, Receipt,
+  ArrowUpDown, Receipt, PieChart, Filter, Download, Calendar,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -107,6 +107,25 @@ interface CashbackData {
   perUserSummary: { userId: string; name: string; email: string; total: number; count: number }[];
 }
 
+interface FinancialOverview {
+  totalRevenue: number; totalPlatformBalance: number;
+  pendingWithdrawals: number; approvedWithdrawals: number;
+  totalCashback: number; totalInCirculation: number;
+}
+
+interface FinancialTransaction {
+  id: string; userId: string; userName: string; userEmail: string;
+  type: string; amount: number; status: string; category: string;
+  description: string; createdAt: string;
+}
+
+interface FinancialData {
+  overview: FinancialOverview;
+  recentTransactions: FinancialTransaction[];
+  monthlyRevenue: { month: string; revenue: number }[];
+  categoryBreakdown: { category: string; amount: number }[];
+}
+
 // ---------- Full edit form data ----------
 interface EditFormData {
   name: string; email: string; phone: string; cpf: string;
@@ -184,6 +203,13 @@ export function AdminPage() {
     targetUserId: '', cashbackType: 'entrada', amount: 0, level: 1, percentage: 0, description: '', category: '',
   })
 
+  // Financial tab
+  const [financialData, setFinancialData] = useState<FinancialData | null>(null)
+  const [financialTypeFilter, setFinancialTypeFilter] = useState('all')
+  const [financialStatusFilter, setFinancialStatusFilter] = useState('all')
+  const [financialDateFrom, setFinancialDateFrom] = useState('')
+  const [financialDateTo, setFinancialDateTo] = useState('')
+
   const isAdmin = user?.id === 'usr_demo_admin' || user?.email === 'carlos.silva@email.com' || user?.email === 'admin@newmobility.com'
 
   useEffect(() => {
@@ -197,6 +223,7 @@ export function AdminPage() {
     if (activeTab === 'plans') loadPlans()
     if (activeTab === 'withdrawals') loadWithdrawals()
     if (activeTab === 'cashback') loadCashback()
+    if (activeTab === 'financial') loadFinancial()
   }, [activeTab, searchQuery, planFilter, statusFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter])
 
   const loadStats = async () => {
@@ -253,6 +280,13 @@ export function AdminPage() {
       })
       const data = await apiFetch<CashbackData>(`/admin/cashback?${params}`)
       setCashbackData(data)
+    } catch { /* ignore */ }
+  }
+
+  const loadFinancial = async () => {
+    try {
+      const data = await apiFetch<FinancialData>(`/admin/financial?userId=${user?.id}`)
+      setFinancialData(data)
     } catch { /* ignore */ }
   }
 
@@ -580,6 +614,9 @@ export function AdminPage() {
           </TabsTrigger>
           <TabsTrigger value="cashback" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
             <Receipt className="h-3.5 w-3.5" /> Cashback
+          </TabsTrigger>
+          <TabsTrigger value="financial" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+            <PieChart className="h-3.5 w-3.5" /> Financeiro
           </TabsTrigger>
           <TabsTrigger value="withdrawals" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
             <Wallet className="h-3.5 w-3.5" /> Saques
@@ -971,6 +1008,275 @@ export function AdminPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Financial Tab */}
+        <TabsContent value="financial" className="mt-4 space-y-4">
+          {financialData && (
+            <>
+              {/* Overview Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {[
+                  { label: 'Receita Total', value: formatCurrency(financialData.overview.totalRevenue), icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+                  { label: 'Saldo Total Plataforma', value: formatCurrency(financialData.overview.totalPlatformBalance), icon: DollarSign, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30' },
+                  { label: 'Saques Pendentes', value: formatCurrency(financialData.overview.pendingWithdrawals), icon: Clock, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30' },
+                  { label: 'Saques Aprovados', value: formatCurrency(financialData.overview.approvedWithdrawals), icon: Check, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
+                  { label: 'CashBack Distribuído', value: formatCurrency(financialData.overview.totalCashback), icon: Receipt, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/30' },
+                  { label: 'Saldo em Circulação', value: formatCurrency(financialData.overview.totalInCirculation), icon: Activity, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-950/30' },
+                ].map((card, i) => (
+                  <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
+                    <Card className={`${card.bg} border-0`}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2 mb-1">
+                          <card.icon className={`h-4 w-4 ${card.color}`} />
+                          <span className="text-xs font-medium text-muted-foreground">{card.label}</span>
+                        </div>
+                        <p className="text-lg font-bold text-foreground">{card.value}</p>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* Transaction Filters */}
+              <Card>
+                <CardHeader><CardTitle className="text-sm flex items-center gap-2"><Filter className="h-4 w-4 text-emerald-600" /> Filtros de Transação</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground mb-1">Data Início</Label>
+                      <Input type="date" value={financialDateFrom} onChange={e => setFinancialDateFrom(e.target.value)} className="h-9" />
+                    </div>
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground mb-1">Data Fim</Label>
+                      <Input type="date" value={financialDateTo} onChange={e => setFinancialDateTo(e.target.value)} className="h-9" />
+                    </div>
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground mb-1">Tipo</Label>
+                      <select value={financialTypeFilter} onChange={e => setFinancialTypeFilter(e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+                        <option value="all">Todos</option>
+                        <option value="deposit">Depósito</option>
+                        <option value="withdrawal">Saque</option>
+                        <option value="cashback">Cashback</option>
+                        <option value="gratification">Gratificação</option>
+                        <option value="marketplace_purchase">Marketplace</option>
+                      </select>
+                    </div>
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground mb-1">Status</Label>
+                      <select value={financialStatusFilter} onChange={e => setFinancialStatusFilter(e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+                        <option value="all">Todos</option>
+                        <option value="pending">Pendente</option>
+                        <option value="approved">Aprovado</option>
+                        <option value="rejected">Rejeitado</option>
+                        <option value="paid">Pago</option>
+                      </select>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Monthly Revenue Chart */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm flex items-center gap-2"><BarChart3 className="h-4 w-4 text-emerald-600" /> Receita Mensal</CardTitle>
+                      <Badge variant="outline" className="text-[9px]">Últimos 6 meses</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {financialData.monthlyRevenue.length > 0 ? (
+                      <div className="space-y-3">
+                        {financialData.monthlyRevenue.map(m => {
+                          const maxRevenue = Math.max(...financialData.monthlyRevenue.map(r => r.revenue), 1)
+                          const pct = (m.revenue / maxRevenue) * 100
+                          const [year, month] = m.month.split('-')
+                          const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+                          return (
+                            <div key={m.month} className="space-y-1">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-muted-foreground">{monthNames[parseInt(month) - 1]}/{year}</span>
+                                <span className="font-medium text-foreground">{formatCurrency(m.revenue)}</span>
+                              </div>
+                              <div className="w-full h-6 bg-muted rounded-md overflow-hidden">
+                                <motion.div
+                                  className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-md flex items-center justify-end pr-2"
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${Math.max(pct, 2)}%` }}
+                                  transition={{ duration: 0.6, ease: 'easeOut' }}
+                                >
+                                  {pct > 20 && <span className="text-[10px] font-medium text-white">{Math.round(pct)}%</span>}
+                                </motion.div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground text-sm">Nenhuma receita registrada</div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Category Breakdown */}
+                <Card>
+                  <CardHeader><CardTitle className="text-sm flex items-center gap-2"><PieChart className="h-4 w-4 text-emerald-600" /> Resumo por Categoria</CardTitle></CardHeader>
+                  <CardContent>
+                    {financialData.categoryBreakdown.length > 0 ? (
+                      <div className="space-y-3">
+                        {/* Pie chart visual */}
+                        <div className="flex items-center justify-center">
+                          <div className="flex w-40 h-40 rounded-full overflow-hidden border-4 border-background shadow-inner">
+                            {(() => {
+                              const total = financialData.categoryBreakdown.reduce((s, c) => s + c.amount, 0) || 1
+                              const colors = ['bg-emerald-500', 'bg-amber-500', 'bg-blue-500', 'bg-purple-500', 'bg-red-500', 'bg-orange-500', 'bg-pink-500', 'bg-teal-500']
+                              return financialData.categoryBreakdown.map((c, i) => {
+                                const pct = (c.amount / total) * 100
+                                return (
+                                  <div
+                                    key={c.category}
+                                    className={`${colors[i % colors.length]}`}
+                                    style={{ width: `${pct}%` }}
+                                    title={`${c.category}: ${formatCurrency(c.amount)}`}
+                                  />
+                                )
+                              })
+                            })()}
+                          </div>
+                        </div>
+                        {/* Legend */}
+                        <div className="space-y-2">
+                          {(() => {
+                            const total = financialData.categoryBreakdown.reduce((s, c) => s + c.amount, 0) || 1
+                            const colors = ['bg-emerald-500', 'bg-amber-500', 'bg-blue-500', 'bg-purple-500', 'bg-red-500', 'bg-orange-500', 'bg-pink-500', 'bg-teal-500']
+                            const categoryLabels: Record<string, string> = {
+                              withdrawal: 'Saque', mobility: 'Mobilidade', shopping: 'Compras',
+                              food: 'Refeição', pharmacy: 'Farmácia', gratification: 'Gratificação',
+                              marketplace: 'Marketplace', other: 'Outros',
+                            }
+                            return financialData.categoryBreakdown.map((c, i) => (
+                              <div key={c.category} className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className={`h-3 w-3 rounded-sm ${colors[i % colors.length]}`} />
+                                  <span className="text-xs text-foreground">{categoryLabels[c.category] || c.category}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-medium text-foreground">{formatCurrency(c.amount)}</span>
+                                  <span className="text-[10px] text-muted-foreground">{((c.amount / total) * 100).toFixed(1)}%</span>
+                                </div>
+                              </div>
+                            ))
+                          })()}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground text-sm">Nenhuma categoria registrada</div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Recent Transactions Table */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm flex items-center gap-2"><Activity className="h-4 w-4 text-emerald-600" /> Transações Recentes</CardTitle>
+                    <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => toast.info('Exportação em desenvolvimento')}>
+                      <Download className="h-3 w-3" /> Exportar
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-border">
+                          <th className="text-left text-xs font-semibold text-muted-foreground p-3">Data</th>
+                          <th className="text-left text-xs font-semibold text-muted-foreground p-3">Usuário</th>
+                          <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden sm:table-cell">Tipo</th>
+                          <th className="text-right text-xs font-semibold text-muted-foreground p-3">Valor</th>
+                          <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden md:table-cell">Status</th>
+                          <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden lg:table-cell">Descrição</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {financialData.recentTransactions
+                          .filter(t => {
+                            if (financialTypeFilter !== 'all') {
+                              if (financialTypeFilter === 'cashback' && !t.type.startsWith('cashback')) return false
+                              if (financialTypeFilter !== 'cashback' && t.type !== financialTypeFilter) return false
+                            }
+                            if (financialStatusFilter !== 'all' && t.status !== financialStatusFilter) return false
+                            if (financialDateFrom && new Date(t.createdAt) < new Date(financialDateFrom)) return false
+                            if (financialDateTo && new Date(t.createdAt) > new Date(financialDateTo + 'T23:59:59')) return false
+                            return true
+                          })
+                          .slice(0, 50)
+                          .map(t => {
+                            const typeLabels: Record<string, string> = {
+                              deposit: 'Depósito', withdrawal: 'Saque', cashback_entry: 'CB Entrada',
+                              cashback_residual: 'CB Residual', cashback_sales: 'CB Vendas',
+                              gratification: 'Gratificação', voucher: 'Voucher', bonus: 'Bônus',
+                              marketplace_purchase: 'Marketplace', plan_payment: 'Pag. Plano',
+                            }
+                            const typeBadge: Record<string, string> = {
+                              deposit: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+                              withdrawal: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+                              cashback_entry: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                              cashback_residual: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+                              cashback_sales: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
+                              gratification: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+                              voucher: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400',
+                              bonus: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400',
+                              marketplace_purchase: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+                              plan_payment: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400',
+                            }
+                            const statusBadge: Record<string, string> = {
+                              pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+                              approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+                              rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+                              paid: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+                            }
+                            const statusLabels: Record<string, string> = {
+                              pending: 'Pendente', approved: 'Aprovado', rejected: 'Rejeitado', paid: 'Pago',
+                            }
+                            const dateStr = new Date(t.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+                            return (
+                              <tr key={t.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                                <td className="p-3 text-xs text-muted-foreground whitespace-nowrap">{dateStr}</td>
+                                <td className="p-3">
+                                  <div>
+                                    <p className="text-sm font-medium text-foreground">{t.userName}</p>
+                                    <p className="text-[10px] text-muted-foreground">{t.userEmail}</p>
+                                  </div>
+                                </td>
+                                <td className="p-3 hidden sm:table-cell"><Badge className={typeBadge[t.type] || 'bg-gray-100 text-gray-700'}>{typeLabels[t.type] || t.type}</Badge></td>
+                                <td className="p-3 text-right">
+                                  <span className={`text-sm font-medium ${t.type === 'withdrawal' || t.type === 'marketplace_purchase' ? 'text-red-600' : 'text-emerald-600'}`}>
+                                    {t.type === 'withdrawal' || t.type === 'marketplace_purchase' ? '-' : '+'}{formatCurrency(t.amount)}
+                                  </span>
+                                </td>
+                                <td className="p-3 hidden md:table-cell"><Badge className={statusBadge[t.status] || 'bg-gray-100 text-gray-700'}>{statusLabels[t.status] || t.status}</Badge></td>
+                                <td className="p-3 hidden lg:table-cell"><span className="text-xs text-muted-foreground line-clamp-1">{t.description || '—'}</span></td>
+                              </tr>
+                            )
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                  {financialData.recentTransactions.length === 0 && (
+                    <div className="text-center py-8 text-muted-foreground text-sm">Nenhuma transação encontrada</div>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
+          {!financialData && (
+            <div className="flex items-center justify-center py-12">
+              <span className="h-6 w-6 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+            </div>
+          )}
         </TabsContent>
 
         {/* Withdrawals Tab */}

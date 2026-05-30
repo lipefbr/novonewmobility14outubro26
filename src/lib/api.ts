@@ -159,10 +159,10 @@ export const careerApi = {
 export const gratificationsApi = {
   getList: (userId: string) =>
     apiFetch<any>(`/gratifications?userId=${userId}`),
-  claim: (userId: string, gratificationId: string) =>
+  claim: (userId: string, gratificationId: string, claimType: 'balance' | 'prize' = 'balance') =>
     apiFetch<any>('/gratifications/claim', {
       method: 'POST',
-      body: JSON.stringify({ userId, gratificationId }),
+      body: JSON.stringify({ userId, gratificationId, claimType }),
     }),
 }
 

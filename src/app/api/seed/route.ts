@@ -17,6 +17,7 @@ export async function POST() {
     await db.execute(`DELETE FROM "MarketplaceOrderItem"`)
     await db.execute(`DELETE FROM "MarketplaceOrder"`)
     await db.execute(`DELETE FROM "MarketplaceProduct"`)
+    await db.execute(`DELETE FROM "Beneficiary"`)
     await db.execute(`DELETE FROM "EventRegistration"`)
     await db.execute(`DELETE FROM "UserChallenge"`)
     await db.execute(`DELETE FROM "Challenge"`)
@@ -36,6 +37,7 @@ export async function POST() {
     await db.execute(`DELETE FROM "MatrixPosition"`)
     await db.execute(`DELETE FROM "User"`)
 
+    const now = new Date().toISOString()
     const password = hashPassword('123456')
 
     // ============== CREATE ADMIN USER ==============
@@ -61,16 +63,18 @@ export async function POST() {
       city: 'São Paulo',
       state: 'SP',
       country: 'BR',
+      createdAt: now,
+      updatedAt: now,
     }) as any
 
     // Create admin matrix positions
-    await db.insert('MatrixPosition', { userId: admin.id, matrixType: 'entrada', level: 0, position: 0 })
+    await db.insert('MatrixPosition', { userId: admin.id, matrixType: 'entrada', level: 0, position: 0, createdAt: now })
     const adminEntradaPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [admin.id, 'entrada']) as any
 
-    await db.insert('MatrixPosition', { userId: admin.id, matrixType: 'residual', level: 0, position: 0 })
+    await db.insert('MatrixPosition', { userId: admin.id, matrixType: 'residual', level: 0, position: 0, createdAt: now })
     const adminResidualPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [admin.id, 'residual']) as any
 
-    await db.insert('MatrixPosition', { userId: admin.id, matrixType: 'vendas', level: 0, position: 0 })
+    await db.insert('MatrixPosition', { userId: admin.id, matrixType: 'vendas', level: 0, position: 0, createdAt: now })
     const adminVendasPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [admin.id, 'vendas']) as any
 
     // ============== CREATE MAIN DEMO USER ==============
@@ -104,16 +108,17 @@ export async function POST() {
       bankAccount: '56789-0',
       bankType: 'cc',
       createdAt: new Date('2023-06-15T10:00:00Z'),
+      updatedAt: now,
     }) as any
 
     // Main user matrix positions
-    await db.insert('MatrixPosition', { userId: mainUser.id, matrixType: 'entrada', parentId: adminEntradaPos?.id, level: 1, position: 0 })
+    await db.insert('MatrixPosition', { userId: mainUser.id, matrixType: 'entrada', parentId: adminEntradaPos?.id, level: 1, position: 0, createdAt: now })
     const mainEntradaPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [mainUser.id, 'entrada']) as any
 
-    await db.insert('MatrixPosition', { userId: mainUser.id, matrixType: 'residual', parentId: adminResidualPos?.id, level: 1, position: 0 })
+    await db.insert('MatrixPosition', { userId: mainUser.id, matrixType: 'residual', parentId: adminResidualPos?.id, level: 1, position: 0, createdAt: now })
     const mainResidualPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [mainUser.id, 'residual']) as any
 
-    await db.insert('MatrixPosition', { userId: mainUser.id, matrixType: 'vendas', parentId: adminVendasPos?.id, level: 1, position: 0 })
+    await db.insert('MatrixPosition', { userId: mainUser.id, matrixType: 'vendas', parentId: adminVendasPos?.id, level: 1, position: 0, createdAt: now })
     const mainVendasPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [mainUser.id, 'vendas']) as any
 
     // ============== CREATE DIRECT REFERRALS (Level 1) ==============
@@ -154,18 +159,20 @@ export async function POST() {
         city: ['São Paulo', 'Rio de Janeiro', 'Belo Horizonte', 'Curitiba'][i],
         state: ['SP', 'RJ', 'MG', 'PR'][i],
         country: 'BR',
+        createdAt: now,
+        updatedAt: now,
       }) as any
 
       directReferrals.push(ref)
 
       // Create matrix positions for each direct referral
-      await db.insert('MatrixPosition', { userId: ref.id, matrixType: 'entrada', parentId: mainEntradaPos?.id, level: 2, position: i })
+      await db.insert('MatrixPosition', { userId: ref.id, matrixType: 'entrada', parentId: mainEntradaPos?.id, level: 2, position: i, createdAt: now })
       const refEntradaPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [ref.id, 'entrada']) as any
 
-      await db.insert('MatrixPosition', { userId: ref.id, matrixType: 'residual', parentId: mainResidualPos?.id, level: 2, position: i })
+      await db.insert('MatrixPosition', { userId: ref.id, matrixType: 'residual', parentId: mainResidualPos?.id, level: 2, position: i, createdAt: now })
       const refResidualPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [ref.id, 'residual']) as any
 
-      await db.insert('MatrixPosition', { userId: ref.id, matrixType: 'vendas', parentId: mainVendasPos?.id, level: 2, position: i })
+      await db.insert('MatrixPosition', { userId: ref.id, matrixType: 'vendas', parentId: mainVendasPos?.id, level: 2, position: i, createdAt: now })
       const refVendasPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [ref.id, 'vendas']) as any
 
       // Store for level 2 lookups
@@ -213,6 +220,8 @@ export async function POST() {
         city: ['São Paulo', 'Rio de Janeiro', 'Salvador', 'Fortaleza', 'Porto Alegre'][i % 5],
         state: ['SP', 'RJ', 'BA', 'CE', 'RS'][i % 5],
         country: 'BR',
+        createdAt: now,
+        updatedAt: now,
       }) as any
 
       level2Users.push(l2User)
@@ -222,9 +231,9 @@ export async function POST() {
       const parentResidualPos = (parentRef as any)._residualPos
       const parentVendasPos = (parentRef as any)._vendasPos
 
-      await db.insert('MatrixPosition', { userId: l2User.id, matrixType: 'entrada', parentId: parentEntradaPos?.id, level: 3, position: i })
-      await db.insert('MatrixPosition', { userId: l2User.id, matrixType: 'residual', parentId: parentResidualPos?.id, level: 3, position: i })
-      await db.insert('MatrixPosition', { userId: l2User.id, matrixType: 'vendas', parentId: parentVendasPos?.id, level: 3, position: i })
+      await db.insert('MatrixPosition', { userId: l2User.id, matrixType: 'entrada', parentId: parentEntradaPos?.id, level: 3, position: i, createdAt: now })
+      await db.insert('MatrixPosition', { userId: l2User.id, matrixType: 'residual', parentId: parentResidualPos?.id, level: 3, position: i, createdAt: now })
+      await db.insert('MatrixPosition', { userId: l2User.id, matrixType: 'vendas', parentId: parentVendasPos?.id, level: 3, position: i, createdAt: now })
     }
 
     // ============== CREATE CASHBACK ENTRADA ENTRIES ==============
@@ -246,6 +255,7 @@ export async function POST() {
           level,
           percentage: entradaPercentages[level - 1],
           description: `Cashback entrada nível ${level}`,
+          createdAt: now,
         })
       }
     }
@@ -263,6 +273,7 @@ export async function POST() {
           level,
           percentage: residualPercentages[level - 1],
           description: `Cashback residual nível ${level}`,
+          createdAt: now,
         })
       }
     }
@@ -282,6 +293,7 @@ export async function POST() {
           percentage: vendasPercentages[level - 1],
           category: vendasCategories[(level + j) % vendasCategories.length],
           description: `Cashback vendas nível ${level}`,
+          createdAt: now,
         })
       }
     }
@@ -316,6 +328,7 @@ export async function POST() {
         category: tx.category,
         description: tx.desc,
         createdAt,
+        updatedAt: now,
       })
     }
 
@@ -339,6 +352,8 @@ export async function POST() {
         isUsed: v.isUsed,
         usedAt: v.isUsed ? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) : null,
         expiresAt,
+        createdAt: now,
+        updatedAt: now,
       })
     }
 
@@ -359,6 +374,8 @@ export async function POST() {
         status: inv.status,
         dueDate,
         paidAt: inv.status === 'paid' ? new Date(dueDate.getTime() - 2 * 24 * 60 * 60 * 1000) : null,
+        createdAt: now,
+        updatedAt: now,
       })
     }
 
@@ -371,6 +388,7 @@ export async function POST() {
         pointsRequired: rank.minPoints,
         achieved,
         achievedAt: achieved ? new Date() : null,
+        createdAt: now,
       })
     }
 
@@ -395,6 +413,7 @@ export async function POST() {
         description: g.description,
         isClaimed,
         claimedAt: isClaimed ? new Date() : null,
+        createdAt: now,
       })
     }
 
@@ -417,7 +436,7 @@ export async function POST() {
         amount: pt.amount,
         type: pt.type,
         description: pt.description,
-        createdAt: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000),
+        createdAt: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString(),
       })
     }
 
@@ -434,6 +453,8 @@ export async function POST() {
         subject: t.subject,
         category: t.category,
         status: 'open',
+        createdAt: now,
+        updatedAt: now,
       }) as any
 
       // Create first message
@@ -442,6 +463,8 @@ export async function POST() {
         userId: mainUser.id,
         message: t.message,
         isAdmin: false,
+        createdAt: now,
+        updatedAt: now,
       })
 
       // Add admin reply to some tickets
@@ -451,6 +474,8 @@ export async function POST() {
           userId: admin.id,
           message: 'Olá! Estamos analisando sua solicitação. Em breve retornaremos com uma resposta.',
           isAdmin: true,
+          createdAt: now,
+          updatedAt: now,
         })
         await db.update('Ticket', '"id" = $1', { status: 'in_progress' }, [ticket.id])
       }
@@ -472,6 +497,7 @@ export async function POST() {
         message: n.message,
         type: n.type,
         isRead: Math.random() > 0.5,
+        createdAt: now,
       })
     }
 
@@ -509,27 +535,95 @@ export async function POST() {
         city: 'Rio de Janeiro',
         state: 'RJ',
         country: 'BR',
+        createdAt: now,
+        updatedAt: now,
       })
     }
 
-    // ============== CREATE MARKETPLACE PRODUCTS ==============
+    // ============== CREATE SELLER USERS ==============
+    const sellerNames = [
+      'Ricardo Mendes',
+      'Patrícia Almeida',
+      'Lucas Ferreira',
+      'Camila Rocha',
+      'André Costa',
+      'Juliana Santos',
+      'Fernando Oliveira',
+      'Mariana Dias',
+    ]
+
+    const sellerUsers: any[] = []
+    for (let i = 0; i < sellerNames.length; i++) {
+      const name = sellerNames[i]
+      const code = seededReferralCode(name, i + 40)
+      const seller = await db.insert('User', {
+        name,
+        email: name.toLowerCase().replace(/\s/g, '.') + '@seller.com',
+        phone: `(11) 97${String(4000 + i).padStart(4, '0')}-${String(8000 + i).padStart(4, '0')}`,
+        cpf: `${String(800 + i).padStart(3, '0')}.${String(900 + i).padStart(3, '0')}.${String(100 + i).padStart(3, '0')}-${String(40 + i).padStart(2, '0')}`,
+        password,
+        role: 'user',
+        referralCode: code,
+        referredById: mainUser.id,
+        plan: i % 2 === 0 ? 'blue5' : 'blue3',
+        isActive: true,
+        balanceWithdrawal: Math.floor(Math.random() * 500000) + 100000,
+        balanceMobility: Math.floor(Math.random() * 200000) + 50000,
+        balanceShopping: Math.floor(Math.random() * 300000) + 100000,
+        balanceFood: Math.floor(Math.random() * 100000) + 20000,
+        balancePharmacy: Math.floor(Math.random() * 80000) + 10000,
+        balanceGratification: Math.floor(Math.random() * 200000) + 50000,
+        careerPoints: Math.floor(Math.random() * 15) + 3,
+        personalPoints: Math.floor(Math.random() * 8) + 1,
+        stars: Math.floor(Math.random() * 3) + 2,
+        city: ['São Paulo', 'Rio de Janeiro', 'Belo Horizonte', 'Curitiba', 'Salvador', 'Porto Alegre', 'Brasília', 'Recife'][i],
+        state: ['SP', 'RJ', 'MG', 'PR', 'BA', 'RS', 'DF', 'PE'][i],
+        country: 'BR',
+        createdAt: now,
+        updatedAt: now,
+      }) as any
+      sellerUsers.push(seller)
+    }
+
+    // ============== CREATE MARKETPLACE PRODUCTS FROM SELLERS ==============
     const marketplaceProducts = [
-      { name: 'Smartphone X Pro', description: 'Smartphone premium com câmera de 108MP, tela AMOLED 6.7" e bateria de 5000mAh. Compre e ganhe CashBack na sua conta NewMobility!', price: 299900, originalPrice: 349900, category: 'electronics', cashbackPercent: 5, rating: 4.5, reviewCount: 128, sellerName: 'TechStore', isFeatured: true, stock: 50 },
-      { name: 'Fone Bluetooth Elite', description: 'Fone de ouvido Bluetooth com cancelamento de ruído ativo, 30h de bateria e áudio Hi-Res. CashBack NewMobility!', price: 19900, originalPrice: 29900, category: 'electronics', cashbackPercent: 8, rating: 4.2, reviewCount: 89, sellerName: 'AudioMax', isFeatured: true, stock: 200 },
-      { name: 'Camiseta Premium', description: 'Camiseta 100% algodão egípcio, corte moderno e confortável. Disponível em várias cores. Ganhe CashBack!', price: 8900, originalPrice: 12900, category: 'fashion', cashbackPercent: 10, rating: 4.0, reviewCount: 56, sellerName: 'ModaFit', isFeatured: false, stock: 500 },
-      { name: 'Tênis Esportivo Run', description: 'Tênis de corrida com tecnologia de amortecimento responsive e palmilha anatômica. CashBack NewMobility!', price: 29900, originalPrice: 39900, category: 'fashion', cashbackPercent: 7, rating: 4.7, reviewCount: 203, sellerName: 'SportLife', isFeatured: true, stock: 150 },
-      { name: 'Purificador de Ar', description: 'Purificador de ar com filtro HEPA, ideal para quartos e salas até 40m². CashBack NewMobility!', price: 45900, originalPrice: 59900, category: 'home', cashbackPercent: 6, rating: 4.3, reviewCount: 42, sellerName: 'HomeClean', isFeatured: false, stock: 80 },
-      { name: 'Kit Organização', description: 'Kit completo de organização para casa com 12 peças em plástico premium. Ganhe CashBack!', price: 7900, originalPrice: 11900, category: 'home', cashbackPercent: 12, rating: 4.1, reviewCount: 34, sellerName: 'OrgBrasil', isFeatured: false, stock: 300 },
-      { name: 'Vitamínico Complex', description: 'Suplemento vitamínico com 25 vitaminas e minerais essenciais. 60 cápsulas. CashBack NewMobility!', price: 6900, originalPrice: 8900, category: 'health', cashbackPercent: 15, rating: 4.6, reviewCount: 167, sellerName: 'VidaSaúde', isFeatured: true, stock: 1000 },
-      { name: 'Kit Skincare', description: 'Kit de cuidados com a pele: sérum, hidratante e protetor solar FPS 50. CashBack NewMobility!', price: 12900, originalPrice: 18900, category: 'beauty', cashbackPercent: 10, rating: 4.4, reviewCount: 95, sellerName: 'BeautyPro', isFeatured: false, stock: 200 },
-      { name: 'Café Especial 500g', description: 'Café especial 100% arábica, torra média, moído. Direto do produtor. CashBack NewMobility!', price: 4500, originalPrice: 5900, category: 'food', cashbackPercent: 8, rating: 4.8, reviewCount: 312, sellerName: 'CaféBrasil', isFeatured: false, stock: 5000 },
-      { name: 'Acesso Streaming 1 ano', description: 'Assinatura anual de plataforma de streaming. Acesso ilimitado a filmes e séries. CashBack 20%!', price: 19900, originalPrice: 29900, category: 'digital', cashbackPercent: 20, rating: 4.0, reviewCount: 78, sellerName: 'DigitalPlus', isFeatured: false, stock: 9999 },
-      { name: 'Recarga Celular R$50', description: 'Recarga de celular instantânea para qualquer operadora. Valor: R$ 50,00. CashBack 3%!', price: 5000, originalPrice: null, category: 'services', cashbackPercent: 3, rating: 5.0, reviewCount: 520, sellerName: 'RecargaFast', isFeatured: false, stock: 9999 },
-      { name: 'Corrida Premium 30km', description: 'Crédito de corrida premium no app de mobilidade. Válido para 30km. CashBack 5%!', price: 4500, originalPrice: 6000, category: 'mobility', cashbackPercent: 5, rating: 4.3, reviewCount: 89, sellerName: 'NMobilidade', isFeatured: false, stock: 9999 },
+      // Electronics (3 products from 3 different sellers)
+      { name: 'Smartphone Galaxy Ultra', description: 'Smartphone premium com câmera de 200MP, tela AMOLED 6.8" e bateria de 5000mAh. Compre e ganhe CashBack NewMobility!', price: 329900, originalPrice: 399900, category: 'electronics', cashbackPercent: 5, rating: 4.7, reviewCount: 142, sellerName: 'Ricardo Mendes', isFeatured: true, stock: 45 },
+      { name: 'Fone Bluetooth NoisePro', description: 'Fone de ouvido Bluetooth com cancelamento de ruído ativo, 35h de bateria e áudio Hi-Res. CashBack NewMobility!', price: 19900, originalPrice: 29900, category: 'electronics', cashbackPercent: 8, rating: 4.3, reviewCount: 89, sellerName: 'Lucas Ferreira', isFeatured: true, stock: 200 },
+      { name: 'Smartwatch Fit Pulse', description: 'Relógio inteligente com monitor cardíaco, GPS integrado e bateria de 7 dias. Resistente à água IP68. CashBack!', price: 59900, originalPrice: 79900, category: 'electronics', cashbackPercent: 6, rating: 4.5, reviewCount: 67, sellerName: 'Fernando Oliveira', isFeatured: false, stock: 120 },
+
+      // Fashion (2 products)
+      { name: 'Camiseta Algodão Premium', description: 'Camiseta 100% algodão egípcio, corte moderno e confortável. Disponível em várias cores. Ganhe CashBack!', price: 8900, originalPrice: 12900, category: 'fashion', cashbackPercent: 10, rating: 4.1, reviewCount: 56, sellerName: 'Patrícia Almeida', isFeatured: false, stock: 500 },
+      { name: 'Tênis Esportivo Runner Pro', description: 'Tênis de corrida com tecnologia de amortecimento responsive e palmilha anatômica. CashBack NewMobility!', price: 29900, originalPrice: 39900, category: 'fashion', cashbackPercent: 7, rating: 4.8, reviewCount: 203, sellerName: 'André Costa', isFeatured: true, stock: 150 },
+
+      // Home (2 products)
+      { name: 'Purificador de Ar HEPA', description: 'Purificador de ar com filtro HEPA, ideal para quartos e salas até 40m². CashBack NewMobility!', price: 45900, originalPrice: 59900, category: 'home', cashbackPercent: 6, rating: 4.3, reviewCount: 42, sellerName: 'Camila Rocha', isFeatured: false, stock: 80 },
+      { name: 'Kit Organização Lar 12pc', description: 'Kit completo de organização para casa com 12 peças em plástico premium. Ganhe CashBack!', price: 7900, originalPrice: 11900, category: 'home', cashbackPercent: 12, rating: 4.2, reviewCount: 34, sellerName: 'Mariana Dias', isFeatured: false, stock: 300 },
+
+      // Health (2 products)
+      { name: 'Vitamínico Complex Plus', description: 'Suplemento vitamínico com 25 vitaminas e minerais essenciais. 60 cápsulas. CashBack NewMobility!', price: 6900, originalPrice: 8900, category: 'health', cashbackPercent: 15, rating: 4.6, reviewCount: 167, sellerName: 'Juliana Santos', isFeatured: true, stock: 1000 },
+      { name: 'Whey Protein Premium 900g', description: 'Whey Protein isolado com 27g de proteína por dose. Sabor chocolate. CashBack NewMobility!', price: 12900, originalPrice: 16900, category: 'health', cashbackPercent: 10, rating: 4.4, reviewCount: 234, sellerName: 'Ricardo Mendes', isFeatured: false, stock: 350 },
+
+      // Beauty (1 product)
+      { name: 'Kit Skincare Completo', description: 'Kit de cuidados com a pele: sérum vitamina C, hidratante e protetor solar FPS 50. CashBack NewMobility!', price: 14900, originalPrice: 21900, category: 'beauty', cashbackPercent: 10, rating: 4.5, reviewCount: 95, sellerName: 'Patrícia Almeida', isFeatured: true, stock: 200 },
+
+      // Food (2 products)
+      { name: 'Café Especial Cerrado 500g', description: 'Café especial 100% arábica do Cerrado Mineiro, torra média, moído. Direto do produtor. CashBack!', price: 4500, originalPrice: 5900, category: 'food', cashbackPercent: 8, rating: 4.9, reviewCount: 312, sellerName: 'André Costa', isFeatured: false, stock: 5000 },
+      { name: 'Azeite Extra Virgem 500ml', description: 'Azeite extra virgem premium prensado a frio. Acidez 0,3%. Direto do produtor paulista. CashBack!', price: 3900, originalPrice: 5400, category: 'food', cashbackPercent: 5, rating: 4.7, reviewCount: 189, sellerName: 'Camila Rocha', isFeatured: false, stock: 2000 },
+
+      // Services (1 product)
+      { name: 'Recarga Celular R$50', description: 'Recarga de celular instantânea para qualquer operadora. Valor: R$ 50,00. CashBack 3%!', price: 5000, originalPrice: null, category: 'services', cashbackPercent: 3, rating: 5.0, reviewCount: 520, sellerName: 'Lucas Ferreira', isFeatured: false, stock: 9999 },
+
+      // Mobility (1 product)
+      { name: 'Crédito Corrida Premium 30km', description: 'Crédito de corrida premium no app de mobilidade. Válido para 30km. CashBack 5%!', price: 4500, originalPrice: 6000, category: 'mobility', cashbackPercent: 5, rating: 4.3, reviewCount: 89, sellerName: 'Fernando Oliveira', isFeatured: false, stock: 9999 },
+
+      // Digital (2 products)
+      { name: 'Assinatura Streaming 1 ano', description: 'Assinatura anual de plataforma de streaming. Acesso ilimitado a filmes e séries. CashBack 12%!', price: 19900, originalPrice: 29900, category: 'digital', cashbackPercent: 12, rating: 4.0, reviewCount: 78, sellerName: 'Juliana Santos', isFeatured: false, stock: 9999 },
+      { name: 'Curso Online Marketing Digital', description: 'Curso completo de marketing digital com 120 horas de conteúdo e certificado. CashBack 8%!', price: 9700, originalPrice: 19700, category: 'digital', cashbackPercent: 8, rating: 4.6, reviewCount: 156, sellerName: 'Mariana Dias', isFeatured: true, stock: 9999 },
     ]
 
     for (const mp of marketplaceProducts) {
-      await db.insert('MarketplaceProduct', mp)
+      await db.insert('MarketplaceProduct', { ...mp, createdAt: now, updatedAt: now })
     }
 
     const totalUsers = await db.count('User')

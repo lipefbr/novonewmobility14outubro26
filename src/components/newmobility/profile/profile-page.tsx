@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useStore } from '@/lib/store'
 import { formatCurrency, getPlanName, getPlanPrice, timeSince, formatDate } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
@@ -17,7 +18,7 @@ import {
   CreditCard, Users, DollarSign, Copy, Check as CheckIcon, ArrowUpRight, Link2, Award,
   Verified, Mail, Phone, MapPin, Pencil, Eye, EyeOff, Smartphone, Globe, Key,
   ShieldCheck, ShieldAlert, ShieldX, Chrome, Apple, Send, FileCheck, Hash,
-  AlertTriangle, HelpCircle,
+  AlertTriangle, HelpCircle, Heart, Plus, Trash2, Edit3, X,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
@@ -299,9 +300,91 @@ export function ProfilePage() {
   const securityBg = securityLevel === 'secure' ? 'bg-emerald-100 dark:bg-emerald-950/30' : securityLevel === 'partial' ? 'bg-amber-100 dark:bg-amber-950/30' : 'bg-red-100 dark:bg-red-950/30'
   const SecurityIcon = securityLevel === 'secure' ? ShieldCheck : securityLevel === 'partial' ? ShieldAlert : ShieldX
 
+  // Beneficiaries state (local/mock)
+  const [beneficiaries, setBeneficiaries] = useState<{
+    id: string
+    name: string
+    cpf: string
+    relationship: string
+    percentage: number
+  }[]>([
+    { id: '1', name: 'Maria Silva', cpf: '987.654.321-00', relationship: 'spouse', percentage: 50 },
+    { id: '2', name: 'Pedro Silva', cpf: '456.789.123-00', relationship: 'child', percentage: 30 },
+  ])
+  const [showBeneficiaryDialog, setShowBeneficiaryDialog] = useState(false)
+  const [editingBeneficiary, setEditingBeneficiary] = useState<typeof beneficiaries[0] | null>(null)
+  const [beneficiaryForm, setBeneficiaryForm] = useState({ name: '', cpf: '', relationship: 'spouse', percentage: 0 })
+
+  const totalBeneficiaryPercentage = beneficiaries.reduce((sum, b) => sum + b.percentage, 0)
+  const remainingBeneficiaryPercentage = 100 - totalBeneficiaryPercentage
+
+  const relationshipLabels: Record<string, string> = {
+    spouse: 'Cônjuje',
+    child: 'Filho(a)',
+    parent: 'Pai/Mãe',
+    sibling: 'Irmão(ã)',
+    other: 'Outro',
+  }
+
+  const handleAddBeneficiary = () => {
+    if (!beneficiaryForm.name || beneficiaryForm.percentage <= 0) {
+      sonnerToast.error('Preencha nome e percentual')
+      return
+    }
+    if (totalBeneficiaryPercentage + beneficiaryForm.percentage > 100) {
+      sonnerToast.error('Total de percentuais não pode exceder 100%')
+      return
+    }
+    const newBeneficiary = {
+      id: Date.now().toString(),
+      ...beneficiaryForm,
+    }
+    setBeneficiaries(prev => [...prev, newBeneficiary])
+    setBeneficiaryForm({ name: '', cpf: '', relationship: 'spouse', percentage: 0 })
+    setShowBeneficiaryDialog(false)
+    sonnerToast.success('Beneficiário adicionado com sucesso!')
+  }
+
+  const handleEditBeneficiary = () => {
+    if (!editingBeneficiary || !beneficiaryForm.name || beneficiaryForm.percentage <= 0) {
+      sonnerToast.error('Preencha nome e percentual')
+      return
+    }
+    const otherTotal = beneficiaries.filter(b => b.id !== editingBeneficiary.id).reduce((sum, b) => sum + b.percentage, 0)
+    if (otherTotal + beneficiaryForm.percentage > 100) {
+      sonnerToast.error('Total de percentuais não pode exceder 100%')
+      return
+    }
+    setBeneficiaries(prev => prev.map(b =>
+      b.id === editingBeneficiary.id
+        ? { ...b, ...beneficiaryForm }
+        : b
+    ))
+    setEditingBeneficiary(null)
+    setBeneficiaryForm({ name: '', cpf: '', relationship: 'spouse', percentage: 0 })
+    sonnerToast.success('Beneficiário atualizado com sucesso!')
+  }
+
+  const handleDeleteBeneficiary = (id: string) => {
+    setBeneficiaries(prev => prev.filter(b => b.id !== id))
+    sonnerToast.success('Beneficiário removido')
+  }
+
+  const openEditBeneficiary = (b: typeof beneficiaries[0]) => {
+    setEditingBeneficiary(b)
+    setBeneficiaryForm({ name: b.name, cpf: b.cpf, relationship: b.relationship, percentage: b.percentage })
+  }
+
+  const openAddBeneficiary = () => {
+    setEditingBeneficiary(null)
+    setBeneficiaryForm({ name: '', cpf: '', relationship: 'spouse', percentage: 0 })
+    setShowBeneficiaryDialog(true)
+  }
+
   const tabs = [
     { value: 'personal', label: 'Informações Pessoais', shortLabel: 'Pessoal', icon: User },
     { value: 'bank', label: 'Dados Bancários', shortLabel: 'Bancário', icon: Building2 },
+    { value: 'beneficiaries', label: 'Beneficiários', shortLabel: 'Beneficiários', icon: Heart },
     { value: 'password', label: 'Alterar Senha', shortLabel: 'Senha', icon: Lock },
     { value: 'security', label: 'Segurança', shortLabel: 'Segurança', icon: Shield },
   ]
@@ -625,6 +708,138 @@ export function ProfilePage() {
           </motion.div>
         </TabsContent>
 
+        {/* Beneficiaries Tab */}
+        <TabsContent value="beneficiaries" className="mt-4">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+            {/* Summary Card */}
+            <Card className="shadow-sm bg-card">
+              <CardHeader>
+                <CardTitle className="text-base font-bold flex items-center gap-2">
+                  <Heart className="h-4 w-4 text-emerald-600" />
+                  Beneficiários
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                  <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-lg p-3 text-center border border-emerald-100 dark:border-emerald-900/50">
+                    <Users className="h-4 w-4 text-emerald-600 mx-auto mb-1" />
+                    <p className="text-sm font-bold text-foreground">{beneficiaries.length}</p>
+                    <p className="text-[10px] text-muted-foreground">Beneficiários</p>
+                  </div>
+                  <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-lg p-3 text-center border border-emerald-100 dark:border-emerald-900/50">
+                    <DollarSign className="h-4 w-4 text-emerald-600 mx-auto mb-1" />
+                    <p className="text-sm font-bold text-foreground">{totalBeneficiaryPercentage}%</p>
+                    <p className="text-[10px] text-muted-foreground">Alocado</p>
+                  </div>
+                  <div className={`${remainingBeneficiaryPercentage > 0 ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900/50' : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-100 dark:border-emerald-900/50'} rounded-lg p-3 text-center border`}>
+                    <Award className={`h-4 w-4 ${remainingBeneficiaryPercentage > 0 ? 'text-amber-600' : 'text-emerald-600'} mx-auto mb-1`} />
+                    <p className={`text-sm font-bold ${remainingBeneficiaryPercentage > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{remainingBeneficiaryPercentage}%</p>
+                    <p className="text-[10px] text-muted-foreground">Disponível</p>
+                  </div>
+                </div>
+
+                {/* Progress bar */}
+                <div className="space-y-1.5 mb-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-foreground">Distribuição</span>
+                    <span className="text-xs text-muted-foreground">{totalBeneficiaryPercentage}% de 100%</span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${totalBeneficiaryPercentage > 100 ? 'bg-red-500' : totalBeneficiaryPercentage === 100 ? 'bg-emerald-500' : 'bg-emerald-500'}`}
+                      style={{ width: `${Math.min(totalBeneficiaryPercentage, 100)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {remainingBeneficiaryPercentage > 0 && (
+                  <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 mb-4">
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      Ainda restam {remainingBeneficiaryPercentage}% para distribuir entre os beneficiários.
+                    </p>
+                  </div>
+                )}
+
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 w-full sm:w-auto"
+                  onClick={openAddBeneficiary}
+                >
+                  <Plus className="h-4 w-4" />
+                  Adicionar Beneficiário
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Beneficiaries List */}
+            {beneficiaries.length === 0 ? (
+              <Card className="shadow-sm bg-card">
+                <CardContent className="py-12 text-center">
+                  <Heart className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                  <p className="text-muted-foreground text-sm">Nenhum beneficiário cadastrado</p>
+                  <p className="text-muted-foreground text-xs mt-1">Adicione beneficiários para distribuir seus benefícios</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {beneficiaries.map((b) => (
+                  <motion.div
+                    key={b.id}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <Card className="shadow-sm bg-card hover:shadow-md transition-shadow">
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-3 flex-1">
+                            <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-950/30 flex items-center justify-center shrink-0">
+                              <User className="h-5 w-5 text-emerald-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-sm font-semibold text-foreground">{b.name}</p>
+                                <Badge variant="secondary" className="text-[10px]">
+                                  {relationshipLabels[b.relationship] || b.relationship}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-3 mt-1">
+                                {b.cpf && (
+                                  <span className="text-xs text-muted-foreground">CPF: {b.cpf}</span>
+                                )}
+                                <Badge className={`${b.percentage >= 50 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-muted text-muted-foreground'} text-[10px] border-0`}>
+                                  {b.percentage}%
+                                </Badge>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-emerald-600"
+                              onClick={() => openEditBeneficiary(b)}
+                            >
+                              <Edit3 className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-red-500"
+                              onClick={() => handleDeleteBeneficiary(b.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        </TabsContent>
+
         {/* Password Tab */}
         <TabsContent value="password" className="mt-4">
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
@@ -678,6 +893,109 @@ export function ProfilePage() {
           </motion.div>
         </TabsContent>
       </Tabs>
+
+      {/* Beneficiary Add/Edit Dialog */}
+      <Dialog open={showBeneficiaryDialog || !!editingBeneficiary} onOpenChange={(open) => { if (!open) { setShowBeneficiaryDialog(false); setEditingBeneficiary(null) } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Heart className="h-5 w-5 text-emerald-500" />
+              {editingBeneficiary ? 'Editar Beneficiário' : 'Novo Beneficiário'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nome Completo</Label>
+              <Input
+                placeholder="Nome do beneficiário"
+                value={beneficiaryForm.name}
+                onChange={(e) => setBeneficiaryForm(p => ({ ...p, name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>CPF</Label>
+              <Input
+                placeholder="000.000.000-00"
+                value={beneficiaryForm.cpf}
+                onChange={(e) => setBeneficiaryForm(p => ({ ...p, cpf: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Relação</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {Object.entries(relationshipLabels).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setBeneficiaryForm(p => ({ ...p, relationship: value }))}
+                    className={cn(
+                      'px-3 py-2 rounded-lg border text-xs font-medium transition-all',
+                      beneficiaryForm.relationship === value
+                        ? 'border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-700'
+                        : 'border-border text-muted-foreground hover:border-emerald-300 dark:hover:border-emerald-700'
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Percentual (%)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={100}
+                placeholder="Ex: 50"
+                value={beneficiaryForm.percentage || ''}
+                onChange={(e) => setBeneficiaryForm(p => ({ ...p, percentage: parseInt(e.target.value) || 0 }))}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Disponível: {editingBeneficiary
+                  ? 100 - beneficiaries.filter(b => b.id !== editingBeneficiary.id).reduce((sum, b) => sum + b.percentage, 0)
+                  : remainingBeneficiaryPercentage}%
+              </p>
+            </div>
+
+            {beneficiaryForm.percentage > 0 && (
+              <div className="bg-muted/50 rounded-lg p-3 border border-border">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Total após salvar:</span>
+                  <span className={cn(
+                    'font-bold',
+                    (editingBeneficiary
+                      ? beneficiaries.filter(b => b.id !== editingBeneficiary.id).reduce((sum, b) => sum + b.percentage, 0) + beneficiaryForm.percentage
+                      : totalBeneficiaryPercentage + beneficiaryForm.percentage
+                    ) > 100 ? 'text-red-500' : 'text-emerald-600'
+                  )}>
+                    {editingBeneficiary
+                      ? beneficiaries.filter(b => b.id !== editingBeneficiary.id).reduce((sum, b) => sum + b.percentage, 0) + beneficiaryForm.percentage
+                      : totalBeneficiaryPercentage + beneficiaryForm.percentage
+                    }%
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => { setShowBeneficiaryDialog(false); setEditingBeneficiary(null) }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={editingBeneficiary ? handleEditBeneficiary : handleAddBeneficiary}
+                disabled={!beneficiaryForm.name || beneficiaryForm.percentage <= 0}
+              >
+                {editingBeneficiary ? 'Salvar' : 'Adicionar'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Security Tab Content - shown when security tab is active */}
       {activeTab === 'security' && (
