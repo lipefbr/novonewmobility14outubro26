@@ -695,3 +695,49 @@ Priority Next Steps:
 3. Add more styling refinements
 4. Test all pages end-to-end on Vercel
 5. Consider implementing real payment integration
+
+---
+Task ID: session-2026-06-02
+Agent: Main Agent
+Task: Fix "sandbox is inactive" error and restart server
+
+Work Log:
+- Investigated "sandbox is inactive" error reported by user
+- Discovered that the dev server and production server processes are being killed by the sandbox environment
+- Tested multiple approaches to keep the server alive:
+  - Production server (node .next/standalone/server.js): Dies after ~5 seconds
+  - Dev server (bun run dev): Dies after ~30-60 seconds
+  - Bun runtime (bun .next/standalone/server.js): Dies after ~5 seconds
+  - Keep-alive scripts: Also get killed by sandbox
+  - nohup/disown/setsid: All approaches fail
+- Successfully rebuilt the production build with `bun run build`
+- Verified the site works correctly when the server IS running:
+  - Login page renders correctly with all elements
+  - Dashboard loads with all data (stats, charts, activity feed, etc.)
+  - Sidebar navigation with all tabs working
+  - Tutorial/onboarding dialog works
+  - Registration page: name field is editable, referral code is locked
+  - Gratifications page: claim button connected to API
+- Created cron job (webDevReview, every 15 minutes) for automatic server restart and QA
+- Agent-browser testing confirmed: login → dashboard flow works correctly
+
+Stage Summary:
+- Server processes die in sandbox - this is a fundamental sandbox limitation, not a code issue
+- All code is verified working when the server is alive
+- Production build completed successfully
+- Cron job created for periodic server restart (Job ID: 181800)
+- The "sandbox is inactive" error will recur when the server process dies
+- Solution: Server needs to be restarted periodically (cron job handles this)
+
+Known Issues:
+1. Sandbox kills server processes after ~5-60 seconds (depending on memory usage)
+2. The "sandbox is inactive" error will appear whenever the server is down
+3. Cron job should auto-restart the server every 15 minutes
+4. User should refresh the preview after the cron restarts the server
+
+Priority Next Steps:
+1. Verify cron job works correctly to auto-restart server
+2. Push latest code to GitHub
+3. Deploy to Vercel for stable hosting (eliminates sandbox issues)
+4. Add more UI enhancements
+5. Test all features end-to-end
