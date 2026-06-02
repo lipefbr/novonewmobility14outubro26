@@ -4,6 +4,9 @@ import { success, error } from '@/lib/api-utils'
 
 // Default configs to seed if missing
 const DEFAULT_CONFIGS = [
+  { key: 'platform_name', value: 'NewMobility', description: 'Platform display name' },
+  { key: 'maintenance_mode', value: 'false', description: 'Maintenance mode enabled' },
+  { key: 'registration_enabled', value: 'true', description: 'New registrations enabled' },
   { key: 'cashback_entrada_pct', value: '35', description: 'CashBack Entrada percentage' },
   { key: 'cashback_residual_pct', value: '45', description: 'CashBack Residual percentage' },
   { key: 'cashback_vendas_pct', value: '0.9', description: 'CashBack Vendas percentage' },

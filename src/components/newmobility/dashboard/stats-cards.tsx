@@ -59,7 +59,7 @@ function TrendIndicator({ value, label }: TrendIndicatorProps) {
   return (
     <div className={cn(
       'flex items-center gap-1 text-xs font-semibold',
-      isPositive ? 'text-emerald-600' : 'text-red-500'
+      isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'
     )}>
       {isPositive ? (
         <TrendingUp className="h-3 w-3" />
@@ -146,26 +146,33 @@ export function StatsCards({ data }: StatsCardsProps) {
           return (
             <motion.div
               key={stat.title}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: stat.delay, duration: 0.4 }}
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ delay: stat.delay, duration: 0.45, ease: 'easeOut' }}
+              whileHover={{ y: -4, scale: 1.02 }}
             >
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Card className={cn(
-                    'border shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer relative overflow-hidden group bg-card',
+                    'border shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer relative overflow-hidden group',
                     stat.border
                   )}>
                     {/* Gradient overlay */}
                     <div className={cn('absolute inset-0 bg-gradient-to-br opacity-50', stat.gradientFrom, stat.gradientTo, stat.darkGradientFrom, stat.darkGradientTo)} />
+                    {/* Hover glow effect */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-emerald-500/0 to-emerald-500/0 group-hover:from-emerald-500/5 group-hover:to-transparent transition-all duration-300" />
                     <CardContent className="p-4 md:p-5 relative">
                       <div className="flex items-start justify-between mb-3">
                         <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                           {stat.title}
                         </span>
-                        <div className={cn('p-2 rounded-lg', stat.iconBg)}>
+                        <motion.div
+                          className={cn('p-2 rounded-lg', stat.iconBg)}
+                          whileHover={{ rotate: 5, scale: 1.1 }}
+                          transition={{ duration: 0.2 }}
+                        >
                           <Icon className="h-5 w-5" />
-                        </div>
+                        </motion.div>
                       </div>
                       <AnimatedNumber value={stat.value} />
                       <div className="flex items-center justify-between mt-1">
@@ -173,7 +180,7 @@ export function StatsCards({ data }: StatsCardsProps) {
                       </div>
                       <div className="flex items-center justify-between mt-2">
                         <TrendIndicator value={stat.trend} label={t('dashboard.stats.vsMonth')} />
-                        <ChevronRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
+                        <ChevronRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all duration-200" />
                       </div>
                     </CardContent>
                   </Card>

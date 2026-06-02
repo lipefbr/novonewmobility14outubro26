@@ -510,3 +510,188 @@ Fixed the critical registration 500 error, connected gratifications to API, seed
 3. Add seller dashboard features
 4. Enhance admin financial controls
 5. Add real payment integration
+
+---
+
+## Task 4-b - Enhance Admin Panel Features
+
+**Agent**: admin-enhancer
+**Date**: 2026-03-06
+
+### Summary
+Enhanced the admin panel with new tabs, improved existing tabs with bulk actions, CSV export, edit dialogs, date presets, and platform configuration settings.
+
+### Changes Made
+
+#### 1. `src/app/api/admin/announcements/route.ts` - Enhanced GET endpoint
+- Admin view (with userId): Returns ALL announcements including inactive, ordered by isActive DESC, createdAt DESC
+- Public view (no userId): Returns only active announcements within date range (unchanged behavior)
+
+#### 2. `src/app/api/admin/users/bulk/route.ts` - NEW bulk action API
+- POST handler accepts `userId` (admin), `userIds` (array), and `action` ('activate'|'deactivate')
+- Admin verification via role check
+- Updates all specified users' `isActive` field in a single SQL query
+- Returns affected count
+
+#### 3. `src/app/api/admin/config/route.ts` - Added platform config defaults
+- New default configs: `platform_name` (NewMobility), `maintenance_mode` (false), `registration_enabled` (true)
+- Auto-seeded on first admin config GET request
+
+#### 4. `src/components/newmobility/admin/admin-page.tsx` - Major enhancements
+
+**Anúncios Tab:**
+- New type options: `warning` (Aviso), `success` (Sucesso) in addition to existing info/promo/maintenance/feature/urgent
+- Edit announcement dialog with full form (title, message, type, priority, action button/URL)
+- Toggle active/inactive with visual toggle icons (ToggleLeft/ToggleRight)
+- Inactive badge shown for disabled announcements
+- Empty state with Megaphone icon
+- Loads from `/admin/announcements?userId=` (shows all including inactive)
+- Count text updated from "anúncios ativos" to "anúncios"
+
+**Users Tab:**
+- Checkbox column for bulk selection (header checkbox toggles all)
+- Bulk actions bar appears when users selected (animated entry)
+  - "Ativar" button (emerald, with UserCheck icon)
+  - "Desativar" button (red outline, with UserX icon)
+  - "Cancelar" button to clear selection
+- Selected rows highlighted with emerald background
+- CSV Export button in filter bar
+  - Exports: Name, Email, Phone, CPF, Plan, Status, Balance Withdrawal, Balance Mobility, Balance Shopping, City, State, Registration Date
+  - UTF-8 BOM for Excel compatibility
+  - Auto-downloads as `usuarios_newmobility_YYYY-MM-DD.csv`
+
+**Config → Configurações Tab:**
+- Renamed from "Config" to "Configurações" in tab trigger
+- New "Informações Gerais" section with platform name editing
+- New "Controles do Sistema" section with:
+  - Maintenance mode toggle (amber when active, with description)
+  - Registration enabled toggle (emerald when active, with description)
+  - Custom toggle switch UI (h-6 w-11 with sliding indicator)
+- "CashBack Padrão" section (renamed from just "CashBack")
+- Withdrawal settings section (unchanged)
+
+**Financial Tab:**
+- Summary dashboard cards enhanced with:
+  - Bigger padding (p-5) and font (text-2xl)
+  - Left border accent color per card (border-l-4)
+  - Larger icons (h-5 w-5)
+- Date range presets section:
+  - "Todos", "Este mês", "Último mês", "Últimos 3 meses" button group
+  - Emerald active state, clears when manually editing dates
+  - Manual date changes reset preset selection
+- Bar chart styling improved:
+  - Taller bars (h-8 vs h-6)
+  - Gradient from emerald-500 via emerald-400 to teal-400
+  - Percentage label shown inside bar when >15%, outside when <=15%
+  - Slightly bolder text styling
+  - Rounded-lg bars with bg-muted/50 background
+- Transactions table:
+  - Sticky header for scrolling
+  - max-h-96 with overflow-y-auto for long lists
+
+### Verification
+- `bun run lint` passed with zero errors
+- Dev server running correctly
+
+---
+Task ID: 4-a
+Agent: dashboard-enhancer
+Task: Enhance dashboard page UI
+
+Work Log:
+- Analyzed existing dashboard code (dashboard-page.tsx, stats-cards.tsx, activity-feed.tsx, financial-cards.tsx, charts.tsx, comparison-widget.tsx, announcement-banner.tsx)
+- Enhanced greeting card with current time display (HH:mm), Clock icon, plan badge with Crown icon, and improved layout
+- Updated quick action cards to "Comprar Voucher", "Indicar Amigo", "Ver Extrato", "Solicitar Saque" with emerald accent gradients, description text, and ChevronRight hover effects
+- Added weekly earnings mini CSS bar chart with animated gradient bars, hover tooltips showing amounts, daily labels, total/average stats, and best day highlight
+- Added plan upgrade progress card with current/next plan display, animated progress bar, points needed indicator, benefits list with staggered animation, and CTA button
+- Enhanced activity feed with 12 more realistic entries (voucher, ride, insurance, plan renewal), badges per entry type, detail descriptions, and improved hover/scroll styling
+- Enhanced stats cards with stronger framer-motion animations (scale + y lift on hover, staggered entry), hover glow effect, icon rotation on hover, and improved shadow transitions
+- Improved card styling across dashboard with shadow-md/hover:shadow-lg, emerald border accents, gradient backgrounds, and consistent transition durations
+- Used formatCurrency from @/lib/utils for all currency formatting instead of hardcoded strings
+- Used useStore hook for user data and plan info throughout
+- All framer-motion animations use proper easeOut timing with staggered delays
+- Ran `bun run lint` — zero errors
+
+Stage Summary:
+- Dashboard page fully enhanced with all 7 requested improvements
+- Weekly earnings CSS bar chart added (no recharts needed)
+- Plan upgrade progress card with animated progress bar and benefits list
+- Activity feed upgraded from 10 to 12 entries with badges, details, and better styling
+- Quick action cards reordered with emerald accent and descriptions
+- Stats cards enhanced with whileHover animations and glow effects
+- All currency values use formatCurrency() utility
+- Greeting card now shows current time and plan badge
+- Zero lint errors, dev server running correctly
+
+---
+Task ID: 4-c
+Agent: marketplace-profile-enhancer
+Task: Enhance marketplace and profile pages
+
+Work Log:
+- Created beneficiaries CRUD API route at `src/app/api/user/beneficiaries/route.ts` with GET, POST, PUT, DELETE handlers
+- Updated `src/app/api/migrate/route.ts` to add `age` column to Beneficiary table
+- Enhanced marketplace page (`src/components/newmobility/marketplace/marketplace-page.tsx`):
+  - Added promotional banners carousel (Oferta do Dia, Frete Grátis, CashBack em Dobro) with auto-rotation and manual navigation
+  - Enhanced star rating display with partial fill visualization (sm/md/lg sizes)
+  - Enhanced seller cards with location (city/state), total sales, member since date
+  - Added product detail modal with: larger image placeholder, full description, seller info card with location/sales/member since, rating summary with bar chart breakdown, sample customer reviews
+  - Enhanced orders tab with: summary stats cards (total, in progress, shipped, delivered), expandable order details, order status timeline visualization, improved status badges with icons
+  - Added cart total display in header button
+  - Added "Continue Comprando" button in empty cart
+- Enhanced profile page (`src/components/newmobility/profile/profile-page.tsx`):
+  - Connected beneficiaries to API: loads from /user/beneficiaries, saves via POST/PUT/DELETE
+  - Added BeneficiaryDonutChart component with SVG donut/ring chart showing percentage distribution
+  - Added multi-segment progress bar for beneficiary distribution
+  - Added age field to beneficiary form and display (for insurance purposes)
+  - Added emergency contact section in personal data tab (name, phone, relationship)
+  - Added loading states with Loader2 spinner for beneficiaries
+  - Added success indicator when 100% allocation is complete
+  - Fixed lint error: replaced mutable `cumulativePercent` variable with immutable `reduce()` pattern
+
+Stage Summary:
+- New API route: `/api/user/beneficiaries` with full CRUD (GET, POST, PUT, DELETE)
+- Marketplace: promotional banners, enhanced ratings, seller details, product detail modal with reviews, improved orders section
+- Profile: API-connected beneficiaries, donut chart, age field, emergency contact section
+- Migration updated: `age` column added to Beneficiary table
+- `bun run lint` passed with zero errors
+
+---
+Task ID: main-session
+Agent: Main Agent
+Task: Restart project, fix registration, enhance features, verify with agent-browser
+
+Work Log:
+- Investigated project status after context loss
+- Fixed .env file (was pointing to old SQLite DB instead of Neon PostgreSQL)
+- Rebuilt project with correct DATABASE_URL for Neon PostgreSQL
+- Verified registration API works correctly (creates user + matrix positions)
+- Verified login API works for both demo user and admin
+- Verified dashboard API returns correct data
+- Enhanced dashboard page with: welcome greeting with time of day, quick action cards, weekly earnings chart, plan progress card, improved card styling, framer-motion animations
+- Enhanced admin panel with: Announcements tab with edit dialog, Users tab with bulk actions and CSV export, Settings tab with platform config, Financial tab with date range presets and better charts
+- Enhanced marketplace with: promotional banners carousel, product detail modal with reviews, enhanced seller cards with location/sales, improved cart and orders section
+- Enhanced profile with: API-connected beneficiaries, donut chart visualization, age field for dependents, emergency contact section
+- Created beneficiaries CRUD API route at /api/user/beneficiaries
+- Verified UI with agent-browser: login page renders correctly, dashboard shows all new features, sidebar navigation works
+
+Stage Summary:
+- Registration Internal Server Error: FIXED (was caused by .env pointing to SQLite instead of Neon)
+- All APIs working: login, registration, dashboard, admin
+- UI enhancements applied: dashboard, admin, marketplace, profile
+- New API route: /api/user/beneficiaries (CRUD)
+- Build succeeds, lint passes with zero errors
+- Agent-browser verification: login page, dashboard, sidebar all working correctly
+
+Known Issues:
+- Sandbox kills server process after ~15-20 seconds
+- Server must be restarted periodically for testing
+- Production build works correctly when server is alive
+- Agent-browser can access pages through Caddy gateway (port 81)
+
+Priority Next Steps:
+1. Push updated code to GitHub
+2. Deploy to Vercel for stable hosting
+3. Add more styling refinements
+4. Test all pages end-to-end on Vercel
+5. Consider implementing real payment integration

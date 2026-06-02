@@ -209,6 +209,17 @@ export function AdminPage() {
   const [financialStatusFilter, setFinancialStatusFilter] = useState('all')
   const [financialDateFrom, setFinancialDateFrom] = useState('')
   const [financialDateTo, setFinancialDateTo] = useState('')
+  const [financialDatePreset, setFinancialDatePreset] = useState('')
+
+  // Users bulk actions
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
+  const [processingBulk, setProcessingBulk] = useState(false)
+
+  // Announcement edit
+  const [editAnnouncementDialogOpen, setEditAnnouncementDialogOpen] = useState(false)
+  const [editingAnnouncement, setEditingAnnouncement] = useState<AdminAnnouncement | null>(null)
+  const [editAnnouncementData, setEditAnnouncementData] = useState({ title: '', message: '', type: 'info', priority: 'normal', actionLabel: '', actionUrl: '' })
+  const [savingAnnouncement, setSavingAnnouncement] = useState(false)
 
   const isAdmin = user?.id === 'usr_demo_admin' || user?.email === 'carlos.silva@email.com' || user?.email === 'admin@newmobility.com'
 
@@ -251,7 +262,7 @@ export function AdminPage() {
 
   const loadAnnouncements = async () => {
     try {
-      const data = await apiFetch<AdminAnnouncement[]>('/announcements')
+      const data = await apiFetch<AdminAnnouncement[]>(`/admin/announcements?userId=${user?.id}`)
       setAnnouncements(Array.isArray(data) ? data : [])
     } catch { /* ignore */ }
   }
@@ -534,6 +545,124 @@ export function AdminPage() {
     }
   }
 
+  // ---------- Announcement Edit ----------
+  const handleOpenEditAnnouncement = (a: AdminAnnouncement) => {
+    setEditingAnnouncement(a)
+    setEditAnnouncementData({
+      title: a.title || '',
+      message: a.message || '',
+      type: a.type || 'info',
+      priority: a.priority || 'normal',
+      actionLabel: a.actionLabel || '',
+      actionUrl: a.actionUrl || '',
+    })
+    setEditAnnouncementDialogOpen(true)
+  }
+
+  const handleSaveAnnouncement = async () => {
+    if (!editingAnnouncement) return
+    setSavingAnnouncement(true)
+    try {
+      await apiFetch(`/admin/announcements/${editingAnnouncement.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ userId: user?.id, ...editAnnouncementData }),
+      })
+      setEditAnnouncementDialogOpen(false)
+      setEditingAnnouncement(null)
+      loadAnnouncements()
+      toast.success('Anúncio atualizado com sucesso!')
+    } catch {
+      toast.error('Erro ao atualizar anúncio')
+    } finally {
+      setSavingAnnouncement(false)
+    }
+  }
+
+  // ---------- Bulk User Actions ----------
+  const handleBulkAction = async (action: 'activate' | 'deactivate') => {
+    if (selectedUserIds.size === 0) return
+    setProcessingBulk(true)
+    try {
+      await apiFetch('/admin/users/bulk', {
+        method: 'POST',
+        body: JSON.stringify({ userId: user?.id, userIds: Array.from(selectedUserIds), action }),
+      })
+      setSelectedUserIds(new Set())
+      loadUsers()
+      toast.success(action === 'activate' ? 'Usuários ativados com sucesso!' : 'Usuários desativados com sucesso!')
+    } catch {
+      toast.error('Erro ao processar ação em massa')
+    } finally {
+      setProcessingBulk(false)
+    }
+  }
+
+  const handleExportCSV = () => {
+    if (!users?.users?.length) {
+      toast.error('Nenhum usuário para exportar')
+      return
+    }
+    const headers = ['Nome', 'Email', 'Telefone', 'CPF', 'Plano', 'Status', 'Saldo Saque', 'Saldo Mobilidade', 'Saldo Compras', 'Cidade', 'Estado', 'Data Cadastro']
+    const rows = users.users.map(u => [
+      u.name, u.email, u.phone, u.cpf, getPlanName(u.plan),
+      u.isActive ? 'Ativo' : 'Inativo',
+      (u.balanceWithdrawal / 100).toFixed(2),
+      (u.balanceMobility / 100).toFixed(2),
+      (u.balanceShopping / 100).toFixed(2),
+      u.city, u.state,
+      new Date(u.createdAt).toLocaleDateString('pt-BR'),
+    ])
+    const csvContent = [headers, ...rows].map(r => r.map(c => `"${(c || '').replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `usuarios_newmobility_${new Date().toISOString().split('T')[0]}.csv`
+    link.click()
+    URL.revokeObjectURL(link.href)
+    toast.success('CSV exportado com sucesso!')
+  }
+
+  const toggleUserSelection = (id: string) => {
+    setSelectedUserIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleAllUsers = () => {
+    if (!users?.users) return
+    if (selectedUserIds.size === users.users.length) {
+      setSelectedUserIds(new Set())
+    } else {
+      setSelectedUserIds(new Set(users.users.map(u => u.id)))
+    }
+  }
+
+  // ---------- Financial Date Presets ----------
+  const applyDatePreset = (preset: string) => {
+    setFinancialDatePreset(preset)
+    const now = new Date()
+    const y = now.getFullYear()
+    const m = now.getMonth()
+    const fmt = (d: Date) => d.toISOString().split('T')[0]
+
+    if (preset === 'this_month') {
+      setFinancialDateFrom(fmt(new Date(y, m, 1)))
+      setFinancialDateTo(fmt(now))
+    } else if (preset === 'last_month') {
+      setFinancialDateFrom(fmt(new Date(y, m - 1, 1)))
+      setFinancialDateTo(fmt(new Date(y, m, 0)))
+    } else if (preset === 'last_3_months') {
+      setFinancialDateFrom(fmt(new Date(y, m - 2, 1)))
+      setFinancialDateTo(fmt(now))
+    } else {
+      setFinancialDateFrom('')
+      setFinancialDateTo('')
+    }
+  }
+
   // ---------- Helpers ----------
   const getPlanBadge = (plan: string) => {
     const colors: Record<string, string> = { free: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300', blue3: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', blue5: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' }
@@ -546,7 +675,7 @@ export function AdminPage() {
   }
 
   const getTypeColor = (type: string) => {
-    const colors: Record<string, string> = { info: 'bg-blue-100 text-blue-700', promo: 'bg-emerald-100 text-emerald-700', maintenance: 'bg-amber-100 text-amber-700', feature: 'bg-purple-100 text-purple-700', urgent: 'bg-red-100 text-red-700' }
+    const colors: Record<string, string> = { info: 'bg-blue-100 text-blue-700', warning: 'bg-amber-100 text-amber-700', success: 'bg-emerald-100 text-emerald-700', promo: 'bg-emerald-100 text-emerald-700', maintenance: 'bg-amber-100 text-amber-700', feature: 'bg-purple-100 text-purple-700', urgent: 'bg-red-100 text-red-700' }
     return colors[type] || colors.info
   }
 
@@ -622,7 +751,7 @@ export function AdminPage() {
             <Wallet className="h-3.5 w-3.5" /> Saques
           </TabsTrigger>
           <TabsTrigger value="config" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
-            <Settings className="h-3.5 w-3.5" /> Config
+            <Settings className="h-3.5 w-3.5" /> Configurações
           </TabsTrigger>
           <TabsTrigger value="announcements" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
             <Megaphone className="h-3.5 w-3.5" /> Anúncios
@@ -750,9 +879,36 @@ export function AdminPage() {
                   <option value="active">Ativos</option>
                   <option value="inactive">Inativos</option>
                 </select>
+                <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs" onClick={handleExportCSV}>
+                  <Download className="h-3.5 w-3.5" /> Exportar CSV
+                </Button>
               </div>
             </CardContent>
           </Card>
+
+          {/* Bulk Actions Bar */}
+          {selectedUserIds.size > 0 && (
+            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+              <Card className="border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20">
+                <CardContent className="p-3 flex items-center justify-between flex-wrap gap-2">
+                  <span className="text-sm font-medium text-foreground">{selectedUserIds.size} usuário(s) selecionado(s)</span>
+                  <div className="flex gap-2">
+                    <Button size="sm" className="h-8 gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white" disabled={processingBulk} onClick={() => handleBulkAction('activate')}>
+                      {processingBulk ? <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <UserCheck className="h-3.5 w-3.5" />}
+                      Ativar
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30" disabled={processingBulk} onClick={() => handleBulkAction('deactivate')}>
+                      <UserX className="h-3.5 w-3.5" />
+                      Desativar
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => setSelectedUserIds(new Set())}>
+                      Cancelar
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
 
           <Card>
             <CardContent className="p-0">
@@ -760,6 +916,9 @@ export function AdminPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border">
+                      <th className="text-left p-3 w-10">
+                        <input type="checkbox" checked={users?.users?.length ? selectedUserIds.size === users.users.length : false} onChange={toggleAllUsers} className="rounded border-input" />
+                      </th>
                       <th className="text-left text-xs font-semibold text-muted-foreground p-3">Usuário</th>
                       <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden sm:table-cell">Plano</th>
                       <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden md:table-cell">Indicados</th>
@@ -770,7 +929,10 @@ export function AdminPage() {
                   </thead>
                   <tbody>
                     {users?.users.map(u => (
-                      <tr key={u.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                      <tr key={u.id} className={`border-b border-border/50 hover:bg-muted/30 transition-colors ${selectedUserIds.has(u.id) ? 'bg-emerald-50/50 dark:bg-emerald-950/20' : ''}`}>
+                        <td className="p-3">
+                          <input type="checkbox" checked={selectedUserIds.has(u.id)} onChange={() => toggleUserSelection(u.id)} className="rounded border-input" />
+                        </td>
                         <td className="p-3">
                           <div>
                             <p className="text-sm font-medium text-foreground">{u.name}</p>
@@ -1014,24 +1176,24 @@ export function AdminPage() {
         <TabsContent value="financial" className="mt-4 space-y-4">
           {financialData && (
             <>
-              {/* Overview Cards */}
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {/* Summary Dashboard - Big Number Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {[
-                  { label: 'Receita Total', value: formatCurrency(financialData.overview.totalRevenue), icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
-                  { label: 'Saldo Total Plataforma', value: formatCurrency(financialData.overview.totalPlatformBalance), icon: DollarSign, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30' },
-                  { label: 'Saques Pendentes', value: formatCurrency(financialData.overview.pendingWithdrawals), icon: Clock, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30' },
-                  { label: 'Saques Aprovados', value: formatCurrency(financialData.overview.approvedWithdrawals), icon: Check, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
-                  { label: 'CashBack Distribuído', value: formatCurrency(financialData.overview.totalCashback), icon: Receipt, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/30' },
-                  { label: 'Saldo em Circulação', value: formatCurrency(financialData.overview.totalInCirculation), icon: Activity, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-950/30' },
+                  { label: 'Receita Total', value: formatCurrency(financialData.overview.totalRevenue), icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30', border: 'border-l-4 border-emerald-500' },
+                  { label: 'Saldo Plataforma', value: formatCurrency(financialData.overview.totalPlatformBalance), icon: DollarSign, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30', border: 'border-l-4 border-amber-500' },
+                  { label: 'Saques Pendentes', value: formatCurrency(financialData.overview.pendingWithdrawals), icon: Clock, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30', border: 'border-l-4 border-red-500' },
+                  { label: 'Saques Aprovados', value: formatCurrency(financialData.overview.approvedWithdrawals), icon: Check, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30', border: 'border-l-4 border-blue-500' },
+                  { label: 'CashBack Distribuído', value: formatCurrency(financialData.overview.totalCashback), icon: Receipt, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/30', border: 'border-l-4 border-purple-500' },
+                  { label: 'Saldo em Circulação', value: formatCurrency(financialData.overview.totalInCirculation), icon: Activity, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-950/30', border: 'border-l-4 border-orange-500' },
                 ].map((card, i) => (
                   <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-                    <Card className={`${card.bg} border-0`}>
-                      <CardContent className="p-4">
-                        <div className="flex items-center gap-2 mb-1">
-                          <card.icon className={`h-4 w-4 ${card.color}`} />
+                    <Card className={`${card.bg} border-0 ${card.border}`}>
+                      <CardContent className="p-5">
+                        <div className="flex items-center gap-2 mb-2">
+                          <card.icon className={`h-5 w-5 ${card.color}`} />
                           <span className="text-xs font-medium text-muted-foreground">{card.label}</span>
                         </div>
-                        <p className="text-lg font-bold text-foreground">{card.value}</p>
+                        <p className="text-2xl font-bold text-foreground">{card.value}</p>
                       </CardContent>
                     </Card>
                   </motion.div>
@@ -1042,14 +1204,30 @@ export function AdminPage() {
               <Card>
                 <CardHeader><CardTitle className="text-sm flex items-center gap-2"><Filter className="h-4 w-4 text-emerald-600" /> Filtros de Transação</CardTitle></CardHeader>
                 <CardContent>
+                  {/* Date Range Presets */}
+                  <div className="mb-3">
+                    <Label className="text-xs text-muted-foreground mb-1.5 block">Período Rápido</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { value: '', label: 'Todos' },
+                        { value: 'this_month', label: 'Este mês' },
+                        { value: 'last_month', label: 'Último mês' },
+                        { value: 'last_3_months', label: 'Últimos 3 meses' },
+                      ].map(p => (
+                        <button key={p.value} onClick={() => applyDatePreset(p.value)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${financialDatePreset === p.value ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="flex flex-col sm:flex-row gap-3">
                     <div className="flex-1">
                       <Label className="text-xs text-muted-foreground mb-1">Data Início</Label>
-                      <Input type="date" value={financialDateFrom} onChange={e => setFinancialDateFrom(e.target.value)} className="h-9" />
+                      <Input type="date" value={financialDateFrom} onChange={e => { setFinancialDateFrom(e.target.value); setFinancialDatePreset('') }} className="h-9" />
                     </div>
                     <div className="flex-1">
                       <Label className="text-xs text-muted-foreground mb-1">Data Fim</Label>
-                      <Input type="date" value={financialDateTo} onChange={e => setFinancialDateTo(e.target.value)} className="h-9" />
+                      <Input type="date" value={financialDateTo} onChange={e => { setFinancialDateTo(e.target.value); setFinancialDatePreset('') }} className="h-9" />
                     </div>
                     <div className="flex-1">
                       <Label className="text-xs text-muted-foreground mb-1">Tipo</Label>
@@ -1077,7 +1255,7 @@ export function AdminPage() {
               </Card>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* Monthly Revenue Chart */}
+                {/* Monthly Revenue Chart - Enhanced */}
                 <Card>
                   <CardHeader>
                     <div className="flex items-center justify-between">
@@ -1087,7 +1265,7 @@ export function AdminPage() {
                   </CardHeader>
                   <CardContent>
                     {financialData.monthlyRevenue.length > 0 ? (
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         {financialData.monthlyRevenue.map(m => {
                           const maxRevenue = Math.max(...financialData.monthlyRevenue.map(r => r.revenue), 1)
                           const pct = (m.revenue / maxRevenue) * 100
@@ -1096,18 +1274,21 @@ export function AdminPage() {
                           return (
                             <div key={m.month} className="space-y-1">
                               <div className="flex items-center justify-between text-xs">
-                                <span className="text-muted-foreground">{monthNames[parseInt(month) - 1]}/{year}</span>
-                                <span className="font-medium text-foreground">{formatCurrency(m.revenue)}</span>
+                                <span className="font-medium text-muted-foreground">{monthNames[parseInt(month) - 1]}/{year}</span>
+                                <span className="font-semibold text-foreground">{formatCurrency(m.revenue)}</span>
                               </div>
-                              <div className="w-full h-6 bg-muted rounded-md overflow-hidden">
+                              <div className="w-full h-8 bg-muted/50 rounded-lg overflow-hidden relative">
                                 <motion.div
-                                  className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-md flex items-center justify-end pr-2"
+                                  className="h-full bg-gradient-to-r from-emerald-500 via-emerald-400 to-teal-400 rounded-lg flex items-center justify-end pr-3"
                                   initial={{ width: 0 }}
-                                  animate={{ width: `${Math.max(pct, 2)}%` }}
-                                  transition={{ duration: 0.6, ease: 'easeOut' }}
+                                  animate={{ width: `${Math.max(pct, 3)}%` }}
+                                  transition={{ duration: 0.8, ease: 'easeOut' }}
                                 >
-                                  {pct > 20 && <span className="text-[10px] font-medium text-white">{Math.round(pct)}%</span>}
+                                  {pct > 15 && <span className="text-[10px] font-bold text-white drop-shadow-sm">{Math.round(pct)}%</span>}
                                 </motion.div>
+                                {pct <= 15 && pct > 0 && (
+                                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-muted-foreground">{Math.round(pct)}%</span>
+                                )}
                               </div>
                             </div>
                           )
@@ -1188,9 +1369,9 @@ export function AdminPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto max-h-96 overflow-y-auto">
                     <table className="w-full">
-                      <thead>
+                      <thead className="sticky top-0 bg-background z-10">
                         <tr className="border-b border-border">
                           <th className="text-left text-xs font-semibold text-muted-foreground p-3">Data</th>
                           <th className="text-left text-xs font-semibold text-muted-foreground p-3">Usuário</th>
@@ -1375,19 +1556,64 @@ export function AdminPage() {
           </Card>
         </TabsContent>
 
-        {/* Config Tab */}
+        {/* Config Tab → Configurações */}
         <TabsContent value="config" className="mt-4 space-y-4">
+          {/* Platform Settings */}
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
                 <Settings className="h-4 w-4 text-emerald-600" />
-                Configurações do Sistema
+                Configurações da Plataforma
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <div>
                 <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                  <DollarSign className="h-4 w-4 text-emerald-600" /> CashBack
+                  <Info className="h-4 w-4 text-emerald-600" /> Informações Gerais
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs">Nome da Plataforma</Label>
+                    <Input value={configs.platform_name || ''} onChange={(e) => setConfigs(c => ({ ...c, platform_name: e.target.value }))} placeholder="NewMobility" />
+                  </div>
+                </div>
+              </div>
+              <Separator />
+              <div>
+                <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                  <ToggleLeft className="h-4 w-4 text-amber-600" /> Controles do Sistema
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Modo Manutenção</p>
+                      <p className="text-xs text-muted-foreground">Desabilita o acesso para usuários comuns</p>
+                    </div>
+                    <button
+                      onClick={() => setConfigs(c => ({ ...c, maintenance_mode: c.maintenance_mode === 'true' ? 'false' : 'true' }))}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${configs.maintenance_mode === 'true' ? 'bg-amber-500' : 'bg-muted'}`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${configs.maintenance_mode === 'true' ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Novos Cadastros</p>
+                      <p className="text-xs text-muted-foreground">Permitir registro de novos usuários</p>
+                    </div>
+                    <button
+                      onClick={() => setConfigs(c => ({ ...c, registration_enabled: c.registration_enabled === 'false' ? 'true' : 'false' }))}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${configs.registration_enabled !== 'false' ? 'bg-emerald-500' : 'bg-muted'}`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${configs.registration_enabled !== 'false' ? 'translate-x-6' : 'translate-x-1'}`} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <Separator />
+              <div>
+                <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                  <DollarSign className="h-4 w-4 text-emerald-600" /> CashBack Padrão
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-2">
@@ -1436,7 +1662,7 @@ export function AdminPage() {
         {/* Announcements Tab */}
         <TabsContent value="announcements" className="mt-4 space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">{announcements.length} anúncios ativos</p>
+            <p className="text-sm text-muted-foreground">{announcements.length} anúncios</p>
             <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={() => setShowNewAnnouncement(true)}>
               <Plus className="h-4 w-4" /> Novo Anúncio
             </Button>
@@ -1452,7 +1678,13 @@ export function AdminPage() {
                       <Input placeholder="Título" value={newAnnouncement.title} onChange={(e) => setNewAnnouncement(a => ({ ...a, title: e.target.value }))} />
                       <div className="flex gap-2">
                         <select value={newAnnouncement.type} onChange={(e) => setNewAnnouncement(a => ({ ...a, type: e.target.value }))} className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm">
-                          <option value="info">Info</option><option value="promo">Promo</option><option value="maintenance">Manutenção</option><option value="feature">Feature</option><option value="urgent">Urgente</option>
+                          <option value="info">Info</option>
+                          <option value="warning">Aviso</option>
+                          <option value="success">Sucesso</option>
+                          <option value="promo">Promo</option>
+                          <option value="maintenance">Manutenção</option>
+                          <option value="feature">Feature</option>
+                          <option value="urgent">Urgente</option>
                         </select>
                         <select value={newAnnouncement.priority} onChange={(e) => setNewAnnouncement(a => ({ ...a, priority: e.target.value }))} className="flex-1 h-9 rounded-md border border-input bg-background px-3 text-sm">
                           <option value="low">Baixa</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option>
@@ -1484,15 +1716,19 @@ export function AdminPage() {
                         <span className="text-sm font-semibold text-foreground">{a.title}</span>
                         <Badge className={getTypeColor(a.type)}>{a.type}</Badge>
                         <Badge variant="outline" className="text-[10px]">{a.priority}</Badge>
+                        {!a.isActive && <Badge className="bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 text-[10px]">Inativo</Badge>}
                       </div>
                       <p className="text-xs text-muted-foreground">{a.message}</p>
                       <p className="text-[10px] text-muted-foreground mt-1">{new Date(a.createdAt).toLocaleDateString('pt-BR')}</p>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleToggleAnnouncement(a.id, a.isActive)}>
-                        {a.isActive ? <Eye className="h-3.5 w-3.5 text-emerald-600" /> : <X className="h-3.5 w-3.5 text-red-500" />}
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleToggleAnnouncement(a.id, a.isActive)} title={a.isActive ? 'Desativar' : 'Ativar'}>
+                        {a.isActive ? <ToggleRight className="h-3.5 w-3.5 text-emerald-600" /> : <ToggleLeft className="h-3.5 w-3.5 text-muted-foreground" />}
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600" onClick={() => handleDeleteAnnouncement(a.id)}>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-600 hover:text-blue-700" onClick={() => handleOpenEditAnnouncement(a)} title="Editar">
+                        <Edit className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600" onClick={() => handleDeleteAnnouncement(a.id)} title="Excluir">
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
@@ -1500,6 +1736,12 @@ export function AdminPage() {
                 </CardContent>
               </Card>
             ))}
+            {announcements.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                <Megaphone className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                Nenhum anúncio cadastrado
+              </div>
+            )}
           </div>
         </TabsContent>
       </Tabs>
@@ -1983,6 +2225,75 @@ export function AdminPage() {
               <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleSavePlan} disabled={savingPlan || !planFormData.name}>
                 {savingPlan ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="h-4 w-4" />}
                 {editingPlan ? 'Salvar' : 'Criar Plano'}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== EDIT ANNOUNCEMENT DIALOG ===== */}
+      <Dialog open={editAnnouncementDialogOpen} onOpenChange={setEditAnnouncementDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit className="h-4 w-4 text-emerald-600" />
+              Editar Anúncio
+            </DialogTitle>
+            <DialogDescription>Atualize os dados do anúncio.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-xs font-medium">Título</Label>
+              <Input value={editAnnouncementData.title} onChange={(e) => setEditAnnouncementData(d => ({ ...d, title: e.target.value }))} placeholder="Título do anúncio" />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-medium">Mensagem</Label>
+              <Input value={editAnnouncementData.message} onChange={(e) => setEditAnnouncementData(d => ({ ...d, message: e.target.value }))} placeholder="Mensagem do anúncio" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Tipo</Label>
+                <Select value={editAnnouncementData.type} onValueChange={(v) => setEditAnnouncementData(d => ({ ...d, type: v }))}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="info">Info</SelectItem>
+                    <SelectItem value="warning">Aviso</SelectItem>
+                    <SelectItem value="success">Sucesso</SelectItem>
+                    <SelectItem value="promo">Promo</SelectItem>
+                    <SelectItem value="maintenance">Manutenção</SelectItem>
+                    <SelectItem value="feature">Feature</SelectItem>
+                    <SelectItem value="urgent">Urgente</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Prioridade</Label>
+                <Select value={editAnnouncementData.priority} onValueChange={(v) => setEditAnnouncementData(d => ({ ...d, priority: v }))}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Baixa</SelectItem>
+                    <SelectItem value="normal">Normal</SelectItem>
+                    <SelectItem value="high">Alta</SelectItem>
+                    <SelectItem value="urgent">Urgente</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Botão de ação</Label>
+                <Input value={editAnnouncementData.actionLabel} onChange={(e) => setEditAnnouncementData(d => ({ ...d, actionLabel: e.target.value }))} placeholder="Opcional" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">URL do botão</Label>
+                <Input value={editAnnouncementData.actionUrl} onChange={(e) => setEditAnnouncementData(d => ({ ...d, actionUrl: e.target.value }))} placeholder="Opcional" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditAnnouncementDialogOpen(false)} disabled={savingAnnouncement}>Cancelar</Button>
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleSaveAnnouncement} disabled={savingAnnouncement || !editAnnouncementData.title || !editAnnouncementData.message}>
+                {savingAnnouncement ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="h-4 w-4" />}
+                Salvar
               </Button>
             </DialogFooter>
           </div>

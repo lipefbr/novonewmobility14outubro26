@@ -39,7 +39,20 @@ export async function POST() {
       CREATE INDEX IF NOT EXISTS "Beneficiary_userId_idx" ON "Beneficiary"("userId")
     `)
 
-    return success({ message: 'Migration completed successfully - Beneficiary table created' })
+    // Add age column if not exists (for insurance purposes)
+    await db.execute(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'Beneficiary' AND column_name = 'age'
+        ) THEN
+          ALTER TABLE "Beneficiary" ADD COLUMN "age" INTEGER;
+        END IF;
+      $$
+    `)
+
+    return success({ message: 'Migration completed successfully - Beneficiary table created/updated' })
   } catch (err) {
     console.error('Migration error:', err)
     return error('Migration failed: ' + (err instanceof Error ? err.message : String(err)), 500)

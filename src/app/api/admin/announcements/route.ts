@@ -4,6 +4,16 @@ import { success, error } from '@/lib/api-utils'
 
 export async function GET(req: NextRequest) {
   try {
+    const userId = req.nextUrl.searchParams.get('userId')
+    // Admin view: return ALL announcements (including inactive)
+    if (userId) {
+      const user = await db.findOne('User', '"id" = $1', [userId])
+      if (user && (user as any).role === 'admin') {
+        const all = await db.find('Announcement', undefined, [], 'ORDER BY "isActive" DESC, "createdAt" DESC')
+        return success(all)
+      }
+    }
+    // Public view: only active + in date range
     const announcements = await db.find(
       'Announcement',
       '"isActive" = $1',

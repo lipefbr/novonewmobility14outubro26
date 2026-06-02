@@ -13,6 +13,7 @@ import { ComparisonWidget } from './comparison-widget'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
 import { motion } from 'framer-motion'
 import {
   Copy,
@@ -45,8 +46,15 @@ import {
   Globe,
   Lock,
   CalendarIcon,
+  ShoppingCart,
+  CreditCard,
+  ChevronRight,
+  Sparkles,
+  Rocket,
+  Crown,
+  BarChart3,
 } from 'lucide-react'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { DashboardSkeleton } from '../ui/loading-skeletons'
 import { ResponsiveContainer, LineChart, Line, XAxis, Tooltip as RechartsTooltip } from 'recharts'
 
@@ -72,6 +80,11 @@ function getGreeting() {
   return { text: 'Boa noite', icon: Moon, iconClass: 'text-blue-300' }
 }
 
+// Format current time as HH:mm
+function getCurrentTime() {
+  return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+
 // Network Health mini chart data
 const networkHealthData = [
   { month: 'Jul', growth: 12 },
@@ -83,18 +96,43 @@ const networkHealthData = [
   { month: 'Jan', growth: 42 },
 ]
 
+// Plan upgrade progress data
+const planProgressData: Record<string, { current: string; next: string; progress: number; pointsNeeded: number; benefits: string[] }> = {
+  free: { current: 'Gratuito', next: 'Blue 3', progress: 20, pointsNeeded: 30, benefits: ['CashBack Entrada', 'Suporte básico'] },
+  blue3: { current: 'Blue 3', next: 'Blue 5 Premium', progress: 55, pointsNeeded: 15, benefits: ['CashBack Entrada + Residual', 'Vouchers mensais', 'Suporte prioritário'] },
+  blue5: { current: 'Blue 5 Premium', next: 'Blue 5 Elite', progress: 78, pointsNeeded: 8, benefits: ['CashBack Completo', 'Gratificações semanais', 'Saques ilimitados', 'App Motorista grátis'] },
+}
+
+// Weekly earnings data for CSS bar chart
+const weeklyEarningsData = [
+  { day: 'Seg', value: 18500, percentage: 42 },
+  { day: 'Ter', value: 24300, percentage: 55 },
+  { day: 'Qua', value: 15800, percentage: 36 },
+  { day: 'Qui', value: 31200, percentage: 71 },
+  { day: 'Sex', value: 28700, percentage: 65 },
+  { day: 'Sáb', value: 38500, percentage: 88 },
+  { day: 'Dom', value: 22100, percentage: 50 },
+]
+
 export function DashboardPage() {
   const { user, logout, setActivePage } = useStore()
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [currentTime, setCurrentTime] = useState(getCurrentTime())
+
+  // Update time every minute
+  useEffect(() => {
+    const interval = setInterval(() => setCurrentTime(getCurrentTime()), 60000)
+    return () => clearInterval(interval)
+  }, [])
 
   const quickActions = [
-    { label: t('dashboard.quick.indicate'), icon: UserPlus, color: 'from-emerald-500 to-emerald-600', page: 'referrals' as const },
-    { label: t('dashboard.quick.statement'), icon: FileText, color: 'from-teal-500 to-teal-600', page: 'financial' as const },
-    { label: t('dashboard.quick.withdraw'), icon: ArrowDownToLine, color: 'from-amber-500 to-amber-600', page: 'financial' as const },
-    { label: t('dashboard.quick.voucher'), icon: Ticket, color: 'from-purple-500 to-purple-600', page: 'voucher' as const },
+    { label: 'Comprar Voucher', icon: ShoppingCart, color: 'from-emerald-500 to-emerald-600', page: 'voucher' as const, description: 'Mobilidade, Farmácia...' },
+    { label: 'Indicar Amigo', icon: UserPlus, color: 'from-emerald-600 to-teal-500', page: 'referrals' as const, description: 'Ganhe CashBack' },
+    { label: 'Ver Extrato', icon: FileText, color: 'from-teal-500 to-emerald-500', page: 'financial' as const, description: 'Suas transações' },
+    { label: 'Solicitar Saque', icon: ArrowDownToLine, color: 'from-emerald-700 to-emerald-500', page: 'financial' as const, description: 'Saque disponível' },
   ]
 
   useEffect(() => {
@@ -151,32 +189,24 @@ export function DashboardPage() {
     newReferrals: Math.max(1, Math.floor((dashboardData?.directReferralCount ?? dashboardData?.directReferrals ?? 4) * 0.3)),
   }
 
-  // Quick stats for mini-bar with count-up values
+  // Quick stats for mini-bar
   const quickStats = [
-    { label: 'Ganhos Hoje', value: 'R$ 127,50', rawValue: 12750, icon: DollarSign, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
-    { label: 'Novos Indicados', value: '2', rawValue: 2, icon: UserPlus, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-950/30' },
-    { label: 'CashBack Pendente', value: 'R$ 890,00', rawValue: 89000, icon: Clock, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/30' },
-    { label: 'Pontos Hoje', value: '+5', rawValue: 5, icon: Star, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-950/30' },
-  ]
-
-  // Activity timeline with more detail
-  const activityItems = [
-    { id: '1', description: 'CashBack Entrada recebido', detail: 'R$ 45,00 — Nível 2', time: '2h atrás', icon: DollarSign, color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' },
-    { id: '2', description: 'Novo indicado: Maria Santos', detail: 'Plano Blue 5', time: '5h atrás', icon: Users, color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' },
-    { id: '3', description: 'Gratificação Liderança creditada', detail: 'R$ 85,00', time: '1 dia', icon: TrendingUp, color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400' },
-    { id: '4', description: 'Saque de R$ 500,00 processado', detail: 'Conta Bancária', time: '2 dias', icon: ArrowDownToLine, color: 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400' },
-    { id: '5', description: 'Upgrade de plano confirmado', detail: 'Blue 5 Premium', time: '3 dias', icon: Zap, color: 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400' },
-    { id: '6', description: 'Voucher R$25 comprado', detail: 'Mobilidade', time: '4 dias', icon: Gift, color: 'bg-teal-100 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400' },
+    { label: 'Ganhos Hoje', value: formatCurrency(12750), rawValue: 12750, icon: DollarSign, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+    { label: 'Novos Indicados', value: '2', rawValue: 2, icon: UserPlus, color: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-50 dark:bg-teal-950/30' },
+    { label: 'CashBack Pendente', value: formatCurrency(89000), rawValue: 89000, icon: Clock, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/30' },
+    { label: 'Pontos Hoje', value: '+5', rawValue: 5, icon: Star, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
   ]
 
   // Greeting
   const greeting = getGreeting()
   const GreetingIcon = greeting.icon
 
-  // Career milestones for "Next Milestone" card
-  const careerProgress = dashboardData?.career?.progress ?? 75
-  const nextRankName = dashboardData?.career?.nextRank?.name ?? 'Safira'
-  const pointsNeeded = dashboardData?.career?.nextRank?.pointsNeeded ?? 8
+  // Plan progress
+  const currentPlan = user?.plan || 'free'
+  const planInfo = planProgressData[currentPlan] || planProgressData.free
+
+  // Weekly total earnings
+  const weeklyTotal = useMemo(() => weeklyEarningsData.reduce((sum, d) => sum + d.value, 0), [])
 
   if (loading) {
     return <DashboardSkeleton />
@@ -190,22 +220,23 @@ export function DashboardPage() {
       {/* Visual separator */}
       <div className="border-b border-emerald-200/50 dark:border-emerald-800/30" />
 
-      {/* Greeting Card based on time of day */}
+      {/* ===== ENHANCED GREETING CARD ===== */}
       <motion.div
-        initial={{ opacity: 0, y: 10 }}
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
       >
-        <Card className="border-0 shadow-lg overflow-hidden">
-          <div className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 animate-gradient-shift relative">
+        <Card className="border-0 shadow-xl overflow-hidden">
+          <div className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 relative">
+            {/* Decorative pattern */}
             <div className="absolute inset-0 opacity-10" style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
             }} />
-            <div className="absolute inset-0 animate-shimmer" />
+            <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent" />
             <CardContent className="p-5 md:p-6 relative">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div className="text-white">
-                  <h2 className="text-xl md:text-2xl font-bold flex items-center gap-2">
+                  <div className="flex items-center gap-3 mb-1">
                     <motion.span
                       animate={{ rotate: [0, 14, -8, 14, -4, 10, 0] }}
                       transition={{ delay: 0.5, duration: 0.8, ease: 'easeInOut' }}
@@ -213,25 +244,33 @@ export function DashboardPage() {
                     >
                       <GreetingIcon className={`h-7 w-7 ${greeting.iconClass}`} />
                     </motion.span>
-                    {greeting.text}, {user?.name?.split(' ')[0] || 'Usuário'}
-                  </h2>
+                    <h2 className="text-xl md:text-2xl font-bold">
+                      {greeting.text}, {user?.name?.split(' ')[0] || 'Usuário'}!
+                    </h2>
+                  </div>
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-2 text-emerald-100 text-sm">
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5" />
+                      {currentTime}
+                    </span>
+                    <span className="hidden sm:inline text-emerald-300">•</span>
                     <span>{t('dashboard.since')}: {user?.createdAt ? formatDate(user.createdAt) : '-'}</span>
-                    <span className="hidden sm:inline">|</span>
+                    <span className="hidden sm:inline text-emerald-300">•</span>
                     <span className="font-medium text-white">{user?.createdAt ? timeSince(user.createdAt) : '-'}</span>
-                    <Badge variant="secondary" className="w-fit bg-white/20 text-white border-0">
-                      {getPlanName(user?.plan || 'free')}
+                    <Badge variant="secondary" className="w-fit bg-white/20 text-white border-0 hover:bg-white/30">
+                      <Crown className="h-3 w-3 mr-1" />
+                      {getPlanName(currentPlan)}
                     </Badge>
                   </div>
                 </div>
-                <div className="flex flex-col gap-2 gradient-border rounded-xl p-3">
-                  <div className="flex items-center gap-2 bg-white/15 backdrop-blur-sm rounded-lg px-3 py-2">
+                <div className="flex flex-col gap-2 bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/10">
+                  <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2">
                     <Link2 className="h-4 w-4 text-emerald-200 shrink-0" />
                     <span className="text-sm text-white truncate max-w-[200px] md:max-w-[260px]">
                       🔗 {t('dashboard.referral.link')}:
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-lg px-3 py-2">
+                  <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2">
                     <span className="text-sm font-mono text-white font-medium truncate flex-1">
                       {referralLink}
                     </span>
@@ -259,11 +298,11 @@ export function DashboardPage() {
         </Card>
       </motion.div>
 
-      {/* Quick Stats Mini-Bar */}
+      {/* ===== QUICK STATS MINI-BAR with animation ===== */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05, duration: 0.3 }}
+        transition={{ delay: 0.08, duration: 0.35 }}
       >
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           {quickStats.map((stat, i) => {
@@ -271,14 +310,17 @@ export function DashboardPage() {
             return (
               <motion.div
                 key={stat.label}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.05 + i * 0.03, duration: 0.2 }}
-                className={`flex items-center gap-2 ${stat.bg} border border-border rounded-lg px-3 py-2 shadow-sm card-hover`}
+                initial={{ opacity: 0, scale: 0.92, y: 6 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ delay: 0.1 + i * 0.06, duration: 0.35, ease: 'easeOut' }}
+                whileHover={{ scale: 1.03, y: -2 }}
+                className={`flex items-center gap-2.5 ${stat.bg} border border-emerald-100 dark:border-emerald-900/40 rounded-xl px-3.5 py-2.5 shadow-sm cursor-pointer transition-shadow duration-200 hover:shadow-md`}
               >
-                <Icon className={`h-4 w-4 shrink-0 ${stat.color}`} />
+                <div className={`p-1.5 rounded-lg bg-white/60 dark:bg-white/5 ${stat.color}`}>
+                  <Icon className="h-4 w-4 shrink-0" />
+                </div>
                 <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground truncate">{stat.label}</p>
+                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide truncate">{stat.label}</p>
                   <p className="text-sm font-bold text-foreground">{stat.value}</p>
                 </div>
               </motion.div>
@@ -287,14 +329,11 @@ export function DashboardPage() {
         </div>
       </motion.div>
 
-      {/* Visual separator */}
-      <div className="border-b border-emerald-200/50 dark:border-emerald-800/30" />
-
-      {/* Quick Actions */}
+      {/* ===== QUICK ACTION CARDS (Emerald accent) ===== */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1, duration: 0.3 }}
+        transition={{ delay: 0.15, duration: 0.35 }}
       >
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
@@ -309,24 +348,28 @@ export function DashboardPage() {
             return (
               <motion.button
                 key={action.label}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.1 + i * 0.05, duration: 0.2 }}
+                initial={{ opacity: 0, scale: 0.92, y: 8 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ delay: 0.15 + i * 0.06, duration: 0.3, ease: 'easeOut' }}
                 onClick={() => setActivePage(action.page)}
-                className="group relative overflow-hidden rounded-xl p-4 text-left transition-all duration-200 hover:scale-[1.02] active:scale-[0.97] hover:shadow-lg"
-                whileHover={{ scale: 1.03 }}
+                className="group relative overflow-hidden rounded-xl text-left transition-all duration-200"
+                whileHover={{ scale: 1.03, y: -2 }}
                 whileTap={{ scale: 0.97 }}
               >
-                <div className={`absolute inset-0 bg-gradient-to-br ${action.color} opacity-90 group-hover:opacity-100 transition-opacity duration-200`} />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors duration-200" />
+                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500 to-emerald-600 group-hover:from-emerald-400 group-hover:to-emerald-500 transition-all duration-300" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" />
                 <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  <div className="absolute inset-0 animate-shimmer" />
+                  <div className="absolute inset-0 bg-white/5" />
                 </div>
-                <div className="relative">
-                  <div className="p-2 rounded-lg bg-white/20 w-fit mb-2">
-                    <Icon className="h-5 w-5 text-white" />
+                <div className="relative p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="p-2.5 rounded-xl bg-white/20 backdrop-blur-sm shadow-sm">
+                      <Icon className="h-5 w-5 text-white" />
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-white/40 group-hover:text-white/80 group-hover:translate-x-0.5 transition-all duration-200" />
                   </div>
-                  <span className="text-sm font-semibold text-white">{action.label}</span>
+                  <span className="text-sm font-bold text-white block">{action.label}</span>
+                  <span className="text-[10px] text-emerald-100/80 mt-0.5 block">{action.description}</span>
                 </div>
               </motion.button>
             )
@@ -337,24 +380,188 @@ export function DashboardPage() {
       {/* Visual separator */}
       <div className="border-b border-emerald-200/50 dark:border-emerald-800/30" />
 
-      {/* Stats Cards */}
+      {/* ===== STATS CARDS (enhanced with framer-motion) ===== */}
       <StatsCards data={dashboardData} />
 
-      {/* Section Separator with visual detail */}
+      {/* Section Separator */}
       <div className="section-separator" />
 
-      {/* Data Comparison Widget */}
+      {/* ===== WEEKLY EARNINGS MINI CHART + PLAN UPGRADE PROGRESS ===== */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+        {/* Weekly Earnings CSS Bar Chart */}
+        <motion.div
+          initial={{ opacity: 0, x: -15 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.2, duration: 0.4 }}
+        >
+          <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden border-0 bg-gradient-to-br from-card to-emerald-50/30 dark:to-emerald-950/10">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5 text-emerald-600" />
+                  Ganhos da Semana
+                </CardTitle>
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 rounded-full">
+                  <TrendingUp className="h-3 w-3" />
+                  +12%
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium">Total semanal</p>
+                  <p className="text-2xl font-bold text-foreground">{formatCurrency(weeklyTotal)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground font-medium">Média diária</p>
+                  <p className="text-sm font-bold text-emerald-600">{formatCurrency(Math.round(weeklyTotal / 7))}</p>
+                </div>
+              </div>
+              {/* CSS Bar Chart */}
+              <div className="flex items-end justify-between gap-1.5 h-32 mb-2">
+                {weeklyEarningsData.map((item, i) => (
+                  <div key={item.day} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                    <motion.div
+                      initial={{ height: 0 }}
+                      animate={{ height: `${item.percentage}%` }}
+                      transition={{ delay: 0.3 + i * 0.08, duration: 0.6, ease: 'easeOut' }}
+                      className="w-full rounded-t-md bg-gradient-to-t from-emerald-600 to-emerald-400 hover:from-emerald-500 hover:to-emerald-300 transition-colors duration-200 cursor-pointer relative group min-h-[4px]"
+                    >
+                      <div className="absolute -top-7 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-foreground text-background text-[9px] font-bold px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap z-10">
+                        {formatCurrency(item.value)}
+                      </div>
+                    </motion.div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between text-[10px] text-muted-foreground font-medium">
+                {weeklyEarningsData.map((item) => (
+                  <span key={item.day} className="flex-1 text-center">{item.day}</span>
+                ))}
+              </div>
+              <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Melhor dia</span>
+                <span className="font-semibold text-emerald-600">Sábado — {formatCurrency(38500)}</span>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Plan Upgrade Progress Card */}
+        <motion.div
+          initial={{ opacity: 0, x: 15 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.25, duration: 0.4 }}
+        >
+          <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden border-0">
+            <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 relative">
+              {/* Decorative circles */}
+              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
+              <div className="absolute bottom-0 left-0 w-24 h-24 bg-emerald-500/5 rounded-full translate-y-1/2 -translate-x-1/2" />
+              <CardHeader className="pb-2 relative">
+                <CardTitle className="text-sm font-bold text-white flex items-center gap-2">
+                  <Rocket className="h-4 w-4 text-emerald-400" />
+                  Progresso do Plano
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="relative space-y-4">
+                {/* Current & Next Plan */}
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/5">
+                    <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Plano Atual</p>
+                    <p className="text-lg font-bold text-white flex items-center gap-1.5 mt-0.5">
+                      <Crown className="h-4 w-4 text-emerald-400" />
+                      {planInfo.current}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-center gap-1">
+                    <motion.div
+                      animate={{ x: [0, 4, 0] }}
+                      transition={{ repeat: Infinity, duration: 1.5, ease: 'easeInOut' }}
+                    >
+                      <ArrowRight className="h-5 w-5 text-emerald-400" />
+                    </motion.div>
+                    <span className="text-[8px] text-gray-500 uppercase">Upgrade</span>
+                  </div>
+                  <div className="flex-1 bg-emerald-500/15 backdrop-blur-sm rounded-xl p-3 border border-emerald-500/20">
+                    <p className="text-[10px] text-emerald-300 font-semibold uppercase tracking-wider">Próximo</p>
+                    <p className="text-lg font-bold text-emerald-300 flex items-center gap-1.5 mt-0.5">
+                      <Sparkles className="h-4 w-4 text-emerald-300" />
+                      {planInfo.next}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Progress Bar */}
+                <div>
+                  <div className="flex justify-between items-center text-xs mb-2">
+                    <span className="text-gray-400">Progresso geral</span>
+                    <span className="text-emerald-400 font-bold text-sm">{planInfo.progress}%</span>
+                  </div>
+                  <div className="h-3 bg-gray-700/80 rounded-full overflow-hidden">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${planInfo.progress}%` }}
+                      transition={{ delay: 0.6, duration: 1.2, ease: 'easeOut' }}
+                      className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full relative"
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
+                    </motion.div>
+                  </div>
+                </div>
+
+                {/* Points needed */}
+                <div className="flex items-center gap-2 bg-amber-500/10 rounded-lg px-3 py-2 border border-amber-500/15">
+                  <Target className="h-4 w-4 text-amber-400 shrink-0" />
+                  <p className="text-xs text-amber-200">
+                    Faltam <span className="font-bold">{planInfo.pointsNeeded} pontos</span> para o próximo nível
+                  </p>
+                </div>
+
+                {/* Benefits list */}
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">Benefícios do próximo plano</p>
+                  {planInfo.benefits.map((benefit, i) => (
+                    <motion.div
+                      key={benefit}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.8 + i * 0.08, duration: 0.3 }}
+                      className="flex items-center gap-2 text-xs"
+                    >
+                      <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                      <span className="text-gray-300">{benefit}</span>
+                    </motion.div>
+                  ))}
+                </div>
+
+                {/* CTA Button */}
+                <Button
+                  className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-semibold shadow-lg shadow-emerald-500/20 transition-all duration-200"
+                  onClick={() => setActivePage('myplan')}
+                >
+                  <Crown className="h-4 w-4 mr-2" />
+                  Ver Detalhes do Plano
+                </Button>
+              </CardContent>
+            </div>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* ===== DATA COMPARISON WIDGET ===== */}
       <ComparisonWidget />
 
-      {/* Network Overview + Network Health + Next Milestone */}
+      {/* ===== NETWORK OVERVIEW + NETWORK HEALTH + NEXT MILESTONE ===== */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Network Overview */}
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.3 }}
+          transition={{ delay: 0.2, duration: 0.35 }}
         >
-          <Card className="shadow-sm h-full bg-card card-hover-lift">
+          <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full bg-card border border-emerald-100/50 dark:border-emerald-900/30">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
                 <Activity className="h-5 w-5 text-emerald-600" />
@@ -363,18 +570,18 @@ export function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-3">
-                <div className="text-center p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl border border-emerald-100 dark:border-emerald-900/50">
+                <div className="text-center p-3 bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-950/30 dark:to-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-900/50">
                   <Users className="h-6 w-6 text-emerald-600 mx-auto mb-1" />
                   <p className="text-xl font-bold text-foreground">{networkStats.totalSize.toLocaleString('pt-BR')}</p>
                   <p className="text-[10px] text-muted-foreground font-medium">{t('dashboard.network.total')}</p>
                 </div>
-                <div className="text-center p-3 bg-teal-50 dark:bg-teal-950/30 rounded-xl border border-teal-100 dark:border-teal-900/50">
+                <div className="text-center p-3 bg-gradient-to-br from-teal-50 to-teal-100/50 dark:from-teal-950/30 dark:to-teal-900/20 rounded-xl border border-teal-100 dark:border-teal-900/50">
                   <TrendingUp className="h-6 w-6 text-teal-600 mx-auto mb-1" />
                   <p className="text-xl font-bold text-foreground">{networkStats.activeMembers}</p>
                   <p className="text-[10px] text-muted-foreground font-medium">{t('dashboard.network.active')}</p>
                 </div>
-                <div className="text-center p-3 bg-blue-50 dark:bg-blue-950/30 rounded-xl border border-blue-100 dark:border-blue-900/50">
-                  <UserPlus className="h-6 w-6 text-blue-600 mx-auto mb-1" />
+                <div className="text-center p-3 bg-gradient-to-br from-emerald-50 to-teal-100/50 dark:from-emerald-950/30 dark:to-teal-900/20 rounded-xl border border-emerald-100 dark:border-emerald-900/50">
+                  <UserPlus className="h-6 w-6 text-emerald-600 mx-auto mb-1" />
                   <p className="text-xl font-bold text-foreground">{networkStats.newReferrals}</p>
                   <p className="text-[10px] text-muted-foreground font-medium">{t('dashboard.network.new')}</p>
                 </div>
@@ -385,11 +592,11 @@ export function DashboardPage() {
 
         {/* Network Health Mini Widget - Line chart */}
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25, duration: 0.3 }}
+          transition={{ delay: 0.25, duration: 0.35 }}
         >
-          <Card className="shadow-sm h-full bg-card card-hover-lift">
+          <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full bg-card border border-emerald-100/50 dark:border-emerald-900/30">
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
                 <TrendingUp className="h-5 w-5 text-emerald-600" />
@@ -428,11 +635,11 @@ export function DashboardPage() {
 
         {/* Next Milestone Card */}
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.3 }}
+          transition={{ delay: 0.3, duration: 0.35 }}
         >
-          <Card className="shadow-sm h-full bg-gradient-to-br from-gray-900 to-gray-800 border-0 overflow-hidden relative">
+          <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full bg-gradient-to-br from-gray-900 to-gray-800 border-0 overflow-hidden relative">
             <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
             <CardContent className="p-4 flex flex-col justify-between h-full relative">
               <div>
@@ -442,22 +649,22 @@ export function DashboardPage() {
                   </div>
                   <div>
                     <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Próximo Marco</p>
-                    <p className="text-base font-bold text-white">{nextRankName}</p>
+                    <p className="text-base font-bold text-white">{dashboardData?.career?.nextRank?.name ?? 'Safira'}</p>
                   </div>
                 </div>
                 <div className="mt-2">
                   <div className="flex justify-between text-xs text-gray-400 mb-1.5">
                     <span>Progresso</span>
-                    <span className="text-emerald-400 font-bold">{careerProgress.toFixed(0)}%</span>
+                    <span className="text-emerald-400 font-bold">{(dashboardData?.career?.progress ?? 75).toFixed(0)}%</span>
                   </div>
                   <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
                     <motion.div
                       initial={{ width: 0 }}
-                      animate={{ width: `${careerProgress.toFixed(0)}%` }}
+                      animate={{ width: `${(dashboardData?.career?.progress ?? 75).toFixed(0)}%` }}
                       transition={{ delay: 0.5, duration: 1.2, ease: 'easeOut' }}
                       className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full relative"
                     >
-                      <div className="absolute inset-0 animate-shimmer" />
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
                     </motion.div>
                   </div>
                 </div>
@@ -466,7 +673,7 @@ export function DashboardPage() {
                 <div className="flex items-center gap-1.5">
                   <Target className="h-3.5 w-3.5 text-emerald-400" />
                   <p className="text-xs text-emerald-400 font-medium">
-                    Faltam {pointsNeeded} pontos
+                    Faltam {dashboardData?.career?.nextRank?.pointsNeeded ?? 8} pontos
                   </p>
                 </div>
                 <Button
@@ -487,7 +694,7 @@ export function DashboardPage() {
       {/* Visual separator */}
       <div className="border-b border-emerald-200/50 dark:border-emerald-800/30" />
 
-      {/* Financial Cards */}
+      {/* ===== FINANCIAL CARDS ===== */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
@@ -508,23 +715,23 @@ export function DashboardPage() {
         <FinancialCards data={dashboardData} />
       </div>
 
-      {/* Section Separator with visual detail */}
+      {/* Section Separator */}
       <div className="section-separator" />
 
       {/* Visual separator */}
       <div className="border-b border-emerald-200/50 dark:border-emerald-800/30" />
 
-      {/* Activity Feed + App Download */}
+      {/* ===== ACTIVITY FEED + APP DOWNLOAD ===== */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         <ActivityFeed />
 
-        {/* App Download Section with platform-specific hover colors */}
+        {/* App Download Section */}
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.3 }}
+          transition={{ delay: 0.3, duration: 0.35 }}
         >
-          <Card className="shadow-sm h-full bg-card card-hover-lift">
+          <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full bg-card border border-emerald-100/50 dark:border-emerald-900/30">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
                 <Smartphone className="h-5 w-5 text-emerald-600" />
@@ -536,43 +743,41 @@ export function DashboardPage() {
               <div className="grid grid-cols-2 gap-3">
                 <Button
                   variant="outline"
-                  className="h-auto py-3 flex flex-col gap-1.5 border-green-200 dark:border-green-800 hover:bg-green-50 dark:hover:bg-green-950/30 hover:border-green-400 dark:hover:border-green-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
+                  className="h-auto py-3 flex flex-col gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-400 dark:hover:border-emerald-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
                 >
-                  <Smartphone className="h-5 w-5 text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-semibold text-green-700 dark:text-green-400">Android</span>
+                  <Smartphone className="h-5 w-5 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
+                  <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Android</span>
                   <span className="text-[10px] text-muted-foreground">{t('dashboard.download.driver')}</span>
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-auto py-3 flex flex-col gap-1.5 border-sky-200 dark:border-sky-800 hover:bg-sky-50 dark:hover:bg-sky-950/30 hover:border-sky-400 dark:hover:border-sky-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
+                  className="h-auto py-3 flex flex-col gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-400 dark:hover:border-emerald-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
                 >
-                  <Apple className="h-5 w-5 text-sky-600 dark:text-sky-400 group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-semibold text-sky-700 dark:text-sky-400">iOS</span>
+                  <Apple className="h-5 w-5 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
+                  <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">iOS</span>
                   <span className="text-[10px] text-muted-foreground">{t('dashboard.download.driver')}</span>
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-auto py-3 flex flex-col gap-1.5 border-green-200 dark:border-green-800 hover:bg-green-50 dark:hover:bg-green-950/30 hover:border-green-400 dark:hover:border-green-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
+                  className="h-auto py-3 flex flex-col gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-400 dark:hover:border-emerald-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
                 >
-                  <Smartphone className="h-5 w-5 text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-semibold text-green-700 dark:text-green-400">Android</span>
+                  <Smartphone className="h-5 w-5 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
+                  <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Android</span>
                   <span className="text-[10px] text-muted-foreground">{t('dashboard.download.passenger')}</span>
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-auto py-3 flex flex-col gap-1.5 border-sky-200 dark:border-sky-800 hover:bg-sky-50 dark:hover:bg-sky-950/30 hover:border-sky-400 dark:hover:border-sky-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
+                  className="h-auto py-3 flex flex-col gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-400 dark:hover:border-emerald-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
                 >
-                  <Apple className="h-5 w-5 text-sky-600 dark:text-sky-400 group-hover:scale-110 transition-transform" />
-                  <span className="text-xs font-semibold text-sky-700 dark:text-sky-400">iOS</span>
+                  <Apple className="h-5 w-5 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
+                  <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">iOS</span>
                   <span className="text-[10px] text-muted-foreground">{t('dashboard.download.passenger')}</span>
                 </Button>
               </div>
-              {/* Play Store badge */}
-              <div className="mt-3 flex items-center justify-center gap-2 bg-muted/50 rounded-lg p-2.5">
+              <div className="mt-3 flex items-center justify-center gap-2 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-lg p-2.5 border border-emerald-100/50 dark:border-emerald-900/30">
                 <Play className="h-4 w-4 text-emerald-600" />
                 <span className="text-[10px] text-muted-foreground font-medium">Disponível na Google Play e App Store</span>
               </div>
-              {/* Trust Badges */}
               <div className="mt-3 flex items-center justify-center gap-4">
                 <div className="flex items-center gap-1.5 text-muted-foreground">
                   <Lock className="h-3.5 w-3.5 text-emerald-600" />
@@ -592,10 +797,10 @@ export function DashboardPage() {
         </motion.div>
       </div>
 
-      {/* Charts */}
+      {/* ===== CHARTS ===== */}
       <DashboardCharts data={dashboardData} />
 
-      {/* Visão Geral - Mini Widgets */}
+      {/* ===== VISÃO GERAL - MINI WIDGETS ===== */}
       <div className="border-b border-emerald-200/50 dark:border-emerald-800/30" />
       <div>
         <h3 className="text-lg font-bold text-foreground flex items-center gap-2 mb-4">
@@ -606,11 +811,11 @@ export function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Próximos Eventos Mini Widget */}
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1, duration: 0.3 }}
+            transition={{ delay: 0.1, duration: 0.35 }}
           >
-            <Card className="shadow-sm h-full bg-card card-hover-lift">
+            <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full bg-card border border-emerald-100/50 dark:border-emerald-900/30">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
                   <CalendarIcon className="h-4 w-4 text-emerald-600" />
@@ -656,11 +861,11 @@ export function DashboardPage() {
 
           {/* Sua Posição Mini Widget */}
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2, duration: 0.3 }}
+            transition={{ delay: 0.2, duration: 0.35 }}
           >
-            <Card className="shadow-sm h-full bg-gradient-to-br from-gray-900 to-gray-800 border-0 overflow-hidden relative">
+            <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full bg-gradient-to-br from-gray-900 to-gray-800 border-0 overflow-hidden relative">
               <div className="absolute top-0 right-0 w-20 h-20 bg-amber-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
               <CardHeader className="pb-2 relative">
                 <CardTitle className="text-sm font-bold text-white flex items-center gap-2">
@@ -670,7 +875,14 @@ export function DashboardPage() {
               </CardHeader>
               <CardContent className="relative">
                 <div className="text-center mb-3">
-                  <p className="text-3xl font-bold text-white animate-count-pop">#15</p>
+                  <motion.p
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ delay: 0.3, duration: 0.5, ease: 'easeOut' }}
+                    className="text-3xl font-bold text-white"
+                  >
+                    #15
+                  </motion.p>
                   <p className="text-xs text-gray-400 mt-1">de 156 membros</p>
                 </div>
                 <div className="space-y-2">
@@ -702,11 +914,11 @@ export function DashboardPage() {
 
           {/* Resumo Semanal Mini Widget with Sparkline */}
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3, duration: 0.3 }}
+            transition={{ delay: 0.3, duration: 0.35 }}
           >
-            <Card className="shadow-sm h-full bg-card card-hover-lift">
+            <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full bg-card border border-emerald-100/50 dark:border-emerald-900/30">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
                   <TrendingUp className="h-4 w-4 text-emerald-600" />
@@ -717,7 +929,7 @@ export function DashboardPage() {
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <p className="text-xs text-muted-foreground">Ganhos esta semana</p>
-                    <p className="text-xl font-bold text-foreground">R$ 1.250,00</p>
+                    <p className="text-xl font-bold text-foreground">{formatCurrency(125000)}</p>
                   </div>
                   <div className="flex items-center gap-1 text-xs font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-1 rounded-full">
                     <TrendingUp className="h-3 w-3" />
@@ -751,7 +963,6 @@ export function DashboardPage() {
                       animate={{ opacity: 1 }}
                       transition={{ delay: 0.5, duration: 0.5 }}
                     />
-                    {/* Data points */}
                     {[
                       { x: 0, y: 45 }, { x: 33, y: 38 }, { x: 66, y: 42 },
                       { x: 100, y: 30 }, { x: 133, y: 25 }, { x: 166, y: 18 }, { x: 200, y: 10 },
@@ -782,7 +993,7 @@ export function DashboardPage() {
                 </div>
                 <div className="mt-2 pt-2 border-t border-border flex items-center justify-between text-[10px]">
                   <span className="text-muted-foreground">Média diária</span>
-                  <span className="font-semibold text-foreground">R$ 178,57</span>
+                  <span className="font-semibold text-foreground">{formatCurrency(17857)}</span>
                 </div>
               </CardContent>
             </Card>

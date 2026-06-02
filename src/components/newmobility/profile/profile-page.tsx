@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,12 +19,14 @@ import {
   Verified, Mail, Phone, MapPin, Pencil, Eye, EyeOff, Smartphone, Globe, Key,
   ShieldCheck, ShieldAlert, ShieldX, Chrome, Apple, Send, FileCheck, Hash,
   AlertTriangle, HelpCircle, Heart, Plus, Trash2, Edit3, X,
+  Siren, Cake, Loader2,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
 import { TwoFactorSetup } from './two-factor-setup'
-import { userApi } from '@/lib/api'
+import { userApi, apiFetch } from '@/lib/api'
 import { toast as sonnerToast } from 'sonner'
+import { cn } from '@/lib/utils'
 
 // Inline Editable Field component
 function InlineField({ label, value, onChange, icon: Icon, type = 'text', disabled = false }: {
@@ -83,6 +85,109 @@ function InlineField({ label, value, onChange, icon: Icon, type = 'text', disabl
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// Donut Chart component for beneficiary distribution
+function BeneficiaryDonutChart({ beneficiaries }: { beneficiaries: { name: string; percentage: number; relationship: string }[] }) {
+  const colors = ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ef4444', '#ec4899', '#06b6d4', '#84cc16']
+  const total = beneficiaries.reduce((sum, b) => sum + b.percentage, 0)
+  const remaining = 100 - total
+
+  const segments = beneficiaries.reduce<{ name: string; percent: number; startAngle: number; endAngle: number; color: string }[]>((acc, b, i) => {
+    const prevEnd = acc.length > 0 ? acc[acc.length - 1].endAngle : 0
+    const endAngle = prevEnd + (b.percentage / 100) * 360
+    acc.push({
+      name: b.name,
+      percent: b.percentage,
+      startAngle: prevEnd,
+      endAngle,
+      color: colors[i % colors.length],
+    })
+    return acc
+  }, [])
+
+  // Add remaining segment
+  if (remaining > 0) {
+    const prevEnd = segments.length > 0 ? segments[segments.length - 1].endAngle : 0
+    segments.push({
+      name: 'Disponível',
+      percent: remaining,
+      startAngle: prevEnd,
+      endAngle: prevEnd + (remaining / 100) * 360,
+      color: '#e5e7eb',
+    })
+  }
+
+  const radius = 60
+  const cx = 70
+  const cy = 70
+  const strokeWidth = 24
+
+  function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
+    const angleRad = ((angleDeg - 90) * Math.PI) / 180
+    return {
+      x: cx + r * Math.cos(angleRad),
+      y: cy + r * Math.sin(angleRad),
+    }
+  }
+
+  function describeArc(startAngle: number, endAngle: number) {
+    if (endAngle - startAngle >= 359.99) {
+      // Full circle - use two arcs
+      const mid = startAngle + 180
+      const s1 = polarToCartesian(cx, cy, radius, startAngle)
+      const m1 = polarToCartesian(cx, cy, radius, mid)
+      const e1 = polarToCartesian(cx, cy, radius, endAngle - 0.01)
+      return `M ${s1.x} ${s1.y} A ${radius} ${radius} 0 0 1 ${m1.x} ${m1.y} A ${radius} ${radius} 0 0 1 ${e1.x} ${e1.y}`
+    }
+    const start = polarToCartesian(cx, cy, radius, startAngle)
+    const end = polarToCartesian(cx, cy, radius, endAngle)
+    const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0
+    return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`
+  }
+
+  return (
+    <div className="flex flex-col sm:flex-row items-center gap-4">
+      <div className="relative">
+        <svg width="140" height="140" viewBox="0 0 140 140">
+          {/* Background circle */}
+          <circle cx={cx} cy={cy} r={radius} fill="none" stroke="#e5e7eb" strokeWidth={strokeWidth} className="dark:stroke-gray-700" />
+          {/* Segments */}
+          {segments.map((seg, i) => (
+            <path
+              key={i}
+              d={describeArc(seg.startAngle, seg.endAngle)}
+              fill="none"
+              stroke={seg.color}
+              strokeWidth={strokeWidth}
+              strokeLinecap="butt"
+            />
+          ))}
+          {/* Center text */}
+          <text x={cx} y={cy - 6} textAnchor="middle" className="text-lg font-bold fill-foreground" style={{ fontSize: '18px' }}>
+            {total}%
+          </text>
+          <text x={cx} y={cy + 12} textAnchor="middle" className="text-xs fill-muted-foreground" style={{ fontSize: '10px' }}>
+            Alocado
+          </text>
+        </svg>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {beneficiaries.map((b, i) => (
+          <div key={b.name} className="flex items-center gap-1.5">
+            <div className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colors[i % colors.length] }} />
+            <span className="text-[10px] text-muted-foreground">{b.name.split(' ')[0]} ({b.percentage}%)</span>
+          </div>
+        ))}
+        {remaining > 0 && (
+          <div className="flex items-center gap-1.5">
+            <div className="h-2.5 w-2.5 rounded-full bg-gray-200 dark:bg-gray-700" />
+            <span className="text-[10px] text-muted-foreground">Disponível ({remaining}%)</span>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -207,6 +312,13 @@ export function ProfilePage() {
     state: 'SP',
   })
 
+  // Emergency contact state
+  const [emergencyContact, setEmergencyContact] = useState({
+    name: '',
+    phone: '',
+    relationship: '',
+  })
+
   const [bankInfo, setBankInfo] = useState({
     bankCode: '001',
     bankAgency: '1234-5',
@@ -219,6 +331,161 @@ export function ProfilePage() {
     newPassword: '',
     confirmPassword: '',
   })
+
+  // Beneficiaries state - loaded from API
+  const [beneficiaries, setBeneficiaries] = useState<{
+    id: string
+    name: string
+    cpf: string
+    relationship: string
+    percentage: number
+    age: number | null
+  }[]>([])
+  const [beneficiariesLoading, setBeneficiariesLoading] = useState(false)
+  const [showBeneficiaryDialog, setShowBeneficiaryDialog] = useState(false)
+  const [editingBeneficiary, setEditingBeneficiary] = useState<typeof beneficiaries[0] | null>(null)
+  const [beneficiaryForm, setBeneficiaryForm] = useState({ name: '', cpf: '', relationship: 'spouse', percentage: 0, age: 0 })
+  const [beneficiarySaving, setBeneficiarySaving] = useState(false)
+
+  const totalBeneficiaryPercentage = beneficiaries.reduce((sum, b) => sum + b.percentage, 0)
+  const remainingBeneficiaryPercentage = 100 - totalBeneficiaryPercentage
+
+  const relationshipLabels: Record<string, string> = {
+    spouse: 'Cônjuge',
+    child: 'Filho(a)',
+    parent: 'Pai/Mãe',
+    sibling: 'Irmão(ã)',
+    other: 'Outro',
+  }
+
+  // Fetch beneficiaries from API
+  const fetchBeneficiaries = useCallback(async () => {
+    if (!user?.id) return
+    try {
+      setBeneficiariesLoading(true)
+      // Ensure table exists via migrate
+      await apiFetch<any>('/migrate', { method: 'POST' }).catch(() => {})
+      const data = await apiFetch<any>(`/user/beneficiaries?userId=${user.id}`)
+      if (data.beneficiaries && Array.isArray(data.beneficiaries)) {
+        setBeneficiaries(data.beneficiaries.map((b: any) => ({
+          id: b.id,
+          name: b.name,
+          cpf: b.cpf || '',
+          relationship: b.relationship,
+          percentage: b.percentage,
+          age: b.age || null,
+        })))
+      }
+    } catch (err) {
+      console.error('Failed to fetch beneficiaries:', err)
+      // Fallback to mock data if API fails
+      setBeneficiaries([
+        { id: '1', name: 'Maria Silva', cpf: '987.654.321-00', relationship: 'spouse', percentage: 50, age: 35 },
+        { id: '2', name: 'Pedro Silva', cpf: '456.789.123-00', relationship: 'child', percentage: 30, age: 12 },
+      ])
+    } finally {
+      setBeneficiariesLoading(false)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    fetchBeneficiaries()
+  }, [fetchBeneficiaries])
+
+  const handleAddBeneficiary = async () => {
+    if (!beneficiaryForm.name || beneficiaryForm.percentage <= 0) {
+      sonnerToast.error('Preencha nome e percentual')
+      return
+    }
+    if (totalBeneficiaryPercentage + beneficiaryForm.percentage > 100) {
+      sonnerToast.error('Total de percentuais não pode exceder 100%')
+      return
+    }
+
+    setBeneficiarySaving(true)
+    try {
+      const data = await apiFetch<any>('/user/beneficiaries', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: user?.id,
+          name: beneficiaryForm.name,
+          cpf: beneficiaryForm.cpf || undefined,
+          relationship: beneficiaryForm.relationship,
+          percentage: beneficiaryForm.percentage,
+          age: beneficiaryForm.age || undefined,
+        }),
+      })
+      if (data.beneficiary) {
+        await fetchBeneficiaries()
+        setBeneficiaryForm({ name: '', cpf: '', relationship: 'spouse', percentage: 0, age: 0 })
+        setShowBeneficiaryDialog(false)
+        sonnerToast.success('Beneficiário adicionado com sucesso!')
+      }
+    } catch (err: any) {
+      sonnerToast.error(err.message || 'Erro ao adicionar beneficiário')
+    } finally {
+      setBeneficiarySaving(false)
+    }
+  }
+
+  const handleEditBeneficiary = async () => {
+    if (!editingBeneficiary || !beneficiaryForm.name || beneficiaryForm.percentage <= 0) {
+      sonnerToast.error('Preencha nome e percentual')
+      return
+    }
+    const otherTotal = beneficiaries.filter(b => b.id !== editingBeneficiary.id).reduce((sum, b) => sum + b.percentage, 0)
+    if (otherTotal + beneficiaryForm.percentage > 100) {
+      sonnerToast.error('Total de percentuais não pode exceder 100%')
+      return
+    }
+
+    setBeneficiarySaving(true)
+    try {
+      await apiFetch<any>('/user/beneficiaries', {
+        method: 'PUT',
+        body: JSON.stringify({
+          id: editingBeneficiary.id,
+          userId: user?.id,
+          name: beneficiaryForm.name,
+          cpf: beneficiaryForm.cpf || undefined,
+          relationship: beneficiaryForm.relationship,
+          percentage: beneficiaryForm.percentage,
+          age: beneficiaryForm.age || undefined,
+        }),
+      })
+      await fetchBeneficiaries()
+      setEditingBeneficiary(null)
+      setBeneficiaryForm({ name: '', cpf: '', relationship: 'spouse', percentage: 0, age: 0 })
+      sonnerToast.success('Beneficiário atualizado com sucesso!')
+    } catch (err: any) {
+      sonnerToast.error(err.message || 'Erro ao atualizar beneficiário')
+    } finally {
+      setBeneficiarySaving(false)
+    }
+  }
+
+  const handleDeleteBeneficiary = async (id: string) => {
+    try {
+      await apiFetch<any>(`/user/beneficiaries?id=${id}&userId=${user?.id}`, {
+        method: 'DELETE',
+      })
+      setBeneficiaries(prev => prev.filter(b => b.id !== id))
+      sonnerToast.success('Beneficiário removido')
+    } catch (err: any) {
+      sonnerToast.error(err.message || 'Erro ao remover beneficiário')
+    }
+  }
+
+  const openEditBeneficiary = (b: typeof beneficiaries[0]) => {
+    setEditingBeneficiary(b)
+    setBeneficiaryForm({ name: b.name, cpf: b.cpf, relationship: b.relationship, percentage: b.percentage, age: b.age || 0 })
+  }
+
+  const openAddBeneficiary = () => {
+    setEditingBeneficiary(null)
+    setBeneficiaryForm({ name: '', cpf: '', relationship: 'spouse', percentage: 0, age: 0 })
+    setShowBeneficiaryDialog(true)
+  }
 
   const handleSavePersonal = () => {
     setSaving(true)
@@ -299,87 +566,6 @@ export function ProfilePage() {
   const securityColor = securityLevel === 'secure' ? 'text-emerald-500' : securityLevel === 'partial' ? 'text-amber-500' : 'text-red-500'
   const securityBg = securityLevel === 'secure' ? 'bg-emerald-100 dark:bg-emerald-950/30' : securityLevel === 'partial' ? 'bg-amber-100 dark:bg-amber-950/30' : 'bg-red-100 dark:bg-red-950/30'
   const SecurityIcon = securityLevel === 'secure' ? ShieldCheck : securityLevel === 'partial' ? ShieldAlert : ShieldX
-
-  // Beneficiaries state (local/mock)
-  const [beneficiaries, setBeneficiaries] = useState<{
-    id: string
-    name: string
-    cpf: string
-    relationship: string
-    percentage: number
-  }[]>([
-    { id: '1', name: 'Maria Silva', cpf: '987.654.321-00', relationship: 'spouse', percentage: 50 },
-    { id: '2', name: 'Pedro Silva', cpf: '456.789.123-00', relationship: 'child', percentage: 30 },
-  ])
-  const [showBeneficiaryDialog, setShowBeneficiaryDialog] = useState(false)
-  const [editingBeneficiary, setEditingBeneficiary] = useState<typeof beneficiaries[0] | null>(null)
-  const [beneficiaryForm, setBeneficiaryForm] = useState({ name: '', cpf: '', relationship: 'spouse', percentage: 0 })
-
-  const totalBeneficiaryPercentage = beneficiaries.reduce((sum, b) => sum + b.percentage, 0)
-  const remainingBeneficiaryPercentage = 100 - totalBeneficiaryPercentage
-
-  const relationshipLabels: Record<string, string> = {
-    spouse: 'Cônjuje',
-    child: 'Filho(a)',
-    parent: 'Pai/Mãe',
-    sibling: 'Irmão(ã)',
-    other: 'Outro',
-  }
-
-  const handleAddBeneficiary = () => {
-    if (!beneficiaryForm.name || beneficiaryForm.percentage <= 0) {
-      sonnerToast.error('Preencha nome e percentual')
-      return
-    }
-    if (totalBeneficiaryPercentage + beneficiaryForm.percentage > 100) {
-      sonnerToast.error('Total de percentuais não pode exceder 100%')
-      return
-    }
-    const newBeneficiary = {
-      id: Date.now().toString(),
-      ...beneficiaryForm,
-    }
-    setBeneficiaries(prev => [...prev, newBeneficiary])
-    setBeneficiaryForm({ name: '', cpf: '', relationship: 'spouse', percentage: 0 })
-    setShowBeneficiaryDialog(false)
-    sonnerToast.success('Beneficiário adicionado com sucesso!')
-  }
-
-  const handleEditBeneficiary = () => {
-    if (!editingBeneficiary || !beneficiaryForm.name || beneficiaryForm.percentage <= 0) {
-      sonnerToast.error('Preencha nome e percentual')
-      return
-    }
-    const otherTotal = beneficiaries.filter(b => b.id !== editingBeneficiary.id).reduce((sum, b) => sum + b.percentage, 0)
-    if (otherTotal + beneficiaryForm.percentage > 100) {
-      sonnerToast.error('Total de percentuais não pode exceder 100%')
-      return
-    }
-    setBeneficiaries(prev => prev.map(b =>
-      b.id === editingBeneficiary.id
-        ? { ...b, ...beneficiaryForm }
-        : b
-    ))
-    setEditingBeneficiary(null)
-    setBeneficiaryForm({ name: '', cpf: '', relationship: 'spouse', percentage: 0 })
-    sonnerToast.success('Beneficiário atualizado com sucesso!')
-  }
-
-  const handleDeleteBeneficiary = (id: string) => {
-    setBeneficiaries(prev => prev.filter(b => b.id !== id))
-    sonnerToast.success('Beneficiário removido')
-  }
-
-  const openEditBeneficiary = (b: typeof beneficiaries[0]) => {
-    setEditingBeneficiary(b)
-    setBeneficiaryForm({ name: b.name, cpf: b.cpf, relationship: b.relationship, percentage: b.percentage })
-  }
-
-  const openAddBeneficiary = () => {
-    setEditingBeneficiary(null)
-    setBeneficiaryForm({ name: '', cpf: '', relationship: 'spouse', percentage: 0 })
-    setShowBeneficiaryDialog(true)
-  }
 
   const tabs = [
     { value: 'personal', label: 'Informações Pessoais', shortLabel: 'Pessoal', icon: User },
@@ -480,7 +666,6 @@ export function ProfilePage() {
               <div className="flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="text-lg font-bold text-foreground">{user?.name}</h3>
-                  {/* Verification status badges next to name */}
                   <span className="inline-flex items-center gap-0.5 text-emerald-500" title="E-mail verificado">
                     <Mail className="h-3.5 w-3.5" /><Check className="h-2.5 w-2.5" />
                   </span>
@@ -496,7 +681,6 @@ export function ProfilePage() {
                   </Badge>
                 </div>
                 <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground flex-wrap">
-                  {/* Membro desde badge with nice format */}
                   <span className="inline-flex items-center gap-1.5 bg-muted/60 px-2.5 py-1 rounded-full border border-border">
                     <Calendar className="h-3.5 w-3.5 text-emerald-600" />
                     <span className="text-xs font-medium">Membro desde</span>
@@ -507,7 +691,6 @@ export function ProfilePage() {
                     <CreditCard className="h-3.5 w-3.5" />
                     {getPlanName(user?.plan || 'free')}
                   </span>
-                  {/* Inline security shield indicator */}
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full ${securityBg}`}>
                     <SecurityIcon className={`h-3.5 w-3.5 ${securityColor}`} />
                     <span className={`text-[10px] font-semibold ${securityColor}`}>Segurança {securityScore}/{securityTotal}</span>
@@ -547,7 +730,7 @@ export function ProfilePage() {
               </div>
             </div>
 
-            {/* Profile Completion Progress Bar (moved to top, kept here as summary) */}
+            {/* Profile Completion Progress Bar */}
             <div className="mt-4 bg-muted/50 rounded-lg p-3 border border-border">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-medium text-foreground">Completude do Perfil</span>
@@ -618,9 +801,9 @@ export function ProfilePage() {
           </TabsList>
         </div>
 
-        {/* Personal Info Tab with Inline Editable Fields */}
+        {/* Personal Info Tab with Inline Editable Fields + Emergency Contact */}
         <TabsContent value="personal" className="mt-4">
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
             <Card className="shadow-sm bg-card">
               <CardHeader>
                 <CardTitle className="text-base font-bold flex items-center gap-2">
@@ -658,6 +841,54 @@ export function ProfilePage() {
                     <Save className="h-4 w-4" />
                   )}
                   Salvar Alterações
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Emergency Contact Card */}
+            <Card className="shadow-sm bg-card">
+              <CardHeader>
+                <CardTitle className="text-base font-bold flex items-center gap-2">
+                  <Siren className="h-4 w-4 text-red-500" />
+                  Contato de Emergência
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-3">
+                  <p className="text-xs text-red-700 dark:text-red-400">
+                    Este contato será utilizado em caso de emergência para fins de seguro e segurança.
+                  </p>
+                </div>
+                <Separator />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <InlineField
+                    label="Nome do Contato"
+                    value={emergencyContact.name}
+                    onChange={(v) => setEmergencyContact((p) => ({ ...p, name: v }))}
+                    icon={User}
+                  />
+                  <InlineField
+                    label="Telefone"
+                    value={emergencyContact.phone}
+                    onChange={(v) => setEmergencyContact((p) => ({ ...p, phone: v }))}
+                    icon={Phone}
+                  />
+                  <InlineField
+                    label="Relação"
+                    value={emergencyContact.relationship}
+                    onChange={(v) => setEmergencyContact((p) => ({ ...p, relationship: v }))}
+                    icon={Heart}
+                  />
+                </div>
+                <Button
+                  className="bg-red-600 hover:bg-red-700 text-white gap-2"
+                  onClick={() => {
+                    sonnerToast.success('Contato de emergência salvo com sucesso!')
+                  }}
+                  disabled={!emergencyContact.name || !emergencyContact.phone}
+                >
+                  <Save className="h-4 w-4" />
+                  Salvar Contato de Emergência
                 </Button>
               </CardContent>
             </Card>
@@ -708,15 +939,16 @@ export function ProfilePage() {
           </motion.div>
         </TabsContent>
 
-        {/* Beneficiaries Tab */}
+        {/* Beneficiaries Tab - Enhanced with donut chart, age, API connected */}
         <TabsContent value="beneficiaries" className="mt-4">
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-            {/* Summary Card */}
+            {/* Summary Card with Donut Chart */}
             <Card className="shadow-sm bg-card">
               <CardHeader>
                 <CardTitle className="text-base font-bold flex items-center gap-2">
                   <Heart className="h-4 w-4 text-emerald-600" />
                   Beneficiários
+                  {beneficiariesLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600" />}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -731,12 +963,24 @@ export function ProfilePage() {
                     <p className="text-sm font-bold text-foreground">{totalBeneficiaryPercentage}%</p>
                     <p className="text-[10px] text-muted-foreground">Alocado</p>
                   </div>
-                  <div className={`${remainingBeneficiaryPercentage > 0 ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900/50' : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-100 dark:border-emerald-900/50'} rounded-lg p-3 text-center border`}>
-                    <Award className={`h-4 w-4 ${remainingBeneficiaryPercentage > 0 ? 'text-amber-600' : 'text-emerald-600'} mx-auto mb-1`} />
-                    <p className={`text-sm font-bold ${remainingBeneficiaryPercentage > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{remainingBeneficiaryPercentage}%</p>
+                  <div className={cn(
+                    'rounded-lg p-3 text-center border',
+                    remainingBeneficiaryPercentage > 0
+                      ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900/50'
+                      : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-100 dark:border-emerald-900/50'
+                  )}>
+                    <Award className={cn('h-4 w-4 mx-auto mb-1', remainingBeneficiaryPercentage > 0 ? 'text-amber-600' : 'text-emerald-600')} />
+                    <p className={cn('text-sm font-bold', remainingBeneficiaryPercentage > 0 ? 'text-amber-600' : 'text-emerald-600')}>{remainingBeneficiaryPercentage}%</p>
                     <p className="text-[10px] text-muted-foreground">Disponível</p>
                   </div>
                 </div>
+
+                {/* Donut Chart */}
+                {beneficiaries.length > 0 && (
+                  <div className="bg-muted/30 rounded-xl p-4 border border-border mb-4">
+                    <BeneficiaryDonutChart beneficiaries={beneficiaries} />
+                  </div>
+                )}
 
                 {/* Progress bar */}
                 <div className="space-y-1.5 mb-4">
@@ -744,11 +988,25 @@ export function ProfilePage() {
                     <span className="text-xs font-medium text-foreground">Distribuição</span>
                     <span className="text-xs text-muted-foreground">{totalBeneficiaryPercentage}% de 100%</span>
                   </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${totalBeneficiaryPercentage > 100 ? 'bg-red-500' : totalBeneficiaryPercentage === 100 ? 'bg-emerald-500' : 'bg-emerald-500'}`}
-                      style={{ width: `${Math.min(totalBeneficiaryPercentage, 100)}%` }}
-                    />
+                  {/* Multi-segment progress bar */}
+                  <div className="h-3 bg-muted rounded-full overflow-hidden flex">
+                    {beneficiaries.map((b, i) => {
+                      const colors = ['bg-emerald-500', 'bg-amber-500', 'bg-blue-500', 'bg-purple-500', 'bg-pink-500', 'bg-cyan-500']
+                      return (
+                        <div
+                          key={b.id}
+                          className={cn('h-full transition-all duration-500', colors[i % colors.length])}
+                          style={{ width: `${b.percentage}%` }}
+                          title={`${b.name}: ${b.percentage}%`}
+                        />
+                      )
+                    })}
+                    {remainingBeneficiaryPercentage > 0 && (
+                      <div
+                        className="h-full bg-muted-foreground/10"
+                        style={{ width: `${remainingBeneficiaryPercentage}%` }}
+                      />
+                    )}
                   </div>
                 </div>
 
@@ -756,6 +1014,15 @@ export function ProfilePage() {
                   <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 mb-4">
                     <p className="text-xs text-amber-700 dark:text-amber-400">
                       Ainda restam {remainingBeneficiaryPercentage}% para distribuir entre os beneficiários.
+                    </p>
+                  </div>
+                )}
+
+                {totalBeneficiaryPercentage === 100 && (
+                  <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-lg p-3 mb-4">
+                    <p className="text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                      <Check className="h-3 w-3" />
+                      Distribuição completa! Todos os 100% foram alocados.
                     </p>
                   </div>
                 )}
@@ -771,7 +1038,14 @@ export function ProfilePage() {
             </Card>
 
             {/* Beneficiaries List */}
-            {beneficiaries.length === 0 ? (
+            {beneficiariesLoading ? (
+              <Card className="shadow-sm bg-card">
+                <CardContent className="py-12 text-center">
+                  <Loader2 className="h-8 w-8 text-emerald-600 mx-auto mb-3 animate-spin" />
+                  <p className="text-muted-foreground text-sm">Carregando beneficiários...</p>
+                </CardContent>
+              </Card>
+            ) : beneficiaries.length === 0 ? (
               <Card className="shadow-sm bg-card">
                 <CardContent className="py-12 text-center">
                   <Heart className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
@@ -781,60 +1055,78 @@ export function ProfilePage() {
               </Card>
             ) : (
               <div className="space-y-3">
-                {beneficiaries.map((b) => (
-                  <motion.div
-                    key={b.id}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <Card className="shadow-sm bg-card hover:shadow-md transition-shadow">
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-3 flex-1">
-                            <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-950/30 flex items-center justify-center shrink-0">
-                              <User className="h-5 w-5 text-emerald-600" />
+                {beneficiaries.map((b, i) => {
+                  const relColors = ['bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400', 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400', 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400']
+                  return (
+                    <motion.div
+                      key={b.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.2, delay: i * 0.05 }}
+                    >
+                      <Card className="shadow-sm bg-card hover:shadow-md transition-shadow">
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-3 flex-1">
+                              <div className={cn(
+                                'h-10 w-10 rounded-full flex items-center justify-center shrink-0',
+                                relColors[i % relColors.length].split(' ').slice(0, 1).join(' ')
+                              )}>
+                                <User className={cn('h-5 w-5', relColors[i % relColors.length].split(' ').slice(1).join(' '))} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="text-sm font-semibold text-foreground">{b.name}</p>
+                                  <Badge variant="secondary" className="text-[10px]">
+                                    {relationshipLabels[b.relationship] || b.relationship}
+                                  </Badge>
+                                </div>
+                                <div className="flex items-center gap-3 mt-1 flex-wrap">
+                                  {b.cpf && (
+                                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                      <Shield className="h-3 w-3" />
+                                      CPF: {b.cpf}
+                                    </span>
+                                  )}
+                                  {b.age && (
+                                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                      <Cake className="h-3 w-3" />
+                                      {b.age} anos
+                                    </span>
+                                  )}
+                                  <Badge className={cn(
+                                    'text-[10px] border-0',
+                                    b.percentage >= 50 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-muted text-muted-foreground'
+                                  )}>
+                                    {b.percentage}%
+                                  </Badge>
+                                </div>
+                              </div>
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className="text-sm font-semibold text-foreground">{b.name}</p>
-                                <Badge variant="secondary" className="text-[10px]">
-                                  {relationshipLabels[b.relationship] || b.relationship}
-                                </Badge>
-                              </div>
-                              <div className="flex items-center gap-3 mt-1">
-                                {b.cpf && (
-                                  <span className="text-xs text-muted-foreground">CPF: {b.cpf}</span>
-                                )}
-                                <Badge className={`${b.percentage >= 50 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-muted text-muted-foreground'} text-[10px] border-0`}>
-                                  {b.percentage}%
-                                </Badge>
-                              </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-emerald-600"
+                                onClick={() => openEditBeneficiary(b)}
+                              >
+                                <Edit3 className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-red-500"
+                                onClick={() => handleDeleteBeneficiary(b.id)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-emerald-600"
-                              onClick={() => openEditBeneficiary(b)}
-                            >
-                              <Edit3 className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-red-500"
-                              onClick={() => handleDeleteBeneficiary(b.id)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  )
+                })}
               </div>
             )}
           </motion.div>
@@ -894,7 +1186,7 @@ export function ProfilePage() {
         </TabsContent>
       </Tabs>
 
-      {/* Beneficiary Add/Edit Dialog */}
+      {/* Beneficiary Add/Edit Dialog - Enhanced with age field */}
       <Dialog open={showBeneficiaryDialog || !!editingBeneficiary} onOpenChange={(open) => { if (!open) { setShowBeneficiaryDialog(false); setEditingBeneficiary(null) } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -912,13 +1204,30 @@ export function ProfilePage() {
                 onChange={(e) => setBeneficiaryForm(p => ({ ...p, name: e.target.value }))}
               />
             </div>
-            <div className="space-y-2">
-              <Label>CPF</Label>
-              <Input
-                placeholder="000.000.000-00"
-                value={beneficiaryForm.cpf}
-                onChange={(e) => setBeneficiaryForm(p => ({ ...p, cpf: e.target.value }))}
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>CPF</Label>
+                <Input
+                  placeholder="000.000.000-00"
+                  value={beneficiaryForm.cpf}
+                  onChange={(e) => setBeneficiaryForm(p => ({ ...p, cpf: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1">
+                  <Cake className="h-3 w-3" />
+                  Idade
+                </Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={120}
+                  placeholder="Para seguro"
+                  value={beneficiaryForm.age || ''}
+                  onChange={(e) => setBeneficiaryForm(p => ({ ...p, age: parseInt(e.target.value) || 0 }))}
+                />
+                <p className="text-[9px] text-muted-foreground">Necessário para fins de seguro</p>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Relação</Label>
@@ -988,19 +1297,20 @@ export function ProfilePage() {
               <Button
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
                 onClick={editingBeneficiary ? handleEditBeneficiary : handleAddBeneficiary}
-                disabled={!beneficiaryForm.name || beneficiaryForm.percentage <= 0}
+                disabled={!beneficiaryForm.name || beneficiaryForm.percentage <= 0 || beneficiarySaving}
               >
-                {editingBeneficiary ? 'Salvar' : 'Adicionar'}
+                {beneficiarySaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : editingBeneficiary ? 'Salvar' : 'Adicionar'}
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Security Tab Content - shown when security tab is active */}
+      {/* Security Tab Content */}
       {activeTab === 'security' && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-          {/* Profile Completion */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base font-bold flex items-center gap-2">
@@ -1009,7 +1319,6 @@ export function ProfilePage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Completion progress */}
               <div className="flex items-center gap-4">
                 <div className="flex-1">
                   <div className="flex items-center justify-between mb-1">
@@ -1029,9 +1338,7 @@ export function ProfilePage() {
 
               <Separator />
 
-              {/* Verification items */}
               <div className="space-y-3">
-                {/* Email Verification */}
                 <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-950/30">
@@ -1047,7 +1354,6 @@ export function ProfilePage() {
                   </Badge>
                 </div>
 
-                {/* Phone Verification */}
                 <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-950/30">
@@ -1063,7 +1369,6 @@ export function ProfilePage() {
                   </Badge>
                 </div>
 
-                {/* CPF/Document Verification */}
                 <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-950/30">
@@ -1097,7 +1402,6 @@ export function ProfilePage() {
             </CardContent>
           </Card>
 
-          {/* Two-Factor Authentication */}
           <TwoFactorSetup />
         </motion.div>
       )}

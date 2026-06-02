@@ -7,10 +7,14 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
 import {
   Search, ShoppingCart, Star, Tag, Heart, Package, Truck, CreditCard,
   QrCode, Wallet, X, Plus, Minus, Check, ChevronRight, Filter,
-  Zap, Shield, ArrowLeft, ShoppingBag, Clock, MapPin, Store, Users
+  Zap, Shield, ArrowLeft, ShoppingBag, Clock, MapPin, Store, Users,
+  Megaphone, Gift, Timer, MessageSquare, ThumbsUp, ChevronDown, Flame,
+  TrendingUp, Award, Calendar
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
@@ -40,6 +44,14 @@ interface CartItem {
   quantity: number
 }
 
+interface ProductReview {
+  id: string
+  userName: string
+  rating: number
+  comment: string
+  date: string
+}
+
 const categories = [
   { id: 'all', label: 'Todos', icon: ShoppingBag },
   { id: 'electronics', label: 'Eletrônicos', icon: Package },
@@ -52,6 +64,55 @@ const categories = [
   { id: 'mobility', label: 'Mobilidade', icon: Truck },
   { id: 'digital', label: 'Digital', icon: QrCode },
 ]
+
+// Promotional banners data
+const promotionalBanners = [
+  {
+    id: 'daily-deal',
+    title: 'Oferta do Dia',
+    subtitle: 'Até 40% de desconto em eletrônicos selecionados',
+    icon: Flame,
+    gradient: 'from-red-500 to-orange-500',
+    textColor: 'text-white',
+  },
+  {
+    id: 'free-shipping',
+    title: 'Frete Grátis',
+    subtitle: 'Em compras acima de R$ 199 para todo o Brasil',
+    icon: Truck,
+    gradient: 'from-emerald-500 to-teal-500',
+    textColor: 'text-white',
+  },
+  {
+    id: 'cashback-boost',
+    title: 'CashBack em Dobro',
+    subtitle: 'Produtos com CashBack até 15% esta semana',
+    icon: Zap,
+    gradient: 'from-amber-500 to-yellow-500',
+    textColor: 'text-white',
+  },
+]
+
+// Mock reviews for product detail modal
+const mockReviews: ProductReview[] = [
+  { id: '1', userName: 'Ana Carolina S.', rating: 5, comment: 'Produto excelente! Entrega rápida e qualidade incrível.', date: '2026-02-15' },
+  { id: '2', userName: 'Roberto M.', rating: 4, comment: 'Muito bom, recomendo. Só demorou um pouco na entrega.', date: '2026-02-10' },
+  { id: '3', userName: 'Juliana P.', rating: 5, comment: 'Superou minhas expectativas! Vou comprar novamente.', date: '2026-01-28' },
+  { id: '4', userName: 'Carlos A.', rating: 3, comment: 'Produto ok, mas achei o preço um pouco alto para a qualidade.', date: '2026-01-15' },
+  { id: '5', userName: 'Mariana R.', rating: 5, comment: 'Perfeito! Exatamente como na descrição.', date: '2026-01-05' },
+]
+
+// Seller location map (simulated)
+const sellerLocations: Record<string, { city: string; state: string; memberSince: string; totalSales: number }> = {
+  'Ricardo Mendes': { city: 'São Paulo', state: 'SP', memberSince: 'Jan 2025', totalSales: 234 },
+  'Patrícia Almeida': { city: 'Rio de Janeiro', state: 'RJ', memberSince: 'Mar 2025', totalSales: 189 },
+  'Lucas Ferreira': { city: 'Belo Horizonte', state: 'MG', memberSince: 'Fev 2025', totalSales: 156 },
+  'Camila Rocha': { city: 'Curitiba', state: 'PR', memberSince: 'Abr 2025', totalSales: 142 },
+  'André Costa': { city: 'Salvador', state: 'BA', memberSince: 'Mai 2025', totalSales: 98 },
+  'Juliana Santos': { city: 'Porto Alegre', state: 'RS', memberSince: 'Jan 2025', totalSales: 276 },
+  'Fernando Oliveira': { city: 'Brasília', state: 'DF', memberSince: 'Mar 2025', totalSales: 167 },
+  'Mariana Dias': { city: 'Recife', state: 'PE', memberSince: 'Jun 2025', totalSales: 87 },
+}
 
 function formatPrice(cents: number): string {
   return `R$ ${(cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -102,6 +163,16 @@ export function MarketplacePage() {
   const [paymentMethod, setPaymentMethod] = useState<string>('')
   const [address, setAddress] = useState('')
   const [processing, setProcessing] = useState(false)
+  const [activeBanner, setActiveBanner] = useState(0)
+  const [expandedOrder, setExpandedOrder] = useState<string | null>(null)
+
+  // Auto-rotate promotional banners
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveBanner(prev => (prev + 1) % promotionalBanners.length)
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Compute sellers with product counts from products data
   const sellers = useMemo(() => {
@@ -224,21 +295,33 @@ export function MarketplacePage() {
     }
   }
 
-  const renderStars = (rating: number) => {
-    return Array.from({ length: 5 }, (_, i) => (
-      <Star
-        key={i}
-        className={cn('h-3 w-3', i < Math.floor(rating) ? 'text-amber-400 fill-amber-400' : 'text-gray-300')}
-      />
-    ))
+  const renderStars = (rating: number, size: 'sm' | 'md' | 'lg' = 'sm') => {
+    const sizeClass = size === 'lg' ? 'h-5 w-5' : size === 'md' ? 'h-4 w-4' : 'h-3 w-3'
+    return (
+      <div className="flex items-center gap-0.5">
+        {Array.from({ length: 5 }, (_, i) => {
+          const fillPercent = rating >= i + 1 ? 100 : rating > i ? (rating - i) * 100 : 0
+          return (
+            <div key={i} className="relative">
+              <Star className={cn(sizeClass, 'text-gray-200 dark:text-gray-700')} />
+              {fillPercent > 0 && (
+                <div className="absolute inset-0 overflow-hidden" style={{ width: `${fillPercent}%` }}>
+                  <Star className={cn(sizeClass, 'text-amber-400 fill-amber-400')} />
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
   }
 
-  const statusLabels: Record<string, { label: string; color: string }> = {
-    pending: { label: 'Pendente', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
-    processing: { label: 'Processando', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-    shipped: { label: 'Enviado', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
-    delivered: { label: 'Entregue', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
-    cancelled: { label: 'Cancelado', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+  const statusLabels: Record<string, { label: string; color: string; icon: React.ElementType }> = {
+    pending: { label: 'Pendente', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400', icon: Clock },
+    processing: { label: 'Processando', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', icon: Package },
+    shipped: { label: 'Enviado', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400', icon: Truck },
+    delivered: { label: 'Entregue', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', icon: Check },
+    cancelled: { label: 'Cancelado', color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400', icon: X },
   }
 
   return (
@@ -253,7 +336,7 @@ export function MarketplacePage() {
           <p className="text-sm text-muted-foreground mt-1">Compre produtos e ganhe CashBack na sua rede</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Cart button */}
+          {/* Cart button with total */}
           <Button
             variant="outline"
             size="sm"
@@ -263,11 +346,63 @@ export function MarketplacePage() {
             <ShoppingCart className="h-4 w-4" />
             Carrinho
             {cartCount > 0 && (
-              <Badge className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center bg-emerald-600 text-white text-[10px]">
-                {cartCount}
-              </Badge>
+              <>
+                <Badge className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center bg-emerald-600 text-white text-[10px]">
+                  {cartCount}
+                </Badge>
+                <span className="text-xs font-semibold text-emerald-600 ml-1">
+                  {formatPrice(cartTotal)}
+                </span>
+              </>
             )}
           </Button>
+        </div>
+      </div>
+
+      {/* Promotional Banners */}
+      <div className="relative overflow-hidden rounded-xl">
+        <div className="relative h-24 sm:h-28">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeBanner}
+              initial={{ opacity: 0, x: 100 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -100 }}
+              transition={{ duration: 0.4 }}
+              className={cn(
+                'absolute inset-0 bg-gradient-to-r rounded-xl flex items-center px-6 gap-4',
+                promotionalBanners[activeBanner].gradient
+              )}
+            >
+              {(() => {
+                const banner = promotionalBanners[activeBanner]
+                const BannerIcon = banner.icon
+                return (
+                  <>
+                    <div className="bg-white/20 rounded-xl p-3 shrink-0">
+                      <BannerIcon className="h-8 w-8 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-lg font-bold text-white">{banner.title}</h3>
+                      <p className="text-sm text-white/90 truncate">{banner.subtitle}</p>
+                    </div>
+                    <div className="hidden sm:flex items-center gap-1 shrink-0">
+                      {promotionalBanners.map((_, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setActiveBanner(idx)}
+                          className={cn(
+                            'h-2 rounded-full transition-all',
+                            idx === activeBanner ? 'w-6 bg-white' : 'w-2 bg-white/40 hover:bg-white/60'
+                          )}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )
+              })()}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
 
@@ -284,12 +419,17 @@ export function MarketplacePage() {
         </button>
         <button
           className={cn(
-            'px-4 py-2 rounded-md text-sm font-medium transition-all',
+            'px-4 py-2 rounded-md text-sm font-medium transition-all relative',
             activeTab === 'orders' ? 'bg-emerald-600 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
           )}
           onClick={() => setActiveTab('orders')}
         >
           Meus Pedidos
+          {orders.length > 0 && (
+            <Badge className="absolute -top-1.5 -right-1.5 h-4 min-w-4 p-0 flex items-center justify-center bg-emerald-600 text-white text-[9px]">
+              {orders.length}
+            </Badge>
+          )}
         </button>
       </div>
 
@@ -300,7 +440,7 @@ export function MarketplacePage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar produtos..."
+                placeholder="Buscar produtos ou vendedores..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-10"
@@ -330,7 +470,7 @@ export function MarketplacePage() {
             })}
           </div>
 
-          {/* Vendedores Section */}
+          {/* Vendedores Section - Enhanced with more details */}
           {sellers.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
@@ -339,27 +479,53 @@ export function MarketplacePage() {
                 <Badge variant="secondary" className="text-[10px]">{sellers.length}</Badge>
               </div>
               <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-                {sellers.map((seller) => (
-                  <button
-                    key={seller.name}
-                    onClick={() => setSearch(seller.name)}
-                    className="flex flex-col items-center gap-2 min-w-[100px] p-3 rounded-xl bg-card border border-border hover:border-emerald-300 dark:hover:border-emerald-700 hover:shadow-md transition-all group"
-                  >
-                    <Avatar className="h-12 w-12 border-2 border-emerald-100 dark:border-emerald-900 group-hover:border-emerald-400 transition-colors">
-                      <AvatarFallback className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400 text-sm font-bold">
-                        {seller.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="text-center">
-                      <p className="text-xs font-semibold text-foreground line-clamp-1">{seller.name.split(' ')[0]}</p>
-                      <p className="text-[10px] text-muted-foreground">{seller.productCount} {seller.productCount === 1 ? 'produto' : 'produtos'}</p>
-                    </div>
-                    <div className="flex items-center gap-0.5">
-                      <Star className="h-2.5 w-2.5 text-amber-400 fill-amber-400" />
-                      <span className="text-[10px] font-medium text-foreground">{seller.avgRating}</span>
-                    </div>
-                  </button>
-                ))}
+                {sellers.map((seller) => {
+                  const location = sellerLocations[seller.name]
+                  return (
+                    <button
+                      key={seller.name}
+                      onClick={() => setSearch(seller.name)}
+                      className="flex flex-col min-w-[160px] p-4 rounded-xl bg-card border border-border hover:border-emerald-300 dark:hover:border-emerald-700 hover:shadow-md transition-all group"
+                    >
+                      <div className="flex items-center gap-3 mb-3">
+                        <Avatar className="h-12 w-12 border-2 border-emerald-100 dark:border-emerald-900 group-hover:border-emerald-400 transition-colors">
+                          <AvatarFallback className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400 text-sm font-bold">
+                            {seller.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="text-left">
+                          <p className="text-sm font-semibold text-foreground line-clamp-1">{seller.name.split(' ')[0]}</p>
+                          <div className="flex items-center gap-1">
+                            {renderStars(seller.avgRating, 'sm')}
+                            <span className="text-[10px] font-medium text-foreground">{seller.avgRating}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5 text-left">
+                        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                          <Package className="h-3 w-3" />
+                          <span>{seller.productCount} {seller.productCount === 1 ? 'produto' : 'produtos'}</span>
+                        </div>
+                        {location && (
+                          <>
+                            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                              <MapPin className="h-3 w-3" />
+                              <span>{location.city}/{location.state}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                              <TrendingUp className="h-3 w-3" />
+                              <span>{location.totalSales} vendas</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                              <Calendar className="h-3 w-3" />
+                              <span>Desde {location.memberSince}</span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
             </div>
           )}
@@ -434,9 +600,13 @@ export function MarketplacePage() {
                                 por {product.sellerName}
                               </p>
                             )}
-                            <div className="flex items-center gap-1">
+                            {/* Enhanced Rating Display */}
+                            <div className="flex items-center gap-1.5">
                               {renderStars(product.rating)}
-                              <span className="text-[10px] text-muted-foreground ml-0.5">
+                              <span className="text-[10px] font-medium text-foreground">
+                                {product.rating.toFixed(1)}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">
                                 ({product.reviewCount})
                               </span>
                             </div>
@@ -472,12 +642,13 @@ export function MarketplacePage() {
           )}
         </>
       ) : (
-        /* Orders Tab */
+        /* Orders Tab - Enhanced */
         <div className="space-y-4">
           {orders.length === 0 ? (
             <div className="text-center py-16">
               <Package className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
               <p className="text-muted-foreground">Nenhum pedido realizado ainda</p>
+              <p className="text-xs text-muted-foreground mt-1">Explore o marketplace e faça sua primeira compra!</p>
               <Button
                 variant="outline"
                 className="mt-4 border-emerald-300 text-emerald-600"
@@ -487,52 +658,195 @@ export function MarketplacePage() {
               </Button>
             </div>
           ) : (
-            orders.map((order) => {
-              const status = statusLabels[order.status] || statusLabels.pending
-              return (
-                <Card key={order.id} className="overflow-hidden">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">
-                          Pedido #{order.id.slice(-8).toUpperCase()}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {new Date(order.createdAt).toLocaleDateString('pt-BR')}
-                        </p>
-                      </div>
-                      <Badge className={cn('text-[10px]', status.color)}>
-                        {status.label}
-                      </Badge>
-                    </div>
-                    <div className="space-y-2">
-                      {order.items?.map((item: any) => (
-                        <div key={item.id} className="flex items-center justify-between text-sm">
-                          <span className="text-foreground">{item.productName} x{item.quantity}</span>
-                          <span className="text-muted-foreground">{formatPrice(item.unitPrice * item.quantity)}</span>
+            <>
+              {/* Orders Summary */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-lg p-3 text-center border border-emerald-100 dark:border-emerald-900/50">
+                  <ShoppingBag className="h-4 w-4 text-emerald-600 mx-auto mb-1" />
+                  <p className="text-sm font-bold text-foreground">{orders.length}</p>
+                  <p className="text-[10px] text-muted-foreground">Total Pedidos</p>
+                </div>
+                <div className="bg-amber-50 dark:bg-amber-950/30 rounded-lg p-3 text-center border border-amber-100 dark:border-amber-900/50">
+                  <Clock className="h-4 w-4 text-amber-600 mx-auto mb-1" />
+                  <p className="text-sm font-bold text-foreground">{orders.filter(o => o.status === 'pending' || o.status === 'processing').length}</p>
+                  <p className="text-[10px] text-muted-foreground">Em Andamento</p>
+                </div>
+                <div className="bg-purple-50 dark:bg-purple-950/30 rounded-lg p-3 text-center border border-purple-100 dark:border-purple-900/50">
+                  <Truck className="h-4 w-4 text-purple-600 mx-auto mb-1" />
+                  <p className="text-sm font-bold text-foreground">{orders.filter(o => o.status === 'shipped').length}</p>
+                  <p className="text-[10px] text-muted-foreground">Enviados</p>
+                </div>
+                <div className="bg-teal-50 dark:bg-teal-950/30 rounded-lg p-3 text-center border border-teal-100 dark:border-teal-900/50">
+                  <Check className="h-4 w-4 text-teal-600 mx-auto mb-1" />
+                  <p className="text-sm font-bold text-foreground">{orders.filter(o => o.status === 'delivered').length}</p>
+                  <p className="text-[10px] text-muted-foreground">Entregues</p>
+                </div>
+              </div>
+
+              {/* Orders List */}
+              {orders.map((order) => {
+                const status = statusLabels[order.status] || statusLabels.pending
+                const StatusIcon = status.icon
+                const isExpanded = expandedOrder === order.id
+                return (
+                  <motion.div
+                    key={order.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                  >
+                    <Card className="overflow-hidden border hover:shadow-md transition-all">
+                      <CardContent className="p-0">
+                        {/* Order Header */}
+                        <div
+                          className="p-4 cursor-pointer hover:bg-muted/30 transition-colors"
+                          onClick={() => setExpandedOrder(isExpanded ? null : order.id)}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className={cn(
+                                'h-10 w-10 rounded-lg flex items-center justify-center',
+                                order.status === 'delivered' ? 'bg-emerald-100 dark:bg-emerald-950/30' :
+                                order.status === 'shipped' ? 'bg-purple-100 dark:bg-purple-950/30' :
+                                order.status === 'processing' ? 'bg-blue-100 dark:bg-blue-950/30' :
+                                order.status === 'cancelled' ? 'bg-red-100 dark:bg-red-950/30' :
+                                'bg-amber-100 dark:bg-amber-950/30'
+                              )}>
+                                <StatusIcon className={cn(
+                                  'h-5 w-5',
+                                  order.status === 'delivered' ? 'text-emerald-600' :
+                                  order.status === 'shipped' ? 'text-purple-600' :
+                                  order.status === 'processing' ? 'text-blue-600' :
+                                  order.status === 'cancelled' ? 'text-red-600' :
+                                  'text-amber-600'
+                                )} />
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-foreground">
+                                  Pedido #{order.id.slice(-8).toUpperCase()}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground">
+                                  {new Date(order.createdAt).toLocaleDateString('pt-BR', {
+                                    day: '2-digit',
+                                    month: 'long',
+                                    year: 'numeric',
+                                  })}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <p className="text-sm font-bold text-emerald-600">{formatPrice(order.totalAmount)}</p>
+                                {order.cashbackEarned > 0 && (
+                                  <p className="text-[10px] text-emerald-500 flex items-center gap-0.5 justify-end">
+                                    <Zap className="h-2.5 w-2.5" /> +{formatPrice(order.cashbackEarned)} CB
+                                  </p>
+                                )}
+                              </div>
+                              <Badge className={cn('text-[10px]', status.color)}>
+                                {status.label}
+                              </Badge>
+                              <ChevronDown className={cn(
+                                'h-4 w-4 text-muted-foreground transition-transform',
+                                isExpanded && 'rotate-180'
+                              )} />
+                            </div>
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
-                      <span className="text-sm font-semibold">Total</span>
-                      <div className="text-right">
-                        <span className="text-sm font-bold text-emerald-600">{formatPrice(order.totalAmount)}</span>
-                        {order.cashbackEarned > 0 && (
-                          <p className="text-[10px] text-emerald-500">+{formatPrice(order.cashbackEarned)} CashBack</p>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )
-            })
+
+                        {/* Order Details (expandable) */}
+                        <AnimatePresence>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="px-4 pb-4 space-y-3">
+                                <Separator />
+                                {/* Items */}
+                                <div className="space-y-2">
+                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Itens</p>
+                                  {order.items?.map((item: any) => (
+                                    <div key={item.id} className="flex items-center justify-between py-1.5">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-lg">{categoryIcons[item.category] || '📦'}</span>
+                                        <div>
+                                          <span className="text-sm text-foreground">{item.productName}</span>
+                                          <span className="text-xs text-muted-foreground ml-2">x{item.quantity}</span>
+                                        </div>
+                                      </div>
+                                      <span className="text-sm text-muted-foreground">{formatPrice(item.unitPrice * item.quantity)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                <Separator />
+                                {/* Order Info */}
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                  {order.shippingAddress && (
+                                    <div>
+                                      <p className="text-muted-foreground">Endereço</p>
+                                      <p className="text-foreground font-medium">{order.shippingAddress}</p>
+                                    </div>
+                                  )}
+                                  {order.paymentMethod && (
+                                    <div>
+                                      <p className="text-muted-foreground">Pagamento</p>
+                                      <p className="text-foreground font-medium">
+                                        {order.paymentMethod === 'pix' ? 'PIX' :
+                                         order.paymentMethod === 'credit_card' ? 'Cartão de Crédito' :
+                                         order.paymentMethod === 'balance' ? 'Saldo NM' : order.paymentMethod}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                                {/* Status Timeline */}
+                                <div className="flex items-center gap-2 pt-1">
+                                  {['pending', 'processing', 'shipped', 'delivered'].map((step, idx) => {
+                                    const stepStatus = statusLabels[step]
+                                    const isCompleted = ['pending', 'processing', 'shipped', 'delivered'].indexOf(order.status) >= idx
+                                    const isCurrent = order.status === step
+                                    return (
+                                      <div key={step} className="flex items-center gap-1">
+                                        <div className={cn(
+                                          'h-2 w-2 rounded-full transition-all',
+                                          isCompleted ? 'bg-emerald-500' : 'bg-muted-foreground/20'
+                                        )} />
+                                        <span className={cn(
+                                          'text-[9px] font-medium',
+                                          isCompleted ? 'text-emerald-600' : 'text-muted-foreground/40'
+                                        )}>
+                                          {stepStatus.label}
+                                        </span>
+                                        {idx < 3 && (
+                                          <div className={cn(
+                                            'h-0.5 w-3 sm:w-6',
+                                            isCompleted && ['pending', 'processing', 'shipped', 'delivered'].indexOf(order.status) > idx
+                                              ? 'bg-emerald-500' : 'bg-muted-foreground/10'
+                                          )} />
+                                        )}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                )
+              })}
+            </>
           )}
         </div>
       )}
 
-      {/* Product Detail Modal */}
+      {/* Product Detail Modal - Enhanced */}
       <Dialog open={!!selectedProduct} onOpenChange={() => setSelectedProduct(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogDescription className="sr-only">Detalhes do produto</DialogDescription>
           {selectedProduct && (
             <>
@@ -542,20 +856,30 @@ export function MarketplacePage() {
                   {selectedProduct.name}
                 </DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
-                {/* Product Image */}
+              <div className="space-y-5">
+                {/* Product Image - Larger */}
                 <div className={cn(
-                  'aspect-video bg-gradient-to-br rounded-xl flex items-center justify-center',
+                  'aspect-video bg-gradient-to-br rounded-xl flex items-center justify-center relative overflow-hidden',
                   categoryColors[selectedProduct.category] || 'from-gray-400 to-gray-500'
                 )}>
                   <span className="text-8xl opacity-80">{categoryIcons[selectedProduct.category] || '📦'}</span>
+                  {selectedProduct.isFeatured && (
+                    <Badge className="absolute top-3 left-3 bg-amber-500 text-white border-0">
+                      <Star className="h-3 w-3 mr-1" /> DESTAQUE
+                    </Badge>
+                  )}
+                  {getDiscountPercent(selectedProduct.price, selectedProduct.originalPrice) > 0 && (
+                    <Badge className="absolute top-3 right-3 bg-red-500 text-white border-0 text-xs">
+                      -{getDiscountPercent(selectedProduct.price, selectedProduct.originalPrice)}% OFF
+                    </Badge>
+                  )}
                 </div>
 
-                {/* Price & CashBack */}
-                <div className="flex items-center justify-between">
+                {/* Price & CashBack & Rating */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <div className="flex items-end gap-2">
-                      <span className="text-2xl font-bold text-emerald-600">{formatPrice(selectedProduct.price)}</span>
+                      <span className="text-3xl font-bold text-emerald-600">{formatPrice(selectedProduct.price)}</span>
                       {selectedProduct.originalPrice && selectedProduct.originalPrice > selectedProduct.price && (
                         <span className="text-sm text-muted-foreground line-through">
                           {formatPrice(selectedProduct.originalPrice)}
@@ -569,25 +893,131 @@ export function MarketplacePage() {
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-1">
-                    {renderStars(selectedProduct.rating)}
-                    <span className="text-xs text-muted-foreground ml-1">({selectedProduct.reviewCount})</span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex flex-col items-end gap-1">
+                      {renderStars(selectedProduct.rating, 'md')}
+                      <span className="text-xs text-muted-foreground">
+                        {selectedProduct.rating.toFixed(1)} ({selectedProduct.reviewCount} {selectedProduct.reviewCount === 1 ? 'avaliação' : 'avaliações'})
+                      </span>
+                    </div>
                   </div>
                 </div>
 
                 {/* Description */}
                 {selectedProduct.description && (
-                  <p className="text-sm text-muted-foreground">{selectedProduct.description}</p>
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-semibold text-foreground">Descrição</h4>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{selectedProduct.description}</p>
+                  </div>
                 )}
 
-                {/* Seller & Stock */}
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Vendido por <strong className="text-foreground">{selectedProduct.sellerName || 'NewMobility'}</strong></span>
-                  <span>{selectedProduct.stock > 0 ? `${selectedProduct.stock} em estoque` : 'Indisponível'}</span>
+                {/* Seller Info Card */}
+                <div className="bg-muted/50 rounded-xl p-4 border border-border space-y-3">
+                  <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <Store className="h-4 w-4 text-emerald-600" />
+                    Informações do Vendedor
+                  </h4>
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-10 w-10 border border-emerald-200 dark:border-emerald-800">
+                      <AvatarFallback className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400 text-xs font-bold">
+                        {selectedProduct.sellerName?.split(' ').map(n => n[0]).slice(0, 2).join('') || 'NM'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-foreground">{selectedProduct.sellerName || 'NewMobility'}</p>
+                      {selectedProduct.sellerName && sellerLocations[selectedProduct.sellerName] && (
+                        <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-0.5">
+                          <span className="flex items-center gap-1">
+                            <MapPin className="h-3 w-3" />
+                            {sellerLocations[selectedProduct.sellerName].city}/{sellerLocations[selectedProduct.sellerName].state}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <TrendingUp className="h-3 w-3" />
+                            {sellerLocations[selectedProduct.sellerName].totalSales} vendas
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            Desde {sellerLocations[selectedProduct.sellerName].memberSince}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Shield className="h-3 w-3 text-emerald-500" />
+                      Vendedor verificado
+                    </span>
+                    <span>{selectedProduct.stock > 0 ? `${selectedProduct.stock} em estoque` : 'Indisponível'}</span>
+                  </div>
+                </div>
+
+                {/* Reviews Section */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4 text-emerald-600" />
+                      Avaliações dos Clientes
+                    </h4>
+                    <Badge variant="secondary" className="text-[10px]">
+                      {selectedProduct.reviewCount} reviews
+                    </Badge>
+                  </div>
+                  {/* Rating summary */}
+                  <div className="flex items-center gap-4 p-3 bg-muted/50 rounded-lg border border-border">
+                    <div className="text-center">
+                      <p className="text-3xl font-bold text-foreground">{selectedProduct.rating.toFixed(1)}</p>
+                      {renderStars(selectedProduct.rating, 'md')}
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      {[5, 4, 3, 2, 1].map(stars => {
+                        const percent = stars === 5 ? 60 : stars === 4 ? 25 : stars === 3 ? 10 : stars === 2 ? 3 : 2
+                        return (
+                          <div key={stars} className="flex items-center gap-2">
+                            <span className="text-[10px] text-muted-foreground w-3">{stars}</span>
+                            <Star className="h-2.5 w-2.5 text-amber-400 fill-amber-400" />
+                            <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div className="h-full bg-amber-400 rounded-full" style={{ width: `${percent}%` }} />
+                            </div>
+                            <span className="text-[10px] text-muted-foreground w-7">{percent}%</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  {/* Sample reviews */}
+                  <div className="space-y-3 max-h-60 overflow-y-auto">
+                    {mockReviews.slice(0, 3).map(review => (
+                      <div key={review.id} className="p-3 bg-card rounded-lg border border-border">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-6 w-6">
+                              <AvatarFallback className="text-[8px] bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+                                {review.userName.split(' ').map(n => n[0]).slice(0, 2).join('')}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-xs font-medium text-foreground">{review.userName}</span>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground">
+                            {new Date(review.date).toLocaleDateString('pt-BR')}
+                          </span>
+                        </div>
+                        <div className="mb-1">{renderStars(review.rating, 'sm')}</div>
+                        <p className="text-xs text-muted-foreground">{review.comment}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Actions */}
                 <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => setSelectedProduct(null)}
+                  >
+                    Voltar
+                  </Button>
                   <Button
                     className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
                     onClick={() => {
@@ -621,6 +1051,13 @@ export function MarketplacePage() {
             <div className="py-8 text-center">
               <ShoppingBag className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
               <p className="text-muted-foreground text-sm">Seu carrinho está vazio</p>
+              <Button
+                variant="outline"
+                className="mt-3 border-emerald-300 text-emerald-600"
+                onClick={() => setShowCart(false)}
+              >
+                Continuar Comprando
+              </Button>
             </div>
           ) : (
             <div className="space-y-3 max-h-80 overflow-y-auto">
@@ -671,7 +1108,7 @@ export function MarketplacePage() {
           {cart.length > 0 && (
             <div className="border-t border-border pt-3 space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Subtotal</span>
+                <span className="text-muted-foreground">Subtotal ({cartCount} {cartCount === 1 ? 'item' : 'itens'})</span>
                 <span className="font-semibold">{formatPrice(cartTotal)}</span>
               </div>
               {cartCashback > 0 && (
