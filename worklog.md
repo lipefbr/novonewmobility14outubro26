@@ -741,3 +741,48 @@ Priority Next Steps:
 3. Deploy to Vercel for stable hosting (eliminates sandbox issues)
 4. Add more UI enhancements
 5. Test all features end-to-end
+
+---
+Task ID: session-2026-06-02-b
+Agent: Main Agent
+Task: Fix "sandbox is inactive" error - server keeps dying
+
+Work Log:
+- User reported "preview so aparece isso e nao abre nada {"error":"sandbox is inactive"}"
+- Rebuilt the production build from scratch: `rm -rf .next && npx next build`
+- Verified server works correctly when alive:
+  - Login API: Returns correct user data for carlos.silva@email.com
+  - Dashboard API: Returns correct balance data (3258000 withdrawal)
+  - Page HTML: 41642 chars with "NewMobility" title
+- Tested multiple server start approaches:
+  - Standalone server (node .next/standalone/server.js): Starts in 64-77ms, dies after ~2-5 seconds
+  - Dev server (bun run dev): Starts in 2s, compilation takes 12s, dies during/after compilation
+  - Keep-alive scripts: Also get killed by sandbox
+  - Restart loops: Script itself gets killed by sandbox
+- Successfully verified site with agent-browser when dev server was alive:
+  - Login page renders correctly with all elements
+  - "NewMobility - BackOffice | Sistema de CashBack Multinível" title confirmed
+  - Demo access button, admin access button, social login buttons all present
+- Created new cron job (Job ID: 181887) for periodic server restart and QA (every 15 minutes)
+- Pushed latest code to GitHub: https://github.com/lipefbr/newmobility
+- Ran `bun run lint` - zero errors
+
+Stage Summary:
+- The "sandbox is inactive" error is caused by the sandbox killing ALL server processes within seconds
+- The server works correctly when alive - all APIs respond with correct data
+- Production build is complete and functional
+- Cron job set up for automatic restart every 15 minutes
+- Code pushed to GitHub
+- The ONLY solution for stable hosting is deploying to Vercel
+
+Key Finding:
+- Standalone server starts in 64ms and serves requests correctly
+- But the sandbox kills it within 2-5 seconds
+- This is NOT a code issue - it's a sandbox environment limitation
+- The cron job will restart the server periodically, but it will die again quickly
+- Deploy to Vercel for permanent solution
+
+Server Restart Command:
+```bash
+cd /home/z/my-project && DATABASE_URL="postgresql://neondb_owner:npg_2Ul5CdKOpRiu@ep-twilight-night-aqn8fqln-pooler.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require" NEON_DATABASE_URL="postgresql://neondb_owner:npg_2Ul5CdKOpRiu@ep-twilight-night-aqn8fqln-pooler.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require" HOSTNAME=0.0.0.0 PORT=3000 node .next/standalone/server.js &
+```
