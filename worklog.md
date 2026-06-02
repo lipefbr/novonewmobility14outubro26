@@ -743,6 +743,46 @@ Priority Next Steps:
 5. Test all features end-to-end
 
 ---
+Task ID: session-2026-06-03
+Agent: Main Agent
+Task: Fix "sandbox is inactive" error and continue development
+
+Work Log:
+- Investigated "sandbox is inactive" error reported by user
+- Confirmed server works correctly when alive (HTTP 200, full HTML, API responses)
+- Tested multiple server start approaches: dev server, production server, bun runtime, resilient scripts
+- All server processes get killed by the sandbox after serving a few requests
+- Successfully verified code works:
+  - Login API: Returns correct user data for carlos.silva@email.com
+  - Dashboard API: Returns correct balance data
+  - Page HTML: Full login page with NewMobility branding renders correctly
+  - Registration: Name field editable, referral code locked from affiliate links
+- Pushed latest code to GitHub (origin/main)
+- Created new cron job (webDevReview, every 15 min, Job ID: 181916) for periodic server restart
+- Ran lint: zero errors
+- The "sandbox is inactive" error is caused by the sandbox killing the server process, not by code bugs
+
+Stage Summary:
+- Code is verified working when server is alive
+- GitHub: https://github.com/lipefbr/newmobility (pushed)
+- Cron job: 181916 (every 15 min)
+- Lint: zero errors
+- Build: succeeds
+
+Known Issues:
+1. Sandbox kills ALL server processes after a few seconds (dev, production, bun - all die)
+2. Preview shows "sandbox is inactive" when server is down
+3. Resilient/restart scripts also get killed by sandbox
+4. Agent-browser can't fully verify because React hydration requires JS chunks that the server can't serve before dying
+5. Permanent fix: Deploy to Vercel for stable hosting
+
+Priority Next Steps:
+1. Deploy to Vercel for stable hosting
+2. Continue enhancing admin panel features
+3. Add more styling refinements
+4. Test all features end-to-end on Vercel
+
+---
 Task ID: session-2026-06-02-b
 Agent: Main Agent
 Task: Fix "sandbox is inactive" error - server keeps dying
