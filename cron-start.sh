@@ -1,12 +1,23 @@
 #!/bin/bash
-# Kill any existing server on port 3000
-kill $(lsof -t -i:3000) 2>/dev/null
-sleep 1
+# Start/restart the NewMobility server
+# This script is called by cron to keep the server alive
 
-# Start the dev server
+# Kill any existing server processes
+pkill -9 -f "next-server" 2>/dev/null
+pkill -9 -f "node.*server.js" 2>/dev/null
+pkill -9 -f "next dev" 2>/dev/null
+sleep 2
+
+# Start production server
 cd /home/z/my-project
 export DATABASE_URL="postgresql://neondb_owner:npg_2Ul5CdKOpRiu@ep-twilight-night-aqn8fqln-pooler.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require"
 export NEON_DATABASE_URL="postgresql://neondb_owner:npg_2Ul5CdKOpRiu@ep-twilight-night-aqn8fqln-pooler.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require"
-nohup bun run dev > /dev/null 2>&1 &
+export PORT=3000
+export HOSTNAME=0.0.0.0
+export NODE_OPTIONS="--max-old-space-size=256"
+
+# Start in background with nohup
+nohup node .next/standalone/server.js > /home/z/my-project/dev.log 2>&1 &
 disown
-echo "[$(date)] Dev server started" >> /tmp/cron-server.log
+
+echo "[$(date)] Server started with PID $!" >> /tmp/cron-server.log

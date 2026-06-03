@@ -30,6 +30,8 @@ export async function POST(request: Request) {
         food: user.balanceFood,
         pharmacy: user.balancePharmacy,
         gratification: user.balanceGratification,
+        free: user.balanceFree || 0,
+        pending: user.balancePending || 0,
       },
     })
   } catch (err) {

@@ -33,10 +33,13 @@ function mapApiUserToUserData(apiUser: Record<string, unknown>, balances?: Recor
     balanceFood: balances?.food ?? (apiUser.balanceFood as number) ?? 0,
     balancePharmacy: balances?.pharmacy ?? (apiUser.balancePharmacy as number) ?? 0,
     balanceGratification: balances?.gratification ?? (apiUser.balanceGratification as number) ?? 0,
+    balanceFree: balances?.free ?? (apiUser.balanceFree as number) ?? 0,
+    balancePending: balances?.pending ?? (apiUser.balancePending as number) ?? 0,
     careerPoints: (apiUser.careerPoints as number) ?? 0,
     personalPoints: (apiUser.personalPoints as number) ?? 0,
     stars: (apiUser.stars as number) ?? 0,
     isDriver: (apiUser.isDriver as boolean) ?? false,
+    userType: (apiUser.userType as 'usuario' | 'lojista' | 'motorista') ?? 'usuario',
     profileImage: (apiUser.profileImage as string | null) || null,
     createdAt: (apiUser.createdAt as string) || new Date().toISOString(),
   }
