@@ -1,138 +1,286 @@
-// Lightweight Neon PostgreSQL client using native fetch only
-// No third-party runtime dependencies - works in sandboxed environments where TCP is blocked
-// Uses Neon's HTTP SQL API (same protocol as @neondatabase/serverless but without the heavy package)
+// Database client using Prisma with SQLite
+import { PrismaClient } from '@prisma/client'
 
-function getConnectionString(): string {
-  const connStr = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL
-  if (!connStr) throw new Error('DATABASE_URL is not set')
-  return connStr
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined
 }
 
-// Parse the Neon connection string to extract the API endpoint
-function getNeonApiUrl(): string {
-  const connStr = getConnectionString()
-  const url = new URL(connStr)
-  // Neon HTTP API endpoint: extract region from hostname
-  // e.g., ep-twilight-night-aqn8fqln-pooler.c-8.us-east-1.aws.neon.tech
-  // -> https://api.c-8.us-east-1.aws.neon.tech/sql
-  const hostParts = url.hostname.split('.')
-  const regionIndex = hostParts.findIndex(p => p.startsWith('c-'))
-  if (regionIndex >= 0) {
-    const regionParts = hostParts.slice(regionIndex).join('.')
-    return `https://api.${regionParts}/sql`
-  }
-  return `https://${url.hostname}/sql`
-}
+export const prisma = globalForPrisma.prisma ?? new PrismaClient()
 
-// Convert DB row values to proper JavaScript types based on column metadata
-function convertRow(row: any, fields: any[]): any {
-  if (!fields || !row) return row
-  const result: Record<string, any> = {}
-  for (const field of fields) {
-    const name = field.name
-    const value = row[name]
-    if (value === null || value === undefined) {
-      result[name] = value
-      continue
-    }
-    // Convert based on PostgreSQL data type OID
-    // 16 = bool, 20 = int8, 21 = int2, 23 = int4, 700 = float4, 701 = float8
-    const oid = field.dataTypeID
-    if (oid === 16) {
-      result[name] = value === true || value === 't' || value === 'true'
-    } else if ([20, 21, 23].includes(oid)) {
-      result[name] = typeof value === 'number' ? value : parseInt(value, 10)
-    } else if ([700, 701].includes(oid)) {
-      result[name] = typeof value === 'number' ? value : parseFloat(value)
-    } else {
-      result[name] = value
-    }
-  }
-  return result
-}
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
 
-// Execute SQL queries via Neon's HTTP API with type conversion
-async function executeQuery(query: string, params: any[] = []): Promise<any[]> {
-  const apiUrl = getNeonApiUrl()
-  const connStr = getConnectionString()
-  
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Neon-Connection-String': connStr,
-    },
-    body: JSON.stringify({
-      query,
-      params: params.map(p => {
-        if (p === null || p === undefined) return null
-        if (typeof p === 'boolean') return p
-        if (typeof p === 'number') return p
-        return String(p)
-      }),
-    }),
-  })
-
-  if (!response.ok) {
-    const text = await response.text()
-    console.error('Neon SQL API error:', response.status, text.substring(0, 200))
-    throw new Error(`Database query failed: ${response.status}`)
-  }
-
-  const data = await response.json()
-  const rows = data.rows || []
-  const fields = data.fields || []
-  
-  // Convert types for each row
-  return rows.map((row: any) => convertRow(row, fields))
-}
-
-// Database helper
+// Legacy db interface for backward compatibility with API routes
+// Maps the old db.findOne/find/insert/update/deleteFrom/count patterns to Prisma calls
 export const db = {
   async execute(query: string, params: any[] = []): Promise<any[]> {
-    return executeQuery(query, params)
+    throw new Error('Raw SQL execute is not supported with Prisma. Use Prisma client methods instead.')
   },
 
   async findOne(table: string, conditions: string, params: any[] = []): Promise<any | null> {
-    const where = conditions ? `WHERE ${conditions}` : ''
-    const rows = await executeQuery(`SELECT * FROM "${table}" ${where} LIMIT 1`, params)
-    return rows[0] || null
+    // Delegate to Prisma-based lookup
+    if (table === 'User') {
+      if (conditions.includes('"email"')) {
+        return prisma.user.findUnique({ where: { email: params[0] } }) as any
+      }
+      if (conditions.includes('"id"')) {
+        return prisma.user.findUnique({ where: { id: params[0] } }) as any
+      }
+      if (conditions.includes('"referralCode"')) {
+        return prisma.user.findUnique({ where: { referralCode: params[0] } }) as any
+      }
+    }
+    throw new Error(`findOne not implemented for table=${table} conditions=${conditions}`)
   },
 
   async find(table: string, conditions: string = '', params: any[] = [], extra: string = ''): Promise<any[]> {
-    const where = conditions ? `WHERE ${conditions}` : ''
-    return executeQuery(`SELECT * FROM "${table}" ${where} ${extra}`, params)
+    if (table === 'User') {
+      if (conditions.includes('"referredById"')) {
+        return prisma.user.findMany({ where: { referredById: params[0] } }) as any
+      }
+      if (conditions.includes('"role"')) {
+        return prisma.user.findMany({ where: { role: params[0] } }) as any
+      }
+      if (conditions.includes('"isActive"')) {
+        return prisma.user.findMany({ where: { isActive: params[0] } }) as any
+      }
+      if (!conditions) {
+        return prisma.user.findMany() as any
+      }
+    }
+    if (table === 'Notification') {
+      if (conditions.includes('"userId"')) {
+        return prisma.notification.findMany({ where: { userId: params[0] }, orderBy: { createdAt: 'desc' } }) as any
+      }
+    }
+    if (table === 'Gratification') {
+      if (conditions.includes('"userId"')) {
+        return prisma.gratification.findMany({ where: { userId: params[0] } }) as any
+      }
+    }
+    if (table === 'Transaction') {
+      if (conditions.includes('"userId"')) {
+        return prisma.transaction.findMany({ where: { userId: params[0] }, orderBy: { createdAt: 'desc' } }) as any
+      }
+    }
+    if (table === 'Ticket') {
+      if (conditions.includes('"userId"')) {
+        return prisma.ticket.findMany({ where: { userId: params[0] }, orderBy: { createdAt: 'desc' } }) as any
+      }
+    }
+    if (table === 'Voucher') {
+      if (conditions.includes('"userId"')) {
+        return prisma.voucher.findMany({ where: { userId: params[0] } }) as any
+      }
+    }
+    if (table === 'CareerMilestone') {
+      if (conditions.includes('"userId"')) {
+        return prisma.careerMilestone.findMany({ where: { userId: params[0] } }) as any
+      }
+    }
+    if (table === 'CashbackEntry') {
+      if (conditions.includes('"userId"')) {
+        return prisma.cashbackEntry.findMany({ where: { userId: params[0] }, orderBy: { createdAt: 'desc' } }) as any
+      }
+    }
+    if (table === 'CashbackResidual') {
+      if (conditions.includes('"userId"')) {
+        return prisma.cashbackResidual.findMany({ where: { userId: params[0] }, orderBy: { createdAt: 'desc' } }) as any
+      }
+    }
+    if (table === 'CashbackSales') {
+      if (conditions.includes('"userId"')) {
+        return prisma.cashbackSales.findMany({ where: { userId: params[0] }, orderBy: { createdAt: 'desc' } }) as any
+      }
+    }
+    if (table === 'Invoice') {
+      if (conditions.includes('"userId"')) {
+        return prisma.invoice.findMany({ where: { userId: params[0] }, orderBy: { createdAt: 'desc' } }) as any
+      }
+    }
+    if (table === 'SystemConfig') {
+      return prisma.systemConfig.findMany() as any
+    }
+    if (table === 'Announcement') {
+      return prisma.announcement.findMany({ where: { isActive: true } }) as any
+    }
+    throw new Error(`find not implemented for table=${table} conditions=${conditions}`)
   },
 
   async insert(table: string, data: Record<string, any>): Promise<any> {
-    const keys = Object.keys(data).map(k => `"${k}"`)
-    const placeholders = Object.keys(data).map((_, i) => `$${i + 1}`)
-    const values = Object.values(data)
-    const rows = await executeQuery(
-      `INSERT INTO "${table}" (${keys.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`,
-      values
-    )
-    return rows[0]
+    if (table === 'User') {
+      return prisma.user.create({ data }) as any
+    }
+    if (table === 'Transaction') {
+      return prisma.transaction.create({ data }) as any
+    }
+    if (table === 'Ticket') {
+      return prisma.ticket.create({ data }) as any
+    }
+    if (table === 'TicketMessage') {
+      return prisma.ticketMessage.create({ data }) as any
+    }
+    if (table === 'Notification') {
+      return prisma.notification.create({ data }) as any
+    }
+    if (table === 'CashbackEntry') {
+      return prisma.cashbackEntry.create({ data }) as any
+    }
+    if (table === 'CashbackResidual') {
+      return prisma.cashbackResidual.create({ data }) as any
+    }
+    if (table === 'CashbackSales') {
+      return prisma.cashbackSales.create({ data }) as any
+    }
+    if (table === 'Gratification') {
+      return prisma.gratification.create({ data }) as any
+    }
+    if (table === 'Voucher') {
+      return prisma.voucher.create({ data }) as any
+    }
+    if (table === 'CareerMilestone') {
+      return prisma.careerMilestone.create({ data }) as any
+    }
+    if (table === 'MatrixPosition') {
+      return prisma.matrixPosition.create({ data }) as any
+    }
+    if (table === 'PointTransaction') {
+      return prisma.pointTransaction.create({ data }) as any
+    }
+    if (table === 'Invoice') {
+      return prisma.invoice.create({ data }) as any
+    }
+    if (table === 'SystemConfig') {
+      return prisma.systemConfig.create({ data }) as any
+    }
+    if (table === 'GamificationStreak') {
+      return prisma.gamificationStreak.create({ data }) as any
+    }
+    if (table === 'UserChallenge') {
+      return prisma.userChallenge.create({ data }) as any
+    }
+    if (table === 'Event') {
+      return prisma.event.create({ data }) as any
+    }
+    if (table === 'EventRegistration') {
+      return prisma.eventRegistration.create({ data }) as any
+    }
+    if (table === 'Beneficiary') {
+      return prisma.beneficiary.create({ data }) as any
+    }
+    if (table === 'MarketplaceProduct') {
+      return prisma.marketplaceProduct.create({ data }) as any
+    }
+    if (table === 'MarketplaceOrder') {
+      return prisma.marketplaceOrder.create({ data }) as any
+    }
+    if (table === 'MarketplaceOrderItem') {
+      return prisma.marketplaceOrderItem.create({ data }) as any
+    }
+    if (table === 'Announcement') {
+      return prisma.announcement.create({ data }) as any
+    }
+    throw new Error(`insert not implemented for table=${table}`)
   },
 
   async update(table: string, conditions: string, data: Record<string, any>, conditionParams: any[] = []): Promise<any> {
-    const setClauses = Object.keys(data).map((key, i) => `"${key}" = $${i + 1}`)
-    const values = [...Object.values(data), ...conditionParams]
-    const rows = await executeQuery(
-      `UPDATE "${table}" SET ${setClauses.join(', ')} WHERE ${conditions} RETURNING *`,
-      values
-    )
-    return rows[0]
+    if (table === 'User') {
+      if (conditions.includes('"id"')) {
+        return prisma.user.update({ where: { id: conditionParams[0] }, data }) as any
+      }
+      if (conditions.includes('"email"')) {
+        return prisma.user.update({ where: { email: conditionParams[0] }, data }) as any
+      }
+    }
+    if (table === 'Gratification') {
+      if (conditions.includes('"id"')) {
+        return prisma.gratification.update({ where: { id: conditionParams[0] }, data }) as any
+      }
+    }
+    if (table === 'Transaction') {
+      if (conditions.includes('"id"')) {
+        return prisma.transaction.update({ where: { id: conditionParams[0] }, data }) as any
+      }
+    }
+    if (table === 'Ticket') {
+      if (conditions.includes('"id"')) {
+        return prisma.ticket.update({ where: { id: conditionParams[0] }, data }) as any
+      }
+    }
+    if (table === 'Notification') {
+      if (conditions.includes('"id"')) {
+        return prisma.notification.update({ where: { id: conditionParams[0] }, data }) as any
+      }
+    }
+    if (table === 'Voucher') {
+      if (conditions.includes('"id"')) {
+        return prisma.voucher.update({ where: { id: conditionParams[0] }, data }) as any
+      }
+    }
+    if (table === 'SystemConfig') {
+      if (conditions.includes('"key"')) {
+        return prisma.systemConfig.update({ where: { key: conditionParams[0] }, data }) as any
+      }
+    }
+    if (table === 'GamificationStreak') {
+      if (conditions.includes('"userId"')) {
+        return prisma.gamificationStreak.update({ where: { userId: conditionParams[0] }, data }) as any
+      }
+    }
+    if (table === 'UserChallenge') {
+      if (conditions.includes('"id"')) {
+        return prisma.userChallenge.update({ where: { id: conditionParams[0] }, data }) as any
+      }
+    }
+    if (table === 'MarketplaceProduct') {
+      if (conditions.includes('"id"')) {
+        return prisma.marketplaceProduct.update({ where: { id: conditionParams[0] }, data }) as any
+      }
+    }
+    if (table === 'MarketplaceOrder') {
+      if (conditions.includes('"id"')) {
+        return prisma.marketplaceOrder.update({ where: { id: conditionParams[0] }, data }) as any
+      }
+    }
+    if (table === 'Invoice') {
+      if (conditions.includes('"id"')) {
+        return prisma.invoice.update({ where: { id: conditionParams[0] }, data }) as any
+      }
+    }
+    throw new Error(`update not implemented for table=${table} conditions=${conditions}`)
   },
 
   async deleteFrom(table: string, conditions: string, params: any[] = []): Promise<any> {
-    const rows = await executeQuery(`DELETE FROM "${table}" WHERE ${conditions} RETURNING *`, params)
-    return rows[0]
+    if (table === 'Notification') {
+      if (conditions.includes('"id"')) {
+        return prisma.notification.delete({ where: { id: params[0] } }) as any
+      }
+    }
+    if (table === 'MarketplaceProduct') {
+      if (conditions.includes('"id"')) {
+        return prisma.marketplaceProduct.delete({ where: { id: params[0] } }) as any
+      }
+    }
+    if (table === 'MarketplaceOrder') {
+      if (conditions.includes('"id"')) {
+        return prisma.marketplaceOrder.delete({ where: { id: params[0] } }) as any
+      }
+    }
+    throw new Error(`deleteFrom not implemented for table=${table} conditions=${conditions}`)
   },
 
   async count(table: string, conditions: string = '', params: any[] = []): Promise<number> {
-    const where = conditions ? `WHERE ${conditions}` : ''
-    const rows = await executeQuery(`SELECT COUNT(*)::int as count FROM "${table}" ${where}`, params)
-    return rows[0]?.count ?? 0
+    if (table === 'User') {
+      if (!conditions) return prisma.user.count()
+      if (conditions.includes('"role"')) return prisma.user.count({ where: { role: params[0] } })
+      if (conditions.includes('"isActive"')) return prisma.user.count({ where: { isActive: params[0] } })
+      if (conditions.includes('"referredById"')) return prisma.user.count({ where: { referredById: params[0] } })
+    }
+    if (table === 'Transaction') {
+      if (conditions.includes('"userId"')) return prisma.transaction.count({ where: { userId: params[0] } })
+    }
+    if (table === 'Notification') {
+      if (conditions.includes('"userId"')) return prisma.notification.count({ where: { userId: params[0] } })
+    }
+    throw new Error(`count not implemented for table=${table} conditions=${conditions}`)
   },
 }

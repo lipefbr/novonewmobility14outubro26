@@ -71,7 +71,7 @@ function FloatingParticles() {
       {particles.map((p) => (
         <motion.div
           key={p.id}
-          className="absolute rounded-full bg-emerald-400/30 dark:bg-emerald-300/20"
+          className="absolute rounded-full bg-emerald-400/50"
           style={{
             width: p.size,
             height: p.size,
@@ -107,7 +107,7 @@ function NetworkLines() {
   }))
 
   return (
-    <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-[0.06]">
+    <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-[0.15]">
       {lines.map((l) => (
         <motion.line
           key={l.id}
@@ -202,15 +202,15 @@ export function LoginPage() {
   return (
     <div className="min-h-screen flex relative overflow-hidden">
       {/* Animated gradient background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-emerald-50 via-white to-teal-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950" />
+      <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-emerald-950 to-gray-900" />
       <motion.div
         className="absolute inset-0"
         animate={{
           background: [
-            'radial-gradient(ellipse at 20% 50%, rgba(16,185,129,0.08) 0%, transparent 50%)',
-            'radial-gradient(ellipse at 80% 20%, rgba(20,184,166,0.08) 0%, transparent 50%)',
-            'radial-gradient(ellipse at 50% 80%, rgba(5,150,105,0.08) 0%, transparent 50%)',
-            'radial-gradient(ellipse at 20% 50%, rgba(16,185,129,0.08) 0%, transparent 50%)',
+            'radial-gradient(ellipse at 20% 50%, rgba(16,185,129,0.25) 0%, transparent 50%)',
+            'radial-gradient(ellipse at 80% 20%, rgba(20,184,166,0.25) 0%, transparent 50%)',
+            'radial-gradient(ellipse at 50% 80%, rgba(5,150,105,0.25) 0%, transparent 50%)',
+            'radial-gradient(ellipse at 20% 50%, rgba(16,185,129,0.25) 0%, transparent 50%)',
           ],
         }}
         transition={{ duration: 15, repeat: Infinity, ease: 'easeInOut' }}
@@ -223,9 +223,9 @@ export function LoginPage() {
       {/* LEFT PANEL - Desktop only */}
       <div className="hidden lg:flex lg:w-[45%] xl:w-[50%] relative z-10">
         <div className="w-full flex flex-col justify-center items-center px-12 xl:px-20 relative">
-          {/* Dark gradient overlay */}
-          <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-emerald-950 to-gray-900" />
-          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMS41Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-50" />
+          {/* Dark gradient overlay - transparent since main bg is already dark */}
+          <div className="absolute inset-0 bg-gradient-to-br from-emerald-950/40 via-transparent to-teal-950/40" />
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMS41Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-60" />
 
           <div className="relative z-10 max-w-md">
             {/* Logo */}
@@ -318,55 +318,55 @@ export function LoginPage() {
             >
               NM
             </motion.div>
-            <h1 className="text-2xl font-bold text-foreground">NewMobility</h1>
-            <p className="text-sm text-muted-foreground mt-1">BackOffice - Área do Membro</p>
+            <h1 className="text-2xl font-bold text-white">NewMobility</h1>
+            <p className="text-sm text-gray-400 mt-1">BackOffice - Área do Membro</p>
           </div>
 
         {showResetPassword ? (
           <ResetPasswordFlow onBack={() => setShowResetPassword(false)} />
         ) : (
-          <Card className="shadow-xl border-0 shadow-emerald-100/50 dark:shadow-emerald-900/20 bg-card/80 backdrop-blur-sm animated-gradient-border">
+          <Card className="shadow-2xl border border-white/10 shadow-emerald-900/40 bg-white/5 backdrop-blur-xl animated-gradient-border">
             <CardHeader className="space-y-1 pb-4">
-              <CardTitle className="text-xl font-bold text-center text-foreground">{t('auth.login.title')}</CardTitle>
-              <CardDescription className="text-center text-muted-foreground typing-cursor-anim">
+              <CardTitle className="text-xl font-bold text-center text-white">{t('auth.login.title')}</CardTitle>
+              <CardDescription className="text-center text-gray-400 typing-cursor-anim">
                 {t('auth.login.subtitle')}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email" className="text-foreground">{t('auth.login.email')}</Label>
+                  <Label htmlFor="email" className="text-gray-300">{t('auth.login.email')}</Label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-400" />
                     <Input
                       id="email"
                       type="email"
                       placeholder="seu@email.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="pl-10"
+                      className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-gray-500 focus:border-emerald-500 focus:ring-emerald-500/30"
                       required
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="password" className="text-foreground">{t('auth.login.password')}</Label>
+                  <Label htmlFor="password" className="text-gray-300">{t('auth.login.password')}</Label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-400" />
                     <Input
                       id="password"
                       type={showPassword ? 'text' : 'password'}
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="pl-10 pr-10"
+                      className="pl-10 pr-10 bg-white/10 border-white/20 text-white placeholder:text-gray-500 focus:border-emerald-500 focus:ring-emerald-500/30"
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
@@ -376,11 +376,11 @@ export function LoginPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <Checkbox id="remember" />
-                    <label htmlFor="remember" className="text-sm text-muted-foreground cursor-pointer">
+                    <label htmlFor="remember" className="text-sm text-gray-400 cursor-pointer">
                       {t('auth.login.remember')}
                     </label>
                   </div>
-                  <button type="button" className="text-sm text-emerald-600 hover:text-emerald-700 font-medium" onClick={() => setShowResetPassword(true)}>
+                  <button type="button" className="text-sm text-emerald-400 hover:text-emerald-300 font-medium" onClick={() => setShowResetPassword(true)}>
                     {t('auth.login.forgot')}
                   </button>
                 </div>
@@ -408,10 +408,10 @@ export function LoginPage() {
               <div className="mt-6">
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t border-border" />
+                    <span className="w-full border-t border-white/10" />
                   </div>
                   <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-card px-2 text-muted-foreground">ou continue com</span>
+                    <span className="bg-transparent px-2 text-gray-500">ou continue com</span>
                   </div>
                 </div>
 
@@ -419,7 +419,7 @@ export function LoginPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    className="gap-2 h-10"
+                    className="gap-2 h-10 border-white/15 bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white"
                     onClick={() => toast.info('Login com Google em breve!')}
                   >
                     <svg className="h-4 w-4" viewBox="0 0 24 24">
@@ -445,7 +445,7 @@ export function LoginPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    className="gap-2 h-10"
+                    className="gap-2 h-10 border-white/15 bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white"
                     onClick={() => toast.info('Login com Apple em breve!')}
                   >
                     <Apple className="h-4 w-4" />
@@ -454,7 +454,7 @@ export function LoginPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    className="gap-2 h-10 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                    className="gap-2 h-10 border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300"
                     onClick={() => toast.info('Login com biometria em breve!')}
                   >
                     <Fingerprint className="h-4 w-4" />
@@ -464,11 +464,11 @@ export function LoginPage() {
               </div>
 
               <div className="mt-6 text-center">
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-gray-400">
                   {t('auth.login.noAccount')}{' '}
                   <button
                     onClick={() => setAuthView('register')}
-                    className="text-emerald-600 hover:text-emerald-700 font-semibold"
+                    className="text-emerald-400 hover:text-emerald-300 font-semibold"
                   >
                     {t('auth.login.register')}
                   </button>
@@ -476,16 +476,16 @@ export function LoginPage() {
               </div>
 
               {/* Demo credentials with pulsing border */}
-              <div className="mt-4 p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg border-2 border-emerald-300 dark:border-emerald-700 animate-shimmer-border relative">
+              <div className="mt-4 p-3 bg-emerald-500/10 rounded-lg border-2 border-emerald-500/30 animate-shimmer-border relative">
                 <div className="absolute -top-2 left-3">
                   <Badge className="bg-emerald-600 text-white text-[9px] px-2 py-0.5 border-0 shadow-sm">DEMO</Badge>
                 </div>
-                <p className="text-xs text-emerald-700 dark:text-emerald-300 font-semibold mb-1.5 mt-0.5">🔑 Acesso de Demonstração</p>
-                <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
+                <p className="text-xs text-emerald-300 font-semibold mb-1.5 mt-0.5">🔑 Acesso de Demonstração</p>
+                <div className="flex items-center gap-2 text-xs text-emerald-400">
                   <Mail className="h-3 w-3" />
                   <span>carlos.silva@email.com</span>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">
+                <div className="flex items-center gap-2 text-xs text-emerald-400 mt-0.5">
                   <Lock className="h-3 w-3" />
                   <span>123456</span>
                 </div>
@@ -493,7 +493,7 @@ export function LoginPage() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="mt-2 w-full border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 text-xs bg-white/50 dark:bg-black/20"
+                  className="mt-2 w-full border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/20 text-xs bg-emerald-500/10"
                   onClick={() => handleLogin('carlos.silva@email.com', '123456')}
                   disabled={loading}
                 >
@@ -504,19 +504,19 @@ export function LoginPage() {
                 </div>
 
               {/* Admin demo credentials */}
-              <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border-2 border-amber-300 dark:border-amber-700 relative">
+              <div className="mt-3 p-3 bg-amber-500/10 rounded-lg border-2 border-amber-500/30 relative">
                 <div className="absolute -top-2 left-3">
                   <Badge className="bg-amber-600 text-white text-[9px] px-2 py-0.5 border-0 shadow-sm">ADMIN</Badge>
                 </div>
-                <p className="text-xs text-amber-700 dark:text-amber-300 font-semibold mb-1.5 mt-0.5 flex items-center gap-1.5">
+                <p className="text-xs text-amber-300 font-semibold mb-1.5 mt-0.5 flex items-center gap-1.5">
                   <Shield className="h-3.5 w-3.5" />
                   Acesso Administrador
                 </p>
-                <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+                <div className="flex items-center gap-2 text-xs text-amber-400">
                   <Mail className="h-3 w-3" />
                   <span>admin@newmobility.com</span>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                <div className="flex items-center gap-2 text-xs text-amber-400 mt-0.5">
                   <Lock className="h-3 w-3" />
                   <span>123456</span>
                 </div>
@@ -524,7 +524,7 @@ export function LoginPage() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="mt-2 w-full border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/30 text-xs bg-white/50 dark:bg-black/20"
+                  className="mt-2 w-full border-amber-500/40 text-amber-300 hover:bg-amber-500/20 text-xs bg-amber-500/10"
                   onClick={() => handleLogin('admin@newmobility.com', '123456', true)}
                   disabled={loading}
                 >
@@ -534,17 +534,17 @@ export function LoginPage() {
               </div>
 
               {/* Trust badges */}
-              <div className="mt-5 flex items-center justify-center gap-3 text-muted-foreground">
-                <div className="flex items-center gap-1.5 bg-muted/50 rounded-full px-2.5 py-1">
-                  <LockIcon className="h-3 w-3 text-emerald-500" />
+              <div className="mt-5 flex items-center justify-center gap-3 text-gray-400">
+                <div className="flex items-center gap-1.5 bg-white/5 rounded-full px-2.5 py-1 border border-white/10">
+                  <LockIcon className="h-3 w-3 text-emerald-400" />
                   <span className="text-[10px] font-medium">Dados Seguros</span>
                 </div>
-                <div className="flex items-center gap-1.5 bg-muted/50 rounded-full px-2.5 py-1">
-                  <Globe className="h-3 w-3 text-emerald-500" />
+                <div className="flex items-center gap-1.5 bg-white/5 rounded-full px-2.5 py-1 border border-white/10">
+                  <Globe className="h-3 w-3 text-emerald-400" />
                   <span className="text-[10px] font-medium">Criptografia 128-bit</span>
                 </div>
-                <div className="flex items-center gap-1.5 bg-muted/50 rounded-full px-2.5 py-1">
-                  <Users className="h-3 w-3 text-emerald-500" />
+                <div className="flex items-center gap-1.5 bg-white/5 rounded-full px-2.5 py-1 border border-white/10">
+                  <Users className="h-3 w-3 text-emerald-400" />
                   <span className="text-[10px] font-medium">+10.000 Membros</span>
                 </div>
               </div>
@@ -559,8 +559,8 @@ export function LoginPage() {
             transition={{ delay: 0.6, duration: 0.4 }}
             className="mt-6"
           >
-            <div className="relative bg-card/60 backdrop-blur-sm border border-border rounded-xl p-4 shadow-sm">
-              <Sparkles className="absolute -top-2 -right-2 h-5 w-5 text-emerald-500 bg-card rounded-full p-0.5" />
+            <div className="relative bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 shadow-sm">
+              <Sparkles className="absolute -top-2 -right-2 h-5 w-5 text-emerald-400 bg-gray-900 rounded-full p-0.5" />
               <AnimatePresence mode="wait">
                 <motion.div
                   key={testimonialIdx}
@@ -570,12 +570,12 @@ export function LoginPage() {
                   transition={{ duration: 0.4 }}
                   className="flex gap-3"
                 >
-                  <Quote className="h-5 w-5 text-emerald-500 shrink-0 mt-0.5" />
+                  <Quote className="h-5 w-5 text-emerald-400 shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm text-foreground italic leading-relaxed">
+                    <p className="text-sm text-white italic leading-relaxed">
                       &ldquo;{currentTestimonial.text}&rdquo;
                     </p>
-                    <p className="text-xs text-muted-foreground mt-1.5 font-medium">
+                    <p className="text-xs text-gray-400 mt-1.5 font-medium">
                       — {currentTestimonial.author}, {currentTestimonial.city}
                     </p>
                   </div>
@@ -588,7 +588,7 @@ export function LoginPage() {
                     key={i}
                     onClick={() => setTestimonialIdx(i)}
                     className={`h-1.5 rounded-full transition-all duration-300 ${
-                      i === testimonialIdx ? 'w-4 bg-emerald-500' : 'w-1.5 bg-muted-foreground/30'
+                      i === testimonialIdx ? 'w-4 bg-emerald-400' : 'w-1.5 bg-white/20'
                     }`}
                   />
                 ))}
@@ -596,7 +596,7 @@ export function LoginPage() {
             </div>
           </motion.div>
 
-          <p className="text-center text-xs text-muted-foreground mt-6">
+          <p className="text-center text-xs text-gray-500 mt-6">
             {t('footer.copyright')}
           </p>
         </motion.div>
