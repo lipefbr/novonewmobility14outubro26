@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
-import { Eye, EyeOff, Mail, Lock, ArrowRight, DollarSign, TrendingUp, Users, Smartphone, Apple, Quote, Sparkles, Shield, Fingerprint, Globe, Lock as LockIcon, Zap } from 'lucide-react'
+import { Eye, EyeOff, Mail, Lock, ArrowRight, DollarSign, TrendingUp, Users, Smartphone, Apple, Shield, Fingerprint, Globe, Lock as LockIcon, Zap, ChevronRight } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { ResetPasswordFlow } from './reset-password-flow'
@@ -45,101 +45,6 @@ function mapApiUserToUserData(apiUser: Record<string, unknown>, balances?: Recor
   }
 }
 
-// Seeded pseudo-random for consistent SSR/client rendering
-// Uses integer-based calculation to avoid floating-point differences between server/client
-function seededRandom(seed: number) {
-  // Math.abs ensures the result is always non-negative
-  // (JavaScript modulo can return negative values for negative operands)
-  const x = Math.abs(((Math.sin(seed + 1) * 10000) | 0) % 10000)
-  return x / 10000
-}
-
-// Floating particles component - uses seeded random to avoid hydration mismatch
-function FloatingParticles() {
-  const particles = Array.from({ length: 20 }, (_, i) => ({
-    id: i,
-    x: seededRandom(i * 7 + 1) * 100,
-    y: seededRandom(i * 13 + 2) * 100,
-    size: seededRandom(i * 3 + 5) * 4 + 2,
-    duration: Math.max(0.5, seededRandom(i * 11 + 3) * 20 + 15),
-    delay: Math.max(0, seededRandom(i * 5 + 7) * 10),
-    opacity: seededRandom(i * 17 + 4) * 0.3 + 0.1,
-  }))
-
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {particles.map((p) => (
-        <motion.div
-          key={p.id}
-          className="absolute rounded-full bg-emerald-400/50"
-          style={{
-            width: p.size,
-            height: p.size,
-            left: `${p.x}%`,
-            top: `${p.y}%`,
-          }}
-          animate={{
-            y: [0, -30, 0, 30, 0],
-            x: [0, 15, 0, -15, 0],
-            opacity: [p.opacity, p.opacity * 1.5, p.opacity, p.opacity * 0.5, p.opacity],
-          }}
-          transition={{
-            duration: p.duration,
-            delay: p.delay,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-        />
-      ))}
-    </div>
-  )
-}
-
-// Network lines between particles - uses seeded random to avoid hydration mismatch
-function NetworkLines() {
-  const lines = Array.from({ length: 8 }, (_, i) => ({
-    id: i,
-    x1: seededRandom(i * 23 + 10) * 100,
-    y1: seededRandom(i * 29 + 11) * 100,
-    x2: seededRandom(i * 31 + 12) * 100,
-    y2: seededRandom(i * 37 + 13) * 100,
-    delay: Math.max(0, seededRandom(i * 41 + 14) * 5),
-  }))
-
-  return (
-    <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-[0.15]">
-      {lines.map((l) => (
-        <motion.line
-          key={l.id}
-          x1={`${l.x1}%`}
-          y1={`${l.y1}%`}
-          x2={`${l.x2}%`}
-          y2={`${l.y2}%`}
-          stroke="currentColor"
-          strokeWidth="1"
-          className="text-emerald-500"
-          initial={{ pathLength: 0, opacity: 0 }}
-          animate={{ pathLength: 1, opacity: [0, 0.5, 0] }}
-          transition={{
-            duration: 8,
-            delay: l.delay,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-        />
-      ))}
-    </svg>
-  )
-}
-
-// Testimonial rotator
-const testimonials = [
-  { text: 'O NewMobility mudou minha vida financeira!', author: 'Maria Santos', city: 'São Paulo' },
-  { text: 'Em 3 meses já consegui uma renda extra incrível!', author: 'João Ferreira', city: 'Rio de Janeiro' },
-  { text: 'O CashBack multi-nível é simplesmente fantástico.', author: 'Ana Oliveira', city: 'Belo Horizonte' },
-  { text: 'Melhor oportunidade que já tive na vida!', author: 'Pedro Lima', city: 'Curitiba' },
-]
-
 export function LoginPage() {
   const { setAuthView, login, setActivePage } = useStore()
   const { t } = useTranslation()
@@ -147,16 +52,7 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [testimonialIdx, setTestimonialIdx] = useState(0)
   const [showResetPassword, setShowResetPassword] = useState(false)
-
-  // Rotate testimonials
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTestimonialIdx((prev) => (prev + 1) % testimonials.length)
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [])
 
   const handleLogin = async (emailArg: string, passwordArg: string, isAdmin = false) => {
     setLoading(true)
@@ -174,7 +70,6 @@ export function LoginPage() {
         const userData = mapApiUserToUserData(data.user, data.balances)
         login(userData)
         if (isAdmin) {
-          // Use setTimeout to avoid state update conflicts
           setTimeout(() => {
             useStore.getState().setActivePage('admin')
           }, 100)
@@ -197,36 +92,15 @@ export function LoginPage() {
     await handleLogin(email, password)
   }
 
-  const currentTestimonial = testimonials[testimonialIdx]
-
   return (
-    <div className="min-h-screen flex relative overflow-hidden">
-      {/* Animated gradient background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-emerald-950 to-gray-900" />
-      <motion.div
-        className="absolute inset-0"
-        animate={{
-          background: [
-            'radial-gradient(ellipse at 20% 50%, rgba(16,185,129,0.25) 0%, transparent 50%)',
-            'radial-gradient(ellipse at 80% 20%, rgba(20,184,166,0.25) 0%, transparent 50%)',
-            'radial-gradient(ellipse at 50% 80%, rgba(5,150,105,0.25) 0%, transparent 50%)',
-            'radial-gradient(ellipse at 20% 50%, rgba(16,185,129,0.25) 0%, transparent 50%)',
-          ],
-        }}
-        transition={{ duration: 15, repeat: Infinity, ease: 'easeInOut' }}
-      />
+    <div className="min-h-screen flex relative overflow-hidden bg-gray-50">
+      {/* LEFT PANEL - Desktop only - Green accent */}
+      <div className="hidden lg:flex lg:w-[45%] xl:w-[50%] relative bg-emerald-700">
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-800 via-emerald-700 to-emerald-900" />
+        {/* Subtle pattern overlay */}
+        <div className="absolute inset-0 opacity-10 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMS41Ii8+PC9nPjwvZz48L3N2Zz4=')]" />
 
-      {/* Floating particles and network lines */}
-      <FloatingParticles />
-      <NetworkLines />
-
-      {/* LEFT PANEL - Desktop only */}
-      <div className="hidden lg:flex lg:w-[45%] xl:w-[50%] relative z-10">
-        <div className="w-full flex flex-col justify-center items-center px-12 xl:px-20 relative">
-          {/* Dark gradient overlay - transparent since main bg is already dark */}
-          <div className="absolute inset-0 bg-gradient-to-br from-emerald-950/40 via-transparent to-teal-950/40" />
-          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMS41Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-60" />
-
+        <div className="w-full flex flex-col justify-center items-center px-12 xl:px-20 relative z-10">
           <div className="relative z-10 max-w-md">
             {/* Logo */}
             <motion.div
@@ -235,11 +109,11 @@ export function LoginPage() {
               transition={{ duration: 0.6, delay: 0.2 }}
               className="mb-10"
             >
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-emerald-600 text-white font-bold text-3xl mb-6 shadow-xl shadow-emerald-600/30">
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white text-emerald-700 font-bold text-3xl mb-6 shadow-xl">
                 NM
               </div>
               <h1 className="text-4xl font-bold text-white mb-2">NewMobility</h1>
-              <p className="text-emerald-300 text-lg font-light">
+              <p className="text-emerald-200 text-lg font-light">
                 Conectando pessoas, transformando vidas
               </p>
             </motion.div>
@@ -263,12 +137,12 @@ export function LoginPage() {
                   transition={{ duration: 0.4, delay: 0.5 + i * 0.15 }}
                   className="flex items-start gap-4 group"
                 >
-                  <div className="p-3 rounded-xl bg-emerald-600/20 border border-emerald-500/30 group-hover:bg-emerald-600/30 transition-colors shrink-0">
-                    <feature.icon className="h-5 w-5 text-emerald-400" />
+                  <div className="p-3 rounded-xl bg-white/20 border border-white/20 group-hover:bg-white/30 transition-colors shrink-0">
+                    <feature.icon className="h-5 w-5 text-white" />
                   </div>
                   <div>
                     <h3 className="text-white font-semibold text-sm">{feature.title}</h3>
-                    <p className="text-gray-400 text-xs mt-0.5">{feature.desc}</p>
+                    <p className="text-emerald-200 text-xs mt-0.5">{feature.desc}</p>
                   </div>
                 </motion.div>
               ))}
@@ -281,17 +155,17 @@ export function LoginPage() {
               transition={{ duration: 0.6, delay: 0.9 }}
               className="flex gap-3"
             >
-              <button className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-white/10 border border-white/10 hover:bg-white/15 transition-colors">
+              <button className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-white/15 border border-white/20 hover:bg-white/25 transition-colors">
                 <Smartphone className="h-5 w-5 text-white" />
                 <div className="text-left">
-                  <p className="text-[9px] text-gray-400 uppercase">Download na</p>
+                  <p className="text-[9px] text-emerald-200 uppercase">Download na</p>
                   <p className="text-xs text-white font-semibold -mt-0.5">Google Play</p>
                 </div>
               </button>
-              <button className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-white/10 border border-white/10 hover:bg-white/15 transition-colors">
+              <button className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-white/15 border border-white/20 hover:bg-white/25 transition-colors">
                 <Apple className="h-5 w-5 text-white" />
                 <div className="text-left">
-                  <p className="text-[9px] text-gray-400 uppercase">Download na</p>
+                  <p className="text-[9px] text-emerald-200 uppercase">Download na</p>
                   <p className="text-xs text-white font-semibold -mt-0.5">App Store</p>
                 </div>
               </button>
@@ -300,8 +174,8 @@ export function LoginPage() {
         </div>
       </div>
 
-      {/* RIGHT PANEL - Login form */}
-      <div className="w-full lg:w-[55%] xl:w-[50%] flex flex-col items-center justify-center p-4 sm:p-6 relative z-10">
+      {/* RIGHT PANEL - Login form - White/Light background */}
+      <div className="w-full lg:w-[55%] xl:w-[50%] flex flex-col items-center justify-center p-4 sm:p-6 relative z-10 bg-white">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -314,59 +188,59 @@ export function LoginPage() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.4 }}
-              className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-600 text-white font-bold text-2xl mb-4 shadow-lg shadow-emerald-600/25"
+              className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-600 text-white font-bold text-2xl mb-4 shadow-lg"
             >
               NM
             </motion.div>
-            <h1 className="text-2xl font-bold text-white">NewMobility</h1>
-            <p className="text-sm text-gray-400 mt-1">BackOffice - Área do Membro</p>
+            <h1 className="text-2xl font-bold text-gray-900">NewMobility</h1>
+            <p className="text-sm text-gray-500 mt-1">BackOffice - Área do Membro</p>
           </div>
 
         {showResetPassword ? (
           <ResetPasswordFlow onBack={() => setShowResetPassword(false)} />
         ) : (
-          <Card className="shadow-2xl border border-white/10 shadow-emerald-900/40 bg-white/5 backdrop-blur-xl animated-gradient-border">
+          <Card className="shadow-lg border border-gray-200 bg-white">
             <CardHeader className="space-y-1 pb-4">
-              <CardTitle className="text-xl font-bold text-center text-white">{t('auth.login.title')}</CardTitle>
-              <CardDescription className="text-center text-gray-400 typing-cursor-anim">
+              <CardTitle className="text-xl font-bold text-center text-gray-900">{t('auth.login.title')}</CardTitle>
+              <CardDescription className="text-center text-gray-500">
                 {t('auth.login.subtitle')}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email" className="text-gray-300">{t('auth.login.email')}</Label>
+                  <Label htmlFor="email" className="text-gray-700 font-medium">{t('auth.login.email')}</Label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-400" />
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <Input
                       id="email"
                       type="email"
                       placeholder="seu@email.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-gray-500 focus:border-emerald-500 focus:ring-emerald-500/30"
+                      className="pl-10 bg-white border-gray-300 text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:ring-emerald-500/30"
                       required
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="password" className="text-gray-300">{t('auth.login.password')}</Label>
+                  <Label htmlFor="password" className="text-gray-700 font-medium">{t('auth.login.password')}</Label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-400" />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <Input
                       id="password"
                       type={showPassword ? 'text' : 'password'}
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="pl-10 pr-10 bg-white/10 border-white/20 text-white placeholder:text-gray-500 focus:border-emerald-500 focus:ring-emerald-500/30"
+                      className="pl-10 pr-10 bg-white border-gray-300 text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:ring-emerald-500/30"
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
@@ -376,18 +250,18 @@ export function LoginPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <Checkbox id="remember" />
-                    <label htmlFor="remember" className="text-sm text-gray-400 cursor-pointer">
+                    <label htmlFor="remember" className="text-sm text-gray-600 cursor-pointer">
                       {t('auth.login.remember')}
                     </label>
                   </div>
-                  <button type="button" className="text-sm text-emerald-400 hover:text-emerald-300 font-medium" onClick={() => setShowResetPassword(true)}>
+                  <button type="button" className="text-sm text-emerald-600 hover:text-emerald-700 font-medium" onClick={() => setShowResetPassword(true)}>
                     {t('auth.login.forgot')}
                   </button>
                 </div>
 
                 <Button
                   type="submit"
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
                   disabled={loading}
                 >
                   {loading ? (
@@ -408,10 +282,10 @@ export function LoginPage() {
               <div className="mt-6">
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t border-white/10" />
+                    <span className="w-full border-t border-gray-200" />
                   </div>
                   <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-transparent px-2 text-gray-500">ou continue com</span>
+                    <span className="bg-white px-2 text-gray-400">ou continue com</span>
                   </div>
                 </div>
 
@@ -419,7 +293,7 @@ export function LoginPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    className="gap-2 h-10 border-white/15 bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white"
+                    className="gap-2 h-10 border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:text-gray-900"
                     onClick={() => toast.info('Login com Google em breve!')}
                   >
                     <svg className="h-4 w-4" viewBox="0 0 24 24">
@@ -445,7 +319,7 @@ export function LoginPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    className="gap-2 h-10 border-white/15 bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white"
+                    className="gap-2 h-10 border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:text-gray-900"
                     onClick={() => toast.info('Login com Apple em breve!')}
                   >
                     <Apple className="h-4 w-4" />
@@ -454,7 +328,7 @@ export function LoginPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    className="gap-2 h-10 border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300"
+                    className="gap-2 h-10 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800"
                     onClick={() => toast.info('Login com biometria em breve!')}
                   >
                     <Fingerprint className="h-4 w-4" />
@@ -464,139 +338,114 @@ export function LoginPage() {
               </div>
 
               <div className="mt-6 text-center">
-                <p className="text-sm text-gray-400">
+                <p className="text-sm text-gray-600">
                   {t('auth.login.noAccount')}{' '}
                   <button
                     onClick={() => setAuthView('register')}
-                    className="text-emerald-400 hover:text-emerald-300 font-semibold"
+                    className="text-emerald-600 hover:text-emerald-700 font-semibold"
                   >
                     {t('auth.login.register')}
                   </button>
                 </p>
               </div>
 
-              {/* Demo credentials with pulsing border */}
-              <div className="mt-4 p-3 bg-emerald-500/10 rounded-lg border-2 border-emerald-500/30 animate-shimmer-border relative">
-                <div className="absolute -top-2 left-3">
-                  <Badge className="bg-emerald-600 text-white text-[9px] px-2 py-0.5 border-0 shadow-sm">DEMO</Badge>
+              {/* Demo credentials */}
+              <div className="mt-4 p-4 bg-emerald-50 rounded-lg border border-emerald-200">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-emerald-600 text-white text-[10px] px-2 py-0.5 border-0">DEMO</Badge>
+                    <p className="text-sm text-gray-800 font-semibold">🔑 Acesso de Demonstração</p>
+                  </div>
                 </div>
-                <p className="text-xs text-emerald-300 font-semibold mb-1.5 mt-0.5">🔑 Acesso de Demonstração</p>
-                <div className="flex items-center gap-2 text-xs text-emerald-400">
+                <div className="flex items-center gap-2 text-xs text-gray-600">
                   <Mail className="h-3 w-3" />
-                  <span>carlos.silva@email.com</span>
+                  <span className="font-mono">carlos.silva@email.com</span>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-emerald-400 mt-0.5">
+                <div className="flex items-center gap-2 text-xs text-gray-600 mt-0.5">
                   <Lock className="h-3 w-3" />
-                  <span>123456</span>
+                  <span className="font-mono">123456</span>
                 </div>
                 <Button
                   type="button"
-                  variant="outline"
                   size="sm"
-                  className="mt-2 w-full border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/20 text-xs bg-emerald-500/10"
+                  className="mt-3 w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold"
                   onClick={() => handleLogin('carlos.silva@email.com', '123456')}
                   disabled={loading}
                 >
-                  <Zap className="h-3.5 w-3.5 mr-1" />
-                  {t('auth.login.demo')}
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Entrando...
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5">
+                      <Zap className="h-3.5 w-3.5" />
+                      Acesso Rápido Demo
+                    </span>
+                  )}
                 </Button>
-
-                </div>
+              </div>
 
               {/* Admin demo credentials */}
-              <div className="mt-3 p-3 bg-amber-500/10 rounded-lg border-2 border-amber-500/30 relative">
-                <div className="absolute -top-2 left-3">
-                  <Badge className="bg-amber-600 text-white text-[9px] px-2 py-0.5 border-0 shadow-sm">ADMIN</Badge>
+              <div className="mt-3 p-4 bg-amber-50 rounded-lg border border-amber-200">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-amber-600 text-white text-[10px] px-2 py-0.5 border-0">ADMIN</Badge>
+                    <p className="text-sm text-gray-800 font-semibold flex items-center gap-1.5">
+                      <Shield className="h-3.5 w-3.5 text-amber-600" />
+                      Acesso Administrador
+                    </p>
+                  </div>
                 </div>
-                <p className="text-xs text-amber-300 font-semibold mb-1.5 mt-0.5 flex items-center gap-1.5">
-                  <Shield className="h-3.5 w-3.5" />
-                  Acesso Administrador
-                </p>
-                <div className="flex items-center gap-2 text-xs text-amber-400">
+                <div className="flex items-center gap-2 text-xs text-gray-600">
                   <Mail className="h-3 w-3" />
-                  <span>admin@newmobility.com</span>
+                  <span className="font-mono">admin@newmobility.com</span>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-amber-400 mt-0.5">
+                <div className="flex items-center gap-2 text-xs text-gray-600 mt-0.5">
                   <Lock className="h-3 w-3" />
-                  <span>123456</span>
+                  <span className="font-mono">123456</span>
                 </div>
                 <Button
                   type="button"
-                  variant="outline"
                   size="sm"
-                  className="mt-2 w-full border-amber-500/40 text-amber-300 hover:bg-amber-500/20 text-xs bg-amber-500/10"
+                  className="mt-3 w-full bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold"
                   onClick={() => handleLogin('admin@newmobility.com', '123456', true)}
                   disabled={loading}
                 >
-                  <Shield className="h-3.5 w-3.5 mr-1" />
-                  Entrar como Admin
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Entrando...
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5">
+                      <Shield className="h-3.5 w-3.5" />
+                      Entrar como Admin
+                    </span>
+                  )}
                 </Button>
               </div>
 
               {/* Trust badges */}
-              <div className="mt-5 flex items-center justify-center gap-3 text-gray-400">
-                <div className="flex items-center gap-1.5 bg-white/5 rounded-full px-2.5 py-1 border border-white/10">
-                  <LockIcon className="h-3 w-3 text-emerald-400" />
-                  <span className="text-[10px] font-medium">Dados Seguros</span>
+              <div className="mt-5 flex items-center justify-center gap-3">
+                <div className="flex items-center gap-1.5 bg-gray-100 rounded-full px-2.5 py-1.5 border border-gray-200">
+                  <LockIcon className="h-3 w-3 text-emerald-600" />
+                  <span className="text-[10px] font-medium text-gray-700">Dados Seguros</span>
                 </div>
-                <div className="flex items-center gap-1.5 bg-white/5 rounded-full px-2.5 py-1 border border-white/10">
-                  <Globe className="h-3 w-3 text-emerald-400" />
-                  <span className="text-[10px] font-medium">Criptografia 128-bit</span>
+                <div className="flex items-center gap-1.5 bg-gray-100 rounded-full px-2.5 py-1.5 border border-gray-200">
+                  <Globe className="h-3 w-3 text-emerald-600" />
+                  <span className="text-[10px] font-medium text-gray-700">Criptografia 128-bit</span>
                 </div>
-                <div className="flex items-center gap-1.5 bg-white/5 rounded-full px-2.5 py-1 border border-white/10">
-                  <Users className="h-3 w-3 text-emerald-400" />
-                  <span className="text-[10px] font-medium">+10.000 Membros</span>
+                <div className="flex items-center gap-1.5 bg-gray-100 rounded-full px-2.5 py-1.5 border border-gray-200">
+                  <Users className="h-3 w-3 text-emerald-600" />
+                  <span className="text-[10px] font-medium text-gray-700">+10.000 Membros</span>
                 </div>
               </div>
             </CardContent>
           </Card>
         )}
 
-          {/* Testimonial card */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6, duration: 0.4 }}
-            className="mt-6"
-          >
-            <div className="relative bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 shadow-sm">
-              <Sparkles className="absolute -top-2 -right-2 h-5 w-5 text-emerald-400 bg-gray-900 rounded-full p-0.5" />
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={testimonialIdx}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  transition={{ duration: 0.4 }}
-                  className="flex gap-3"
-                >
-                  <Quote className="h-5 w-5 text-emerald-400 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm text-white italic leading-relaxed">
-                      &ldquo;{currentTestimonial.text}&rdquo;
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1.5 font-medium">
-                      — {currentTestimonial.author}, {currentTestimonial.city}
-                    </p>
-                  </div>
-                </motion.div>
-              </AnimatePresence>
-              {/* Dots indicator */}
-              <div className="flex justify-center gap-1.5 mt-3">
-                {testimonials.map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setTestimonialIdx(i)}
-                    className={`h-1.5 rounded-full transition-all duration-300 ${
-                      i === testimonialIdx ? 'w-4 bg-emerald-400' : 'w-1.5 bg-white/20'
-                    }`}
-                  />
-                ))}
-              </div>
-            </div>
-          </motion.div>
-
-          <p className="text-center text-xs text-gray-500 mt-6">
+          <p className="text-center text-xs text-gray-400 mt-6">
             {t('footer.copyright')}
           </p>
         </motion.div>
