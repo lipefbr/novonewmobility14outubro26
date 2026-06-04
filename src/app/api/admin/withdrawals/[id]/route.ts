@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 // PUT approve or reject a withdrawal
@@ -14,7 +14,7 @@ export async function PUT(
 
     if (!userId) return error('userId is required', 400)
 
-    const user = await db.findOne('User', '"id" = $1', [userId])
+    const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user || user.role !== 'admin') return error('Unauthorized', 403)
 
     if (!action || !['approve', 'reject'].includes(action)) {
@@ -22,29 +22,31 @@ export async function PUT(
     }
 
     // Find the withdrawal transaction
-    const transaction = await db.findOne('Transaction', '"id" = $1 AND "type" = $2', [id, 'withdrawal'])
-    if (!transaction) return error('Withdrawal not found', 404)
+    const transaction = await prisma.transaction.findUnique({
+      where: { id },
+    })
+    if (!transaction || transaction.type !== 'withdrawal') {
+      return error('Withdrawal not found', 404)
+    }
 
-    if ((transaction as any).status !== 'pending') {
+    if (transaction.status !== 'pending') {
       return error('Withdrawal is not pending', 400)
     }
 
     const newStatus = action === 'approve' ? 'approved' : 'rejected'
-    const updateData: Record<string, unknown> = {
-      status: newStatus,
-    }
 
-    const updated = await db.update('Transaction', '"id" = $1', updateData, [id])
+    const updated = await prisma.transaction.update({
+      where: { id },
+      data: { status: newStatus },
+    })
 
     // If rejected, refund the user's balance
     if (action === 'reject') {
       try {
-        const amount = (transaction as any).amount
-        const txUserId = (transaction as any).userId
-        await db.execute(
-          `UPDATE "User" SET "balanceWithdrawal" = "balanceWithdrawal" + $1 WHERE "id" = $2`,
-          [amount, txUserId]
-        )
+        await prisma.user.update({
+          where: { id: transaction.userId },
+          data: { balanceWithdrawal: { increment: transaction.amount } },
+        })
       } catch {
         // Ignore refund errors
       }

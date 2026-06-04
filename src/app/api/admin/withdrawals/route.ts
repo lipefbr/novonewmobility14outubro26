@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 // GET all withdrawal requests (admin view)
@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
     const userId = req.nextUrl.searchParams.get('userId')
     if (!userId) return error('userId is required', 400)
 
-    const user = await db.findOne('User', '"id" = $1', [userId])
+    const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user || user.role !== 'admin') return error('Unauthorized', 403)
 
     const status = req.nextUrl.searchParams.get('status') || 'all'
@@ -16,67 +16,51 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(req.nextUrl.searchParams.get('limit') || '20')
     const offset = (page - 1) * limit
 
-    // Build conditions
-    const conditions: string[] = ['"type" = $1']
-    const params: any[] = ['withdrawal']
-    let paramIndex = 2
-
+    const where: Record<string, unknown> = { type: 'withdrawal' }
     if (status !== 'all') {
-      conditions.push(`"status" = $${paramIndex}`)
-      params.push(status)
-      paramIndex++
+      where.status = status
     }
 
-    const whereClause = `WHERE ${conditions.join(' AND ')}`
+    const [withdrawals, total, statsResult] = await Promise.all([
+      prisma.transaction.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: offset,
+        take: limit,
+        include: {
+          user: { select: { name: true, email: true } },
+        },
+      }),
+      prisma.transaction.count({ where }),
+      // Stats - compute separately
+      Promise.all([
+        prisma.transaction.count({ where: { type: 'withdrawal', status: 'pending' } }),
+        prisma.transaction.count({ where: { type: 'withdrawal', status: 'approved' } }),
+        prisma.transaction.count({ where: { type: 'withdrawal', status: 'rejected' } }),
+        prisma.transaction.aggregate({ _sum: { amount: true }, where: { type: 'withdrawal', status: 'pending' } }),
+        prisma.transaction.aggregate({ _sum: { amount: true }, where: { type: 'withdrawal', status: { in: ['approved', 'paid'] } } }),
+      ]),
+    ])
 
-    const withdrawals = await db.execute(
-      `SELECT t.*, u."name" as "userName", u."email" as "userEmail"
-       FROM "Transaction" t
-       LEFT JOIN "User" u ON t."userId" = u."id"
-       ${whereClause}
-       ORDER BY t."createdAt" DESC
-       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
-      [...params, limit, offset]
-    )
+    const [pendingCount, approvedCount, rejectedCount, pendingAgg, approvedAgg] = statsResult
 
-    const countResult = await db.execute(
-      `SELECT COUNT(*)::int as count FROM "Transaction" ${whereClause}`,
-      params
-    )
-
-    const total = countResult[0]?.count || 0
-
-    // Stats
-    const statsResult = await db.execute(
-      `SELECT
-        COUNT(*)::int FILTER (WHERE "status" = 'pending') as "pendingCount",
-        COUNT(*)::int FILTER (WHERE "status" = 'approved') as "approvedCount",
-        COUNT(*)::int FILTER (WHERE "status" = 'rejected') as "rejectedCount",
-        COALESCE(SUM("amount") FILTER (WHERE "status" = 'pending'), 0) as "pendingAmount",
-        COALESCE(SUM("amount") FILTER (WHERE "status" = 'approved'), 0) as "approvedAmount"
-       FROM "Transaction"
-       WHERE "type" = 'withdrawal'`
-    )
-
-    const stats = statsResult[0] || {
-      pendingCount: 0,
-      approvedCount: 0,
-      rejectedCount: 0,
-      pendingAmount: 0,
-      approvedAmount: 0,
-    }
+    const formattedWithdrawals = withdrawals.map((w) => ({
+      ...w,
+      userName: w.user?.name || 'Usuário',
+      userEmail: w.user?.email || '',
+    }))
 
     return success({
-      withdrawals,
+      withdrawals: formattedWithdrawals,
       total,
       page,
       totalPages: Math.ceil(total / limit),
       stats: {
-        pendingCount: Number(stats.pendingCount),
-        approvedCount: Number(stats.approvedCount),
-        rejectedCount: Number(stats.rejectedCount),
-        pendingAmount: Number(stats.pendingAmount),
-        approvedAmount: Number(stats.approvedAmount),
+        pendingCount,
+        approvedCount,
+        rejectedCount,
+        pendingAmount: pendingAgg._sum.amount || 0,
+        approvedAmount: approvedAgg._sum.amount || 0,
       },
     })
   } catch (err) {

@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function GET(request: Request) {
@@ -13,78 +13,58 @@ export async function GET(request: Request) {
     }
 
     // Verify admin
-    const adminUser = await db.findOne('User', '"id" = $1', [adminUserId])
+    const adminUser = await prisma.user.findUnique({ where: { id: adminUserId } })
     if (!adminUser || (adminUser.role !== 'admin' && adminUser.email !== 'admin@newmobility.com')) {
       return error('Unauthorized - Admin only', 403)
     }
 
-    // Build query conditions
-    const conditions: string[] = []
-    const params: any[] = []
-    let paramIdx = 1
-
+    // Build Prisma where clause
+    const where: Record<string, unknown> = {}
     if (statusFilter !== 'all') {
-      conditions.push(`t.status = $${paramIdx}`)
-      params.push(statusFilter)
-      paramIdx++
+      where.status = statusFilter
     }
-
     if (categoryFilter !== 'all') {
-      conditions.push(`t.category = $${paramIdx}`)
-      params.push(categoryFilter)
-      paramIdx++
+      where.category = categoryFilter
     }
 
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+    // Get all tickets with user info and messages
+    const tickets = await prisma.ticket.findMany({
+      where,
+      orderBy: { updatedAt: 'desc' },
+      take: 100,
+      include: {
+        user: { select: { name: true, email: true } },
+        messages: { orderBy: { createdAt: 'asc' } },
+      },
+    })
 
-    // Get all tickets with user info and latest message
-    const tickets = await db.execute(
-      `SELECT t.*, u.name as "userName", u.email as "userEmail"
-       FROM "Ticket" t
-       LEFT JOIN "User" u ON t."userId" = u.id
-       ${whereClause}
-       ORDER BY t."updatedAt" DESC
-       LIMIT 100`,
-      params
-    ) as any[]
+    const ticketsWithMessages = tickets.map((ticket) => {
+      // Get the last admin reply
+      const adminReplies = ticket.messages.filter((m) => m.isAdmin)
+      const lastAdminReply = adminReplies.length > 0 ? adminReplies[adminReplies.length - 1] : null
 
-    // For each ticket, get messages
-    const ticketsWithMessages = await Promise.all(
-      tickets.map(async (ticket) => {
-        const messages = await db.find(
-          'TicketMessage',
-          '"ticketId" = $1',
-          [ticket.id],
-          'ORDER BY "createdAt" ASC'
-        ) as any[]
-
-        // Get the last admin reply
-        const adminReplies = messages.filter((m: any) => m.isAdmin)
-        const lastAdminReply = adminReplies.length > 0 ? adminReplies[adminReplies.length - 1] : null
-
-        return {
-          id: ticket.id,
-          userId: ticket.userId,
-          userName: ticket.userName || 'Usuário',
-          userEmail: ticket.userEmail || '',
-          subject: ticket.subject,
-          category: ticket.category,
-          status: ticket.status,
-          priority: ticket.priority || 'normal',
-          message: messages.length > 0 ? messages[0].message : '',
-          reply: lastAdminReply ? lastAdminReply.message : undefined,
-          messages: messages.map((m: any) => ({
-            id: m.id,
-            message: m.message,
-            isAdmin: m.isAdmin,
-            userId: m.userId,
-            createdAt: m.createdAt,
-          })),
-          createdAt: ticket.createdAt,
-          updatedAt: ticket.updatedAt,
-        }
-      })
-    )
+      return {
+        id: ticket.id,
+        userId: ticket.userId,
+        userName: ticket.user?.name || 'Usuário',
+        userEmail: ticket.user?.email || '',
+        subject: ticket.subject,
+        category: ticket.category,
+        status: ticket.status,
+        priority: ticket.priority || 'normal',
+        message: ticket.messages.length > 0 ? ticket.messages[0].message : '',
+        reply: lastAdminReply ? lastAdminReply.message : undefined,
+        messages: ticket.messages.map((m) => ({
+          id: m.id,
+          message: m.message,
+          isAdmin: m.isAdmin,
+          userId: m.userId,
+          createdAt: m.createdAt,
+        })),
+        createdAt: ticket.createdAt,
+        updatedAt: ticket.updatedAt,
+      }
+    })
 
     return success({ tickets: ticketsWithMessages })
   } catch (err) {

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error, sanitizeUser } from '@/lib/api-utils'
 
 export async function GET(
@@ -11,27 +11,25 @@ export async function GET(
     const adminId = req.nextUrl.searchParams.get('userId')
     if (!adminId) return error('userId is required', 400)
 
-    const admin = await db.findOne('User', '"id" = $1', [adminId])
+    const admin = await prisma.user.findUnique({ where: { id: adminId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
-    const user = await db.findOne('User', '"id" = $1', [id])
+    const user = await prisma.user.findUnique({
+      where: { id },
+      include: {
+        _count: { select: { referrals: true } },
+        referredBy: { select: { id: true, name: true, email: true } },
+      },
+    })
     if (!user) return error('User not found', 404)
 
-    // Get referral count
-    const referralCount = await db.count('User', '"referredById" = $1', [id])
+    const safeUser = sanitizeUser(user as unknown as Record<string, unknown>)
 
-    // Get referrer info
-    let referrer = null
-    if ((user as any).referredById) {
-      const ref = await db.findOne('User', '"id" = $1', [(user as any).referredById])
-      if (ref) {
-        referrer = { id: (ref as any).id, name: (ref as any).name, email: (ref as any).email }
-      }
-    }
-
-    const safeUser = sanitizeUser(user as Record<string, unknown>)
-
-    return success({ ...safeUser, _count: { referrals: referralCount }, referrer })
+    return success({
+      ...safeUser,
+      _count: { referrals: user._count.referrals },
+      referrer: user.referredBy || null,
+    })
   } catch (err) {
     console.error('Get user error:', err)
     return error('Failed to fetch user', 500)
@@ -62,11 +60,11 @@ export async function PUT(
     if (!userId) return error('userId is required', 400)
 
     // Verify admin
-    const admin = await db.findOne('User', '"id" = $1', [userId])
+    const admin = await prisma.user.findUnique({ where: { id: userId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
     // Verify target user exists
-    const targetUser = await db.findOne('User', '"id" = $1', [id])
+    const targetUser = await prisma.user.findUnique({ where: { id } })
     if (!targetUser) return error('User not found', 404)
 
     // Build update data - all editable fields
@@ -119,10 +117,10 @@ export async function PUT(
       return error('No fields to update', 400)
     }
 
-    const updated = await db.update('User', '"id" = $1', updateData, [id])
+    const updated = await prisma.user.update({ where: { id }, data: updateData })
 
     // Remove password from response
-    const { password: _, ...safeUser } = updated as Record<string, unknown>
+    const { password: _password, ...safeUser } = updated
 
     return success(safeUser)
   } catch (err) {

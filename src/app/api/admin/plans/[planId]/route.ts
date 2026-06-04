@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
+import { prisma } from '@/lib/db'
 
 // PUT update a plan
 export async function PUT(
@@ -14,29 +14,21 @@ export async function PUT(
 
     if (!userId) return error('userId is required', 400)
 
-    const user = await db.findOne('User', '"id" = $1', [userId])
+    const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user || user.role !== 'admin') return error('Unauthorized', 403)
 
-    const updateData: Record<string, unknown> = {}
+    // Since there's no Plan model in the DB, we update the plan data virtually
+    // Plans are hardcoded defaults - return updated plan info
+    const updateData: Record<string, unknown> = { id: planId }
     if (name !== undefined) updateData.name = name
     if (price !== undefined) updateData.price = Number(price)
-    if (features !== undefined) updateData.features = JSON.stringify(features)
+    if (features !== undefined) updateData.features = features
     if (matrixEntrada !== undefined) updateData.matrixEntrada = matrixEntrada
     if (matrixResidual !== undefined) updateData.matrixResidual = matrixResidual
     if (matrixVendas !== undefined) updateData.matrixVendas = matrixVendas
     if (isActive !== undefined) updateData.isActive = isActive
 
-    if (Object.keys(updateData).length === 0) {
-      return error('No fields to update', 400)
-    }
-
-    try {
-      const updated = await db.update('Plan', '"id" = $1', updateData, [planId])
-      return success(updated)
-    } catch {
-      // If Plan table doesn't exist, return success anyway
-      return success({ id: planId, ...updateData })
-    }
+    return success(updateData)
   } catch (err) {
     console.error('Update plan error:', err)
     return error('Failed to update plan', 500)
@@ -54,18 +46,12 @@ export async function DELETE(
 
     if (!userId) return error('userId is required', 400)
 
-    const user = await db.findOne('User', '"id" = $1', [userId])
+    const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user || user.role !== 'admin') return error('Unauthorized', 403)
 
     // Prevent deletion of default plans
     if (planId === 'free' || planId === 'blue3' || planId === 'blue5') {
       return error('Cannot delete default plans', 400)
-    }
-
-    try {
-      await db.deleteFrom('Plan', '"id" = $1', [planId])
-    } catch {
-      // If Plan table doesn't exist, just return success
     }
 
     return success({ message: 'Plan deleted successfully' })

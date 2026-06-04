@@ -25,6 +25,7 @@ import {
   Plus, Trash2, Edit, Eye, Wallet, CreditCard, FileText, Ban,
   MapPin, Phone, Star, Car, Bike, Banknote, UserCheck, UserX,
   ArrowUpDown, Receipt, PieChart, Filter, Download, Calendar,
+  MessageSquare, Send,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -126,6 +127,13 @@ interface FinancialData {
   categoryBreakdown: { category: string; amount: number }[];
 }
 
+interface AdminTicket {
+  id: string; userId: string; userName: string; userEmail: string;
+  subject: string; category: string; status: string; priority: string;
+  createdAt: string; updatedAt: string;
+  messages: { id: string; message: string; isAdmin: boolean; userId: string; createdAt: string }[];
+}
+
 // ---------- Full edit form data ----------
 interface EditFormData {
   name: string; email: string; phone: string; cpf: string;
@@ -221,6 +229,13 @@ export function AdminPage() {
   const [editAnnouncementData, setEditAnnouncementData] = useState({ title: '', message: '', type: 'info', priority: 'normal', actionLabel: '', actionUrl: '' })
   const [savingAnnouncement, setSavingAnnouncement] = useState(false)
 
+  // Support/Tickets tab
+  const [tickets, setTickets] = useState<AdminTicket[]>([])
+  const [ticketStatusFilter, setTicketStatusFilter] = useState('all')
+  const [selectedTicket, setSelectedTicket] = useState<AdminTicket | null>(null)
+  const [ticketReply, setTicketReply] = useState('')
+  const [sendingReply, setSendingReply] = useState(false)
+
   const isAdmin = user?.id === 'usr_demo_admin' || user?.email === 'carlos.silva@email.com' || user?.email === 'admin@newmobility.com'
 
   useEffect(() => {
@@ -235,7 +250,8 @@ export function AdminPage() {
     if (activeTab === 'withdrawals') loadWithdrawals()
     if (activeTab === 'cashback') loadCashback()
     if (activeTab === 'financial') loadFinancial()
-  }, [activeTab, searchQuery, planFilter, statusFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter])
+    if (activeTab === 'tickets') loadTickets()
+  }, [activeTab, searchQuery, planFilter, statusFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter])
 
   const loadStats = async () => {
     try {
@@ -299,6 +315,50 @@ export function AdminPage() {
       const data = await apiFetch<FinancialData>(`/admin/financial?userId=${user?.id}`)
       setFinancialData(data)
     } catch { /* ignore */ }
+  }
+
+  const loadTickets = async () => {
+    try {
+      const params = new URLSearchParams({ userId: user?.id || '', status: ticketStatusFilter })
+      const data = await apiFetch<{ tickets: AdminTicket[] }>(`/admin/support/tickets?${params}`)
+      setTickets(data.tickets || [])
+    } catch { /* ignore */ }
+  }
+
+  const handleReplyTicket = async () => {
+    if (!selectedTicket || !ticketReply.trim()) return
+    setSendingReply(true)
+    try {
+      await apiFetch(`/admin/support/tickets/${selectedTicket.id}/reply`, {
+        method: 'POST',
+        body: JSON.stringify({ userId: user?.id, message: ticketReply }),
+      })
+      setTicketReply('')
+      const data = await apiFetch<{ ticket: AdminTicket }>(`/admin/support/tickets/${selectedTicket.id}?userId=${user?.id}`)
+      setSelectedTicket(data.ticket || data as unknown as AdminTicket)
+      loadTickets()
+      toast.success('Resposta enviada com sucesso!')
+    } catch {
+      toast.error('Erro ao enviar resposta')
+    } finally {
+      setSendingReply(false)
+    }
+  }
+
+  const handleChangeTicketStatus = async (ticketId: string, newStatus: string) => {
+    try {
+      await apiFetch(`/admin/support/tickets/${ticketId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ userId: user?.id, status: newStatus }),
+      })
+      loadTickets()
+      if (selectedTicket?.id === ticketId) {
+        setSelectedTicket(prev => prev ? { ...prev, status: newStatus } : null)
+      }
+      toast.success('Status atualizado!')
+    } catch {
+      toast.error('Erro ao atualizar status')
+    }
   }
 
   // ---------- Config ----------
@@ -750,6 +810,9 @@ export function AdminPage() {
           <TabsTrigger value="withdrawals" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
             <Wallet className="h-3.5 w-3.5" /> Saques
           </TabsTrigger>
+          <TabsTrigger value="tickets" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+            <FileText className="h-3.5 w-3.5" /> Suporte
+          </TabsTrigger>
           <TabsTrigger value="config" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
             <Settings className="h-3.5 w-3.5" /> Configurações
           </TabsTrigger>
@@ -1176,15 +1239,55 @@ export function AdminPage() {
         <TabsContent value="financial" className="mt-4 space-y-4">
           {financialData && (
             <>
+              {/* Financial Health Dashboard */}
+              <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                      <Activity className="h-4 w-4 text-emerald-600" /> Saúde Financeira
+                    </h3>
+                    <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                      {financialData.overview.totalRevenue > 0 && financialData.overview.pendingWithdrawals < financialData.overview.totalRevenue * 0.3 ? 'Saudável' : 'Atenção'}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="text-center">
+                      <p className="text-xs text-muted-foreground">Receita / Saques Pend.</p>
+                      <p className="text-lg font-bold text-foreground">
+                        {financialData.overview.pendingWithdrawals > 0
+                          ? (financialData.overview.totalRevenue / financialData.overview.pendingWithdrawals).toFixed(1)
+                          : '∞'}x
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-muted-foreground">CashBack / Receita</p>
+                      <p className="text-lg font-bold text-foreground">
+                        {financialData.overview.totalRevenue > 0
+                          ? ((financialData.overview.totalCashback / financialData.overview.totalRevenue) * 100).toFixed(1)
+                          : '0'}%
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-muted-foreground">Em Circulação / Total</p>
+                      <p className="text-lg font-bold text-foreground">
+                        {financialData.overview.totalPlatformBalance > 0
+                          ? ((financialData.overview.totalInCirculation / financialData.overview.totalPlatformBalance) * 100).toFixed(1)
+                          : '0'}%
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Summary Dashboard - Big Number Cards */}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 {[
-                  { label: 'Receita Total', value: formatCurrency(financialData.overview.totalRevenue), icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30', border: 'border-l-4 border-emerald-500' },
-                  { label: 'Saldo Plataforma', value: formatCurrency(financialData.overview.totalPlatformBalance), icon: DollarSign, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30', border: 'border-l-4 border-amber-500' },
-                  { label: 'Saques Pendentes', value: formatCurrency(financialData.overview.pendingWithdrawals), icon: Clock, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30', border: 'border-l-4 border-red-500' },
-                  { label: 'Saques Aprovados', value: formatCurrency(financialData.overview.approvedWithdrawals), icon: Check, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30', border: 'border-l-4 border-blue-500' },
-                  { label: 'CashBack Distribuído', value: formatCurrency(financialData.overview.totalCashback), icon: Receipt, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/30', border: 'border-l-4 border-purple-500' },
-                  { label: 'Saldo em Circulação', value: formatCurrency(financialData.overview.totalInCirculation), icon: Activity, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-950/30', border: 'border-l-4 border-orange-500' },
+                  { label: 'Receita Total', value: formatCurrency(financialData.overview.totalRevenue), icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30', border: 'border-l-4 border-emerald-500', sub: financialData.monthlyRevenue.length > 0 ? `Média: ${formatCurrency(financialData.monthlyRevenue.reduce((s, m) => s + m.revenue, 0) / financialData.monthlyRevenue.length)}` : undefined },
+                  { label: 'Saldo Plataforma', value: formatCurrency(financialData.overview.totalPlatformBalance), icon: DollarSign, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30', border: 'border-l-4 border-amber-500', sub: financialData.overview.totalPlatformBalance > financialData.overview.pendingWithdrawals ? 'Cobertura OK' : 'Verificar saldo' },
+                  { label: 'Saques Pendentes', value: formatCurrency(financialData.overview.pendingWithdrawals), icon: Clock, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30', border: 'border-l-4 border-red-500', sub: financialData.overview.pendingWithdrawals > 0 ? 'Aguardando aprovação' : undefined },
+                  { label: 'Saques Aprovados', value: formatCurrency(financialData.overview.approvedWithdrawals), icon: Check, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30', border: 'border-l-4 border-blue-500', sub: financialData.overview.approvedWithdrawals > 0 && financialData.overview.pendingWithdrawals > 0 ? `${((financialData.overview.approvedWithdrawals / (financialData.overview.approvedWithdrawals + financialData.overview.pendingWithdrawals)) * 100).toFixed(0)}% taxa aprovação` : undefined },
+                  { label: 'CashBack Distribuído', value: formatCurrency(financialData.overview.totalCashback), icon: Receipt, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/30', border: 'border-l-4 border-purple-500', sub: financialData.overview.totalRevenue > 0 ? `${((financialData.overview.totalCashback / financialData.overview.totalRevenue) * 100).toFixed(1)}% da receita` : undefined },
+                  { label: 'Saldo em Circulação', value: formatCurrency(financialData.overview.totalInCirculation), icon: Activity, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-950/30', border: 'border-l-4 border-orange-500', sub: financialData.overview.totalPlatformBalance > 0 ? `${((financialData.overview.totalInCirculation / financialData.overview.totalPlatformBalance) * 100).toFixed(1)}% do total` : undefined },
                 ].map((card, i) => (
                   <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
                     <Card className={`${card.bg} border-0 ${card.border}`}>
@@ -1194,6 +1297,7 @@ export function AdminPage() {
                           <span className="text-xs font-medium text-muted-foreground">{card.label}</span>
                         </div>
                         <p className="text-2xl font-bold text-foreground">{card.value}</p>
+                        {card.sub && <p className="text-[10px] text-muted-foreground mt-1">{card.sub}</p>}
                       </CardContent>
                     </Card>
                   </motion.div>
@@ -1300,7 +1404,7 @@ export function AdminPage() {
                   </CardContent>
                 </Card>
 
-                {/* Category Breakdown */}
+                {/* Category Breakdown - Enhanced with bars */}
                 <Card>
                   <CardHeader><CardTitle className="text-sm flex items-center gap-2"><PieChart className="h-4 w-4 text-emerald-600" /> Resumo por Categoria</CardTitle></CardHeader>
                   <CardContent>
@@ -1326,28 +1430,43 @@ export function AdminPage() {
                             })()}
                           </div>
                         </div>
-                        {/* Legend */}
+                        {/* Legend with visual bars */}
                         <div className="space-y-2">
                           {(() => {
                             const total = financialData.categoryBreakdown.reduce((s, c) => s + c.amount, 0) || 1
+                            const maxAmount = Math.max(...financialData.categoryBreakdown.map(c => c.amount), 1)
                             const colors = ['bg-emerald-500', 'bg-amber-500', 'bg-blue-500', 'bg-purple-500', 'bg-red-500', 'bg-orange-500', 'bg-pink-500', 'bg-teal-500']
                             const categoryLabels: Record<string, string> = {
                               withdrawal: 'Saque', mobility: 'Mobilidade', shopping: 'Compras',
                               food: 'Refeição', pharmacy: 'Farmácia', gratification: 'Gratificação',
                               marketplace: 'Marketplace', other: 'Outros',
                             }
-                            return financialData.categoryBreakdown.map((c, i) => (
-                              <div key={c.category} className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <div className={`h-3 w-3 rounded-sm ${colors[i % colors.length]}`} />
-                                  <span className="text-xs text-foreground">{categoryLabels[c.category] || c.category}</span>
+                            return financialData.categoryBreakdown.map((c, i) => {
+                              const pct = (c.amount / total) * 100
+                              const barPct = (c.amount / maxAmount) * 100
+                              return (
+                                <div key={c.category} className="space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <div className={`h-3 w-3 rounded-sm ${colors[i % colors.length]}`} />
+                                      <span className="text-xs text-foreground">{categoryLabels[c.category] || c.category}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-medium text-foreground">{formatCurrency(c.amount)}</span>
+                                      <span className="text-[10px] text-muted-foreground">{pct.toFixed(1)}%</span>
+                                    </div>
+                                  </div>
+                                  <div className="w-full h-2 bg-muted/50 rounded-full overflow-hidden">
+                                    <motion.div
+                                      className={`h-full ${colors[i % colors.length]} rounded-full`}
+                                      initial={{ width: 0 }}
+                                      animate={{ width: `${barPct}%` }}
+                                      transition={{ duration: 0.6, ease: 'easeOut' }}
+                                    />
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs font-medium text-foreground">{formatCurrency(c.amount)}</span>
-                                  <span className="text-[10px] text-muted-foreground">{((c.amount / total) * 100).toFixed(1)}%</span>
-                                </div>
-                              </div>
-                            ))
+                              )
+                            })
                           })()}
                         </div>
                       </div>
@@ -1357,6 +1476,58 @@ export function AdminPage() {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Monthly Revenue Summary with Trend */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm flex items-center gap-2"><TrendingUp className="h-4 w-4 text-emerald-600" /> Resumo de Receita Mensal</CardTitle>
+                    <div className="flex items-center gap-2">
+                      {financialData.monthlyRevenue.length >= 2 && (() => {
+                        const sorted = [...financialData.monthlyRevenue].sort((a, b) => a.month.localeCompare(b.month))
+                        const last = sorted[sorted.length - 1]
+                        const prev = sorted[sorted.length - 2]
+                        const change = prev.revenue > 0 ? ((last.revenue - prev.revenue) / prev.revenue) * 100 : 0
+                        const isPositive = change >= 0
+                        return (
+                          <Badge className={`${isPositive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'} text-[10px] gap-1`}>
+                            {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingUp className="h-3 w-3 rotate-180" />}
+                            {isPositive ? '+' : ''}{change.toFixed(1)}%
+                          </Badge>
+                        )
+                      })()}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {financialData.monthlyRevenue.length > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                      {financialData.monthlyRevenue.map(m => {
+                        const [year, month] = m.month.split('-')
+                        const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+                        const maxRev = Math.max(...financialData.monthlyRevenue.map(r => r.revenue), 1)
+                        const pct = (m.revenue / maxRev) * 100
+                        return (
+                          <div key={m.month} className="text-center p-3 bg-muted/30 rounded-lg">
+                            <p className="text-[10px] text-muted-foreground font-medium">{monthNames[parseInt(month) - 1]}/{year.slice(2)}</p>
+                            <p className="text-sm font-bold text-foreground mt-1">{formatCurrency(m.revenue)}</p>
+                            <div className="w-full h-1.5 bg-muted rounded-full mt-2 overflow-hidden">
+                              <motion.div
+                                className="h-full bg-emerald-500 rounded-full"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${pct}%` }}
+                                transition={{ duration: 0.5 }}
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground text-sm">Nenhuma receita registrada</div>
+                  )}
+                </CardContent>
+              </Card>
 
               {/* Recent Transactions Table */}
               <Card>
@@ -1554,6 +1725,209 @@ export function AdminPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Tickets / Suporte Tab */}
+        <TabsContent value="tickets" className="mt-4 space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <MessageSquare className="h-4 w-4 text-emerald-600" />
+                Tickets de Suporte
+              </h3>
+              <p className="text-xs text-muted-foreground">{tickets.length} ticket(s) encontrado(s)</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <select value={ticketStatusFilter} onChange={(e) => setTicketStatusFilter(e.target.value)} className="h-9 rounded-md border border-input bg-background px-3 text-sm">
+                <option value="all">Todos os Status</option>
+                <option value="open">Aberto</option>
+                <option value="in_progress">Em Andamento</option>
+                <option value="resolved">Resolvido</option>
+                <option value="closed">Fechado</option>
+              </select>
+              <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs" onClick={loadTickets}>
+                <RefreshCw className="h-3.5 w-3.5" /> Atualizar
+              </Button>
+            </div>
+          </div>
+
+          {/* Status Summary */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: 'Abertos', count: tickets.filter(t => t.status === 'open').length, color: 'bg-amber-50 dark:bg-amber-950/30', iconColor: 'text-amber-600' },
+              { label: 'Em Andamento', count: tickets.filter(t => t.status === 'in_progress').length, color: 'bg-blue-50 dark:bg-blue-950/30', iconColor: 'text-blue-600' },
+              { label: 'Resolvidos', count: tickets.filter(t => t.status === 'resolved').length, color: 'bg-emerald-50 dark:bg-emerald-950/30', iconColor: 'text-emerald-600' },
+              { label: 'Fechados', count: tickets.filter(t => t.status === 'closed').length, color: 'bg-gray-50 dark:bg-gray-950/30', iconColor: 'text-gray-600' },
+            ].map((s, i) => (
+              <Card key={i} className={`${s.color} border-0`}>
+                <CardContent className="p-3">
+                  <p className="text-lg font-bold text-foreground">{s.count}</p>
+                  <p className="text-xs text-muted-foreground">{s.label}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+            {/* Ticket List */}
+            <div className="lg:col-span-2">
+              <Card>
+                <CardHeader><CardTitle className="text-sm">Lista de Tickets</CardTitle></CardHeader>
+                <CardContent className="p-0">
+                  <div className="max-h-[500px] overflow-y-auto">
+                    {tickets.length > 0 ? tickets.map(ticket => {
+                      const statusBadge: Record<string, string> = {
+                        open: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+                        in_progress: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                        resolved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+                        closed: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+                      }
+                      const statusLabel: Record<string, string> = { open: 'Aberto', in_progress: 'Em Andamento', resolved: 'Resolvido', closed: 'Fechado' }
+                      const priorityBadge: Record<string, string> = {
+                        low: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+                        medium: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                        high: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+                        urgent: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+                      }
+                      const priorityLabel: Record<string, string> = { low: 'Baixa', medium: 'Média', high: 'Alta', urgent: 'Urgente' }
+                      const categoryLabel: Record<string, string> = { technical: 'Técnico', financial: 'Financeiro', account: 'Conta', general: 'Geral', bug: 'Bug', feature: 'Sugestão' }
+                      const isSelected = selectedTicket?.id === ticket.id
+                      return (
+                        <button
+                          key={ticket.id}
+                          className={`w-full text-left p-3 border-b border-border/50 hover:bg-muted/30 transition-colors ${isSelected ? 'bg-emerald-50 dark:bg-emerald-950/20 border-l-2 border-l-emerald-500' : ''}`}
+                          onClick={async () => {
+                            try {
+                              const data = await apiFetch<{ ticket: AdminTicket }>(`/admin/support/tickets/${ticket.id}?userId=${user?.id}`)
+                              setSelectedTicket(data.ticket || data as unknown as AdminTicket)
+                            } catch {
+                              setSelectedTicket(ticket)
+                            }
+                          }}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-foreground truncate">{ticket.subject}</p>
+                              <p className="text-[11px] text-muted-foreground truncate">{ticket.userName} • {ticket.userEmail}</p>
+                            </div>
+                            <Badge className={`${statusBadge[ticket.status] || 'bg-gray-100 text-gray-700'} text-[9px] whitespace-nowrap`}>
+                              {statusLabel[ticket.status] || ticket.status}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <Badge className={`${priorityBadge[ticket.priority] || 'bg-gray-100 text-gray-700'} text-[9px]`}>
+                              {priorityLabel[ticket.priority] || ticket.priority}
+                            </Badge>
+                            <span className="text-[10px] text-muted-foreground">{categoryLabel[ticket.category] || ticket.category}</span>
+                            <span className="text-[10px] text-muted-foreground ml-auto">{ticket.messages?.length || 0} msg(s)</span>
+                            <span className="text-[10px] text-muted-foreground">{new Date(ticket.createdAt).toLocaleDateString('pt-BR')}</span>
+                          </div>
+                        </button>
+                      )
+                    }) : (
+                      <div className="text-center py-8 text-muted-foreground text-sm">
+                        <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                        Nenhum ticket encontrado
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Ticket Detail */}
+            <div className="lg:col-span-3">
+              {selectedTicket ? (
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-emerald-600" />
+                          {selectedTicket.subject}
+                        </CardTitle>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {selectedTicket.userName} ({selectedTicket.userEmail}) • Criado em {new Date(selectedTicket.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={selectedTicket.status}
+                          onChange={(e) => handleChangeTicketStatus(selectedTicket.id, e.target.value)}
+                          className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                        >
+                          <option value="open">Aberto</option>
+                          <option value="in_progress">Em Andamento</option>
+                          <option value="resolved">Resolvido</option>
+                          <option value="closed">Fechado</option>
+                        </select>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Messages */}
+                    <div className="max-h-[350px] overflow-y-auto space-y-3 pr-1">
+                      {selectedTicket.messages?.map(msg => (
+                        <div key={msg.id} className={`flex ${msg.isAdmin ? 'justify-start' : 'justify-end'}`}>
+                          <div className={`max-w-[85%] rounded-lg p-3 ${msg.isAdmin ? 'bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800' : 'bg-muted/50 border border-border'}`}>
+                            <div className="flex items-center gap-1.5 mb-1">
+                              {msg.isAdmin && <Shield className="h-3 w-3 text-emerald-600" />}
+                              <span className="text-[10px] font-semibold text-muted-foreground">
+                                {msg.isAdmin ? 'Admin' : selectedTicket.userName}
+                              </span>
+                              <span className="text-[9px] text-muted-foreground/60">
+                                {new Date(msg.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <p className="text-sm text-foreground whitespace-pre-wrap">{msg.message}</p>
+                          </div>
+                        </div>
+                      ))}
+                      {(!selectedTicket.messages || selectedTicket.messages.length === 0) && (
+                        <div className="text-center py-4 text-muted-foreground text-xs">Nenhuma mensagem neste ticket</div>
+                      )}
+                    </div>
+
+                    <Separator />
+
+                    {/* Reply */}
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium">Responder como Admin</Label>
+                      <div className="flex gap-2">
+                        <textarea
+                          value={ticketReply}
+                          onChange={(e) => setTicketReply(e.target.value)}
+                          placeholder="Escreva sua resposta..."
+                          className="flex-1 min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && e.ctrlKey) handleReplyTicket()
+                          }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-muted-foreground">Ctrl+Enter para enviar</span>
+                        <Button
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 h-8 text-xs"
+                          onClick={handleReplyTicket}
+                          disabled={sendingReply || !ticketReply.trim()}
+                        >
+                          {sendingReply ? <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                          Enviar Resposta
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-16">
+                    <MessageSquare className="h-12 w-12 text-muted-foreground/30 mb-3" />
+                    <p className="text-sm text-muted-foreground">Selecione um ticket para ver os detalhes</p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </div>
         </TabsContent>
 
         {/* Config Tab → Configurações */}

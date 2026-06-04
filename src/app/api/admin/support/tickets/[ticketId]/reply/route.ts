@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function POST(
@@ -15,35 +15,35 @@ export async function POST(
     }
 
     // Verify admin
-    const adminUser = await db.findOne('User', '"id" = $1', [userId])
+    const adminUser = await prisma.user.findUnique({ where: { id: userId } })
     if (!adminUser || (adminUser.role !== 'admin' && adminUser.email !== 'admin@newmobility.com')) {
       return error('Unauthorized - Admin only', 403)
     }
 
-    const ticket = await db.findOne('Ticket', '"id" = $1', [ticketId])
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } })
     if (!ticket) {
       return error('Ticket not found', 404)
     }
 
-    if ((ticket as any).status === 'closed') {
+    if (ticket.status === 'closed') {
       return error('Cannot reply to a closed ticket', 400)
     }
 
     // Create admin reply message
-    const ticketMessage = await db.insert('TicketMessage', {
-      ticketId,
-      userId,
-      message,
-      isAdmin: true,
+    const ticketMessage = await prisma.ticketMessage.create({
+      data: {
+        ticketId,
+        userId,
+        message,
+        isAdmin: true,
+      },
     })
 
     // Update ticket status to 'answered'
-    await db.update(
-      'Ticket',
-      '"id" = $1',
-      { status: 'answered' },
-      [ticketId]
-    )
+    await prisma.ticket.update({
+      where: { id: ticketId },
+      data: { status: 'answered' },
+    })
 
     return success({ message: ticketMessage }, 201)
   } catch (err) {

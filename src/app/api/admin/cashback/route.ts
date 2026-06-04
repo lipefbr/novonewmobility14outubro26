@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function GET(req: NextRequest) {
@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
     const adminId = req.nextUrl.searchParams.get('userId')
     if (!adminId) return error('userId is required', 400)
 
-    const admin = await db.findOne('User', '"id" = $1', [adminId])
+    const admin = await prisma.user.findUnique({ where: { id: adminId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
     const type = req.nextUrl.searchParams.get('type') || 'all' // entrada, residual, vendas, all
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     interface CashbackRow {
       id: string; userId: string; fromUserId: string; amount: number;
       level: number; percentage: number; description: string;
-      category?: string; createdAt: string;
+      category?: string; createdAt: Date;
       cashbackType: string;
       userName: string; userEmail: string;
       fromUserName: string;
@@ -28,19 +28,19 @@ export async function GET(req: NextRequest) {
     const allRows: CashbackRow[] = []
 
     // Helper to add user info to entries
-    const enrichEntries = async (entries: any[], cashbackType: string) => {
-      const userIds = [...new Set(entries.map((e: any) => e.userId))]
-      const fromUserIds = [...new Set(entries.map((e: any) => e.fromUserId).filter(Boolean))]
+    const enrichEntries = async (entries: { userId: string; fromUserId: string; id: string; amount: number; level: number; percentage: number; description: string | null; category: string | null; createdAt: Date }[], cashbackType: string): Promise<CashbackRow[]> => {
+      const userIds = [...new Set(entries.map((e) => e.userId))]
+      const fromUserIds = [...new Set(entries.map((e) => e.fromUserId).filter(Boolean))]
 
-      const userMap: Record<string, any> = {}
+      const userMap: Record<string, { name: string; email: string }> = {}
       for (const uid of [...userIds, ...fromUserIds]) {
         if (!userMap[uid]) {
-          const u = await db.findOne('User', '"id" = $1', [uid])
+          const u = await prisma.user.findUnique({ where: { id: uid }, select: { id: true, name: true, email: true } })
           if (u) userMap[uid] = u
         }
       }
 
-      return entries.map((e: any) => ({
+      return entries.map((e) => ({
         id: e.id,
         userId: e.userId,
         fromUserId: e.fromUserId || '',
@@ -57,27 +57,32 @@ export async function GET(req: NextRequest) {
       }))
     }
 
+    const userFilter = filterUserId ? { userId: filterUserId } : undefined
+
     // Fetch from each table based on filter
     if (type === 'all' || type === 'entrada') {
-      const conditions = filterUserId ? '"userId" = $1' : ''
-      const params = filterUserId ? [filterUserId] : []
-      const entries = await db.find('CashbackEntry', conditions, params, 'ORDER BY "createdAt" DESC')
+      const entries = await prisma.cashbackEntry.findMany({
+        where: userFilter,
+        orderBy: { createdAt: 'desc' },
+      })
       const enriched = await enrichEntries(entries, 'entrada')
       allRows.push(...enriched)
     }
 
     if (type === 'all' || type === 'residual') {
-      const conditions = filterUserId ? '"userId" = $1' : ''
-      const params = filterUserId ? [filterUserId] : []
-      const entries = await db.find('CashbackResidual', conditions, params, 'ORDER BY "createdAt" DESC')
+      const entries = await prisma.cashbackResidual.findMany({
+        where: userFilter,
+        orderBy: { createdAt: 'desc' },
+      })
       const enriched = await enrichEntries(entries, 'residual')
       allRows.push(...enriched)
     }
 
     if (type === 'all' || type === 'vendas') {
-      const conditions = filterUserId ? '"userId" = $1' : ''
-      const params = filterUserId ? [filterUserId] : []
-      const entries = await db.find('CashbackSales', conditions, params, 'ORDER BY "createdAt" DESC')
+      const entries = await prisma.cashbackSales.findMany({
+        where: userFilter,
+        orderBy: { createdAt: 'desc' },
+      })
       const enriched = await enrichEntries(entries, 'vendas')
       allRows.push(...enriched)
     }
@@ -141,10 +146,10 @@ export async function POST(req: NextRequest) {
     if (!cashbackType) return error('cashbackType is required', 400)
     if (!amount || amount <= 0) return error('amount must be positive', 400)
 
-    const admin = await db.findOne('User', '"id" = $1', [adminId])
+    const admin = await prisma.user.findUnique({ where: { id: adminId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
-    const targetUser = await db.findOne('User', '"id" = $1', [targetUserId])
+    const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } })
     if (!targetUser) return error('Target user not found', 404)
 
     const insertData: Record<string, unknown> = {
@@ -158,18 +163,17 @@ export async function POST(req: NextRequest) {
 
     if (category) insertData.category = category
 
-    let tableName: string
+    let entry
     if (cashbackType === 'entrada') {
-      tableName = 'CashbackEntry'
+      entry = await prisma.cashbackEntry.create({ data: insertData })
     } else if (cashbackType === 'residual') {
-      tableName = 'CashbackResidual'
+      entry = await prisma.cashbackResidual.create({ data: insertData })
     } else if (cashbackType === 'vendas') {
-      tableName = 'CashbackSales'
+      insertData.category = category || 'mobility'
+      entry = await prisma.cashbackSales.create({ data: insertData })
     } else {
       return error('Invalid cashbackType. Use: entrada, residual, vendas', 400)
     }
-
-    const entry = await db.insert(tableName, insertData)
 
     return success(entry, 201)
   } catch (err) {

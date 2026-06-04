@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function GET(req: NextRequest) {
@@ -7,60 +7,89 @@ export async function GET(req: NextRequest) {
     const userId = req.nextUrl.searchParams.get('userId')
     if (!userId) return error('userId is required', 400)
 
-    const admin = await db.findOne('User', '"id" = $1', [userId])
+    const admin = await prisma.user.findUnique({ where: { id: userId } })
     if (!admin || (admin.role !== 'admin' && admin.email !== 'admin@newmobility.com' && admin.email !== 'carlos.silva@email.com')) {
       return error('Unauthorized', 403)
     }
 
-    // 1. Overview stats
+    // 1. Overview stats - use Prisma aggregation
     const [
-      totalRevenueResult,
-      totalPlatformBalanceResult,
-      pendingWithdrawalsResult,
-      approvedWithdrawalsResult,
-      totalCashbackResult,
-      totalInCirculationResult,
+      revenueAgg,
+      platformBalanceAgg,
+      pendingWithdrawalsAgg,
+      approvedWithdrawalsAgg,
+      totalCashbackAgg,
+      circulationAgg,
     ] = await Promise.all([
-      // Total revenue: sum of deposit + plan_payment type transactions
-      db.execute('SELECT COALESCE(SUM("amount"), 0) as total FROM "Transaction" WHERE "type" IN ($1, $2) AND "status" IN ($3, $4)', ['deposit', 'plan_payment', 'paid', 'approved']),
+      // Total revenue: sum of deposit + plan_payment transactions
+      prisma.transaction.aggregate({
+        _sum: { amount: true },
+        where: { type: { in: ['deposit', 'plan_payment'] }, status: { in: ['paid', 'approved'] } },
+      }),
       // Total platform balance: sum of all user balanceWithdrawal
-      db.execute('SELECT COALESCE(SUM("balanceWithdrawal"), 0) as total FROM "User"'),
+      prisma.user.aggregate({ _sum: { balanceWithdrawal: true } }),
       // Pending withdrawals
-      db.execute('SELECT COALESCE(SUM("amount"), 0) as total FROM "Transaction" WHERE "type" = $1 AND "status" = $2', ['withdrawal', 'pending']),
+      prisma.transaction.aggregate({
+        _sum: { amount: true },
+        where: { type: 'withdrawal', status: 'pending' },
+      }),
       // Approved withdrawals
-      db.execute('SELECT COALESCE(SUM("amount"), 0) as total FROM "Transaction" WHERE "type" = $1 AND "status" IN ($2, $3)', ['withdrawal', 'approved', 'paid']),
-      // Total cashback distributed (from cashback tables)
-      db.execute('SELECT COALESCE(SUM("amount"), 0) as total FROM "Transaction" WHERE "type" IN ($1, $2, $3) AND "status" IN ($4, $5)', ['cashback_entry', 'cashback_residual', 'cashback_sales', 'paid', 'approved']),
+      prisma.transaction.aggregate({
+        _sum: { amount: true },
+        where: { type: 'withdrawal', status: { in: ['approved', 'paid'] } },
+      }),
+      // Total cashback distributed
+      prisma.transaction.aggregate({
+        _sum: { amount: true },
+        where: { type: { in: ['cashback_entry', 'cashback_residual', 'cashback_sales'] }, status: { in: ['paid', 'approved'] } },
+      }),
       // Total in circulation: sum of all user balances
-      db.execute('SELECT COALESCE(SUM("balanceWithdrawal" + "balanceMobility" + "balanceShopping" + "balanceFood" + "balancePharmacy" + "balanceGratification"), 0) as total FROM "User"'),
+      prisma.user.aggregate({
+        _sum: {
+          balanceWithdrawal: true,
+          balanceMobility: true,
+          balanceShopping: true,
+          balanceFood: true,
+          balancePharmacy: true,
+          balanceGratification: true,
+        },
+      }),
     ])
 
+    const circ = circulationAgg._sum
+    const totalInCirculation =
+      (circ.balanceWithdrawal || 0) +
+      (circ.balanceMobility || 0) +
+      (circ.balanceShopping || 0) +
+      (circ.balanceFood || 0) +
+      (circ.balancePharmacy || 0) +
+      (circ.balanceGratification || 0)
+
     const overview = {
-      totalRevenue: Number(totalRevenueResult[0]?.total || 0),
-      totalPlatformBalance: Number(totalPlatformBalanceResult[0]?.total || 0),
-      pendingWithdrawals: Number(pendingWithdrawalsResult[0]?.total || 0),
-      approvedWithdrawals: Number(approvedWithdrawalsResult[0]?.total || 0),
-      totalCashback: Number(totalCashbackResult[0]?.total || 0),
-      totalInCirculation: Number(totalInCirculationResult[0]?.total || 0),
+      totalRevenue: revenueAgg._sum.amount || 0,
+      totalPlatformBalance: platformBalanceAgg._sum.balanceWithdrawal || 0,
+      pendingWithdrawals: pendingWithdrawalsAgg._sum.amount || 0,
+      approvedWithdrawals: approvedWithdrawalsAgg._sum.amount || 0,
+      totalCashback: totalCashbackAgg._sum.amount || 0,
+      totalInCirculation,
     }
 
-    // 2. Recent transactions (last 50)
-    const recentTransactionsRaw = await db.execute(
-      `SELECT t."id", t."userId", t."type", t."amount", t."status", t."category", t."description", t."createdAt",
-              u."name" as "userName", u."email" as "userEmail"
-       FROM "Transaction" t
-       LEFT JOIN "User" u ON t."userId" = u."id"
-       ORDER BY t."createdAt" DESC
-       LIMIT 50`
-    )
+    // 2. Recent transactions (last 50) with user info
+    const recentTransactionsRaw = await prisma.transaction.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: {
+        user: { select: { name: true, email: true } },
+      },
+    })
 
-    const recentTransactions = recentTransactionsRaw.map((t: any) => ({
+    const recentTransactions = recentTransactionsRaw.map((t) => ({
       id: t.id,
       userId: t.userId,
-      userName: t.userName || 'Usuário',
-      userEmail: t.userEmail || '',
+      userName: t.user?.name || 'Usuário',
+      userEmail: t.user?.email || '',
       type: t.type,
-      amount: Number(t.amount || 0),
+      amount: t.amount,
       status: t.status,
       category: t.category || '',
       description: t.description || '',
@@ -68,36 +97,43 @@ export async function GET(req: NextRequest) {
     }))
 
     // 3. Monthly revenue for last 6 months
-    const monthlyRevenueRaw = await db.execute(
-      `SELECT TO_CHAR("createdAt", 'YYYY-MM') as month,
-              COALESCE(SUM("amount"), 0) as revenue
-       FROM "Transaction"
-       WHERE "type" IN ('deposit', 'plan_payment')
-         AND "status" IN ('paid', 'approved')
-         AND "createdAt" >= NOW() - INTERVAL '6 months'
-       GROUP BY TO_CHAR("createdAt", 'YYYY-MM')
-       ORDER BY month DESC`
-    )
+    const sixMonthsAgo = new Date()
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
 
-    const monthlyRevenue = monthlyRevenueRaw.map((m: any) => ({
-      month: m.month,
-      revenue: Number(m.revenue || 0),
-    }))
+    const monthlyTx = await prisma.transaction.findMany({
+      where: {
+        type: { in: ['deposit', 'plan_payment'] },
+        status: { in: ['paid', 'approved'] },
+        createdAt: { gte: sixMonthsAgo },
+      },
+      select: { createdAt: true, amount: true },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    // Group by month in JS
+    const monthMap: Record<string, number> = {}
+    for (const tx of monthlyTx) {
+      const month = tx.createdAt.toISOString().slice(0, 7) // YYYY-MM
+      monthMap[month] = (monthMap[month] || 0) + tx.amount
+    }
+    const monthlyRevenue = Object.entries(monthMap)
+      .map(([month, revenue]) => ({ month, revenue }))
+      .sort((a, b) => b.month.localeCompare(a.month))
 
     // 4. Category breakdown
-    const categoryBreakdownRaw = await db.execute(
-      `SELECT COALESCE("category", 'other') as category,
-              COALESCE(SUM("amount"), 0) as amount
-       FROM "Transaction"
-       WHERE "status" IN ('paid', 'approved')
-       GROUP BY COALESCE("category", 'other')
-       ORDER BY amount DESC`
-    )
+    const categoryTx = await prisma.transaction.findMany({
+      where: { status: { in: ['paid', 'approved'] } },
+      select: { category: true, amount: true },
+    })
 
-    const categoryBreakdown = categoryBreakdownRaw.map((c: any) => ({
-      category: c.category,
-      amount: Number(c.amount || 0),
-    }))
+    const catMap: Record<string, number> = {}
+    for (const tx of categoryTx) {
+      const cat = tx.category || 'other'
+      catMap[cat] = (catMap[cat] || 0) + tx.amount
+    }
+    const categoryBreakdown = Object.entries(catMap)
+      .map(([category, amount]) => ({ category, amount }))
+      .sort((a, b) => b.amount - a.amount)
 
     return success({
       overview,

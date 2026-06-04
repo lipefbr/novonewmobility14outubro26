@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function POST(req: NextRequest) {
@@ -8,8 +8,8 @@ export async function POST(req: NextRequest) {
     const { userId, userIds, action } = body
 
     if (!userId) return error('userId is required', 400)
-    const user = await db.findOne('User', '"id" = $1', [userId])
-    if (!user || (user as any).role !== 'admin') return error('Unauthorized', 403)
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user || user.role !== 'admin') return error('Unauthorized', 403)
 
     if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
       return error('userIds array is required', 400)
@@ -20,18 +20,18 @@ export async function POST(req: NextRequest) {
     }
 
     const isActive = action === 'activate'
-    const placeholders = userIds.map((_: string, i: number) => `$${i + 1}`).join(', ')
-    await db.execute(
-      `UPDATE "User" SET "isActive" = ${isActive}, "updatedAt" = NOW() WHERE "id" IN (${placeholders})`,
-      userIds
-    )
+    const result = await prisma.user.updateMany({
+      where: { id: { in: userIds } },
+      data: { isActive },
+    })
 
     return success({
       action,
-      affectedCount: userIds.length,
+      affectedCount: result.count,
       isActive,
     })
   } catch (err) {
+    console.error('Bulk action error:', err)
     return error('Failed to perform bulk action', 500)
   }
 }
