@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 import { randomBytes } from 'crypto'
 
@@ -21,16 +22,16 @@ export async function POST(req: Request) {
       return `NM-${code.substring(0, 4)}-${code.substring(4, 8)}`
     })
 
-    // Store the setup temporarily in SystemConfig using upsert via raw SQL
+    // Store the setup temporarily in SystemConfig using upsert
     const setupKey = `2fa_setup_${userId}`
     const setupValue = JSON.stringify({ secretKey, backupCodes, enabled: false })
     const description = `2FA setup for user ${userId}`
 
-    await db.execute(
-      `INSERT INTO "SystemConfig" ("key", "value", "description") VALUES ($1, $2, $3)
-       ON CONFLICT ("key") DO UPDATE SET "value" = $2, "description" = $3`,
-      [setupKey, setupValue, description]
-    )
+    await prisma.systemConfig.upsert({
+      where: { key: setupKey },
+      update: { value: setupValue, description },
+      create: { key: setupKey, value: setupValue, description },
+    })
 
     return success({
       secretKey,

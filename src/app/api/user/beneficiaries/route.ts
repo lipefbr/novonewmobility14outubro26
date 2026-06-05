@@ -12,26 +12,6 @@ export async function GET(request: NextRequest) {
       return error('userId is required')
     }
 
-    // Ensure table exists
-    try {
-      await db.execute(`
-        CREATE TABLE IF NOT EXISTS "Beneficiary" (
-          "id" TEXT NOT NULL,
-          "userId" TEXT NOT NULL,
-          "name" TEXT NOT NULL,
-          "cpf" TEXT,
-          "relationship" TEXT NOT NULL,
-          "percentage" INTEGER NOT NULL,
-          "age" INTEGER,
-          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          CONSTRAINT "Beneficiary_pkey" PRIMARY KEY ("id")
-        )
-      `)
-    } catch {
-      // Table likely already exists
-    }
-
     const beneficiaries = await db.find(
       'Beneficiary',
       '"userId" = $1',

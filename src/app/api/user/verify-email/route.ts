@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function POST(req: Request) {
@@ -20,18 +21,18 @@ export async function POST(req: Request) {
       type: 'info',
     })
 
-    // Store verification code using upsert via raw SQL
+    // Store verification code using upsert
     const verifyKey = `email_verify_${userId}`
     const verifyValue = JSON.stringify({ code, verified: false, sentAt: new Date().toISOString() })
     const description = `Email verification for user ${userId}`
 
-    await db.execute(
-      `INSERT INTO "SystemConfig" ("key", "value", "description") VALUES ($1, $2, $3)
-       ON CONFLICT ("key") DO UPDATE SET "value" = $2, "description" = $3`,
-      [verifyKey, verifyValue, description]
-    )
+    await prisma.systemConfig.upsert({
+      where: { key: verifyKey },
+      update: { value: verifyValue, description },
+      create: { key: verifyKey, value: verifyValue, description },
+    })
 
-    return success({ message: 'Verification email sent (simulated)', code: code }) // In dev mode, return the code
+    return success({ message: 'Verification email sent (simulated)', code: code })
   } catch (err) {
     return error('Failed to send verification email', 500)
   }

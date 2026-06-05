@@ -1,87 +1,71 @@
+# NewMobility Project Worklog
+
 ---
 Task ID: 1
 Agent: Main Agent
-Task: Fix CPF verification error and referral code validation in registration
+Task: Fix data leak - new accounts showing other users' data
 
 Work Log:
-- Investigated the "Erro ao verificar CPF" error in registration API
-- Root cause: CPF uniqueness check was throwing errors that blocked registration entirely
-- Fix: Made CPF check more robust - strips mask, tries both formatted and digits-only lookup, and gracefully continues if check fails
-- Investigated the "Código de indicação inválido" error
-- Root cause: Registration was completely blocked if referral code didn't match any user
-- Fix: Made referral code optional - if invalid, registration proceeds without referrer with a warning message
-- Added `/api/referrals/validate` endpoint for real-time referral code validation on the frontend
-- Updated registration page to show "(opcional)" label, validate codes on blur with visual feedback
-- Verified matrix positions are created correctly (entrada, residual, vendas)
+- Identified root cause: Register page passed raw API user data to login() without mapping to UserData type
+- Fixed register-page.tsx to construct proper UserData object with all balances set to 0 for new accounts
+- Fixed store.ts login/logout actions to clear stale notifications (was using hardcoded mockNotifications)
+- Fixed dashboard API (route.ts) - was using db.execute() (raw SQL) which throws error with Prisma/SQLite
+- Fixed dashboard components to use 0 as fallback instead of hardcoded mock values
+- Fixed financial-cards.tsx: replaced R$32,580 / R$18,240 / R$8,450 etc. fallbacks with 0
+- Fixed stats-cards.tsx: replaced 1066 / 3 / 106025 etc. fallbacks with 0
+- Fixed dashboard-page.tsx: quickStats now uses API data instead of hardcoded R$127.50 etc.
+- Fixed networkStats to use 0 instead of 1364 fallback
 
 Stage Summary:
-- Registration now works with invalid/missing referral codes
-- CPF verification no longer blocks registration on errors
-- Referral code validation endpoint added at /api/referrals/validate
-- Frontend shows real-time validation status for referral codes
+- Critical data isolation bug fixed - new accounts now properly show zeroed data
+- Dashboard API now uses Prisma methods instead of broken raw SQL
+- Store clears stale data on login/logout
+- All hardcoded mock values replaced with 0 as default fallback
 
 ---
-Task ID: 2-a
-Agent: SubAgent (full-stack-developer)
-Task: Fix referrals infinite loading and financial withdrawal values
+Task ID: 2
+Agent: Main Agent
+Task: Fix all db.execute() calls in API routes (broken with Prisma/SQLite)
 
 Work Log:
-- Fixed referrals page infinite loading by adding cleanup flags, safety timeouts, and proper state management
-- Fixed financial withdrawal wrong values - root cause was cents vs reais conversion mismatch
-- Backend withdraw API now uses reaisToCents() consistently
-- Frontend now sends raw reais amount, backend converts to cents
-- Fixed transfer dialog display bug where formatCurrency was passed reais instead of cents
-- Fixed transfer API crash where db.execute() was used (not supported) - replaced with db.update()
+- Fixed /api/dashboard/route.ts - replaced db.execute() with db.find(), db.count()
+- Fixed /api/notifications/read-all/route.ts - replaced with prisma.notification.updateMany()
+- Fixed /api/notifications/route.ts - replaced db.count with boolean condition with prisma.notification.count()
+- Fixed /api/user/2fa/setup/route.ts - replaced with prisma.systemConfig.upsert()
+- Fixed /api/user/2fa/verify/route.ts - replaced with prisma.systemConfig.upsert()
+- Fixed /api/user/2fa/disable/route.ts - replaced with prisma.systemConfig.deleteMany()
+- Fixed /api/user/verify-email/route.ts - replaced with prisma.systemConfig.upsert()
+- Fixed /api/user/verify-phone/route.ts - replaced with prisma.systemConfig.upsert()
+- Fixed /api/user/beneficiaries/route.ts - removed unnecessary CREATE TABLE SQL
+- Fixed /api/leaderboard/route.ts - replaced with prisma.user.findMany() with _count
+- Fixed /api/gamification/leaderboard/route.ts - replaced with prisma.user.findMany() with _count
+- Fixed /api/reports/analytics/route.ts - replaced with prisma.groupBy() and findMany()
 
 Stage Summary:
-- Referrals page now loads correctly with data
-- Financial withdrawal values display correctly (R$5000 shows as R$5.000,00)
-- Transfer between balances works correctly
+- All db.execute() calls replaced with Prisma client methods
+- Enhanced parseConditions() to handle boolean literals like "isRead" = false
+- Added SystemConfig support to db.deleteFrom() method
+- Fixed financial/transfer/route.ts duplicate variable declaration (was causing build error)
 
 ---
-Task ID: 2-b
-Agent: SubAgent (full-stack-developer)
-Task: Implement real betting with wallet deduction and seed marketplace products
+Task ID: 3
+Agent: Main Agent
+Task: Overall project status assessment
 
 Work Log:
-- Betting APIs were already functional - the issue was demo user had balanceFree: 0
-- Added balanceFree: 1500000 (R$15,000) to main demo user in seed
-- Added 6 pre-seeded bet history entries (2 won, 2 lost, 2 pending)
-- Rewrote marketplace seed with 10 vehicle-specific products across 4 categories
-- Categories: Acessórios Veiculares, Eletrônicos Auto, Serviços Automotivos, Estética Veicular
-- Updated lojista portal and marketplace page with vehicle categories
-- Re-seeded both databases
+- Server compiles and builds successfully with `next build`
+- API endpoints return correct data (tested login, dashboard, notifications)
+- Registration creates users with zeroed balances
+- Dev server is unstable in sandbox environment (keeps getting killed)
+- Production build works but also gets killed by environment
 
 Stage Summary:
-- Bet portal works with wallet deduction from balanceFree
-- Marketplace has 10 products with vehicle-specific categories
-- Sport bet portal shows live odds and betting interface
-
----
-Task ID: 2-c
-Agent: SubAgent (full-stack-developer)
-Task: Fix access control and admin panel
-
-Work Log:
-- Added Lojista portal access control - non-lojista users see "Acesso Restrito" screen
-- Added admin panel access control with synchronous guards in page.tsx
-- Verified admin APIs all work and properly reject non-admin users with 403
-- Fixed TypeScript error in admin-page.tsx
-- Added services page to navigation with translations in 5 languages
-- Enhanced services content with 20 services across 8 categories (Automotivo, Mobilidade, etc.)
-
-Stage Summary:
-- Only lojista users can access Portal Lojista
-- Only admin users can access admin panel
-- Services page added with automotive and mobility services
-- Admin panel verified working
-
----
-Current Project Status: All major issues resolved. Registration, referrals, financial, betting, marketplace, admin, and access control all working. Database was re-seeded with new user IDs.
-
-Key User IDs (after re-seed):
-- Admin: cmq18fapn0108mdrlwiwnfi81
-- Carlos (demo): cmq18fapt010amdrltdkbs2eo
-- Lojista: (check DB, email: lojista@newmobility.com)
-
-Credentials: carlos.silva@email.com / 123456 | admin@newmobility.com / 123456
+- Key fixes applied: data isolation, broken API routes, hardcoded values
+- Remaining issues from previous sessions still need attention:
+  - Referral code validation during registration (was showing "Código de indicação inválido")
+  - CPF verification error
+  - Meus Indicados infinite loading
+  - Financial withdrawal wrong values
+  - Portal access control
+  - Marketplace needs seeding
+  - Admin panel fixes

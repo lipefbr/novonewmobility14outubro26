@@ -241,6 +241,8 @@ export const useStore = create<AppState>()(
           user,
           activePage: 'dashboard',
           mobileSidebarOpen: false,
+          // Clear stale notifications from previous user sessions
+          notifications: [],
         }),
 
       logout: () =>
@@ -250,6 +252,7 @@ export const useStore = create<AppState>()(
           activePage: 'dashboard',
           authView: 'login',
           mobileSidebarOpen: false,
+          notifications: [],
         }),
 
       setAuthView: (authView) => set({ authView }),

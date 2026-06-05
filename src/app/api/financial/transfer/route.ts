@@ -69,7 +69,6 @@ export async function POST(req: NextRequest) {
     }
 
     // Update source balance (decrement)
-    const sourceBalance = (user as any)[sourceField] as number
     await db.update(
       'User',
       '"id" = $1',

@@ -182,19 +182,19 @@ export function DashboardPage() {
   }
 
   const networkStats = {
-    totalSize: dashboardData?.cashbackEntrada?.totalUsers 
-      ? (dashboardData.cashbackEntrada.totalUsers + dashboardData.cashbackResidual?.totalUsers + dashboardData.cashbackVendas?.totalUsers) 
-      : 1364,
-    activeMembers: dashboardData?.directReferralCount ?? dashboardData?.directReferrals ?? 4,
-    newReferrals: Math.max(1, Math.floor((dashboardData?.directReferralCount ?? dashboardData?.directReferrals ?? 4) * 0.3)),
+    totalSize: (dashboardData?.cashbackEntrada?.totalUsers ?? 0)
+      + (dashboardData?.cashbackResidual?.totalUsers ?? 0)
+      + (dashboardData?.cashbackVendas?.totalUsers ?? 0),
+    activeMembers: dashboardData?.directReferralCount ?? dashboardData?.directReferrals ?? 0,
+    newReferrals: Math.max(0, Math.floor((dashboardData?.directReferralCount ?? dashboardData?.directReferrals ?? 0) * 0.3)),
   }
 
-  // Quick stats for mini-bar
+  // Quick stats for mini-bar - use API data with 0 as fallback for new users
   const quickStats = [
-    { label: 'Ganhos Hoje', value: formatCurrency(12750), rawValue: 12750, icon: DollarSign, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
-    { label: 'Novos Indicados', value: '2', rawValue: 2, icon: UserPlus, color: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-50 dark:bg-teal-950/30' },
-    { label: 'CashBack Pendente', value: formatCurrency(89000), rawValue: 89000, icon: Clock, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/30' },
-    { label: 'Pontos Hoje', value: '+5', rawValue: 5, icon: Star, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+    { label: 'Ganhos Hoje', value: formatCurrency(dashboardData?.balances?.withdrawal ?? user?.balanceFree ?? 0), rawValue: dashboardData?.balances?.withdrawal ?? user?.balanceFree ?? 0, icon: DollarSign, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+    { label: 'Novos Indicados', value: String(dashboardData?.directReferralCount ?? 0), rawValue: dashboardData?.directReferralCount ?? 0, icon: UserPlus, color: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-50 dark:bg-teal-950/30' },
+    { label: 'CashBack Pendente', value: formatCurrency(user?.balancePending ?? 0), rawValue: user?.balancePending ?? 0, icon: Clock, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/30' },
+    { label: 'Pontos Hoje', value: `+${dashboardData?.career?.points ?? user?.careerPoints ?? 0}`, rawValue: dashboardData?.career?.points ?? user?.careerPoints ?? 0, icon: Star, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
   ]
 
   // Greeting

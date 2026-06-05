@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { db, prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function GET(req: NextRequest) {
@@ -57,10 +57,13 @@ export async function GET(req: NextRequest) {
     // Network growth within period
     let networkGrowthData: { month: string; count: number }[] = []
     if (downlineIds.length > 0) {
-      const networkMembers = await db.execute(
-        `SELECT "createdAt" FROM "User" WHERE id = ANY($1) AND "createdAt" >= $2`,
-        [downlineIds, startDate]
-      ) as any[]
+      const networkMembers = await prisma.user.findMany({
+        where: {
+          id: { in: downlineIds },
+          createdAt: { gte: startDate },
+        },
+        select: { createdAt: true },
+      })
 
       const networkGrowth: Record<string, number> = {}
       networkMembers.forEach(m => {
@@ -72,19 +75,29 @@ export async function GET(req: NextRequest) {
 
     // Plan distribution
     const allIds = [userId, ...downlineIds]
-    const planDistribution = await db.execute(
-      `SELECT plan, COUNT(*)::int as count FROM "User" WHERE id = ANY($1) GROUP BY plan`,
-      [allIds]
-    ) as any[]
+    const planDistributionRaw = await prisma.user.groupBy({
+      by: ['plan'],
+      where: { id: { in: allIds } },
+      _count: { plan: true },
+    })
+    const planDistribution = planDistributionRaw.map(p => ({ plan: p.plan, count: p._count.plan }))
 
     // Category spending
-    const categorySpending = await db.execute(
-      `SELECT category, SUM(amount)::int as amount, COUNT(id)::int as count
-       FROM "Transaction"
-       WHERE "userId" = $1 AND "createdAt" >= $2 AND status = $3
-       GROUP BY category`,
-      [userId, startDate, 'paid']
-    ) as any[]
+    const categorySpendingRaw = await prisma.transaction.groupBy({
+      by: ['category'],
+      where: {
+        userId: userId,
+        createdAt: { gte: startDate },
+        status: 'paid',
+      },
+      _sum: { amount: true },
+      _count: { id: true },
+    })
+    const categorySpending = categorySpendingRaw.map(c => ({
+      category: c.category || 'other',
+      amount: c._sum.amount || 0,
+      count: c._count.id,
+    }))
 
     return success({
       period,
@@ -92,12 +105,8 @@ export async function GET(req: NextRequest) {
       revenueTrends,
       cashbackDistribution,
       networkGrowth: networkGrowthData,
-      planDistribution: planDistribution.map(p => ({ plan: p.plan, count: p.count })),
-      categorySpending: categorySpending.map(c => ({
-        category: c.category || 'other',
-        amount: c.amount || 0,
-        count: c.count,
-      })),
+      planDistribution,
+      categorySpending,
       totalNetworkSize: downlineIds.length + 1,
       summary: {
         totalRevenue: transactions.reduce((s, t) => s + (t.amount > 0 ? t.amount : 0), 0),

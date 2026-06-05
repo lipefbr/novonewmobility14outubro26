@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 import { verifyPassword } from '@/lib/api-utils'
 
@@ -21,8 +22,8 @@ export async function POST(req: Request) {
     const enabledKey = `2fa_enabled_${userId}`
 
     await Promise.all([
-      db.deleteFrom('SystemConfig', '"key" = $1', [setupKey]),
-      db.deleteFrom('SystemConfig', '"key" = $1', [enabledKey]),
+      prisma.systemConfig.deleteMany({ where: { key: setupKey } }),
+      prisma.systemConfig.deleteMany({ where: { key: enabledKey } }),
     ])
 
     return success({ enabled: false, message: '2FA has been disabled' })

@@ -78,8 +78,8 @@ export function StatsCards({ data }: StatsCardsProps) {
   const stats = [
     {
       title: t('dashboard.stats.direct'),
-      value: data?.directReferrals ?? data?.directReferralCount ?? 4,
-      subtitle: `${t('dashboard.stats.total')} ${formatNumber(data?.cashbackEntrada?.totalUsers ?? 1364)} ${t('dashboard.stats.users')}`,
+      value: data?.directReferrals ?? data?.directReferralCount ?? 0,
+      subtitle: `${t('dashboard.stats.total')} ${formatNumber(data?.cashbackEntrada?.totalUsers ?? 0)} ${t('dashboard.stats.users')}`,
       icon: Users,
       gradientFrom: 'from-emerald-50',
       gradientTo: 'to-emerald-100/50',
@@ -93,8 +93,8 @@ export function StatsCards({ data }: StatsCardsProps) {
     },
     {
       title: t('dashboard.stats.entrada'),
-      value: data?.cashbackEntrada?.totalUsers ?? 1066,
-      subtitle: `${t('dashboard.stats.total')} ${formatNumber(data?.cashbackEntrada?.totalUsers ?? 1364)} ${t('dashboard.stats.users')}`,
+      value: data?.cashbackEntrada?.totalUsers ?? 0,
+      subtitle: `${t('dashboard.stats.total')} ${formatNumber(data?.cashbackEntrada?.totalUsers ?? 0)} ${t('dashboard.stats.users')}`,
       icon: DollarSign,
       gradientFrom: 'from-teal-50',
       gradientTo: 'to-teal-100/50',
@@ -108,8 +108,8 @@ export function StatsCards({ data }: StatsCardsProps) {
     },
     {
       title: t('dashboard.stats.residual'),
-      value: data?.cashbackResidual?.totalUsers ?? 3,
-      subtitle: `${t('dashboard.stats.total')} ${formatNumber(data?.cashbackResidual?.totalUsers ?? 21844)} ${t('dashboard.stats.users')}`,
+      value: data?.cashbackResidual?.totalUsers ?? 0,
+      subtitle: `${t('dashboard.stats.total')} ${formatNumber(data?.cashbackResidual?.totalUsers ?? 0)} ${t('dashboard.stats.users')}`,
       icon: Activity,
       gradientFrom: 'from-amber-50',
       gradientTo: 'to-amber-100/50',
@@ -123,8 +123,8 @@ export function StatsCards({ data }: StatsCardsProps) {
     },
     {
       title: t('dashboard.stats.sales'),
-      value: data?.cashbackVendas?.totalUsers ?? 106025,
-      subtitle: `${t('dashboard.stats.total')} ${formatNumber(data?.cashbackVendas?.totalUsers ?? 349524)} ${t('dashboard.stats.users')}`,
+      value: data?.cashbackVendas?.totalUsers ?? 0,
+      subtitle: `${t('dashboard.stats.total')} ${formatNumber(data?.cashbackVendas?.totalUsers ?? 0)} ${t('dashboard.stats.users')}`,
       icon: Truck,
       gradientFrom: 'from-purple-50',
       gradientTo: 'to-purple-100/50',

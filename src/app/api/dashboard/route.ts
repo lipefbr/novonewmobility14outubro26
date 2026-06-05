@@ -20,49 +20,36 @@ export async function GET(request: Request) {
     const timeSinceRegistration = formatTimeSince(new Date(user.createdAt))
 
     // Direct referral count
-    const referralCountResult = await db.execute(
-      'SELECT COUNT(*)::int as count FROM "User" WHERE "referredById" = $1',
-      [userId]
-    )
-    const directReferralCount = referralCountResult[0]?.count || 0
+    const directReferralCount = await db.count('User', '"referredById" = $1', [userId])
 
-    // Cashback entrada stats - use SQL aggregation for efficiency
-    const entradaStats = await db.execute(
-      'SELECT COALESCE(SUM("amount"), 0) as total, "level", COUNT(*)::int as cnt FROM "CashbackEntry" WHERE "userId" = $1 GROUP BY "level"',
-      [userId]
-    )
-    const totalEntradaEarned = (entradaStats as any[]).reduce((sum: number, e: any) => sum + Number(e.total), 0)
+    // Cashback entrada stats
+    const entradaRecords = await db.find('CashbackEntry', '"userId" = $1', [userId])
+    const totalEntradaEarned = entradaRecords.reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0)
     const entradaUsersByLevel: Record<number, number> = {}
     let totalEntradaUsers = 0
-    for (const e of entradaStats as any[]) {
-      entradaUsersByLevel[e.level] = e.cnt
-      totalEntradaUsers += e.cnt
+    for (const e of entradaRecords) {
+      entradaUsersByLevel[e.level] = (entradaUsersByLevel[e.level] || 0) + 1
+      totalEntradaUsers++
     }
 
     // Cashback residual stats
-    const residualStats = await db.execute(
-      'SELECT COALESCE(SUM("amount"), 0) as total, "level", COUNT(*)::int as cnt FROM "CashbackResidual" WHERE "userId" = $1 GROUP BY "level"',
-      [userId]
-    )
-    const totalResidualEarned = (residualStats as any[]).reduce((sum: number, e: any) => sum + Number(e.total), 0)
+    const residualRecords = await db.find('CashbackResidual', '"userId" = $1', [userId])
+    const totalResidualEarned = residualRecords.reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0)
     const residualUsersByLevel: Record<number, number> = {}
     let totalResidualUsers = 0
-    for (const e of residualStats as any[]) {
-      residualUsersByLevel[e.level] = e.cnt
-      totalResidualUsers += e.cnt
+    for (const e of residualRecords) {
+      residualUsersByLevel[e.level] = (residualUsersByLevel[e.level] || 0) + 1
+      totalResidualUsers++
     }
 
     // Cashback vendas stats
-    const vendasStats = await db.execute(
-      'SELECT COALESCE(SUM("amount"), 0) as total, "level", COUNT(*)::int as cnt FROM "CashbackSales" WHERE "userId" = $1 GROUP BY "level"',
-      [userId]
-    )
-    const totalVendasEarned = (vendasStats as any[]).reduce((sum: number, e: any) => sum + Number(e.total), 0)
+    const vendasRecords = await db.find('CashbackSales', '"userId" = $1', [userId])
+    const totalVendasEarned = vendasRecords.reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0)
     const vendasUsersByLevel: Record<number, number> = {}
     let totalVendasUsers = 0
-    for (const e of vendasStats as any[]) {
-      vendasUsersByLevel[e.level] = e.cnt
-      totalVendasUsers += e.cnt
+    for (const e of vendasRecords) {
+      vendasUsersByLevel[e.level] = (vendasUsersByLevel[e.level] || 0) + 1
+      totalVendasUsers++
     }
 
     // Recent transactions
@@ -78,22 +65,22 @@ export async function GET(request: Request) {
     const nextRank = getNextRank(user.careerPoints)
 
     // User distribution for chart (by plan)
-    const planDistribution = await db.execute(
-      'SELECT "plan", COUNT(*)::int as count FROM "User" GROUP BY "plan"'
-    )
+    const allUsers = await db.find('User', '', [])
     const usersByPlan: Record<string, number> = {}
-    for (const u of planDistribution as any[]) {
-      usersByPlan[u.plan] = u.count
+    for (const u of allUsers) {
+      usersByPlan[u.plan] = (usersByPlan[u.plan] || 0) + 1
     }
 
     // Revenue by category for chart
-    const categoryRevenue = await db.execute(
-      'SELECT COALESCE("category", \'other\') as cat, SUM("amount") as total FROM "Transaction" WHERE "userId" = $1 AND "status" = $2 GROUP BY "category"',
+    const approvedTransactions = await db.find(
+      'Transaction',
+      '"userId" = $1 AND "status" = $2',
       [userId, 'approved']
     )
     const revenueByCategory: Record<string, number> = {}
-    for (const t of categoryRevenue as any[]) {
-      revenueByCategory[t.cat] = Number(t.total)
+    for (const t of approvedTransactions) {
+      const cat = t.category || 'other'
+      revenueByCategory[cat] = (revenueByCategory[cat] || 0) + Number(t.amount || 0)
     }
 
     return success({
@@ -128,20 +115,20 @@ export async function GET(request: Request) {
         byLevel: vendasUsersByLevel,
       },
       balances: {
-        withdrawal: user.balanceWithdrawal,
-        mobility: user.balanceMobility,
-        shopping: user.balanceShopping,
-        food: user.balanceFood,
-        pharmacy: user.balancePharmacy,
-        gratification: user.balanceGratification,
+        withdrawal: user.balanceWithdrawal || 0,
+        mobility: user.balanceMobility || 0,
+        shopping: user.balanceShopping || 0,
+        food: user.balanceFood || 0,
+        pharmacy: user.balancePharmacy || 0,
+        gratification: user.balanceGratification || 0,
       },
       recentTransactions,
       career: {
         currentRank: currentRank.name,
         stars: currentRank.stars,
-        points: user.careerPoints,
-        nextRank: nextRank ? { name: nextRank.name, pointsNeeded: nextRank.minPoints - user.careerPoints } : null,
-        progress: nextRank ? (user.careerPoints / nextRank.minPoints) * 100 : 100,
+        points: user.careerPoints || 0,
+        nextRank: nextRank ? { name: nextRank.name, pointsNeeded: nextRank.minPoints - (user.careerPoints || 0) } : null,
+        progress: nextRank ? ((user.careerPoints || 0) / nextRank.minPoints) * 100 : 100,
       },
       userDistribution: usersByPlan,
       revenueByCategory,

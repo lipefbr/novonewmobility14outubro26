@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
+import { prisma } from '@/lib/db'
 
 export async function PUT(req: Request) {
   try {
@@ -7,10 +8,10 @@ export async function PUT(req: Request) {
     const { userId } = body
     if (!userId) return error('userId is required', 400)
 
-    await db.execute(
-      `UPDATE "Notification" SET "isRead" = true WHERE "userId" = $1 AND "isRead" = false`,
-      [userId]
-    )
+    await prisma.notification.updateMany({
+      where: { userId, isRead: false },
+      data: { isRead: true },
+    })
 
     return success({ message: 'All notifications marked as read' })
   } catch (err) {

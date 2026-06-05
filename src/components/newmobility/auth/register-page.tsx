@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useStore } from '@/lib/store'
+import { useStore, type UserData } from '@/lib/store'
 import { authApi } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -186,9 +186,38 @@ export function RegisterPage() {
       })
       clearTimeout(safetyTimer)
       if (data.user) {
+        // Map API user to UserData with proper zeroed defaults for new accounts
+        const userData: UserData = {
+          id: data.user.id || '',
+          name: data.user.name || '',
+          email: data.user.email || '',
+          phone: data.user.phone || '',
+          cpf: data.user.cpf || '',
+          plan: data.user.plan || 'free',
+          referralCode: data.user.referralCode || '',
+          referredById: data.user.referredById || null,
+          language: data.user.language || 'pt',
+          isActive: data.user.isActive ?? false,
+          role: data.user.role || 'user',
+          balanceWithdrawal: 0,
+          balanceMobility: 0,
+          balanceShopping: 0,
+          balanceFood: 0,
+          balancePharmacy: 0,
+          balanceGratification: 0,
+          balanceFree: 0,
+          balancePending: 0,
+          careerPoints: 0,
+          personalPoints: 0,
+          stars: 0,
+          isDriver: false,
+          userType: data.user.userType || 'usuario',
+          profileImage: data.user.profileImage || null,
+          createdAt: data.user.createdAt || new Date().toISOString(),
+        }
         setSuccess(true)
         setTimeout(() => {
-          login(data.user)
+          login(userData)
           if (data.warning) {
             toast.warning(data.warning)
           }

@@ -555,9 +555,16 @@ export const db = {
             return prisma.voucher.delete({ where: { id: params[0] } }) as any
           case 'Bet':
             return prisma.bet.delete({ where: { id: params[0] } }) as any
+          case 'SystemConfig':
+            return prisma.systemConfig.delete({ where: { id: params[0] } }) as any
           default:
             throw new Error(`deleteFrom not implemented for table=${table}`)
         }
+      }
+
+      // Handle SystemConfig delete by key
+      if (table === 'SystemConfig' && conditions.includes('"key"')) {
+        return prisma.systemConfig.deleteMany({ where: { key: params[0] } }) as any
       }
 
       // Handle EventRegistration with compound unique
@@ -638,7 +645,7 @@ export const db = {
   },
 }
 
-// Helper: Parse SQL-style conditions like '"userId" = $1 AND "type" = $2' into Prisma where object
+// Helper: Parse SQL-style conditions like '"userId" = $1 AND "isRead" = false' into Prisma where object
 function parseConditions(conditions: string, params: any[]): Record<string, any> {
   if (!conditions) return {}
 
@@ -646,38 +653,53 @@ function parseConditions(conditions: string, params: any[]): Record<string, any>
   const parts = conditions.split(/\s+AND\s+/i)
 
   for (const part of parts) {
-    const match = part.match(/"(\w+)"\s*(=|!=|>|<|>=|<=|LIKE|IN)\s*\$(\d+)/i)
-    if (!match) continue
+    // Match parameter references like "field" = $1
+    const paramMatch = part.match(/"(\w+)"\s*(=|!=|>|<|>=|<=|LIKE|IN)\s*\$(\d+)/i)
+    if (paramMatch) {
+      const [, field, operator, paramIdxStr] = paramMatch
+      const paramIdx = parseInt(paramIdxStr) - 1
+      const value = params[paramIdx]
 
-    const [, field, operator, paramIdxStr] = match
-    const paramIdx = parseInt(paramIdxStr) - 1
-    const value = params[paramIdx]
+      switch (operator.toUpperCase()) {
+        case '=':
+          where[field] = value
+          break
+        case '!=':
+          where[field] = { not: value }
+          break
+        case '>':
+          where[field] = { gt: value }
+          break
+        case '<':
+          where[field] = { lt: value }
+          break
+        case '>=':
+          where[field] = { gte: value }
+          break
+        case '<=':
+          where[field] = { lte: value }
+          break
+        case 'LIKE':
+          where[field] = { contains: String(value).replace(/%/g, ''), mode: 'insensitive' }
+          break
+        case 'IN':
+          where[field] = { in: Array.isArray(value) ? value : [value] }
+          break
+      }
+      continue
+    }
 
-    switch (operator.toUpperCase()) {
-      case '=':
+    // Match literal boolean values like "isRead" = false or "isActive" = true
+    const boolMatch = part.match(/"(\w+)"\s*(=|!=)\s*(true|false)/i)
+    if (boolMatch) {
+      const [, field, operator, literal] = boolMatch
+      const value = literal.toLowerCase() === 'true'
+      if (operator === '=') {
         where[field] = value
-        break
-      case '!=':
+      } else {
         where[field] = { not: value }
-        break
-      case '>':
-        where[field] = { gt: value }
-        break
-      case '<':
-        where[field] = { lt: value }
-        break
-      case '>=':
-        where[field] = { gte: value }
-        break
-      case '<=':
-        where[field] = { lte: value }
-        break
-      case 'LIKE':
-        where[field] = { contains: String(value).replace(/%/g, ''), mode: 'insensitive' }
-        break
-      case 'IN':
-        where[field] = { in: Array.isArray(value) ? value : [value] }
-        break
+      }
+      continue
     }
   }
 

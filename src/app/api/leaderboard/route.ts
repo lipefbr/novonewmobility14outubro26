@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { db, prisma } from '@/lib/db'
 import { success, error, centsToReais } from '@/lib/api-utils'
 
 export async function GET(req: NextRequest) {
@@ -19,14 +19,25 @@ export async function GET(req: NextRequest) {
     }
 
     // Get all active users with referral count
-    const allUsers = await db.execute(
-      `SELECT u.id, u.name, u.plan, u."profileImage", u."balanceWithdrawal", u."careerPoints", u."personalPoints",
-        (SELECT COUNT(*)::int FROM "User" r WHERE r."referredById" = u.id) as "directReferrals"
-      FROM "User" u
-      WHERE u."isActive" = true
-      LIMIT 500`,
-      []
-    ) as any[]
+    const allUsersRaw = await prisma.user.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        plan: true,
+        profileImage: true,
+        balanceWithdrawal: true,
+        careerPoints: true,
+        personalPoints: true,
+        _count: { select: { referrals: true } },
+      },
+      take: 500,
+    })
+
+    const allUsers = allUsersRaw.map(u => ({
+      ...u,
+      directReferrals: u._count.referrals,
+    }))
 
     // Compute date range for period filtering
     const now = new Date()
@@ -44,16 +55,17 @@ export async function GET(req: NextRequest) {
 
     // Get transactions for the period for earnings-based ranking
     const userIds = allUsers.map(u => u.id)
-    const transactions = userIds.length > 0 ? await db.execute(
-      `SELECT "userId", amount FROM "Transaction"
-       WHERE "userId" = ANY($1) AND type = ANY($2) AND status = $3 AND "createdAt" >= $4`,
-      [
-        userIds,
-        ['cashback_entry', 'cashback_residual', 'cashback_sales', 'gratification', 'bonus'],
-        'paid',
-        periodStart,
-      ]
-    ) as any[] : []
+    const transactions = userIds.length > 0
+      ? await prisma.transaction.findMany({
+          where: {
+            userId: { in: userIds },
+            type: { in: ['cashback_entry', 'cashback_residual', 'cashback_sales', 'gratification', 'bonus'] },
+            status: 'paid',
+            createdAt: { gte: periodStart },
+          },
+          select: { userId: true, amount: true },
+        })
+      : []
 
     // Calculate earnings per user
     const earningsMap = new Map<string, number>()

@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function POST(req: Request) {
@@ -24,19 +25,19 @@ export async function POST(req: Request) {
     const setupValue = JSON.stringify(setupData)
     const description = `2FA setup for user ${userId}`
 
-    await db.execute(
-      `INSERT INTO "SystemConfig" ("key", "value", "description") VALUES ($1, $2, $3)
-       ON CONFLICT ("key") DO UPDATE SET "value" = $2, "description" = $3`,
-      [setupKey, setupValue, description]
-    )
+    await prisma.systemConfig.upsert({
+      where: { key: setupKey },
+      update: { value: setupValue, description },
+      create: { key: setupKey, value: setupValue, description },
+    })
 
     // Also store a 2FA enabled flag - upsert
     const enabledKey = `2fa_enabled_${userId}`
-    await db.execute(
-      `INSERT INTO "SystemConfig" ("key", "value", "description") VALUES ($1, $2, $3)
-       ON CONFLICT ("key") DO UPDATE SET "value" = $2`,
-      [enabledKey, 'true', `2FA enabled for user ${userId}`]
-    )
+    await prisma.systemConfig.upsert({
+      where: { key: enabledKey },
+      update: { value: 'true' },
+      create: { key: enabledKey, value: 'true', description: `2FA enabled for user ${userId}` },
+    })
 
     return success({
       enabled: true,
