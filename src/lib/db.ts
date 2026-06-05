@@ -1,16 +1,34 @@
-// Database client using Prisma with SQLite
+// Database client using Prisma with PostgreSQL (Neon)
 import { PrismaClient } from '@prisma/client'
+import { Pool, neonConfig } from '@neondatabase/serverless'
+import { PrismaNeon } from '@prisma/adapter-neon'
+
+// Configure neon for websockets (needed for serverless)
+neonConfig.webSocketConstructor = undefined as any // Use HTTP fetch mode for Vercel
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient()
+function createPrismaClient() {
+  // Use Neon adapter for serverless environments (Vercel)
+  // This allows HTTP-based connections instead of TCP, which works in serverless
+  const connectionString = process.env.DATABASE_URL
+  
+  if (!connectionString) {
+    throw new Error('DATABASE_URL environment variable is not set')
+  }
+  
+  const pool = new Pool({ connectionString })
+  const adapter = new PrismaNeon(pool)
+  return new PrismaClient({ adapter } as any)
+}
+
+export const prisma = globalForPrisma.prisma ?? createPrismaClient()
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
 
 // Comprehensive db interface that maps common query patterns to Prisma calls
-// This replaces the brittle per-condition mapping with a more robust approach
 export const db = {
   async execute(query: string, params: any[] = []): Promise<any[]> {
     throw new Error('Raw SQL execute is not supported with Prisma. Use Prisma client methods instead.')

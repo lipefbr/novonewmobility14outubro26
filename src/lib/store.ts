@@ -71,89 +71,6 @@ export interface Notification {
   icon?: string
 }
 
-const mockNotifications: Notification[] = [
-  {
-    id: 'n1',
-    type: 'cashback',
-    title: 'CashBack Recebido!',
-    description: 'Você recebeu R$ 45,00 de CashBack Entrada do usuário Maria Silva.',
-    time: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-    read: false,
-  },
-  {
-    id: 'n2',
-    type: 'referral',
-    title: 'Novo Indicado',
-    description: 'João Santos se cadastrou usando seu código de indicação!',
-    time: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-    read: false,
-  },
-  {
-    id: 'n3',
-    type: 'career',
-    title: 'Progresso na Carreira',
-    description: 'Faltam apenas 5 pontos para você alcançar o rank Bronze!',
-    time: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-    read: false,
-  },
-  {
-    id: 'n4',
-    type: 'voucher',
-    title: 'Voucher Disponível',
-    description: 'Seu voucher de R$ 100,00 está pronto para uso no App Mobilidade.',
-    time: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
-    read: false,
-  },
-  {
-    id: 'n5',
-    type: 'gratification',
-    title: 'Gratificação Liberada',
-    description: 'Parabéns! Sua gratificação semanal de R$ 25,00 foi creditada.',
-    time: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-    read: true,
-  },
-  {
-    id: 'n6',
-    type: 'cashback',
-    title: 'CashBack Residual',
-    description: 'R$ 12,50 de CashBack Residual creditados na sua conta.',
-    time: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
-    read: true,
-  },
-  {
-    id: 'n7',
-    type: 'system',
-    title: 'Atualização do Sistema',
-    description: 'Nova versão do app disponível. Atualize para aproveitar as novidades!',
-    time: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    read: true,
-  },
-  {
-    id: 'n8',
-    type: 'referral',
-    title: 'Indicado Ativou Plano',
-    description: 'Pedro Costa ativou o plano Blue 5 Premium na sua rede!',
-    time: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    read: true,
-  },
-  {
-    id: 'n9',
-    type: 'cashback',
-    title: 'CashBack Vendas',
-    description: 'Você recebeu R$ 8,30 de CashBack de vendas no Shopping.',
-    time: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    read: true,
-  },
-  {
-    id: 'n10',
-    type: 'system',
-    title: 'Bem-vindo à NewMobility!',
-    description: 'Sua conta foi criada com sucesso. Explore todas as funcionalidades.',
-    time: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-    read: true,
-  },
-]
-
 interface AppState {
   // Auth
   isAuthenticated: boolean
@@ -186,35 +103,6 @@ interface AppState {
   unreadCount: () => number
 }
 
-const mockUser: UserData = {
-  id: 'usr_01abc123',
-  name: 'Carlos Eduardo Silva',
-  email: 'carlos.silva@email.com',
-  phone: '(11) 99876-5432',
-  cpf: '123.456.789-00',
-  plan: 'blue5',
-  referralCode: 'CARLOS2025',
-  referredById: null,
-  language: 'pt',
-  isActive: true,
-  role: 'user',
-  balanceWithdrawal: 3258000,
-  balanceMobility: 727000,
-  balanceShopping: 2727000,
-  balanceFood: 687000,
-  balancePharmacy: 558000,
-  balanceGratification: 845000,
-  balanceFree: 1500000,
-  balancePending: 500000,
-  careerPoints: 42,
-  personalPoints: 18,
-  stars: 3,
-  isDriver: true,
-  userType: 'usuario',
-  profileImage: null,
-  createdAt: '2023-06-15T10:00:00Z',
-}
-
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -231,19 +119,31 @@ export const useStore = create<AppState>()(
       // Theme
       darkMode: false,
 
-      // Notifications
-      notifications: mockNotifications,
+      // Notifications - start empty, will be loaded from API per user
+      notifications: [],
 
       // Actions
-      login: (user) =>
+      login: (user) => {
+        // Clear ALL localStorage to prevent data leakage from previous sessions
+        if (typeof window !== 'undefined') {
+          const darkMode = localStorage.getItem('newmobility-auth')
+            ? JSON.parse(localStorage.getItem('newmobility-auth') || '{}').state?.darkMode
+            : false
+          localStorage.removeItem('newmobility-auth')
+          // Re-init with clean state
+          if (darkMode !== undefined) {
+            // preserve dark mode preference
+            set({ darkMode })
+          }
+        }
         set({
           isAuthenticated: true,
           user,
           activePage: 'dashboard',
           mobileSidebarOpen: false,
-          // Clear stale notifications from previous user sessions
           notifications: [],
-        }),
+        })
+      },
 
       logout: () =>
         set({
@@ -304,16 +204,51 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'newmobility-auth',
+      // Only persist auth essentials - NEVER persist notifications or other
+      // user-specific data that could leak between sessions
       partialize: (state) => ({
-        isAuthenticated: state.isAuthenticated,
+        isAuthenticated: state.isAuthenticated && !!state.user?.id,
         user: state.user,
         activePage: state.activePage,
-        language: state.user?.language,
         darkMode: state.darkMode,
-        notifications: state.notifications,
       }),
+      // When rehydrating, validate the stored user ID matches to prevent stale data
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          // Always reset notifications on rehydration to prevent cross-user leakage
+          state.notifications = []
+        }
+      },
     }
   )
 )
 
-export { mockUser }
+// Empty default user for reference (all zeros - new user state)
+export const emptyUser: UserData = {
+  id: '',
+  name: '',
+  email: '',
+  phone: '',
+  cpf: '',
+  plan: 'free',
+  referralCode: '',
+  referredById: null,
+  language: 'pt',
+  isActive: false,
+  role: 'user',
+  balanceWithdrawal: 0,
+  balanceMobility: 0,
+  balanceShopping: 0,
+  balanceFood: 0,
+  balancePharmacy: 0,
+  balanceGratification: 0,
+  balanceFree: 0,
+  balancePending: 0,
+  careerPoints: 0,
+  personalPoints: 0,
+  stars: 0,
+  isDriver: false,
+  userType: 'usuario',
+  profileImage: null,
+  createdAt: '',
+}
