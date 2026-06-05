@@ -5,18 +5,69 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
-// Neon pooler URL supports standard PostgreSQL protocol
-// Works on both local dev and Vercel serverless functions
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-  datasources: {
-    db: {
-      url: process.env.DATABASE_URL,
-    },
-  },
-})
+// Ensure DATABASE_URL is loaded from .env file if not already set
+// This is critical for `next start` which may not load .env automatically
+// Also handles the case where an old SQLite URL is set from shell scripts
+function ensureEnvLoaded() {
+  const currentUrl = process.env.DATABASE_URL || ''
+  const needsUpdate = !currentUrl || currentUrl.startsWith('file:')
+  
+  if (needsUpdate) {
+    try {
+      // Read .env file manually (most reliable approach)
+      const fs = require('fs')
+      const path = require('path')
+      const envPath = path.join(process.cwd(), '.env')
+      if (fs.existsSync(envPath)) {
+        const content = fs.readFileSync(envPath, 'utf8')
+        for (const line of content.split('\n')) {
+          const trimmed = line.trim()
+          if (!trimmed || trimmed.startsWith('#')) continue
+          const eqIdx = trimmed.indexOf('=')
+          if (eqIdx > 0) {
+            const key = trimmed.substring(0, eqIdx).trim()
+            let val = trimmed.substring(eqIdx + 1).trim()
+            // Remove surrounding quotes
+            if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+              val = val.slice(1, -1)
+            }
+            // Override if current value is SQLite or not set
+            if (key === 'DATABASE_URL' && val.startsWith('postgresql://')) {
+              process.env.DATABASE_URL = val
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[db] Failed to load .env file:', e)
+    }
+    
+    if (!process.env.DATABASE_URL || process.env.DATABASE_URL.startsWith('file:')) {
+      console.error('[db] CRITICAL: DATABASE_URL is not set or points to SQLite! Cannot connect to PostgreSQL database.')
+      console.error('[db] Current DATABASE_URL:', process.env.DATABASE_URL || '(not set)')
+      console.error('[db] Please set DATABASE_URL in .env file or as environment variable.')
+    }
+  }
+}
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+// Get or create Prisma client (lazy initialization)
+export function getPrisma(): PrismaClient {
+  if (!globalForPrisma.prisma) {
+    ensureEnvLoaded()
+    globalForPrisma.prisma = new PrismaClient({
+      log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+      datasources: {
+        db: {
+          url: process.env.DATABASE_URL,
+        },
+      },
+    })
+  }
+  return globalForPrisma.prisma
+}
+
+// Initialize eagerly (this will call ensureEnvLoaded if needed)
+export const prisma = getPrisma()
 
 // Comprehensive db interface that maps common query patterns to Prisma calls
 export const db = {
