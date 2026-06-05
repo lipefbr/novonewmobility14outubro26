@@ -1,47 +1,420 @@
 import { db } from '@/lib/db'
-import { success, error } from '@/lib/api-utils'
-
-function generateId(): string {
-  const timestamp = Date.now().toString(36)
-  const random = Math.random().toString(36).substring(2, 10)
-  const random2 = Math.random().toString(36).substring(2, 10)
-  return `c${timestamp}${random}${random2}`
-}
+import { hashPassword, generateReferralCode, success, error } from '@/lib/api-utils'
 
 export async function POST() {
   try {
     const now = new Date().toISOString()
+    const password = hashPassword('123456')
+    const lojistaName = 'Ricardo Mendes Lojista'
 
-    // Check if products already exist
-    const existingCount = await db.count('MarketplaceProduct')
-    if (existingCount > 0) {
-      return success({ message: `Already have ${existingCount} products`, skipped: true })
+    // ============== CHECK / CREATE LOJISTA USER ==============
+    let lojista = await db.findOne('User', '"email" = $1', ['lojista@newmobility.com']) as any
+
+    if (lojista) {
+      console.log('[seed-marketplace] Lojista user already exists:', lojista.email)
+    } else {
+      lojista = await db.insert('User', {
+        email: 'lojista@newmobility.com',
+        name: lojistaName,
+        username: 'ricardo.lojista',
+        phone: '(11) 98888-7777',
+        cpf: '987.654.321-00',
+        password,
+        role: 'user',
+        userType: 'lojista',
+        referralCode: generateReferralCode(lojistaName),
+        plan: 'blue5',
+        isActive: true,
+        balanceWithdrawal: 0,
+        balanceMobility: 0,
+        balanceShopping: 0,
+        balanceFood: 0,
+        balancePharmacy: 0,
+        balanceGratification: 0,
+        balanceFree: 0,
+        balancePending: 0,
+        careerPoints: 0,
+        personalPoints: 0,
+        stars: 0,
+        city: 'São Paulo',
+        state: 'SP',
+        country: 'BR',
+        createdAt: now,
+        updatedAt: now,
+      }) as any
+      console.log('[seed-marketplace] Created lojista user:', lojista.email)
+    }
+
+    // ============== CHECK / SEED MARKETPLACE PRODUCTS ==============
+    const existingProductCount = await db.count('MarketplaceProduct')
+
+    if (existingProductCount >= 20) {
+      return success({
+        message: `Marketplace already has ${existingProductCount} products. Skipping seed.`,
+        skipped: true,
+        lojista: {
+          id: lojista.id,
+          email: lojista.email,
+          name: lojista.name,
+          userType: lojista.userType,
+        },
+        existingProducts: existingProductCount,
+      })
     }
 
     const products = [
-      { name: 'Smartphone Galaxy Ultra', description: 'Smartphone premium com câmera de 200MP, tela AMOLED 6.8"', price: 329900, originalPrice: 399900, category: 'electronics', cashbackPercent: 5, rating: 4.7, reviewCount: 142, sellerName: 'Ricardo Mendes', isFeatured: true, stock: 45, isActive: true, createdAt: now, updatedAt: now },
-      { name: 'Fone Bluetooth NoisePro', description: 'Fone de ouvido Bluetooth com cancelamento de ruído ativo, 35h de bateria', price: 19900, originalPrice: 29900, category: 'electronics', cashbackPercent: 8, rating: 4.3, reviewCount: 89, sellerName: 'Lucas Ferreira', isFeatured: true, stock: 200, isActive: true, createdAt: now, updatedAt: now },
-      { name: 'Smartwatch Fit Pulse', description: 'Relógio inteligente com monitor cardíaco e GPS integrado', price: 59900, originalPrice: 79900, category: 'electronics', cashbackPercent: 6, rating: 4.5, reviewCount: 67, sellerName: 'Fernando Oliveira', isFeatured: false, stock: 120, isActive: true, createdAt: now, updatedAt: now },
-      { name: 'Camiseta Algodão Premium', description: 'Camiseta 100% algodão egípcio, corte moderno e confortável', price: 8900, originalPrice: 12900, category: 'fashion', cashbackPercent: 10, rating: 4.1, reviewCount: 56, sellerName: 'Patrícia Almeida', isFeatured: false, stock: 500, isActive: true, createdAt: now, updatedAt: now },
-      { name: 'Tênis Esportivo Runner Pro', description: 'Tênis de corrida com tecnologia de amortecimento responsive', price: 29900, originalPrice: 39900, category: 'fashion', cashbackPercent: 7, rating: 4.8, reviewCount: 203, sellerName: 'André Costa', isFeatured: true, stock: 150, isActive: true, createdAt: now, updatedAt: now },
-      { name: 'Purificador de Ar HEPA', description: 'Purificador de ar com filtro HEPA, ideal para quartos até 40m²', price: 45900, originalPrice: 59900, category: 'home', cashbackPercent: 6, rating: 4.3, reviewCount: 42, sellerName: 'Camila Rocha', isFeatured: false, stock: 80, isActive: true, createdAt: now, updatedAt: now },
-      { name: 'Kit Organização Lar 12pc', description: 'Kit completo de organização para casa com 12 peças', price: 7900, originalPrice: 11900, category: 'home', cashbackPercent: 12, rating: 4.2, reviewCount: 34, sellerName: 'Mariana Dias', isFeatured: false, stock: 300, isActive: true, createdAt: now, updatedAt: now },
-      { name: 'Vitamínico Complex Plus', description: 'Suplemento vitamínico com 25 vitaminas e minerais essenciais', price: 6900, originalPrice: 8900, category: 'health', cashbackPercent: 15, rating: 4.6, reviewCount: 167, sellerName: 'Juliana Santos', isFeatured: true, stock: 1000, isActive: true, createdAt: now, updatedAt: now },
-      { name: 'Whey Protein Premium 900g', description: 'Whey Protein isolado com 27g de proteína por dose', price: 12900, originalPrice: 16900, category: 'health', cashbackPercent: 10, rating: 4.4, reviewCount: 234, sellerName: 'Ricardo Mendes', isFeatured: false, stock: 350, isActive: true, createdAt: now, updatedAt: now },
-      { name: 'Kit Skincare Completo', description: 'Kit de cuidados com a pele: sérum vitamina C, hidratante e protetor solar', price: 14900, originalPrice: 21900, category: 'beauty', cashbackPercent: 10, rating: 4.5, reviewCount: 95, sellerName: 'Patrícia Almeida', isFeatured: true, stock: 200, isActive: true, createdAt: now, updatedAt: now },
-      { name: 'Café Especial Cerrado 500g', description: 'Café especial 100% arábica do Cerrado Mineiro, torra média', price: 4500, originalPrice: 5900, category: 'food', cashbackPercent: 8, rating: 4.9, reviewCount: 312, sellerName: 'André Costa', isFeatured: false, stock: 5000, isActive: true, createdAt: now, updatedAt: now },
-      { name: 'Azeite Extra Virgem 500ml', description: 'Azeite extra virgem premium prensado a frio, acidez 0,3%', price: 3900, originalPrice: 5400, category: 'food', cashbackPercent: 5, rating: 4.7, reviewCount: 189, sellerName: 'Camila Rocha', isFeatured: false, stock: 2000, isActive: true, createdAt: now, updatedAt: now },
-      { name: 'Recarga Celular R$50', description: 'Recarga de celular instantânea para qualquer operadora', price: 5000, originalPrice: null, category: 'services', cashbackPercent: 3, rating: 5.0, reviewCount: 520, sellerName: 'Lucas Ferreira', isFeatured: false, stock: 9999, isActive: true, createdAt: now, updatedAt: now },
-      { name: 'Crédito Corrida Premium 30km', description: 'Crédito de corrida premium no app de mobilidade', price: 4500, originalPrice: 6000, category: 'mobility', cashbackPercent: 5, rating: 4.3, reviewCount: 89, sellerName: 'Fernando Oliveira', isFeatured: false, stock: 9999, isActive: true, createdAt: now, updatedAt: now },
-      { name: 'Assinatura Streaming 1 ano', description: 'Assinatura anual de plataforma de streaming, acesso ilimitado', price: 19900, originalPrice: 29900, category: 'digital', cashbackPercent: 12, rating: 4.0, reviewCount: 78, sellerName: 'Juliana Santos', isFeatured: false, stock: 9999, isActive: true, createdAt: now, updatedAt: now },
-      { name: 'Curso Online Marketing Digital', description: 'Curso completo com 120 horas de conteúdo e certificado', price: 9700, originalPrice: 19700, category: 'digital', cashbackPercent: 8, rating: 4.6, reviewCount: 156, sellerName: 'Mariana Dias', isFeatured: true, stock: 9999, isActive: true, createdAt: now, updatedAt: now },
+      // ==================== ELECTRONICS (5 products) ====================
+      {
+        name: 'Smartphone Galaxy Ultra 256GB',
+        description: 'Smartphone premium com câmera de 200MP, tela AMOLED 6.8", bateria de 5000mAh e processador Snapdragon de última geração. Compre e ganhe CashBack NewMobility!',
+        price: 329900,
+        originalPrice: 399900,
+        category: 'electronics',
+        cashbackPercent: 5,
+        rating: 4.7,
+        reviewCount: 142,
+        sellerName: lojistaName,
+        isFeatured: true,
+        stock: 45,
+        isActive: true,
+        tags: 'smartphone,samsung,celular,câmera',
+      },
+      {
+        name: 'Fone Bluetooth NoisePro ANC',
+        description: 'Fone de ouvido Bluetooth com cancelamento de ruído ativo, 35h de bateria, áudio Hi-Res e microfone integrado para chamadas. CashBack NewMobility!',
+        price: 19900,
+        originalPrice: 29900,
+        category: 'electronics',
+        cashbackPercent: 8,
+        rating: 4.3,
+        reviewCount: 89,
+        sellerName: lojistaName,
+        isFeatured: true,
+        stock: 200,
+        isActive: true,
+        tags: 'fone,bluetooth,áudio,anc',
+      },
+      {
+        name: 'Smartwatch Fit Pulse Pro',
+        description: 'Relógio inteligente com monitor cardíaco, GPS integrado, bateria de 7 dias e resistência à água IP68. Compatível com Android e iOS. CashBack!',
+        price: 59900,
+        originalPrice: 79900,
+        category: 'electronics',
+        cashbackPercent: 6,
+        rating: 4.5,
+        reviewCount: 67,
+        sellerName: lojistaName,
+        isFeatured: false,
+        stock: 120,
+        isActive: true,
+        tags: 'smartwatch,relógio,fitness,ga',
+      },
+      {
+        name: 'Notebook Ultra Slim 14" 512GB',
+        description: 'Notebook ultrafino com processador i7, 16GB RAM, SSD 512GB, tela IPS Full HD e bateria de 12h. Ideal para trabalho e estudo. CashBack 4%!',
+        price: 489900,
+        originalPrice: 569900,
+        category: 'electronics',
+        cashbackPercent: 4,
+        rating: 4.6,
+        reviewCount: 53,
+        sellerName: lojistaName,
+        isFeatured: true,
+        stock: 30,
+        isActive: true,
+        tags: 'notebook,ultrabook,computador,ssd',
+      },
+      {
+        name: 'Caixa de Som Portátil 40W',
+        description: 'Caixa de som Bluetooth com 40W de potência, grave potente, resistência à água IPX7 e 20h de autonomia. Perfeita para festas e viagens. CashBack!',
+        price: 24900,
+        originalPrice: 34900,
+        category: 'electronics',
+        cashbackPercent: 7,
+        rating: 4.4,
+        reviewCount: 112,
+        sellerName: lojistaName,
+        isFeatured: false,
+        stock: 180,
+        isActive: true,
+        tags: 'caixa de som,bluetooth,,portátil',
+      },
+
+      // ==================== FASHION (3 products) ====================
+      {
+        name: 'Camiseta Algodão Egípcio Premium',
+        description: 'Camiseta 100% algodão egípcio, corte moderno e confortável. Disponível em 8 cores. Tecido macio e durável. Ganhe CashBack NewMobility!',
+        price: 8900,
+        originalPrice: 12900,
+        category: 'fashion',
+        cashbackPercent: 10,
+        rating: 4.1,
+        reviewCount: 56,
+        sellerName: lojistaName,
+        isFeatured: false,
+        stock: 500,
+        isActive: true,
+        tags: 'camiseta,algodão,moda,masculino',
+      },
+      {
+        name: 'Tênis Esportivo Runner Pro X',
+        description: 'Tênis de corrida com tecnologia de amortecimento responsive, palmilha anatômica e solado de borracha flexível. Ideal para treinos diários. CashBack!',
+        price: 29900,
+        originalPrice: 39900,
+        category: 'fashion',
+        cashbackPercent: 7,
+        rating: 4.8,
+        reviewCount: 203,
+        sellerName: lojistaName,
+        isFeatured: true,
+        stock: 150,
+        isActive: true,
+        tags: 'tênis,corrida,esporte,running',
+      },
+      {
+        name: 'Bolsa Couro Legítimo Classic',
+        description: 'Bolsa feminina em couro legítimo com forro interno, 3 divisórias e alça ajustável. Design elegante e atemporal. CashBack NewMobility!',
+        price: 18900,
+        originalPrice: 27900,
+        category: 'fashion',
+        cashbackPercent: 9,
+        rating: 4.6,
+        reviewCount: 78,
+        sellerName: lojistaName,
+        isFeatured: false,
+        stock: 90,
+        isActive: true,
+        tags: 'bolsa,couro,feminino,acessório',
+      },
+
+      // ==================== HOME (3 products) ====================
+      {
+        name: 'Purificador de Ar HEPA H13',
+        description: 'Purificador de ar com filtro HEPA H13 e carvão ativado, ideal para quartos e salas até 40m². Elimina 99,97% das partículas. CashBack NewMobility!',
+        price: 45900,
+        originalPrice: 59900,
+        category: 'home',
+        cashbackPercent: 6,
+        rating: 4.3,
+        reviewCount: 42,
+        sellerName: lojistaName,
+        isFeatured: false,
+        stock: 80,
+        isActive: true,
+        tags: 'purificador,ar,hepa,casa',
+      },
+      {
+        name: 'Kit Organização Lar 12 Peças',
+        description: 'Kit completo de organização para casa com 12 peças em plástico premium BPA-free. Caixas, cestos e bandejas organizadoras. Ganhe CashBack!',
+        price: 7900,
+        originalPrice: 11900,
+        category: 'home',
+        cashbackPercent: 12,
+        rating: 4.2,
+        reviewCount: 34,
+        sellerName: lojistaName,
+        isFeatured: false,
+        stock: 300,
+        isActive: true,
+        tags: 'organização,caixa,casa,cozinha',
+      },
+      {
+        name: 'Robô Aspirador Smart Clean',
+        description: 'Robô aspirador com mapeamento a laser, sucção de 4000Pa, bateria de 150min e controle por app. Varre, aspira e passa pano. CashBack 5%!',
+        price: 89900,
+        originalPrice: 119900,
+        category: 'home',
+        cashbackPercent: 5,
+        rating: 4.7,
+        reviewCount: 91,
+        sellerName: lojistaName,
+        isFeatured: true,
+        stock: 55,
+        isActive: true,
+        tags: 'robô,aspirador,limpeza,smart',
+      },
+
+      // ==================== HEALTH (2 products) ====================
+      {
+        name: 'Vitamínico Complex Plus 60 cáps',
+        description: 'Suplemento vitamínico com 25 vitaminas e minerais essenciais. 60 cápsulas. Fortalece imunidade e energia diária. CashBack NewMobility!',
+        price: 6900,
+        originalPrice: 8900,
+        category: 'health',
+        cashbackPercent: 15,
+        rating: 4.6,
+        reviewCount: 167,
+        sellerName: lojistaName,
+        isFeatured: true,
+        stock: 1000,
+        isActive: true,
+        tags: 'vitamina,suplemento,saúde,imunidade',
+      },
+      {
+        name: 'Whey Protein Isolado 900g Chocolate',
+        description: 'Whey Protein isolado com 27g de proteína por dose, sabor chocolate. Zero lactose, baixo teor de gordura. CashBack NewMobility!',
+        price: 12900,
+        originalPrice: 16900,
+        category: 'health',
+        cashbackPercent: 10,
+        rating: 4.4,
+        reviewCount: 234,
+        sellerName: lojistaName,
+        isFeatured: false,
+        stock: 350,
+        isActive: true,
+        tags: 'whey,proteína,academia,musculação',
+      },
+
+      // ==================== BEAUTY (2 products) ====================
+      {
+        name: 'Kit Skincare Completo Anti-idade',
+        description: 'Kit de cuidados com a pele: sérum vitamina C 30ml, hidratante anti-idade 50ml e protetor solar FPS 50 60ml. CashBack NewMobility!',
+        price: 14900,
+        originalPrice: 21900,
+        category: 'beauty',
+        cashbackPercent: 10,
+        rating: 4.5,
+        reviewCount: 95,
+        sellerName: lojistaName,
+        isFeatured: true,
+        stock: 200,
+        isActive: true,
+        tags: 'skincare,pele,anti-idade,protetor solar',
+      },
+      {
+        name: 'Perfume Elegance Eau de Parfum 100ml',
+        description: 'Perfume masculino Eau de Parfum com notas de bergamota, cedro e âmbar. Fixação de 8h. Fragrância sofisticada e marcante. CashBack 8%!',
+        price: 18900,
+        originalPrice: 25900,
+        category: 'beauty',
+        cashbackPercent: 8,
+        rating: 4.8,
+        reviewCount: 73,
+        sellerName: lojistaName,
+        isFeatured: false,
+        stock: 120,
+        isActive: true,
+        tags: 'perfume,fragrância,masculino,eau de parfum',
+      },
+
+      // ==================== SERVICES (3 products) ====================
+      {
+        name: 'Recarga Celular R$50',
+        description: 'Recarga de celular instantânea para qualquer operadora (Claro, Vivo, Tim, Oi). Valor: R$ 50,00. Crédito disponível em minutos. CashBack 3%!',
+        price: 5000,
+        originalPrice: null,
+        category: 'services',
+        cashbackPercent: 3,
+        rating: 4.9,
+        reviewCount: 520,
+        sellerName: lojistaName,
+        isFeatured: false,
+        stock: 9999,
+        isActive: true,
+        tags: 'recarga,celular,crédito,operadora',
+      },
+      {
+        name: 'Consultoria Financeira Online 1h',
+        description: 'Sessão de consultoria financeira personalizada por videochamada com especialista certificado. Planejamento e organização financeira. CashBack 5%!',
+        price: 15000,
+        originalPrice: null,
+        category: 'services',
+        cashbackPercent: 5,
+        rating: 4.7,
+        reviewCount: 43,
+        sellerName: lojistaName,
+        isFeatured: false,
+        stock: 9999,
+        isActive: true,
+        tags: 'consultoria,financeira,investimento,planejamento',
+      },
+      {
+        name: 'Montagem de Móveis Residencial',
+        description: 'Serviço de montagem de móveis residenciais. Até 5 móveis. Técnico especializado com ferramentas profissionais. Atendimento em SP capital. CashBack 4%!',
+        price: 12000,
+        originalPrice: null,
+        category: 'services',
+        cashbackPercent: 4,
+        rating: 4.3,
+        reviewCount: 28,
+        sellerName: lojistaName,
+        isFeatured: false,
+        stock: 9999,
+        isActive: true,
+        tags: 'montagem,móveis,serviço,residencial',
+      },
+
+      // ==================== DIGITAL (2 products) ====================
+      {
+        name: 'Assinatura Streaming Premium 1 ano',
+        description: 'Assinatura anual de plataforma de streaming. Acesso ilimitado a filmes, séries e documentários. Ative na hora pelo app. CashBack 12%!',
+        price: 19900,
+        originalPrice: 29900,
+        category: 'digital',
+        cashbackPercent: 12,
+        rating: 4.0,
+        reviewCount: 78,
+        sellerName: lojistaName,
+        isFeatured: false,
+        stock: 9999,
+        isActive: true,
+        tags: 'streaming,assinatura,filmes,séries',
+      },
+      {
+        name: 'Curso Online Marketing Digital Completo',
+        description: 'Curso completo de marketing digital com 120 horas de conteúdo, 15 módulos e certificado reconhecido. Acesso vitalício. CashBack 8%!',
+        price: 9700,
+        originalPrice: 19700,
+        category: 'digital',
+        cashbackPercent: 8,
+        rating: 4.6,
+        reviewCount: 156,
+        sellerName: lojistaName,
+        isFeatured: true,
+        stock: 9999,
+        isActive: true,
+        tags: 'curso,marketing digital,online,certificado',
+      },
     ]
 
+    // Insert all products
     for (const p of products) {
-      await db.insert('MarketplaceProduct', { id: generateId(), ...p })
+      await db.insert('MarketplaceProduct', {
+        ...p,
+        createdAt: now,
+        updatedAt: now,
+      })
     }
 
-    return success({ message: `${products.length} marketplace products seeded`, count: products.length }, 201)
+    const totalProducts = await db.count('MarketplaceProduct')
+
+    return success({
+      message: 'Marketplace seeded successfully',
+      lojista: {
+        id: lojista.id,
+        email: lojista.email,
+        name: lojista.name,
+        username: lojista.username,
+        userType: lojista.userType,
+        plan: lojista.plan,
+      },
+      productsSeeded: products.length,
+      totalProductsNow: totalProducts,
+      categories: {
+        electronics: products.filter(p => p.category === 'electronics').length,
+        fashion: products.filter(p => p.category === 'fashion').length,
+        home: products.filter(p => p.category === 'home').length,
+        health: products.filter(p => p.category === 'health').length,
+        beauty: products.filter(p => p.category === 'beauty').length,
+        services: products.filter(p => p.category === 'services').length,
+        digital: products.filter(p => p.category === 'digital').length,
+      },
+      credentials: {
+        email: 'lojista@newmobility.com',
+        password: '123456',
+      },
+    }, 201)
   } catch (err) {
     console.error('Marketplace seed error:', err)
     return error('Failed to seed marketplace: ' + (err instanceof Error ? err.message : String(err)), 500)

@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { db, prisma } from '@/lib/db'
 import { hashPassword, generateReferralCode, success, error, CAREER_RANKS } from '@/lib/api-utils'
 
 // Deterministic referral code for seed
@@ -11,31 +11,41 @@ function seededReferralCode(name: string, idx: number): string {
   return `${base}${String(idx).padStart(4, '0')}`
 }
 
+function generateId(): string {
+  const timestamp = Date.now().toString(36)
+  const random = Math.random().toString(36).substring(2, 10)
+  const random2 = Math.random().toString(36).substring(2, 10)
+  return `c${timestamp}${random}${random2}`
+}
+
 export async function POST() {
   try {
-    // Clear all existing data using raw SQL (respecting FK order)
-    await db.execute(`DELETE FROM "MarketplaceOrderItem"`)
-    await db.execute(`DELETE FROM "MarketplaceOrder"`)
-    await db.execute(`DELETE FROM "MarketplaceProduct"`)
-    await db.execute(`DELETE FROM "Beneficiary"`)
-    await db.execute(`DELETE FROM "EventRegistration"`)
-    await db.execute(`DELETE FROM "UserChallenge"`)
-    await db.execute(`DELETE FROM "Challenge"`)
-    await db.execute(`DELETE FROM "GamificationStreak"`)
-    await db.execute(`DELETE FROM "PointTransaction"`)
-    await db.execute(`DELETE FROM "TicketMessage"`)
-    await db.execute(`DELETE FROM "Ticket"`)
-    await db.execute(`DELETE FROM "Notification"`)
-    await db.execute(`DELETE FROM "Gratification"`)
-    await db.execute(`DELETE FROM "CareerMilestone"`)
-    await db.execute(`DELETE FROM "CashbackEntry"`)
-    await db.execute(`DELETE FROM "CashbackResidual"`)
-    await db.execute(`DELETE FROM "CashbackSales"`)
-    await db.execute(`DELETE FROM "Transaction"`)
-    await db.execute(`DELETE FROM "Voucher"`)
-    await db.execute(`DELETE FROM "Invoice"`)
-    await db.execute(`DELETE FROM "MatrixPosition"`)
-    await db.execute(`DELETE FROM "User"`)
+    // Clear all existing data using Prisma (respecting FK order)
+    await prisma.marketplaceOrderItem.deleteMany()
+    await prisma.marketplaceOrder.deleteMany()
+    await prisma.marketplaceProduct.deleteMany()
+    await prisma.beneficiary.deleteMany()
+    await prisma.eventRegistration.deleteMany()
+    await prisma.userChallenge.deleteMany()
+    await prisma.challenge.deleteMany()
+    await prisma.gamificationStreak.deleteMany()
+    await prisma.pointTransaction.deleteMany()
+    await prisma.ticketMessage.deleteMany()
+    await prisma.ticket.deleteMany()
+    await prisma.notification.deleteMany()
+    await prisma.gratification.deleteMany()
+    await prisma.careerMilestone.deleteMany()
+    await prisma.cashbackEntry.deleteMany()
+    await prisma.cashbackResidual.deleteMany()
+    await prisma.cashbackSales.deleteMany()
+    await prisma.transaction.deleteMany()
+    await prisma.voucher.deleteMany()
+    await prisma.invoice.deleteMany()
+    await prisma.bet.deleteMany()
+    await prisma.matrixPosition.deleteMany()
+    await prisma.announcement.deleteMany()
+    await prisma.systemConfig.deleteMany()
+    await prisma.user.deleteMany()
 
     const now = new Date().toISOString()
     const password = hashPassword('123456')
@@ -68,13 +78,13 @@ export async function POST() {
     }) as any
 
     // Create admin matrix positions
-    await db.insert('MatrixPosition', { userId: admin.id, matrixType: 'entrada', level: 0, position: 0, createdAt: now })
+    await db.insert('MatrixPosition', { id: generateId(), userId: admin.id, matrixType: 'entrada', level: 0, position: 0, createdAt: now })
     const adminEntradaPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [admin.id, 'entrada']) as any
 
-    await db.insert('MatrixPosition', { userId: admin.id, matrixType: 'residual', level: 0, position: 0, createdAt: now })
+    await db.insert('MatrixPosition', { id: generateId(), userId: admin.id, matrixType: 'residual', level: 0, position: 0, createdAt: now })
     const adminResidualPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [admin.id, 'residual']) as any
 
-    await db.insert('MatrixPosition', { userId: admin.id, matrixType: 'vendas', level: 0, position: 0, createdAt: now })
+    await db.insert('MatrixPosition', { id: generateId(), userId: admin.id, matrixType: 'vendas', level: 0, position: 0, createdAt: now })
     const adminVendasPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [admin.id, 'vendas']) as any
 
     // ============== CREATE MAIN DEMO USER ==============
@@ -112,13 +122,13 @@ export async function POST() {
     }) as any
 
     // Main user matrix positions
-    await db.insert('MatrixPosition', { userId: mainUser.id, matrixType: 'entrada', parentId: adminEntradaPos?.id, level: 1, position: 0, createdAt: now })
+    await db.insert('MatrixPosition', { id: generateId(), userId: mainUser.id, matrixType: 'entrada', parentId: adminEntradaPos?.id, level: 1, position: 0, createdAt: now })
     const mainEntradaPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [mainUser.id, 'entrada']) as any
 
-    await db.insert('MatrixPosition', { userId: mainUser.id, matrixType: 'residual', parentId: adminResidualPos?.id, level: 1, position: 0, createdAt: now })
+    await db.insert('MatrixPosition', { id: generateId(), userId: mainUser.id, matrixType: 'residual', parentId: adminResidualPos?.id, level: 1, position: 0, createdAt: now })
     const mainResidualPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [mainUser.id, 'residual']) as any
 
-    await db.insert('MatrixPosition', { userId: mainUser.id, matrixType: 'vendas', parentId: adminVendasPos?.id, level: 1, position: 0, createdAt: now })
+    await db.insert('MatrixPosition', { id: generateId(), userId: mainUser.id, matrixType: 'vendas', parentId: adminVendasPos?.id, level: 1, position: 0, createdAt: now })
     const mainVendasPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [mainUser.id, 'vendas']) as any
 
     // ============== CREATE DIRECT REFERRALS (Level 1) ==============
@@ -166,13 +176,13 @@ export async function POST() {
       directReferrals.push(ref)
 
       // Create matrix positions for each direct referral
-      await db.insert('MatrixPosition', { userId: ref.id, matrixType: 'entrada', parentId: mainEntradaPos?.id, level: 2, position: i, createdAt: now })
+      await db.insert('MatrixPosition', { id: generateId(), userId: ref.id, matrixType: 'entrada', parentId: mainEntradaPos?.id, level: 2, position: i, createdAt: now })
       const refEntradaPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [ref.id, 'entrada']) as any
 
-      await db.insert('MatrixPosition', { userId: ref.id, matrixType: 'residual', parentId: mainResidualPos?.id, level: 2, position: i, createdAt: now })
+      await db.insert('MatrixPosition', { id: generateId(), userId: ref.id, matrixType: 'residual', parentId: mainResidualPos?.id, level: 2, position: i, createdAt: now })
       const refResidualPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [ref.id, 'residual']) as any
 
-      await db.insert('MatrixPosition', { userId: ref.id, matrixType: 'vendas', parentId: mainVendasPos?.id, level: 2, position: i, createdAt: now })
+      await db.insert('MatrixPosition', { id: generateId(), userId: ref.id, matrixType: 'vendas', parentId: mainVendasPos?.id, level: 2, position: i, createdAt: now })
       const refVendasPos = await db.findOne('MatrixPosition', '"userId" = $1 AND "matrixType" = $2', [ref.id, 'vendas']) as any
 
       // Store for level 2 lookups
@@ -231,9 +241,9 @@ export async function POST() {
       const parentResidualPos = (parentRef as any)._residualPos
       const parentVendasPos = (parentRef as any)._vendasPos
 
-      await db.insert('MatrixPosition', { userId: l2User.id, matrixType: 'entrada', parentId: parentEntradaPos?.id, level: 3, position: i, createdAt: now })
-      await db.insert('MatrixPosition', { userId: l2User.id, matrixType: 'residual', parentId: parentResidualPos?.id, level: 3, position: i, createdAt: now })
-      await db.insert('MatrixPosition', { userId: l2User.id, matrixType: 'vendas', parentId: parentVendasPos?.id, level: 3, position: i, createdAt: now })
+      await db.insert('MatrixPosition', { id: generateId(), userId: l2User.id, matrixType: 'entrada', parentId: parentEntradaPos?.id, level: 3, position: i, createdAt: now })
+      await db.insert('MatrixPosition', { id: generateId(), userId: l2User.id, matrixType: 'residual', parentId: parentResidualPos?.id, level: 3, position: i, createdAt: now })
+      await db.insert('MatrixPosition', { id: generateId(), userId: l2User.id, matrixType: 'vendas', parentId: parentVendasPos?.id, level: 3, position: i, createdAt: now })
     }
 
     // ============== CREATE CASHBACK ENTRADA ENTRIES ==============
@@ -353,7 +363,6 @@ export async function POST() {
         usedAt: v.isUsed ? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) : null,
         expiresAt,
         createdAt: now,
-        updatedAt: now,
       })
     }
 
@@ -464,7 +473,6 @@ export async function POST() {
         message: t.message,
         isAdmin: false,
         createdAt: now,
-        updatedAt: now,
       })
 
       // Add admin reply to some tickets
@@ -475,7 +483,6 @@ export async function POST() {
           message: 'Olá! Estamos analisando sua solicitação. Em breve retornaremos com uma resposta.',
           isAdmin: true,
           createdAt: now,
-          updatedAt: now,
         })
         await db.update('Ticket', '"id" = $1', { status: 'in_progress' }, [ticket.id])
       }

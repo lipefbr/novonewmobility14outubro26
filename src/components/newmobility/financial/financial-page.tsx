@@ -189,7 +189,7 @@ const withdrawalStatusConfig: Record<string, { label: string; icon: React.Elemen
 }
 
 export function FinancialPage() {
-  const { user } = useStore()
+  const { user, updateUser } = useStore()
   const { t } = useTranslation()
   const [filterType, setFilterType] = useState<string>('all')
   const [withdrawOpen, setWithdrawOpen] = useState(false)
@@ -357,7 +357,7 @@ export function FinancialPage() {
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label>{t('financial.withdrawAmount')}</Label>
+                  <Label className="flex items-center gap-1.5">{t('financial.withdrawAmount')} <span className="text-[10px] text-muted-foreground font-normal">(valor em R$)</span></Label>
                   {/* Quick amount presets */}
                   <div className="flex gap-2 flex-wrap">
                     {[50, 100, 250, 500, 1000].map((amount) => (
@@ -367,49 +367,74 @@ export function FinancialPage() {
                         onClick={() => setWithdrawAmount(String(amount))}
                         className="px-3 py-1 rounded-full text-xs font-medium border border-border hover:border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:text-emerald-600 transition-colors"
                       >
-                        R$ {amount}
+                        R$ {amount.toLocaleString('pt-BR')}
                       </button>
                     ))}
                   </div>
-                  <Input
-                    type="number"
-                    placeholder="0,00"
-                    value={withdrawAmount}
-                    onChange={(e) => setWithdrawAmount(e.target.value)}
-                  />
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground">R$</span>
+                    <Input
+                      type="number"
+                      placeholder="0,00"
+                      value={withdrawAmount}
+                      onChange={(e) => setWithdrawAmount(e.target.value)}
+                      className="pl-10"
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
                   <p className="text-xs text-muted-foreground">{t('financial.minimumWithdrawal')}</p>
                 </div>
                 {/* Fee calculation display */}
-                {withdrawAmount && Number(withdrawAmount) > 0 && (
-                  <div className="bg-gradient-to-b from-muted/50 to-muted/30 rounded-lg p-3 space-y-2 border border-border">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <Info className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-xs font-semibold text-foreground">Resumo do saque</span>
+                {withdrawAmount && Number(withdrawAmount) > 0 && (() => {
+                  const withdrawCents = Math.round(Number(withdrawAmount) * 100)
+                  const FEE_PERCENT = 2
+                  const feeCents = Math.round(withdrawCents * FEE_PERCENT / 100)
+                  const netCents = withdrawCents - feeCents
+                  const currentBalance = user?.balanceWithdrawal || 0
+                  const newBalance = currentBalance - withdrawCents
+                  return (
+                    <div className="bg-gradient-to-b from-muted/50 to-muted/30 rounded-lg p-3 space-y-2 border border-border">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Info className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-xs font-semibold text-foreground">Resumo do saque</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Valor solicitado</span>
+                        <span className="text-foreground font-medium">{formatCurrency(withdrawCents)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Taxa de processamento ({FEE_PERCENT}%)</span>
+                        <span className="text-red-600 dark:text-red-400 font-medium">-{formatCurrency(feeCents)}</span>
+                      </div>
+                      <div className="h-px bg-border" />
+                      <div className="flex justify-between text-sm">
+                        <span className="text-foreground font-semibold">Você receberá</span>
+                        <span className={cn(
+                          'font-bold text-base',
+                          netCents > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                        )}>{formatCurrency(netCents)}</span>
+                      </div>
+                      {newBalance < 0 && (
+                        <div className="mt-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-2">
+                          <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">
+                            ⚠️ Seu saldo ficará negativo: {formatCurrency(newBalance)}
+                          </p>
+                        </div>
+                      )}
                     </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">Valor solicitado</span>
-                      <span className="text-foreground font-medium">{formatCurrency(Number(withdrawAmount) * 100)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">Taxa de processamento ({((350 / (Number(withdrawAmount) * 100)) * 100).toFixed(1)}%)</span>
-                      <span className="text-red-600 dark:text-red-400 font-medium">-{formatCurrency(350)}</span>
-                    </div>
-                    <div className="h-px bg-border" />
-                    <div className="flex justify-between text-sm">
-                      <span className="text-foreground font-semibold">Você receberá</span>
-                      <span className="text-emerald-600 dark:text-emerald-400 font-bold text-base">{formatCurrency(Math.max(0, Number(withdrawAmount) * 100 - 350))}</span>
-                    </div>
-                    {Number(withdrawAmount) * 100 - 350 <= 0 && (
-                      <p className="text-[10px] text-red-500 font-medium">Valor insuficiente para cobrir a taxa mínima</p>
-                    )}
-                  </div>
-                )}
+                  )
+                })()}
                 <Button
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                   onClick={async () => {
                     if (!user?.id || !withdrawAmount || Number(withdrawAmount) <= 0) return
                     try {
-                      await financialApi.withdraw(user.id, Number(withdrawAmount) * 100, 'withdrawal')
+                      const withdrawCents = Math.round(Number(withdrawAmount) * 100)
+                      await financialApi.withdraw(user.id, withdrawCents, 'withdrawal')
+                      // Update store balance immediately so negative balance is visible
+                      const currentBalance = user?.balanceWithdrawal || 0
+                      updateUser({ balanceWithdrawal: currentBalance - withdrawCents })
                       setWithdrawOpen(false)
                       setWithdrawAmount('')
                       toast.success('Saque solicitado com sucesso!')
