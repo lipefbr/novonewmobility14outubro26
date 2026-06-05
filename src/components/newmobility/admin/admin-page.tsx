@@ -236,7 +236,7 @@ export function AdminPage() {
   const [ticketReply, setTicketReply] = useState('')
   const [sendingReply, setSendingReply] = useState(false)
 
-  const isAdmin = user?.id === 'usr_demo_admin' || user?.email === 'carlos.silva@email.com' || user?.email === 'admin@newmobility.com'
+  const isAdmin = user?.role === 'admin' || user?.id === 'usr_demo_admin' || user?.email === 'carlos.silva@email.com' || user?.email === 'admin@newmobility.com'
 
   useEffect(() => {
     loadStats()
@@ -772,6 +772,19 @@ export function AdminPage() {
     setEditUserData(d => ({ ...d, [key]: value }))
   }
 
+  // Admin access guard
+  if (!isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <div className="p-6 rounded-2xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
+          <Shield className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-center text-red-700 dark:text-red-400">Acesso Restrito</h2>
+          <p className="text-sm text-center text-red-600 dark:text-red-300 mt-2">Apenas administradores podem acessar este painel.</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -823,6 +836,24 @@ export function AdminPage() {
 
         {/* Stats Tab */}
         <TabsContent value="stats" className="mt-4 space-y-4">
+          {loading && !stats && (
+            <div className="flex items-center justify-center py-12">
+              <span className="h-6 w-6 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+              <span className="ml-3 text-sm text-muted-foreground">Carregando estatísticas...</span>
+            </div>
+          )}
+          {!loading && !stats && (
+            <Card className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30">
+              <CardContent className="p-6 text-center">
+                <AlertTriangle className="h-8 w-8 text-amber-500 mx-auto mb-3" />
+                <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Erro ao carregar estatísticas</p>
+                <p className="text-xs text-amber-600 dark:text-amber-300 mt-1">Verifique sua conexão e tente novamente.</p>
+                <Button variant="outline" size="sm" className="mt-3" onClick={loadStats}>
+                  <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Tentar Novamente
+                </Button>
+              </CardContent>
+            </Card>
+          )}
           {stats && (
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

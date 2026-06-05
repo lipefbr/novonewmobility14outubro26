@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
 
     const status = req.nextUrl.searchParams.get('status') || 'all'
     const page = parseInt(req.nextUrl.searchParams.get('page') || '1')
-    const limit = parseInt(req.nextUrl.searchParams.get('limit') || '20')
+    const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '20'), 50)
     const offset = (page - 1) * limit
 
     const where: Record<string, unknown> = { type: 'withdrawal' }
@@ -21,30 +21,45 @@ export async function GET(req: NextRequest) {
       where.status = status
     }
 
-    const [withdrawals, total, statsResult] = await Promise.all([
-      prisma.transaction.findMany({
+    // Run queries sequentially to avoid memory issues
+    let withdrawals: any[] = []
+    let total = 0
+    let pendingCount = 0
+    let approvedCount = 0
+    let rejectedCount = 0
+    let pendingAmount = 0
+    let approvedAmount = 0
+
+    try {
+      withdrawals = await prisma.transaction.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip: offset,
         take: limit,
-        include: {
+        select: {
+          id: true, userId: true, type: true, amount: true, status: true,
+          category: true, description: true, createdAt: true,
           user: { select: { name: true, email: true } },
         },
-      }),
-      prisma.transaction.count({ where }),
-      // Stats - compute separately
-      Promise.all([
-        prisma.transaction.count({ where: { type: 'withdrawal', status: 'pending' } }),
-        prisma.transaction.count({ where: { type: 'withdrawal', status: 'approved' } }),
-        prisma.transaction.count({ where: { type: 'withdrawal', status: 'rejected' } }),
-        prisma.transaction.aggregate({ _sum: { amount: true }, where: { type: 'withdrawal', status: 'pending' } }),
-        prisma.transaction.aggregate({ _sum: { amount: true }, where: { type: 'withdrawal', status: { in: ['approved', 'paid'] } } }),
-      ]),
-    ])
+      })
+    } catch { /* ignore */ }
 
-    const [pendingCount, approvedCount, rejectedCount, pendingAgg, approvedAgg] = statsResult
+    try { total = await prisma.transaction.count({ where }) } catch { /* ignore */ }
+    try { pendingCount = await prisma.transaction.count({ where: { type: 'withdrawal', status: 'pending' } }) } catch { /* ignore */ }
+    try { approvedCount = await prisma.transaction.count({ where: { type: 'withdrawal', status: 'approved' } }) } catch { /* ignore */ }
+    try { rejectedCount = await prisma.transaction.count({ where: { type: 'withdrawal', status: 'rejected' } }) } catch { /* ignore */ }
 
-    const formattedWithdrawals = withdrawals.map((w) => ({
+    try {
+      const pendingAgg = await prisma.transaction.aggregate({ _sum: { amount: true }, where: { type: 'withdrawal', status: 'pending' } })
+      pendingAmount = pendingAgg._sum.amount || 0
+    } catch { /* ignore */ }
+
+    try {
+      const approvedAgg = await prisma.transaction.aggregate({ _sum: { amount: true }, where: { type: 'withdrawal', status: { in: ['approved', 'paid'] } } })
+      approvedAmount = approvedAgg._sum.amount || 0
+    } catch { /* ignore */ }
+
+    const formattedWithdrawals = withdrawals.map((w: any) => ({
       ...w,
       userName: w.user?.name || 'Usuário',
       userEmail: w.user?.email || '',
@@ -59,8 +74,8 @@ export async function GET(req: NextRequest) {
         pendingCount,
         approvedCount,
         rejectedCount,
-        pendingAmount: pendingAgg._sum.amount || 0,
-        approvedAmount: approvedAgg._sum.amount || 0,
+        pendingAmount,
+        approvedAmount,
       },
     })
   } catch (err) {

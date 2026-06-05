@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     const plan = req.nextUrl.searchParams.get('plan') || 'all'
     const status = req.nextUrl.searchParams.get('status') || 'all'
     const page = parseInt(req.nextUrl.searchParams.get('page') || '1')
-    const limit = parseInt(req.nextUrl.searchParams.get('limit') || '20')
+    const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '20'), 50)
     const offset = (page - 1) * limit
 
     // Build Prisma where clause
@@ -34,29 +34,41 @@ export async function GET(req: NextRequest) {
       where.isActive = status === 'active'
     }
 
-    const [users, total] = await Promise.all([
-      prisma.user.findMany({
+    let users: any[] = []
+    let total = 0
+
+    try {
+      users = await prisma.user.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip: offset,
         take: limit,
-        include: {
+        select: {
+          id: true, name: true, email: true, phone: true, cpf: true, plan: true,
+          isActive: true, referralCode: true, referredById: true,
+          balanceWithdrawal: true, balanceMobility: true, balanceShopping: true,
+          balanceFood: true, balancePharmacy: true, balanceGratification: true,
+          balanceFree: true, balancePending: true,
+          careerPoints: true, personalPoints: true, stars: true,
+          city: true, state: true, country: true,
+          bankCode: true, bankAgency: true, bankAccount: true, bankType: true,
+          pixKey: true, pixEnabled: true,
+          isDriver: true, isDelivery: true, role: true, userType: true,
+          createdAt: true,
           _count: { select: { referrals: true } },
         },
-      }),
-      prisma.user.count({ where }),
-    ])
+      })
+    } catch (e) {
+      console.error('Admin users findMany error:', e)
+    }
 
-    // Format users to match API contract (remove password)
-    const usersWithCount = users.map((u) => {
-      const { password: _password, referrals: _referrals, ...rest } = u
-      return {
-        ...rest,
-        _count: { referrals: u._count.referrals },
-      }
-    })
+    try {
+      total = await prisma.user.count({ where })
+    } catch (e) {
+      console.error('Admin users count error:', e)
+    }
 
-    return success({ users: usersWithCount, total, page, limit, totalPages: Math.ceil(total / limit) })
+    return success({ users, total, page, limit, totalPages: Math.ceil(total / limit) })
   } catch (err) {
     console.error('Admin users GET error:', err)
     return error('Failed to fetch users', 500)

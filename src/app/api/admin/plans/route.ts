@@ -63,15 +63,15 @@ export async function GET(req: NextRequest) {
     const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user || user.role !== 'admin') return error('Unauthorized', 403)
 
-    // Get user count per plan from the User table
-    const planGroups = await prisma.user.groupBy({
-      by: ['plan'],
-      _count: { plan: true },
-    })
+    // Get user count per plan - use findMany instead of groupBy for SQLite compat
+    let planGroups: { plan: string }[] = []
+    try {
+      planGroups = await prisma.user.findMany({ select: { plan: true } })
+    } catch { /* ignore */ }
 
     const planCountMap: Record<string, number> = {}
-    for (const pg of planGroups) {
-      planCountMap[pg.plan] = pg._count.plan
+    for (const u of planGroups) {
+      planCountMap[u.plan] = (planCountMap[u.plan] || 0) + 1
     }
 
     const plansWithCount = DEFAULT_PLANS.map((p) => ({

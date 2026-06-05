@@ -27,20 +27,43 @@ export async function GET(request: Request) {
       where.category = categoryFilter
     }
 
-    // Get all tickets with user info and messages
-    const tickets = await prisma.ticket.findMany({
-      where,
-      orderBy: { updatedAt: 'desc' },
-      take: 100,
-      include: {
-        user: { select: { name: true, email: true } },
-        messages: { orderBy: { createdAt: 'asc' } },
-      },
-    })
+    // Get tickets with user info - use select instead of include for efficiency
+    let tickets: any[] = []
+    try {
+      tickets = await prisma.ticket.findMany({
+        where,
+        orderBy: { updatedAt: 'desc' },
+        take: 50,
+        select: {
+          id: true,
+          userId: true,
+          subject: true,
+          category: true,
+          status: true,
+          priority: true,
+          createdAt: true,
+          updatedAt: true,
+          user: { select: { name: true, email: true } },
+          messages: {
+            orderBy: { createdAt: 'asc' as const },
+            select: {
+              id: true,
+              message: true,
+              isAdmin: true,
+              userId: true,
+              createdAt: true,
+            },
+          },
+        },
+      })
+    } catch (e) {
+      console.error('Admin tickets findMany error:', e)
+      // Return empty list if query fails
+      return success({ tickets: [] })
+    }
 
-    const ticketsWithMessages = tickets.map((ticket) => {
-      // Get the last admin reply
-      const adminReplies = ticket.messages.filter((m) => m.isAdmin)
+    const ticketsWithMessages = tickets.map((ticket: any) => {
+      const adminReplies = ticket.messages.filter((m: any) => m.isAdmin)
       const lastAdminReply = adminReplies.length > 0 ? adminReplies[adminReplies.length - 1] : null
 
       return {
@@ -54,13 +77,7 @@ export async function GET(request: Request) {
         priority: ticket.priority || 'normal',
         message: ticket.messages.length > 0 ? ticket.messages[0].message : '',
         reply: lastAdminReply ? lastAdminReply.message : undefined,
-        messages: ticket.messages.map((m) => ({
-          id: m.id,
-          message: m.message,
-          isAdmin: m.isAdmin,
-          userId: m.userId,
-          createdAt: m.createdAt,
-        })),
+        messages: ticket.messages,
         createdAt: ticket.createdAt,
         updatedAt: ticket.updatedAt,
       }

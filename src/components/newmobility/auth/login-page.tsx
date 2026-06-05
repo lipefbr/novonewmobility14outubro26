@@ -39,6 +39,7 @@ function mapApiUserToUserData(apiUser: Record<string, unknown>, balances?: Recor
     personalPoints: (apiUser.personalPoints as number) ?? 0,
     stars: (apiUser.stars as number) ?? 0,
     isDriver: (apiUser.isDriver as boolean) ?? false,
+    role: (apiUser.role as string) || 'user',
     userType: (apiUser.userType as 'usuario' | 'lojista' | 'motorista') ?? 'usuario',
     profileImage: (apiUser.profileImage as string | null) || null,
     createdAt: (apiUser.createdAt as string) || new Date().toISOString(),

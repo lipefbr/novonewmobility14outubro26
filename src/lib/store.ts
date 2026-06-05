@@ -42,16 +42,20 @@ export interface UserData {
   referredById: string | null
   language: string
   isActive: boolean
+  role?: string
   balanceWithdrawal: number
   balanceMobility: number
   balanceShopping: number
   balanceFood: number
   balancePharmacy: number
   balanceGratification: number
+  balanceFree: number
+  balancePending: number
   careerPoints: number
   personalPoints: number
   stars: number
   isDriver: boolean
+  userType?: 'usuario' | 'lojista' | 'motorista' | string
   profileImage: string | null
   createdAt: string
 }
@@ -192,16 +196,20 @@ const mockUser: UserData = {
   referredById: null,
   language: 'pt',
   isActive: true,
+  role: 'user',
   balanceWithdrawal: 3258000,
   balanceMobility: 727000,
   balanceShopping: 2727000,
   balanceFood: 687000,
   balancePharmacy: 558000,
   balanceGratification: 845000,
+  balanceFree: 1500000,
+  balancePending: 500000,
   careerPoints: 42,
   personalPoints: 18,
   stars: 3,
   isDriver: true,
+  userType: 'usuario',
   profileImage: null,
   createdAt: '2023-06-15T10:00:00Z',
 }
