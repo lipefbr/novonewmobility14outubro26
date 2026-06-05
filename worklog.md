@@ -112,3 +112,43 @@ Unresolved Issues:
 - Financial withdrawal values need verification
 - Bet portal needs real betting implementation
 - Marketplace could use more products
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Fix Vercel build error and login/registration not working on Vercel
+
+Work Log:
+- Identified root cause of build error: `cp -r .next/static .next/standalone/.next/` fails because `output: 'standalone'` is not in next.config.ts
+- Changed build script from `next build && cp -r ...` to just `next build`
+- Added `build:standalone` and `start:standalone` scripts for local production use
+- Added `postinstall: "prisma generate"` to package.json for Vercel compatibility
+- Identified critical DATABASE_URL loading issue: old SQLite URL (`file:/home/z/my-project/db/custom.db`) was being set by shell scripts and overriding the PostgreSQL URL from .env
+- Added `ensureEnvLoaded()` function in db.ts that:
+  - Detects when DATABASE_URL is missing or points to SQLite (`file:` protocol)
+  - Manually reads the .env file and overrides with PostgreSQL URL
+  - Uses lazy Prisma client initialization to ensure env vars are loaded first
+- Added dotenv as a dependency for fallback env loading
+- Verified login API works correctly after fix (carlos.silva@email.com returns correct user data)
+- Pushed 2 commits to GitHub
+
+Stage Summary:
+- Vercel build error fixed (removed cp commands from build script) ✅
+- DATABASE_URL loading fixed for production deployment ✅
+- Login/registration will work on Vercel once DATABASE_URL env var is configured ✅
+- Code pushed to GitHub (2 commits) ✅
+
+⚠️ IMPORTANT: On Vercel, you MUST set the DATABASE_URL environment variable:
+postgresql://neondb_owner:npg_2Ul5CdKOpRiu@ep-twilight-night-aqn8fqln-pooler.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require
+
+Go to Vercel Dashboard → Project Settings → Environment Variables → Add:
+Key: DATABASE_URL
+Value: postgresql://neondb_owner:npg_2Ul5CdKOpRiu@ep-twilight-night-aqn8fqln-pooler.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require
+
+Unresolved Issues:
+- Vercel needs DATABASE_URL env var configured in Vercel Dashboard
+- Admin panel access control not fully implemented
+- Meus Indicados may still have loading issues
+- Financial withdrawal values need verification
+- Bet portal needs real betting implementation
+- Marketplace could use more products
