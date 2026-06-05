@@ -1795,7 +1795,7 @@ export function AdminPage() {
                         <stat.icon className={`h-4 w-4 ${stat.color}`} />
                         <span className="text-xs font-medium text-muted-foreground">{stat.label}</span>
                       </div>
-                      {stat.value > 0 && <p className="text-xl font-bold text-foreground">{stat.value}</p>}
+                      {typeof stat.value === 'number' && stat.value > 0 && <p className="text-xl font-bold text-foreground">{stat.value}</p>}
                       {stat.amount && <p className="text-sm font-semibold text-foreground">{stat.amount}</p>}
                     </CardContent>
                   </Card>

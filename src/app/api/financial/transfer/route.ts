@@ -68,10 +68,13 @@ export async function POST(req: NextRequest) {
       return error('Valor insuficiente para cobrir a taxa')
     }
 
-    // Update balances with decrement/increment using raw SQL
-    await db.execute(
-      `UPDATE "User" SET "${sourceField}" = "${sourceField}" - $1, "${destField}" = "${destField}" + $2 WHERE "id" = $3`,
-      [amountCents, netAmount, userId]
+    // Update source balance (decrement)
+    const sourceBalance = (user as any)[sourceField] as number
+    await db.update(
+      'User',
+      '"id" = $1',
+      { [sourceField]: sourceBalance - amountCents, [destField]: ((user as any)[destField] as number) + netAmount },
+      [userId]
     )
 
     // Create transaction records

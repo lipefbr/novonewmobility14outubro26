@@ -54,6 +54,10 @@ interface ProductReview {
 
 const categories = [
   { id: 'all', label: 'Todos', icon: ShoppingBag },
+  { id: 'acessorios-veiculares', label: 'Acessórios Veiculares', icon: Truck },
+  { id: 'eletronicos-auto', label: 'Eletrônicos Auto', icon: Package },
+  { id: 'servicos-automotivos', label: 'Serviços Automotivos', icon: CreditCard },
+  { id: 'estetica-veicular', label: 'Estética Veicular', icon: Zap },
   { id: 'electronics', label: 'Eletrônicos', icon: Package },
   { id: 'fashion', label: 'Moda', icon: Star },
   { id: 'home', label: 'Casa', icon: Shield },
@@ -104,6 +108,7 @@ const mockReviews: ProductReview[] = [
 
 // Seller location map (simulated)
 const sellerLocations: Record<string, { city: string; state: string; memberSince: string; totalSales: number }> = {
+  'Ricardo Mendes Lojista': { city: 'São Paulo', state: 'SP', memberSince: 'Dez 2024', totalSales: 567 },
   'Ricardo Mendes': { city: 'São Paulo', state: 'SP', memberSince: 'Jan 2025', totalSales: 234 },
   'Patrícia Almeida': { city: 'Rio de Janeiro', state: 'RJ', memberSince: 'Mar 2025', totalSales: 189 },
   'Lucas Ferreira': { city: 'Belo Horizonte', state: 'MG', memberSince: 'Fev 2025', totalSales: 156 },
@@ -124,6 +129,10 @@ function getDiscountPercent(price: number, originalPrice: number | null): number
 }
 
 const categoryColors: Record<string, string> = {
+  'acessorios-veiculares': 'from-rose-500 to-rose-600',
+  'eletronicos-auto': 'from-sky-500 to-sky-600',
+  'servicos-automotivos': 'from-lime-500 to-lime-600',
+  'estetica-veicular': 'from-fuchsia-500 to-fuchsia-600',
   electronics: 'from-blue-500 to-blue-600',
   fashion: 'from-pink-500 to-pink-600',
   home: 'from-amber-500 to-amber-600',
@@ -136,6 +145,10 @@ const categoryColors: Record<string, string> = {
 }
 
 const categoryIcons: Record<string, string> = {
+  'acessorios-veiculares': '🚙',
+  'eletronicos-auto': '📡',
+  'servicos-automotivos': '🔧',
+  'estetica-veicular': '✨',
   electronics: '📱',
   fashion: '👕',
   home: '🏠',

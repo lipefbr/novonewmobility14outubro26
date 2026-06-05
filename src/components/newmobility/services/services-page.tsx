@@ -36,12 +36,14 @@ interface ServiceItem {
   createdAt: string
 }
 
-type ServiceCategory = 'construção' | 'manutenção' | 'limpeza' | 'transporte' | 'tecnologia' | 'outros'
+type ServiceCategory = 'construção' | 'manutenção' | 'limpeza' | 'transporte' | 'tecnologia' | 'automotivo' | 'mobilidade' | 'outros'
 
 // --- Category Config ---
 
 const categories: { id: ServiceCategory | 'all'; label: string; icon: React.ElementType }[] = [
   { id: 'all', label: 'Todos', icon: Filter },
+  { id: 'automotivo', label: 'Automotivo', icon: Wrench },
+  { id: 'mobilidade', label: 'Mobilidade', icon: Wrench },
   { id: 'construção', label: 'Construção', icon: Wrench },
   { id: 'manutenção', label: 'Manutenção', icon: Wrench },
   { id: 'limpeza', label: 'Limpeza', icon: Wrench },
@@ -51,6 +53,8 @@ const categories: { id: ServiceCategory | 'all'; label: string; icon: React.Elem
 ]
 
 const categoryColors: Record<ServiceCategory, string> = {
+  automotivo: 'from-red-500 to-rose-500',
+  mobilidade: 'from-emerald-500 to-green-500',
   construção: 'from-amber-500 to-orange-500',
   manutenção: 'from-blue-500 to-cyan-500',
   limpeza: 'from-teal-500 to-emerald-500',
@@ -60,6 +64,8 @@ const categoryColors: Record<ServiceCategory, string> = {
 }
 
 const categoryIcons: Record<ServiceCategory, string> = {
+  automotivo: '🚙',
+  mobilidade: '📱',
   construção: '🏗️',
   manutenção: '🔧',
   limpeza: '🧹',
@@ -69,6 +75,8 @@ const categoryIcons: Record<ServiceCategory, string> = {
 }
 
 const categoryBadgeStyles: Record<ServiceCategory, string> = {
+  automotivo: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  mobilidade: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
   construção: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
   manutenção: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
   limpeza: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
@@ -80,6 +88,169 @@ const categoryBadgeStyles: Record<ServiceCategory, string> = {
 // --- Mock Data ---
 
 const mockServices: ServiceItem[] = [
+  // --- Automotivo ---
+  {
+    id: 'srv_auto_01',
+    providerId: 'usr_lojista06',
+    providerName: 'Pedro Mecânico',
+    name: 'Mecânica Automotiva',
+    description: 'Reparos em geral, troca de óleo, alinhamento, balanceamento e revisão completa. Atendimento domiciliar.',
+    category: 'automotivo',
+    price: 20000,
+    location: 'Porto Alegre, RS',
+    rating: 4.3,
+    reviewCount: 37,
+    phone: '(51) 93210-9876',
+    isAvailable: true,
+    isFavorite: false,
+    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'srv_auto_02',
+    providerId: 'usr_lojista09',
+    providerName: 'Auto Elétrica Silva',
+    name: 'Auto Elétrica 24h',
+    description: 'Instalação de som, alarme, rastreador, baterias e soluções elétricas automotivas. Atendimento emergencial.',
+    category: 'automotivo',
+    price: 15000,
+    location: 'São Paulo, SP',
+    rating: 4.7,
+    reviewCount: 52,
+    phone: '(11) 97654-3210',
+    isAvailable: true,
+    isFavorite: false,
+    createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'srv_auto_03',
+    providerId: 'usr_lojista10',
+    providerName: 'Car Wash Premium',
+    name: 'Lavagem e Estética Automotiva',
+    description: 'Lavagem detalhada, polimento, cristalização, higienização interna e vitrificação. Agendamento online.',
+    category: 'automotivo',
+    price: 12000,
+    location: 'Rio de Janeiro, RJ',
+    rating: 4.8,
+    reviewCount: 89,
+    phone: '(21) 98765-1234',
+    isAvailable: true,
+    isFavorite: true,
+    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'srv_auto_04',
+    providerId: 'usr_lojista11',
+    providerName: 'Borracharia Express',
+    name: 'Borracharia e Troca de Pneus',
+    description: 'Troca de pneus, calibragem, reparo de furos e venda de pneus novos. Atendimento móvel.',
+    category: 'automotivo',
+    price: 8000,
+    location: 'Belo Horizonte, MG',
+    rating: 4.5,
+    reviewCount: 64,
+    phone: '(31) 96543-2109',
+    isAvailable: true,
+    isFavorite: false,
+    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'srv_auto_05',
+    providerId: 'usr_lojista12',
+    providerName: 'Auto Vidros SP',
+    name: 'Troca e Reparo de Vidros',
+    description: 'Troca de para-brisa, reparo de trincas, insulfilm e película automotiva. Garantia de fábrica.',
+    category: 'automotivo',
+    price: 25000,
+    location: 'São Paulo, SP',
+    rating: 4.6,
+    reviewCount: 31,
+    phone: '(11) 94567-8901',
+    isAvailable: true,
+    isFavorite: false,
+    createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  // --- Mobilidade ---
+  {
+    id: 'srv_mob_01',
+    providerId: 'usr_motorista01',
+    providerName: 'Roberto Motorista',
+    name: 'Motorista Particular',
+    description: 'Motorista com carteira E, viagens longas e curtas, disponível finais de semana. Veículo executivo.',
+    category: 'mobilidade',
+    price: 25000,
+    location: 'São Paulo, SP',
+    rating: 4.7,
+    reviewCount: 19,
+    phone: '(11) 95432-1098',
+    isAvailable: true,
+    isFavorite: false,
+    createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'srv_mob_02',
+    providerId: 'usr_motorista03',
+    providerName: 'Transporte Executivo LM',
+    name: 'Transfer Aeroporto',
+    description: 'Transfer executivo para aeroportos de Guarulhos, Congonhas e Campinas. Pontualidade garantida.',
+    category: 'mobilidade',
+    price: 18000,
+    location: 'São Paulo, SP',
+    rating: 4.9,
+    reviewCount: 73,
+    phone: '(11) 92345-6789',
+    isAvailable: true,
+    isFavorite: true,
+    createdAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'srv_mob_03',
+    providerId: 'usr_motorista04',
+    providerName: 'Bike Delivery Express',
+    name: 'Entrega de Encomendas',
+    description: 'Entrega rápida de documentos e pequenas encomendas de bike. Até 10km em até 1 hora.',
+    category: 'mobilidade',
+    price: 3000,
+    location: 'Curitiba, PR',
+    rating: 4.4,
+    reviewCount: 45,
+    phone: '(41) 91234-5678',
+    isAvailable: true,
+    isFavorite: false,
+    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'srv_mob_04',
+    providerId: 'usr_motorista05',
+    providerName: 'Van Escolar Hope',
+    name: 'Transporte Escolar',
+    description: 'Transporte escolar seguro com motorista habilitado e veículo rastreado. Rotas em zona sul.',
+    category: 'mobilidade',
+    price: 6000,
+    location: 'São Paulo, SP',
+    rating: 4.8,
+    reviewCount: 28,
+    phone: '(11) 93456-7890',
+    isAvailable: true,
+    isFavorite: false,
+    createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'srv_mob_05',
+    providerId: 'usr_motorista06',
+    providerName: 'Moto Táxi Rápido',
+    name: 'Moto Táxi 24h',
+    description: 'Moto táxi para deslocamento rápido na cidade. Capacetes disponíveis. Atendimento 24 horas.',
+    category: 'mobilidade',
+    price: 2500,
+    location: 'Salvador, BA',
+    rating: 4.2,
+    reviewCount: 56,
+    phone: '(71) 94567-8901',
+    isAvailable: true,
+    isFavorite: false,
+    createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  // --- Construção ---
   {
     id: 'srv_01',
     providerId: 'usr_lojista01',
@@ -112,6 +283,7 @@ const mockServices: ServiceItem[] = [
     isFavorite: false,
     createdAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
   },
+  // --- Manutenção ---
   {
     id: 'srv_03',
     providerId: 'usr_lojista03',
@@ -144,22 +316,7 @@ const mockServices: ServiceItem[] = [
     isFavorite: false,
     createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
   },
-  {
-    id: 'srv_05',
-    providerId: 'usr_motorista01',
-    providerName: 'Roberto Motorista',
-    name: 'Motorista Particular',
-    description: 'Motorista com carteira E, viagens longas e curtas, disponível finais de semana.',
-    category: 'transporte',
-    price: 25000,
-    location: 'São Paulo, SP',
-    rating: 4.7,
-    reviewCount: 19,
-    phone: '(11) 95432-1098',
-    isAvailable: true,
-    isFavorite: false,
-    createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-  },
+  // --- Limpeza ---
   {
     id: 'srv_06',
     providerId: 'usr_lojista05',
@@ -176,38 +333,7 @@ const mockServices: ServiceItem[] = [
     isFavorite: false,
     createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
   },
-  {
-    id: 'srv_07',
-    providerId: 'usr_lojista06',
-    providerName: 'Pedro Mecânico',
-    name: 'Mecânica Automotiva',
-    description: 'Reparos em geral, troca de óleo, alinhamento, balanceamento e revisão completa.',
-    category: 'manutenção',
-    price: 20000,
-    location: 'Porto Alegre, RS',
-    rating: 4.3,
-    reviewCount: 37,
-    phone: '(51) 93210-9876',
-    isAvailable: true,
-    isFavorite: false,
-    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 'srv_08',
-    providerId: 'usr_lojista07',
-    providerName: 'Lucas Tech',
-    name: 'Suporte de Informática',
-    description: 'Formatação, instalação de programas, rede, backup e recuperação de dados.',
-    category: 'tecnologia',
-    price: 10000,
-    location: 'Brasília, DF',
-    rating: 4.6,
-    reviewCount: 24,
-    phone: '(61) 92109-8765',
-    isAvailable: true,
-    isFavorite: false,
-    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-  },
+  // --- Transporte ---
   {
     id: 'srv_09',
     providerId: 'usr_motorista02',
@@ -224,6 +350,24 @@ const mockServices: ServiceItem[] = [
     isFavorite: false,
     createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
   },
+  // --- Tecnologia ---
+  {
+    id: 'srv_08',
+    providerId: 'usr_lojista07',
+    providerName: 'Lucas Tech',
+    name: 'Suporte de Informática',
+    description: 'Formatação, instalação de programas, rede, backup e recuperação de dados.',
+    category: 'tecnologia',
+    price: 10000,
+    location: 'Brasília, DF',
+    rating: 4.6,
+    reviewCount: 24,
+    phone: '(61) 92109-8765',
+    isAvailable: true,
+    isFavorite: false,
+    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  // --- Outros ---
   {
     id: 'srv_10',
     providerId: 'usr_lojista08',
@@ -772,6 +916,8 @@ export function ServicesPage() {
                   <SelectValue placeholder="Selecione uma categoria" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="automotivo">🚙 Automotivo</SelectItem>
+                  <SelectItem value="mobilidade">📱 Mobilidade</SelectItem>
                   <SelectItem value="construção">🏗️ Construção</SelectItem>
                   <SelectItem value="manutenção">🔧 Manutenção</SelectItem>
                   <SelectItem value="limpeza">🧹 Limpeza</SelectItem>

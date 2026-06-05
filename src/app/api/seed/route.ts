@@ -105,6 +105,7 @@ export async function POST() {
       balanceFood: 687000,
       balancePharmacy: 558000,
       balanceGratification: 845000,
+      balanceFree: 1500000,
       careerPoints: 42,
       personalPoints: 18,
       stars: 3,
@@ -631,6 +632,35 @@ export async function POST() {
 
     for (const mp of marketplaceProducts) {
       await db.insert('MarketplaceProduct', { ...mp, createdAt: now, updatedAt: now })
+    }
+
+    // ============== CREATE BET HISTORY FOR MAIN USER ==============
+    const betData = [
+      { eventId: 'bra-1', eventLabel: 'São Paulo FC vs Corinthians', selection: 'home', selectionLabel: 'São Paulo FC', odds: 2.10, amountInCents: 1000, potentialWinInCents: 2100, status: 'won', result: 'won', settledAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), createdAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) },
+      { eventId: 'bra-2', eventLabel: 'Flamengo vs Palmeiras', selection: 'away', selectionLabel: 'Palmeiras', odds: 2.85, amountInCents: 2000, potentialWinInCents: 5700, status: 'lost', result: 'lost', settledAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), createdAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000) },
+      { eventId: 'ucl-1', eventLabel: 'Real Madrid vs Man City', selection: 'home', selectionLabel: 'Real Madrid', odds: 2.05, amountInCents: 5000, potentialWinInCents: 10250, status: 'won', result: 'won', settledAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000) },
+      { eventId: 'epl-1', eventLabel: 'Liverpool vs Arsenal', selection: 'draw', selectionLabel: 'Empate', odds: 3.40, amountInCents: 1500, potentialWinInCents: 5100, status: 'lost', result: 'lost', settledAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000) },
+      { eventId: 'bra-4', eventLabel: 'Botafogo vs Vasco da Gama', selection: 'home', selectionLabel: 'Botafogo', odds: 1.95, amountInCents: 3000, potentialWinInCents: 5850, status: 'pending', result: null, settledAt: null, createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000) },
+      { eventId: 'lib-1', eventLabel: 'River Plate vs Fluminense', selection: 'away', selectionLabel: 'Fluminense', odds: 3.20, amountInCents: 2500, potentialWinInCents: 8000, status: 'pending', result: null, settledAt: null, createdAt: new Date() },
+    ]
+
+    for (const bet of betData) {
+      await prisma.bet.create({
+        data: {
+          userId: mainUser.id,
+          eventId: bet.eventId,
+          eventLabel: bet.eventLabel,
+          selection: bet.selection,
+          selectionLabel: bet.selectionLabel,
+          odds: bet.odds,
+          amountInCents: bet.amountInCents,
+          potentialWinInCents: bet.potentialWinInCents,
+          status: bet.status,
+          result: bet.result,
+          settledAt: bet.settledAt,
+          createdAt: bet.createdAt,
+        },
+      })
     }
 
     const totalUsers = await db.count('User')

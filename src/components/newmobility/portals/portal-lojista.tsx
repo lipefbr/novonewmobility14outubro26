@@ -66,6 +66,10 @@ interface SellerOrderItem {
 }
 
 const categoryOptions = [
+  { value: 'acessorios-veiculares', label: 'Acessórios Veiculares' },
+  { value: 'eletronicos-auto', label: 'Eletrônicos Auto' },
+  { value: 'servicos-automotivos', label: 'Serviços Automotivos' },
+  { value: 'estetica-veicular', label: 'Estética Veicular' },
   { value: 'electronics', label: 'Eletrônicos' },
   { value: 'fashion', label: 'Moda' },
   { value: 'home', label: 'Casa' },
@@ -78,6 +82,10 @@ const categoryOptions = [
 ]
 
 const categoryLabels: Record<string, string> = {
+  'acessorios-veiculares': 'Acessórios Veiculares',
+  'eletronicos-auto': 'Eletrônicos Auto',
+  'servicos-automotivos': 'Serviços Automotivos',
+  'estetica-veicular': 'Estética Veicular',
   electronics: 'Eletrônicos',
   fashion: 'Moda',
   home: 'Casa',
@@ -90,6 +98,10 @@ const categoryLabels: Record<string, string> = {
 }
 
 const categoryColors: Record<string, string> = {
+  'acessorios-veiculares': 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400',
+  'eletronicos-auto': 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400',
+  'servicos-automotivos': 'bg-lime-100 text-lime-700 dark:bg-lime-900/30 dark:text-lime-400',
+  'estetica-veicular': 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-400',
   electronics: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
   fashion: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400',
   home: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
@@ -102,6 +114,10 @@ const categoryColors: Record<string, string> = {
 }
 
 const categoryIcons: Record<string, string> = {
+  'acessorios-veiculares': '🚙',
+  'eletronicos-auto': '📡',
+  'servicos-automotivos': '🔧',
+  'estetica-veicular': '✨',
   electronics: '📱',
   fashion: '👕',
   home: '🏠',
@@ -123,7 +139,7 @@ const benefits = [
 ]
 
 export function PortalLojista() {
-  const { user } = useStore()
+  const { user, setActivePage } = useStore()
   const [products, setProducts] = useState<Product[]>([])
   const [orders, setOrders] = useState<SellerOrder[]>([])
   const [loading, setLoading] = useState(true)
@@ -317,6 +333,26 @@ export function PortalLojista() {
     shipped: { icon: Truck, color: 'text-purple-500', label: 'Enviado' },
     delivered: { icon: CheckCircle2, color: 'text-emerald-500', label: 'Entregue' },
     cancelled: { icon: AlertCircle, color: 'text-red-500', label: 'Cancelado' },
+  }
+
+  // Access control: only lojista users can access this portal
+  if (user?.userType !== 'lojista') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <div className="p-6 rounded-2xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 max-w-md text-center">
+          <Store className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-red-700 dark:text-red-400">Acesso Restrito</h2>
+          <p className="text-sm text-red-600 dark:text-red-300 mt-2">Apenas lojistas podem acessar o Portal do Lojista.</p>
+          <Button
+            variant="outline"
+            className="mt-4 border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400"
+            onClick={() => setActivePage('dashboard')}
+          >
+            Voltar ao Dashboard
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (

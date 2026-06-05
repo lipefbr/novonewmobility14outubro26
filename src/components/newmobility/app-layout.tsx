@@ -36,6 +36,7 @@ const sidebarLabelKeys: Record<PageKey, string> = {
   'myplan': 'sidebar.myplan',
   'purchases': 'sidebar.purchases',
   'marketplace': 'sidebar.marketplace',
+  'services': 'sidebar.services',
   'portal-lojista': 'sidebar.portal-lojista',
   'portal-gamer': 'sidebar.portal-gamer',
   'portal-sportbet': 'sidebar.portal-sportbet',

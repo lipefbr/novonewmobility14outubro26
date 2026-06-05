@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { success, error } from '@/lib/api-utils'
+import { success, error, reaisToCents } from '@/lib/api-utils'
 
 export async function POST(request: Request) {
   try {
@@ -10,7 +10,9 @@ export async function POST(request: Request) {
       return error('userId and amount are required')
     }
 
-    const amountCents = Math.round(amount)
+    // Amount is expected in BRL (reais), convert to cents for storage
+    // e.g., user sends 5000.00 meaning R$ 5.000,00 → stored as 500000 cents
+    const amountCents = reaisToCents(amount)
 
     if (amountCents <= 0) {
       return error('Amount must be positive')

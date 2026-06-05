@@ -32,6 +32,7 @@ import {
   Calculator,
   Flame,
   ShoppingBag,
+  Wrench,
 } from 'lucide-react'
 import { useStore, type PageKey } from '@/lib/store'
 import { cn, getPlanName, formatCurrency } from '@/lib/utils'
@@ -69,6 +70,7 @@ const allMenuItems: MenuItem[] = [
   { key: 'myplan', labelKey: 'sidebar.myplan', icon: CreditCard, groupKey: 'sidebar.group.main' },
   { key: 'purchases', labelKey: 'sidebar.purchases', icon: ShoppingCart, groupKey: 'sidebar.group.main' },
   { key: 'marketplace', labelKey: 'sidebar.marketplace', icon: ShoppingBag, groupKey: 'sidebar.group.main', isNew: true },
+  { key: 'services', labelKey: 'sidebar.services', icon: Wrench, groupKey: 'sidebar.group.main', isNew: true },
   { key: 'portal-lojista', labelKey: 'sidebar.portal-lojista', icon: Store, groupKey: 'sidebar.group.portals', isBeta: true, lojistaOnly: true },
   { key: 'portal-gamer', labelKey: 'sidebar.portal-gamer', icon: Gamepad2, groupKey: 'sidebar.group.portals', isBeta: true },
   { key: 'portal-sportbet', labelKey: 'sidebar.portal-sportbet', icon: Trophy, groupKey: 'sidebar.group.portals', isBeta: true },

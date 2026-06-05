@@ -30,6 +30,7 @@ import { EarningsSimulator } from '@/components/newmobility/simulator/earnings-s
 import { EventsPage } from '@/components/newmobility/events/events-page'
 import { LeaderboardPage } from '@/components/newmobility/leaderboard/leaderboard-page'
 import { MarketplacePage } from '@/components/newmobility/marketplace/marketplace-page'
+import { ServicesPage } from '@/components/newmobility/services/services-page'
 
 function PageContent() {
   const { activePage, user, setActivePage } = useStore()
@@ -49,6 +50,14 @@ function PageContent() {
       setActivePage('dashboard')
     }
   }, [activePage, user?.userType, setActivePage])
+
+  // Synchronous access control guard - prevents rendering restricted pages even briefly
+  if (activePage === 'admin' && user?.role !== 'admin') {
+    return <DashboardPage />
+  }
+  if (activePage === 'portal-lojista' && user?.userType !== 'lojista') {
+    return <DashboardPage />
+  }
 
   switch (activePage) {
     case 'dashboard':
@@ -99,6 +108,8 @@ function PageContent() {
       return <LeaderboardPage />
     case 'marketplace':
       return <MarketplacePage />
+    case 'services':
+      return <ServicesPage />
     default:
       return <DashboardPage />
   }

@@ -113,6 +113,8 @@ export function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [hasReferral, setHasReferral] = useState(false)
+  const [referralValid, setReferralValid] = useState<boolean | null>(null)
+  const [checkingReferral, setCheckingReferral] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -145,6 +147,23 @@ export function RegisterPage() {
     return formData.terms
   }
 
+  const checkReferralCode = useCallback(async (code: string) => {
+    if (!code || code.length < 3) {
+      setReferralValid(null)
+      return
+    }
+    setCheckingReferral(true)
+    try {
+      const res = await fetch(`/api/referrals/validate?code=${encodeURIComponent(code)}`)
+      const data = await res.json()
+      setReferralValid(!!data.valid)
+    } catch {
+      setReferralValid(null)
+    } finally {
+      setCheckingReferral(false)
+    }
+  }, [])
+
   const handleSubmit = async () => {
     if (!formData.terms) return
     setLoading(true)
@@ -170,6 +189,9 @@ export function RegisterPage() {
         setSuccess(true)
         setTimeout(() => {
           login(data.user)
+          if (data.warning) {
+            toast.warning(data.warning)
+          }
           toast.success('Conta criada com sucesso! Bem-vindo(a)!')
         }, 2000)
       }
@@ -472,6 +494,7 @@ export function RegisterPage() {
                   <div className="space-y-2">
                     <Label htmlFor="referral" className="flex items-center gap-1.5">
                       Código de Indicação
+                      <span className="text-[10px] text-muted-foreground font-normal">(opcional)</span>
                       {hasReferral && (
                         <span className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-normal">
                           <LockKeyhole className="h-3 w-3" />
@@ -483,16 +506,40 @@ export function RegisterPage() {
                       <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="referral"
-                        placeholder="Código de quem te indicou"
+                        placeholder="Ex: CARLOS2025 ou ADMIN2025"
                         value={formData.referralCode}
-                        onChange={(e) => handleChange('referralCode', e.target.value.toUpperCase())}
-                        className="pl-10 uppercase"
+                        onChange={(e) => {
+                          handleChange('referralCode', e.target.value.toUpperCase())
+                          setReferralValid(null)
+                        }}
+                        onBlur={() => {
+                          if (formData.referralCode && formData.referralCode.length >= 3) {
+                            checkReferralCode(formData.referralCode)
+                          }
+                        }}
+                        className={cn(
+                          "pl-10 uppercase",
+                          referralValid === true && "border-emerald-500",
+                          referralValid === false && "border-amber-500"
+                        )}
                         disabled={hasReferral}
                       />
                       {hasReferral && (
                         <LockKeyhole className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-amber-500" />
                       )}
+                      {checkingReferral && (
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 border-2 border-emerald-300 border-t-emerald-600 rounded-full animate-spin" />
+                      )}
+                      {!checkingReferral && referralValid === true && (
+                        <Check className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-500" />
+                      )}
                     </div>
+                    {referralValid === false && !hasReferral && (
+                      <p className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                        <MessageSquare className="h-3 w-3" />
+                        Código não encontrado. Você será cadastrado sem indicador.
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex justify-end pt-2">

@@ -275,13 +275,15 @@ export function FinancialPage() {
   const feeKey = `${transferSource}->${transferDestination}`
   const feePercent = TRANSFER_FEES[feeKey] ?? 5
   const amountNum = Number(transferAmount) || 0
-  const feeAmount = Math.round(amountNum * feePercent / 100)
-  const netAmount = amountNum - feeAmount
+  // Convert reais to cents for display and comparison (balances are in cents)
+  const amountCents = Math.round(amountNum * 100)
+  const feeAmountCents = Math.round(amountCents * feePercent / 100)
+  const netAmountCents = amountCents - feeAmountCents
 
   const handleTransfer = async () => {
     if (!user?.id || !transferAmount || !transferSource || !transferDestination) return
     if (transferSource === transferDestination) { toast.error(t('transfer.sameBalance')); return }
-    if (amountNum > (balanceValues[transferSource] || 0)) { toast.error(t('transfer.insufficientFunds')); return }
+    if (amountCents > (balanceValues[transferSource] || 0)) { toast.error(t('transfer.insufficientFunds')); return }
     try {
       const { transferApi } = await import('@/lib/api')
       await transferApi.transfer(user.id, transferSource, transferDestination, amountNum)
@@ -387,7 +389,8 @@ export function FinancialPage() {
                 </div>
                 {/* Fee calculation display */}
                 {withdrawAmount && Number(withdrawAmount) > 0 && (() => {
-                  const withdrawCents = Math.round(Number(withdrawAmount) * 100)
+                  const withdrawReais = Number(withdrawAmount)
+                  const withdrawCents = Math.round(withdrawReais * 100)
                   const FEE_PERCENT = 2
                   const feeCents = Math.round(withdrawCents * FEE_PERCENT / 100)
                   const netCents = withdrawCents - feeCents
@@ -430,9 +433,11 @@ export function FinancialPage() {
                   onClick={async () => {
                     if (!user?.id || !withdrawAmount || Number(withdrawAmount) <= 0) return
                     try {
-                      const withdrawCents = Math.round(Number(withdrawAmount) * 100)
-                      await financialApi.withdraw(user.id, withdrawCents, 'withdrawal')
-                      // Update store balance immediately so negative balance is visible
+                      // Send amount in BRL (reais) - the backend converts to cents
+                      const withdrawReais = Number(withdrawAmount)
+                      const withdrawCents = Math.round(withdrawReais * 100)
+                      await financialApi.withdraw(user.id, withdrawReais, 'withdrawal')
+                      // Update store balance immediately (store uses cents)
                       const currentBalance = user?.balanceWithdrawal || 0
                       updateUser({ balanceWithdrawal: currentBalance - withdrawCents })
                       setWithdrawOpen(false)
@@ -1091,16 +1096,16 @@ export function FinancialPage() {
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Valor</span>
-                  <span className="text-foreground font-medium">{formatCurrency(amountNum)}</span>
+                  <span className="text-foreground font-medium">{formatCurrency(amountCents)}</span>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Taxa ({feePercent}%)</span>
-                  <span className="text-red-600 dark:text-red-400 font-medium animate-count-pop">-{formatCurrency(feeAmount)}</span>
+                  <span className="text-red-600 dark:text-red-400 font-medium animate-count-pop">-{formatCurrency(feeAmountCents)}</span>
                 </div>
                 <div className="h-px bg-border" />
                 <div className="flex justify-between text-sm">
                   <span className="text-foreground font-semibold">Destino receberá</span>
-                  <span className="text-emerald-600 dark:text-emerald-400 font-bold text-base">{formatCurrency(netAmount)}</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-bold text-base">{formatCurrency(netAmountCents)}</span>
                 </div>
               </motion.div>
             )}
@@ -1116,11 +1121,11 @@ export function FinancialPage() {
                 <p className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 mb-1">Saldos após transferência</p>
                 <div className="flex justify-between text-xs">
                   <span className="text-emerald-600 dark:text-emerald-400">{balanceLabels[transferSource]}</span>
-                  <span className="font-medium text-foreground">{formatCurrency(Math.max(0, (balanceValues[transferSource] || 0) - amountNum))}</span>
+                  <span className="font-medium text-foreground">{formatCurrency(Math.max(0, (balanceValues[transferSource] || 0) - amountCents))}</span>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-emerald-600 dark:text-emerald-400">{balanceLabels[transferDestination]}</span>
-                  <span className="font-medium text-foreground">{formatCurrency((balanceValues[transferDestination] || 0) + netAmount)}</span>
+                  <span className="font-medium text-foreground">{formatCurrency((balanceValues[transferDestination] || 0) + netAmountCents)}</span>
                 </div>
               </motion.div>
             )}
@@ -1132,7 +1137,7 @@ export function FinancialPage() {
             <Button
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
               onClick={handleTransfer}
-              disabled={transferSource === transferDestination || amountNum <= 0 || amountNum > (balanceValues[transferSource] || 0)}
+              disabled={transferSource === transferDestination || amountNum <= 0 || amountCents > (balanceValues[transferSource] || 0)}
             >
               <ArrowRightLeft className="h-4 w-4 mr-2" />
               Confirmar Transferência

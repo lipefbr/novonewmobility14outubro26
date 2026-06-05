@@ -28,6 +28,7 @@ export type PageKey =
   | 'events'
   | 'leaderboard'
   | 'marketplace'
+  | 'services'
 
 export type AuthView = 'login' | 'register'
 

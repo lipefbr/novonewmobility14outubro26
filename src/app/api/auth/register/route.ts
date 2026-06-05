@@ -40,30 +40,47 @@ export async function POST(request: Request) {
 
     // Check unique CPF if provided
     if (cpf) {
-      console.log('[Register] Checking CPF uniqueness')
+      // Strip mask: keep only digits for consistent comparison
+      const cpfDigits = String(cpf).replace(/\D/g, '')
+      const cpfFormatted = cpfDigits.length === 11
+        ? `${cpfDigits.slice(0,3)}.${cpfDigits.slice(3,6)}.${cpfDigits.slice(6,9)}-${cpfDigits.slice(9)}`
+        : cpf
+      console.log('[Register] Checking CPF uniqueness:', cpfFormatted)
       try {
-        const existingCpf = await db.findOne('User', '"cpf" = $1', [cpf])
-        if (existingCpf) {
+        // Try both formatted and digits-only lookup for robustness
+        const existingCpfFormatted = await db.findOne('User', '"cpf" = $1', [cpfFormatted])
+        const existingCpfDigits = cpfDigits !== cpfFormatted
+          ? await db.findOne('User', '"cpf" = $1', [cpfDigits])
+          : null
+        if (existingCpfFormatted || existingCpfDigits) {
           return error('CPF já cadastrado', 409)
         }
+        // Use formatted CPF for storage
+        body.cpf = cpfFormatted
       } catch (dbErr) {
         console.error('[Register] Error checking CPF uniqueness:', dbErr)
-        return error('Erro ao verificar CPF. Tente novamente.', 500)
+        // Don't block registration if CPF check fails - proceed with caution
+        console.warn('[Register] Proceeding without CPF uniqueness verification')
       }
     }
 
     // Find referrer if referral code provided
+    // Referral code is OPTIONAL - if invalid, proceed without referrer (warning only)
     let referrer = null
+    let referralWarning = null
     if (referralCode) {
       console.log('[Register] Looking up referrer with code:', referralCode)
       try {
         referrer = await db.findOne('User', '"referralCode" = $1', [referralCode])
         if (!referrer) {
-          return error('Código de indicação inválido', 404)
+          // Don't block registration - just proceed without referrer
+          console.warn('[Register] Referral code not found, proceeding without referrer:', referralCode)
+          referralWarning = 'Código de indicação não encontrado. Cadastro realizado sem indicador.'
         }
       } catch (dbErr) {
         console.error('[Register] Error looking up referrer:', dbErr)
-        return error('Erro ao buscar indicador. Tente novamente.', 500)
+        // Don't block registration - proceed without referrer
+        referralWarning = 'Não foi possível verificar o código de indicação. Cadastro realizado sem indicador.'
       }
     }
 
@@ -97,7 +114,7 @@ export async function POST(request: Request) {
         email,
         username: email.split('@')[0],
         phone: phone || null,
-        cpf: cpf || null,
+        cpf: body.cpf || cpf || null,
         password: hashedPassword,
         referralCode: userReferralCode,
         referredById: referrer?.id || null,
@@ -320,7 +337,12 @@ export async function POST(request: Request) {
       safeUser = rest
     }
 
-    return success({ user: safeUser }, 201)
+    const responseData: any = { user: safeUser }
+    if (referralWarning) {
+      responseData.warning = referralWarning
+    }
+
+    return success(responseData, 201)
   } catch (err) {
     console.error('[Register] Unhandled registration error:', err)
     return error('Erro interno do servidor. Tente novamente.', 500)

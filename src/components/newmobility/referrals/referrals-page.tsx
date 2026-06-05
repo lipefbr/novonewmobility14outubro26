@@ -76,13 +76,30 @@ export function ReferralsPage() {
   const [referrals, setReferrals] = useState(mockReferrals)
 
   useEffect(() => {
+    let cancelled = false
+    let safetyTimer: ReturnType<typeof setTimeout> | null = null
+
     async function fetchReferrals() {
       if (!user?.id) {
         setLoading(false)
         return
       }
+
+      // Reset loading state for the new fetch
+      setLoading(true)
+
+      // Safety timeout: ensure loading is resolved even if the API hangs
+      safetyTimer = setTimeout(() => {
+        if (!cancelled) {
+          console.warn('Referrals fetch timeout - resolving loading state')
+          setLoading(false)
+        }
+      }, 15000)
+
       try {
         const data = await referralsApi.getList(user.id)
+        if (cancelled) return
+
         if (data?.directReferrals && data.directReferrals.length > 0) {
           const mapped = data.directReferrals.map((r: any, idx: number) => ({
             id: r.id,
@@ -120,15 +137,27 @@ export function ReferralsPage() {
           } else {
             setReferrals(mapped)
           }
+        } else if (data?.directReferrals && data.directReferrals.length === 0) {
+          // API returned empty referrals - clear mock data and show empty state
+          setReferrals([])
         }
       } catch (err) {
+        if (cancelled) return
         console.error('Failed to fetch referrals:', err)
         // Keep mock data as fallback
       } finally {
-        setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+          if (safetyTimer) clearTimeout(safetyTimer)
+        }
       }
     }
     fetchReferrals()
+
+    return () => {
+      cancelled = true
+      if (safetyTimer) clearTimeout(safetyTimer)
+    }
   }, [user?.id])
 
   if (loading) {
