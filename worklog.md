@@ -69,3 +69,46 @@ Stage Summary:
   - Portal access control
   - Marketplace needs seeding
   - Admin panel fixes
+---
+Task ID: 1
+Agent: Main Agent
+Task: Migrate from SQLite to Neon PostgreSQL, fix data isolation, deploy to Vercel
+
+Work Log:
+- Analyzed the project structure: SQLite database, Prisma ORM, Zustand state management
+- Identified root cause of Vercel failure: SQLite doesn't work on serverless environments
+- Migrated Prisma schema from sqlite to postgresql provider
+- Updated .env with correct Neon DATABASE_URL (ep-twilight-night, not ep-twility-night)
+- Pushed schema to Neon PostgreSQL database (14.05s sync)
+- Database already had 24 users + 16 products from previous seeding
+- Added lojista@newmobility.com demo user (userType: 'lojista')
+- Fixed data isolation bug: removed mockNotifications from store initialization
+- Store no longer persists notifications (prevents cross-user data leakage)
+- Login action clears localStorage to prevent stale data from previous sessions
+- Added onRehydrateStorage callback to reset notifications on store rehydration
+- Removed mockUser export, added emptyUser template with all-zero defaults
+- Removed output: "standalone" from next.config.ts for Vercel compatibility
+- Initially tried @prisma/adapter-neon for serverless, but it caused connection issues
+- Simplified to standard PrismaClient with Neon pooler URL (works on both local and Vercel)
+- Verified login API: carlos.silva@email.com / 123456 returns correct user data with balances
+- Verified register API: new users get all balances at 0 (data isolation fixed)
+- Verified register with referral code: CARLOS2025 correctly sets referredById
+- Pushed all changes to GitHub
+
+Stage Summary:
+- Database migrated from SQLite to Neon PostgreSQL ✅
+- Data isolation fixed - new users start with zeroed data ✅
+- Login and register working on Neon PostgreSQL ✅
+- Referral code validation working (doesn't block registration) ✅
+- Lojista demo user added ✅
+- Code pushed to GitHub (2 commits) ✅
+- Vercel deployment needs DATABASE_URL environment variable configured
+
+Unresolved Issues:
+- Vercel needs DATABASE_URL env var: postgresql://neondb_owner:npg_2Ul5CdKOpRiu@ep-twilight-night-aqn8fqln-pooler.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require
+- Local dev server has OOM issues due to large project size
+- Admin panel access control not fully implemented
+- Meus Indicados may still have loading issues
+- Financial withdrawal values need verification
+- Bet portal needs real betting implementation
+- Marketplace could use more products
