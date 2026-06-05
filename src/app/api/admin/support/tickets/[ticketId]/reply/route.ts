@@ -16,7 +16,7 @@ export async function POST(
 
     // Verify admin
     const adminUser = await prisma.user.findUnique({ where: { id: userId } })
-    if (!adminUser || (adminUser.role !== 'admin' && adminUser.email !== 'admin@newmobility.com')) {
+    if (!adminUser || (adminUser.role !== 'admin')) {
       return error('Unauthorized - Admin only', 403)
     }
 

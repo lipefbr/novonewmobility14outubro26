@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useStore } from '@/lib/store'
+import { useStore, type PageKey } from '@/lib/store'
 import { authApi } from '@/lib/api'
 import { AppLayout } from '@/components/newmobility/app-layout'
 import { LoginPage } from '@/components/newmobility/auth/login-page'
@@ -32,7 +32,15 @@ import { LeaderboardPage } from '@/components/newmobility/leaderboard/leaderboar
 import { MarketplacePage } from '@/components/newmobility/marketplace/marketplace-page'
 
 function PageContent() {
-  const { activePage } = useStore()
+  const { activePage, user, setActivePage } = useStore()
+
+  // Admin-only pages: redirect non-admin users to dashboard
+  const adminOnlyPages: PageKey[] = ['admin']
+  if (adminOnlyPages.includes(activePage) && user?.role !== 'admin') {
+    // Use useEffect-like pattern to avoid render loop
+    setTimeout(() => setActivePage('dashboard'), 0)
+    return <DashboardPage />
+  }
 
   switch (activePage) {
     case 'dashboard':

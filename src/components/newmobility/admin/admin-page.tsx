@@ -236,7 +236,7 @@ export function AdminPage() {
   const [ticketReply, setTicketReply] = useState('')
   const [sendingReply, setSendingReply] = useState(false)
 
-  const isAdmin = user?.role === 'admin' || user?.id === 'usr_demo_admin' || user?.email === 'carlos.silva@email.com' || user?.email === 'admin@newmobility.com'
+  const isAdmin = user?.role === 'admin'
 
   useEffect(() => {
     loadStats()

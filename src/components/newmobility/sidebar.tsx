@@ -57,9 +57,10 @@ interface MenuItem {
   isNew?: boolean
   isBeta?: boolean
   shortcut?: string
+  adminOnly?: boolean
 }
 
-const menuItems: MenuItem[] = [
+const allMenuItems: MenuItem[] = [
   { key: 'dashboard', labelKey: 'sidebar.dashboard', icon: Home, groupKey: 'sidebar.group.main', shortcut: '⌘1' },
   { key: 'apps', labelKey: 'sidebar.apps', icon: Smartphone, groupKey: 'sidebar.group.main', shortcut: '⌘2' },
   { key: 'bank', labelKey: 'sidebar.bank', icon: Building2, groupKey: 'sidebar.group.main' },
@@ -83,7 +84,7 @@ const menuItems: MenuItem[] = [
   { key: 'events', labelKey: 'sidebar.events', icon: Bell, groupKey: 'sidebar.group.system', isNew: true },
   { key: 'reports', labelKey: 'sidebar.reports', icon: BarChart3, groupKey: 'sidebar.group.system' },
   { key: 'support', labelKey: 'sidebar.support', icon: Headphones, groupKey: 'sidebar.group.system', shortcut: '⌘?' },
-  { key: 'admin', labelKey: 'sidebar.admin', icon: Shield, groupKey: 'sidebar.group.system' },
+  { key: 'admin', labelKey: 'sidebar.admin', icon: Shield, groupKey: 'sidebar.group.system', adminOnly: true },
 ]
 
 export function Sidebar() {
@@ -104,6 +105,10 @@ export function Sidebar() {
     }
     logout()
   }
+
+  // Filter menu items based on user role (admin-only items hidden for normal users)
+  const isAdmin = user?.role === 'admin'
+  const menuItems = allMenuItems.filter(item => !item.adminOnly || isAdmin)
 
   // Group menu items
   const groupedItems: { groupKey: string; items: MenuItem[] }[] = []

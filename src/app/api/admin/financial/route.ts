@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
     if (!userId) return error('userId is required', 400)
 
     const admin = await prisma.user.findUnique({ where: { id: userId } })
-    if (!admin || (admin.role !== 'admin' && admin.email !== 'admin@newmobility.com' && admin.email !== 'carlos.silva@email.com')) {
+    if (!admin || admin.role !== 'admin') {
       return error('Unauthorized', 403)
     }
 

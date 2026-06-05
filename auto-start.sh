@@ -1,15 +1,9 @@
 #!/bin/bash
-# Auto-start script for NewMobility
-# This script ensures the dev server is always running
-
 cd /home/z/my-project
-
-# Kill any existing server processes
-pkill -f "next dev" 2>/dev/null
-pkill -f "next-server" 2>/dev/null
-pkill -f "node.*server.js" 2>/dev/null
-sleep 2
-
-# Start the dev server
-bun run dev >> /home/z/my-project/dev.log 2>&1 &
-echo "[$(date)] Dev server started" >> /home/z/my-project/auto-start.log
+while true; do
+  echo "[$(date)] Starting server..." >> dev.log
+  NODE_ENV=production DATABASE_URL="file:/home/z/my-project/db/custom.db" NODE_OPTIONS="--max-old-space-size=768" node .next/standalone/server.js >> dev.log 2>&1
+  EXIT_CODE=$?
+  echo "[$(date)] Server exited with code $EXIT_CODE" >> dev.log
+  sleep 2
+done
