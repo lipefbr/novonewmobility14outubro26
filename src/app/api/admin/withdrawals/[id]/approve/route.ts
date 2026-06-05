@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function PUT(
@@ -13,14 +13,14 @@ export async function PUT(
 
     if (!userId) return error('userId is required', 400)
 
-    const admin = await db.user.findUnique({ where: { id: userId } })
+    const admin = await prisma.user.findUnique({ where: { id: userId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
     if (!status || !['approved', 'paid'].includes(status)) {
       return error('status must be "approved" or "paid"', 400)
     }
 
-    const transaction = await db.transaction.findUnique({ where: { id } })
+    const transaction = await prisma.transaction.findUnique({ where: { id } })
     if (!transaction) return error('Transaction not found', 404)
 
     if (transaction.type !== 'withdrawal') {
@@ -31,7 +31,7 @@ export async function PUT(
       return error(`Cannot approve withdrawal with status "${transaction.status}"`, 400)
     }
 
-    const updatedTransaction = await db.transaction.update({
+    const updatedTransaction = await prisma.transaction.update({
       where: { id },
       data: { status },
     })

@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { formatCurrency, formatDate, getStatusLabel, getStatusVariant, getPlanName } from '@/lib/utils'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
+import { referralsApi } from '@/lib/api'
 import { ReferralsSkeleton } from '../ui/loading-skeletons'
 import { EmptyState } from '../ui/empty-states'
 import { ShareOptions } from './share-options'
@@ -72,11 +73,63 @@ export function ReferralsPage() {
   const [linkCopied, setLinkCopied] = useState(false)
   const [planFilter, setPlanFilter] = useState<string>('all')
   const [statusFilterVal, setStatusFilterVal] = useState<string>('all')
+  const [referrals, setReferrals] = useState(mockReferrals)
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 800)
-    return () => clearTimeout(timer)
-  }, [])
+    async function fetchReferrals() {
+      if (!user?.id) {
+        setLoading(false)
+        return
+      }
+      try {
+        const data = await referralsApi.getList(user.id)
+        if (data?.directReferrals && data.directReferrals.length > 0) {
+          const mapped = data.directReferrals.map((r: any, idx: number) => ({
+            id: r.id,
+            name: r.name,
+            date: r.createdAt ? r.createdAt.split('T')[0] : new Date().toISOString().split('T')[0],
+            status: r.isActive ? 'active' : 'inactive',
+            plan: r.plan || 'free',
+            level: 1,
+            cashback: 0,
+            email: r.email || '',
+          }))
+          // Add network referrals from tree if available
+          if (data.referralTree && data.referralTree.length > 0) {
+            function flattenTree(nodes: any[], level: number): any[] {
+              const result: any[] = []
+              for (const node of nodes) {
+                result.push({
+                  id: node.id,
+                  name: node.name,
+                  date: node.createdAt ? node.createdAt.split('T')[0] : new Date().toISOString().split('T')[0],
+                  status: node.isActive ? 'active' : 'inactive',
+                  plan: node.plan || 'free',
+                  level,
+                  cashback: 0,
+                  email: '',
+                })
+                if (node.children && node.children.length > 0) {
+                  result.push(...flattenTree(node.children, level + 1))
+                }
+              }
+              return result
+            }
+            const networkReferrals = flattenTree(data.referralTree, 2)
+            setReferrals([...mapped, ...networkReferrals])
+          } else {
+            setReferrals(mapped)
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch referrals:', err)
+        // Keep mock data as fallback
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchReferrals()
+  }, [user?.id])
 
   if (loading) {
     return <ReferralsSkeleton />
@@ -84,7 +137,7 @@ export function ReferralsPage() {
 
   const referralLink = `https://newmobility.com.br/ref/${user?.referralCode || 'USER2025'}`
 
-  const filtered = mockReferrals.filter((r) => {
+  const filtered = referrals.filter((r) => {
     const matchesSearch = r.name.toLowerCase().includes(search.toLowerCase())
     const matchesLevel = levelFilter === null || r.level === levelFilter
     const matchesPlan = planFilter === 'all' || r.plan === planFilter
@@ -92,10 +145,10 @@ export function ReferralsPage() {
     return matchesSearch && matchesLevel && matchesPlan && matchesStatus
   })
 
-  const totalDirect = mockReferrals.filter((r) => r.level === 1).length
-  const totalNetwork = mockReferrals.length
-  const activeCount = mockReferrals.filter((r) => r.status === 'active').length
-  const newThisMonth = mockReferrals.filter((r) => {
+  const totalDirect = referrals.filter((r) => r.level === 1).length
+  const totalNetwork = referrals.length
+  const activeCount = referrals.filter((r) => r.status === 'active').length
+  const newThisMonth = referrals.filter((r) => {
     const d = new Date(r.date)
     const now = new Date()
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
@@ -107,10 +160,10 @@ export function ReferralsPage() {
 
   const levelCounts = Array.from({ length: 7 }, (_, i) => i + 1).map((lvl) => ({
     level: lvl,
-    count: mockReferrals.filter((r) => r.level === lvl).length,
+    count: referrals.filter((r) => r.level === lvl).length,
   }))
 
-  const maxLevelWithData = Math.max(...mockReferrals.map((r) => r.level))
+  const maxLevelWithData = Math.max(...referrals.map((r) => r.level))
   const visibleLevels = showAllLevels ? levelCounts : levelCounts.slice(0, 4)
 
   const handleCopyLink = () => {
@@ -122,7 +175,7 @@ export function ReferralsPage() {
 
   const handleExportCSV = () => {
     const headers = 'Nome,Email,Plano,Status,Nível,CashBack,Data\n'
-    const rows = mockReferrals.map(r =>
+    const rows = referrals.map(r =>
       `"${r.name}","${r.email}","${r.plan}","${r.status}",${r.level},"${formatCurrency(r.cashback)}","${r.date}"`
     ).join('\n')
     const blob = new Blob([headers + rows], { type: 'text/csv' })
@@ -442,7 +495,7 @@ export function ReferralsPage() {
             
             {Array.from({ length: maxLevelWithData }, (_, idx) => {
               const lvl = idx + 1
-              const lvlData = mockReferrals.filter((r) => r.level === lvl)
+              const lvlData = referrals.filter((r) => r.level === lvl)
               const lvlActive = lvlData.filter((r) => r.status === 'active').length
               return (
                 <div key={lvl} className="w-full">

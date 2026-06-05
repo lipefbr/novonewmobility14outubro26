@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 const DEFAULT_PERCENTAGES: Record<string, string> = {
@@ -31,10 +31,10 @@ export async function GET(req: NextRequest) {
     const userId = req.nextUrl.searchParams.get('userId')
     if (!userId) return error('userId is required', 400)
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user || user.role !== 'admin') return error('Unauthorized', 403)
 
-    const configs = await db.systemConfig.findMany({
+    const configs = await prisma.systemConfig.findMany({
       where: { key: { startsWith: 'cashback_' } }
     })
 
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
     // Ensure defaults exist
     for (const [key, value] of Object.entries(DEFAULT_PERCENTAGES)) {
       if (!configMap[key]) {
-        await db.systemConfig.upsert({
+        await prisma.systemConfig.upsert({
           where: { key },
           update: {},
           create: { key, value, description: `CashBack percentage for ${key}` }
@@ -81,13 +81,13 @@ export async function PUT(req: NextRequest) {
     const { userId, percentages } = body
     if (!userId) return error('userId is required', 400)
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user || user.role !== 'admin') return error('Unauthorized', 403)
 
     if (!percentages || typeof percentages !== 'object') return error('percentages object is required', 400)
 
     const updates = Object.entries(percentages).map(([key, value]) =>
-      db.systemConfig.upsert({
+      prisma.systemConfig.upsert({
         where: { key },
         update: { value: String(value) },
         create: { key, value: String(value), description: `CashBack percentage for ${key}` },

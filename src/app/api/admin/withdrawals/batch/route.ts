@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 // POST - Batch approve or reject pending withdrawals
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
       return error('action must be "approve" or "reject"', 400)
     }
 
-    const admin = await db.findOne('User', '"id" = $1', [userId])
+    const admin = await prisma.user.findUnique({ where: { id: userId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
     const newStatus = action === 'approve' ? 'approved' : 'rejected'
@@ -27,7 +27,9 @@ export async function POST(req: NextRequest) {
     for (const withdrawalId of withdrawalIds) {
       try {
         // Get the withdrawal transaction
-        const withdrawal = await db.findOne('Transaction', '"id" = $1 AND "type" = $2 AND "status" = $3', [withdrawalId, 'withdrawal', 'pending'])
+        const withdrawal = await prisma.transaction.findFirst({
+          where: { id: withdrawalId, type: 'withdrawal', status: 'pending' },
+        })
 
         if (!withdrawal) {
           results.push({ id: withdrawalId, success: false, error: 'Not found or not pending' })
@@ -35,12 +37,10 @@ export async function POST(req: NextRequest) {
         }
 
         // Update the transaction status
-        await db.update(
-          'Transaction',
-          '"id" = $1',
-          { status: newStatus, updatedAt: new Date().toISOString() },
-          [withdrawalId]
-        )
+        await prisma.transaction.update({
+          where: { id: withdrawalId },
+          data: { status: newStatus },
+        })
 
         // If rejected, refund the amount to user's balance
         if (action === 'reject') {
@@ -48,10 +48,10 @@ export async function POST(req: NextRequest) {
           const wAmount = Number(withdrawal.amount || 0)
 
           if (wUserId && wAmount > 0) {
-            await db.execute(
-              `UPDATE "User" SET "balanceWithdrawal" = "balanceWithdrawal" + $1, "updatedAt" = $2 WHERE "id" = $3`,
-              [wAmount, new Date().toISOString(), wUserId]
-            )
+            await prisma.user.update({
+              where: { id: wUserId },
+              data: { balanceWithdrawal: { increment: wAmount } },
+            })
           }
         }
 

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function PUT(
@@ -13,10 +13,10 @@ export async function PUT(
 
     if (!userId) return error('userId is required', 400)
 
-    const admin = await db.user.findUnique({ where: { id: userId } })
+    const admin = await prisma.user.findUnique({ where: { id: userId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
-    const transaction = await db.transaction.findUnique({ where: { id } })
+    const transaction = await prisma.transaction.findUnique({ where: { id } })
     if (!transaction) return error('Transaction not found', 404)
 
     if (transaction.type !== 'withdrawal') {
@@ -32,7 +32,7 @@ export async function PUT(
     }
 
     // Update transaction status to rejected
-    const updatedTransaction = await db.transaction.update({
+    const updatedTransaction = await prisma.transaction.update({
       where: { id },
       data: {
         status: 'rejected',
@@ -43,7 +43,7 @@ export async function PUT(
     })
 
     // Refund the amount back to user's balanceWithdrawal
-    await db.user.update({
+    await prisma.user.update({
       where: { id: transaction.userId },
       data: {
         balanceWithdrawal: {
@@ -53,7 +53,7 @@ export async function PUT(
     })
 
     // Create a transaction record for the refund
-    await db.transaction.create({
+    await prisma.transaction.create({
       data: {
         userId: transaction.userId,
         type: 'deposit',

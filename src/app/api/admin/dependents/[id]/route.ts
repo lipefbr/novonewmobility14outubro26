@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function PUT(
@@ -9,26 +9,23 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await req.json()
-    const { userId: adminUserId, name, cpf, relationship, birthDate, phone, email, isActive } = body
+    const { userId: adminUserId, name, cpf, relationship, percentage } = body
 
     if (!adminUserId) return error('userId is required', 400)
 
-    const admin = await db.user.findUnique({ where: { id: adminUserId } })
+    const admin = await prisma.user.findUnique({ where: { id: adminUserId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
-    const existing = await db.dependent.findUnique({ where: { id } })
+    const existing = await prisma.beneficiary.findUnique({ where: { id } })
     if (!existing) return error('Dependent not found', 404)
 
     const data: Record<string, unknown> = {}
     if (name !== undefined) data.name = name
     if (cpf !== undefined) data.cpf = cpf || null
     if (relationship !== undefined) data.relationship = relationship
-    if (birthDate !== undefined) data.birthDate = birthDate ? new Date(birthDate) : null
-    if (phone !== undefined) data.phone = phone || null
-    if (email !== undefined) data.email = email || null
-    if (isActive !== undefined) data.isActive = isActive
+    if (percentage !== undefined) data.percentage = percentage
 
-    const updated = await db.dependent.update({
+    const updated = await prisma.beneficiary.update({
       where: { id },
       data,
       include: {
@@ -54,13 +51,13 @@ export async function DELETE(
 
     if (!adminUserId) return error('userId is required', 400)
 
-    const admin = await db.user.findUnique({ where: { id: adminUserId } })
+    const admin = await prisma.user.findUnique({ where: { id: adminUserId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
-    const existing = await db.dependent.findUnique({ where: { id } })
+    const existing = await prisma.beneficiary.findUnique({ where: { id } })
     if (!existing) return error('Dependent not found', 404)
 
-    await db.dependent.delete({ where: { id } })
+    await prisma.beneficiary.delete({ where: { id } })
 
     return success({ message: 'Dependent deleted successfully' })
   } catch (err) {

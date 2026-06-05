@@ -364,7 +364,7 @@ export function FinancialPage() {
                       <button
                         key={amount}
                         type="button"
-                        onClick={() => setWithdrawAmount(String(amount * 100))}
+                        onClick={() => setWithdrawAmount(String(amount))}
                         className="px-3 py-1 rounded-full text-xs font-medium border border-border hover:border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:text-emerald-600 transition-colors"
                       >
                         R$ {amount}
@@ -388,25 +388,35 @@ export function FinancialPage() {
                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Valor solicitado</span>
-                      <span className="text-foreground font-medium">{formatCurrency(Number(withdrawAmount))}</span>
+                      <span className="text-foreground font-medium">{formatCurrency(Number(withdrawAmount) * 100)}</span>
                     </div>
                     <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">Taxa de processamento ({((350 / Number(withdrawAmount)) * 100).toFixed(1)}%)</span>
+                      <span className="text-muted-foreground">Taxa de processamento ({((350 / (Number(withdrawAmount) * 100)) * 100).toFixed(1)}%)</span>
                       <span className="text-red-600 dark:text-red-400 font-medium">-{formatCurrency(350)}</span>
                     </div>
                     <div className="h-px bg-border" />
                     <div className="flex justify-between text-sm">
                       <span className="text-foreground font-semibold">Você receberá</span>
-                      <span className="text-emerald-600 dark:text-emerald-400 font-bold text-base">{formatCurrency(Math.max(0, Number(withdrawAmount) - 350))}</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-bold text-base">{formatCurrency(Math.max(0, Number(withdrawAmount) * 100 - 350))}</span>
                     </div>
-                    {Number(withdrawAmount) - 350 <= 0 && (
+                    {Number(withdrawAmount) * 100 - 350 <= 0 && (
                       <p className="text-[10px] text-red-500 font-medium">Valor insuficiente para cobrir a taxa mínima</p>
                     )}
                   </div>
                 )}
                 <Button
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
-                  onClick={() => { setWithdrawOpen(false); toast.success('Saque solicitado com sucesso!') }}
+                  onClick={async () => {
+                    if (!user?.id || !withdrawAmount || Number(withdrawAmount) <= 0) return
+                    try {
+                      await financialApi.withdraw(user.id, Number(withdrawAmount) * 100, 'withdrawal')
+                      setWithdrawOpen(false)
+                      setWithdrawAmount('')
+                      toast.success('Saque solicitado com sucesso!')
+                    } catch (err: any) {
+                      toast.error(err.message || 'Erro ao solicitar saque')
+                    }
+                  }}
                 >
                   {t('financial.confirmWithdrawal')}
                 </Button>

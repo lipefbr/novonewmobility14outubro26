@@ -7,6 +7,7 @@ export async function GET(request: Request) {
     const adminUserId = searchParams.get('userId')
     const statusFilter = searchParams.get('status') || 'all'
     const categoryFilter = searchParams.get('category') || 'all'
+    const priorityFilter = searchParams.get('priority') || 'all'
 
     if (!adminUserId) {
       return error('userId is required')
@@ -25,6 +26,9 @@ export async function GET(request: Request) {
     }
     if (categoryFilter !== 'all') {
       where.category = categoryFilter
+    }
+    if (priorityFilter !== 'all') {
+      where.priority = priorityFilter
     }
 
     // Get tickets with user info - use select instead of include for efficiency

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function GET(req: NextRequest) {
@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
     const adminUserId = req.nextUrl.searchParams.get('userId')
     if (!adminUserId) return error('userId is required', 400)
 
-    const admin = await db.user.findUnique({ where: { id: adminUserId } })
+    const admin = await prisma.user.findUnique({ where: { id: adminUserId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
     const type = req.nextUrl.searchParams.get('type') || undefined
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     }
 
     const [transactions, total] = await Promise.all([
-      db.transaction.findMany({
+      prisma.transaction.findMany({
         where,
         include: {
           user: {
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
         skip: (page - 1) * limit,
         take: limit,
       }),
-      db.transaction.count({ where }),
+      prisma.transaction.count({ where }),
     ])
 
     return success({

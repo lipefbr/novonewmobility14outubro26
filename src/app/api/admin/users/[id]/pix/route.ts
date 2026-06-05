@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function GET(
@@ -11,10 +11,10 @@ export async function GET(
     const adminUserId = req.nextUrl.searchParams.get('userId')
     if (!adminUserId) return error('userId is required', 400)
 
-    const admin = await db.user.findUnique({ where: { id: adminUserId } })
+    const admin = await prisma.user.findUnique({ where: { id: adminUserId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
-    const user = await db.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { id },
       select: {
         id: true,
@@ -44,10 +44,10 @@ export async function PUT(
 
     if (!adminUserId) return error('userId is required', 400)
 
-    const admin = await db.user.findUnique({ where: { id: adminUserId } })
+    const admin = await prisma.user.findUnique({ where: { id: adminUserId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
-    const existingUser = await db.user.findUnique({ where: { id } })
+    const existingUser = await prisma.user.findUnique({ where: { id } })
     if (!existingUser) return error('User not found', 404)
 
     const validPixTypes = ['cpf', 'cnpj', 'phone', 'email', 'random']
@@ -69,7 +69,7 @@ export async function PUT(
       data.pixKeyType = null
     }
 
-    const updatedUser = await db.user.update({
+    const updatedUser = await prisma.user.update({
       where: { id },
       data,
       select: {

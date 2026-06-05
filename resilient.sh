@@ -1,13 +1,8 @@
 #!/bin/bash
+# Resilient server script - auto-restarts on crash
 cd /home/z/my-project
-export DATABASE_URL="file:/home/z/my-project/db/custom.db"
-export PORT=3000
-export HOSTNAME=0.0.0.0
-
 while true; do
-  echo "[$(date)] Starting server..."
-  node --max-old-space-size=256 .next/standalone/server.js
-  EXIT=$?
-  echo "[$(date)] Server exited code=$EXIT, restarting in 3s..."
-  sleep 3
+  NODE_OPTIONS='--max-old-space-size=2048' npx next dev -p 3000 --webpack >> /home/z/my-project/dev.log 2>&1
+  echo "[$(date)] Server died, restarting in 2s..." >> /home/z/my-project/dev.log
+  sleep 2
 done

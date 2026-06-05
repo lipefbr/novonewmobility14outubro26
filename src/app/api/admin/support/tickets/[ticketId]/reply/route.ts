@@ -39,10 +39,10 @@ export async function POST(
       },
     })
 
-    // Update ticket status to 'answered'
+    // Update ticket status to 'in_progress' so it shows in the admin filter
     await prisma.ticket.update({
       where: { id: ticketId },
-      data: { status: 'answered' },
+      data: { status: 'in_progress' },
     })
 
     return success({ message: ticketMessage }, 201)

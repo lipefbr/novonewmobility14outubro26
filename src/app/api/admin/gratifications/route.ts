@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function GET(req: NextRequest) {
@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
     const adminUserId = req.nextUrl.searchParams.get('userId')
     if (!adminUserId) return error('userId is required', 400)
 
-    const admin = await db.user.findUnique({ where: { id: adminUserId } })
+    const admin = await prisma.user.findUnique({ where: { id: adminUserId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
     const filterUserId = req.nextUrl.searchParams.get('filterUserId') || undefined
@@ -22,8 +22,11 @@ export async function GET(req: NextRequest) {
     if (type) where.type = type
     if (isClaimed !== undefined) where.isClaimed = isClaimed
 
-    const [gratifications, total] = await Promise.all([
-      db.gratification.findMany({
+    let gratifications: any[] = []
+    let total = 0
+
+    try {
+      gratifications = await prisma.gratification.findMany({
         where,
         include: {
           user: {
@@ -37,9 +40,16 @@ export async function GET(req: NextRequest) {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
-      }),
-      db.gratification.count({ where }),
-    ])
+      })
+    } catch (e) {
+      console.error('Admin gratifications findMany error:', e)
+    }
+
+    try {
+      total = await prisma.gratification.count({ where })
+    } catch (e) {
+      console.error('Admin gratifications count error:', e)
+    }
 
     return success({
       gratifications,
@@ -49,6 +59,7 @@ export async function GET(req: NextRequest) {
       totalPages: Math.ceil(total / limit),
     })
   } catch (err) {
+    console.error('Admin gratifications GET error:', err)
     return error('Failed to fetch gratifications', 500)
   }
 }

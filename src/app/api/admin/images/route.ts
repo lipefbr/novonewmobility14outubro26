@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function GET(req: NextRequest) {
@@ -7,10 +7,10 @@ export async function GET(req: NextRequest) {
     const userId = req.nextUrl.searchParams.get('userId')
     if (!userId) return error('userId is required', 400)
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user || user.role !== 'admin') return error('Unauthorized', 403)
 
-    const imageConfigs = await db.systemConfig.findMany({
+    const imageConfigs = await prisma.systemConfig.findMany({
       where: { key: { startsWith: 'image_' } }
     })
 
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 
     for (const [key, value] of Object.entries(defaults)) {
       if (!imageConfigs.find(c => c.key === key)) {
-        await db.systemConfig.upsert({
+        await prisma.systemConfig.upsert({
           where: { key },
           update: {},
           create: { key, value, description: `System image: ${key.replace('image_', '')}` }
@@ -56,13 +56,13 @@ export async function PUT(req: NextRequest) {
     const { userId, images } = body
     if (!userId) return error('userId is required', 400)
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user || user.role !== 'admin') return error('Unauthorized', 403)
 
     if (!images || typeof images !== 'object') return error('images object is required', 400)
 
     const updates = Object.entries(images).map(([key, value]) =>
-      db.systemConfig.upsert({
+      prisma.systemConfig.upsert({
         where: { key },
         update: { value: String(value) },
         create: { key, value: String(value), description: `System image: ${key.replace('image_', '')}` },

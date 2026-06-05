@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 import { NextRequest } from 'next/server'
 
@@ -11,42 +11,36 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '12')
     const featured = searchParams.get('featured')
 
-    // Build WHERE clause
-    const conditions: string[] = ['"isActive" = true']
-    const params: any[] = []
-    let paramIdx = 1
+    // Build where clause using Prisma
+    const where: any = { isActive: true }
 
     if (search) {
-      conditions.push(`("name" ILIKE $${paramIdx} OR description ILIKE $${paramIdx})`)
-      params.push(`%${search}%`)
-      paramIdx++
+      where.OR = [
+        { name: { contains: search } },
+        { description: { contains: search } },
+        { sellerName: { contains: search } },
+      ]
     }
+
     if (category && category !== 'all') {
-      conditions.push(`category = $${paramIdx}`)
-      params.push(category)
-      paramIdx++
+      where.category = category
     }
+
     if (featured === 'true') {
-      conditions.push('"isFeatured" = true')
+      where.isFeatured = true
     }
 
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
-    const offset = (page - 1) * limit
+    const skip = (page - 1) * limit
 
-    const [products, countResult] = await Promise.all([
-      db.execute(
-        `SELECT * FROM "MarketplaceProduct" ${whereClause}
-         ORDER BY "isFeatured" DESC, "createdAt" DESC
-         LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
-        [...params, limit, offset]
-      ),
-      db.execute(
-        `SELECT COUNT(*)::int as count FROM "MarketplaceProduct" ${whereClause}`,
-        params
-      ),
+    const [products, total] = await Promise.all([
+      prisma.marketplaceProduct.findMany({
+        where,
+        orderBy: [{ isFeatured: 'desc' }, { createdAt: 'desc' }],
+        skip,
+        take: limit,
+      }),
+      prisma.marketplaceProduct.count({ where }),
     ])
-
-    const total = (countResult as any[])?.[0]?.count ?? 0
 
     return success({
       products,
@@ -65,29 +59,31 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { userId, name, description, price, originalPrice, category, imageUrl, images, stock, cashbackPercent, sellerName, tags, isFeatured } = body
 
-    // Check admin
-    const user = await db.findOne('User', '"id" = $1', [userId])
-    if (!user || user.role !== 'admin') {
-      return error('Unauthorized - Admin only', 403)
+    // Check admin or lojista
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user || (user.role !== 'admin' && user.userType !== 'lojista')) {
+      return error('Unauthorized - Admin or Lojista only', 403)
     }
 
     if (!name || !price || !category) {
       return error('Name, price, and category are required')
     }
 
-    const product = await db.insert('MarketplaceProduct', {
-      name,
-      description: description || null,
-      price,
-      originalPrice: originalPrice || null,
-      category,
-      imageUrl: imageUrl || null,
-      images: images ? JSON.stringify(images) : null,
-      stock: stock || 0,
-      cashbackPercent: cashbackPercent || 0,
-      sellerName: sellerName || null,
-      tags: tags ? JSON.stringify(tags) : null,
-      isFeatured: isFeatured || false,
+    const product = await prisma.marketplaceProduct.create({
+      data: {
+        name,
+        description: description || null,
+        price,
+        originalPrice: originalPrice || null,
+        category,
+        imageUrl: imageUrl || null,
+        images: images ? JSON.stringify(images) : null,
+        stock: stock || 0,
+        cashbackPercent: cashbackPercent || 0,
+        sellerName: sellerName || user.name,
+        tags: tags ? JSON.stringify(tags) : null,
+        isFeatured: isFeatured || false,
+      },
     })
 
     return success({ product }, 201)

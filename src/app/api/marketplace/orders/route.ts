@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 import { NextRequest } from 'next/server'
 
@@ -6,46 +6,104 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const userId = searchParams.get('userId')
+    const sellerName = searchParams.get('sellerName')
     const status = searchParams.get('status')
 
-    if (!userId) {
-      return error('userId is required')
-    }
+    // For lojista view: get orders containing their products
+    if (sellerName) {
+      const where: any = {}
+      if (status && status !== 'all') {
+        where.status = status
+      }
 
-    // Build conditions
-    const conditions: string[] = ['"userId" = $1']
-    const params: any[] = [userId]
-    let paramIdx = 2
-
-    if (status && status !== 'all') {
-      conditions.push(`status = $${paramIdx}`)
-      params.push(status)
-      paramIdx++
-    }
-
-    const orders = await db.find(
-      'MarketplaceOrder',
-      conditions.join(' AND '),
-      params,
-      'ORDER BY "createdAt" DESC'
-    ) as any[]
-
-    // For each order, get items with product info
-    const ordersWithItems = await Promise.all(
-      orders.map(async (order) => {
-        const items = await db.execute(
-          `SELECT oi.*, mp.name as "productName", mp."imageUrl", mp.category
-           FROM "MarketplaceOrderItem" oi
-           LEFT JOIN "MarketplaceProduct" mp ON oi."productId" = mp.id
-           WHERE oi."orderId" = $1`,
-          [order.id]
-        )
-        return {
-          ...order,
-          items,
-        }
+      // Find order items for products by this seller
+      const sellerProducts = await prisma.marketplaceProduct.findMany({
+        where: { sellerName },
+        select: { id: true },
       })
-    )
+      const sellerProductIds = sellerProducts.map(p => p.id)
+
+      if (sellerProductIds.length === 0) {
+        return success({ orders: [] })
+      }
+
+      const orderItems = await prisma.marketplaceOrderItem.findMany({
+        where: { productId: { in: sellerProductIds } },
+        include: {
+          order: true,
+          product: { select: { name: true, imageUrl: true, category: true, sellerName: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+
+      // Group by order
+      const orderMap = new Map<string, any>()
+      for (const item of orderItems) {
+        if (!orderMap.has(item.orderId)) {
+          orderMap.set(item.orderId, {
+            ...item.order,
+            items: [],
+          })
+        }
+        if (!status || status === 'all' || item.order.status === status) {
+          orderMap.get(item.orderId).items.push({
+            id: item.id,
+            productId: item.productId,
+            productName: item.productName,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            cashbackPercent: item.cashbackPercent,
+            category: item.product.category,
+            imageUrl: item.product.imageUrl,
+            sellerName: item.product.sellerName,
+          })
+        }
+      }
+
+      const orders = Array.from(orderMap.values())
+        .filter(o => !status || status === 'all' || o.status === status)
+
+      return success({ orders })
+    }
+
+    // For regular user view: get their orders
+    if (!userId) {
+      return error('userId or sellerName is required')
+    }
+
+    const where: any = { userId }
+    if (status && status !== 'all') {
+      where.status = status
+    }
+
+    const orders = await prisma.marketplaceOrder.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: { name: true, imageUrl: true, category: true },
+            },
+          },
+        },
+      },
+    })
+
+    // Map items to include product info at top level for frontend compatibility
+    const ordersWithItems = orders.map(order => ({
+      ...order,
+      items: order.items.map(item => ({
+        id: item.id,
+        productId: item.productId,
+        productName: item.productName,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        cashbackPercent: item.cashbackPercent,
+        category: item.product?.category,
+        imageUrl: item.product?.imageUrl,
+      })),
+    }))
 
     return success({ orders: ordersWithItems })
   } catch (err) {
@@ -64,7 +122,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user
-    const user = await db.findOne('User', '"id" = $1', [userId])
+    const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user) {
       return error('User not found', 404)
     }
@@ -73,9 +131,12 @@ export async function POST(request: NextRequest) {
     let totalAmount = 0
     let totalCashback = 0
     const orderItemsData: any[] = []
+    const productUpdates: { id: string; newStock: number }[] = []
 
     for (const item of items) {
-      const product = await db.findOne('MarketplaceProduct', '"id" = $1', [item.productId]) as any
+      const product = await prisma.marketplaceProduct.findUnique({
+        where: { id: item.productId },
+      })
       if (!product || !product.isActive) {
         return error(`Product ${item.productId} not available`, 400)
       }
@@ -97,104 +158,89 @@ export async function POST(request: NextRequest) {
         userId,
       })
 
-      // Decrease stock
-      await db.update(
-        'MarketplaceProduct',
-        '"id" = $1',
-        { stock: product.stock - item.quantity },
-        [product.id]
-      )
+      productUpdates.push({ id: product.id, newStock: product.stock - item.quantity })
+    }
+
+    // If paying with balance, check first
+    if (paymentMethod === 'balance' && user.balanceWithdrawal < totalAmount) {
+      return error('Saldo insuficiente', 400)
     }
 
     // Create order
-    const order = await db.insert('MarketplaceOrder', {
-      userId,
-      totalAmount,
-      cashbackEarned: totalCashback,
-      shippingAddress: shippingAddress || null,
-      paymentMethod: paymentMethod || null,
-      status: paymentMethod === 'balance' ? 'processing' : 'pending',
+    const order = await prisma.marketplaceOrder.create({
+      data: {
+        userId,
+        totalAmount,
+        cashbackEarned: totalCashback,
+        shippingAddress: shippingAddress || null,
+        paymentMethod: paymentMethod || null,
+        status: paymentMethod === 'balance' ? 'processing' : 'pending',
+        paidAt: paymentMethod === 'balance' ? new Date() : null,
+      },
     })
 
     // Create order items
     for (const itemData of orderItemsData) {
-      await db.insert('MarketplaceOrderItem', {
-        orderId: (order as any).id,
-        ...itemData,
+      await prisma.marketplaceOrderItem.create({
+        data: {
+          orderId: order.id,
+          ...itemData,
+        },
+      })
+    }
+
+    // Decrease stock for all products
+    for (const update of productUpdates) {
+      await prisma.marketplaceProduct.update({
+        where: { id: update.id },
+        data: { stock: update.newStock },
       })
     }
 
     // If paying with balance, deduct from user
-    if (paymentMethod === 'balance' && user.balanceWithdrawal >= totalAmount) {
-      await db.update(
-        'User',
-        '"id" = $1',
-        {
+    if (paymentMethod === 'balance') {
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
           balanceWithdrawal: user.balanceWithdrawal - totalAmount,
           balanceGratification: user.balanceGratification + totalCashback,
         },
-        [userId]
-      )
-
-      await db.update(
-        'MarketplaceOrder',
-        '"id" = $1',
-        { status: 'processing', paidAt: new Date() },
-        [(order as any).id]
-      )
+      })
 
       // Create transaction
-      await db.insert('Transaction', {
-        userId,
-        type: 'marketplace_purchase',
-        amount: -totalAmount,
-        status: 'approved',
-        category: 'marketplace',
-        description: `Compra no Marketplace - Pedido #${(order as any).id.slice(-8)}`,
+      await prisma.transaction.create({
+        data: {
+          userId,
+          type: 'marketplace_purchase',
+          amount: -totalAmount,
+          status: 'approved',
+          category: 'marketplace',
+          description: `Compra no Marketplace - Pedido #${order.id.slice(-8)}`,
+        },
       })
 
       // Create cashback transaction
       if (totalCashback > 0) {
-        await db.insert('Transaction', {
-          userId,
-          type: 'cashback_sales',
-          amount: totalCashback,
-          status: 'approved',
-          category: 'marketplace',
-          description: `CashBack Marketplace - Pedido #${(order as any).id.slice(-8)}`,
+        await prisma.transaction.create({
+          data: {
+            userId,
+            type: 'cashback_sales',
+            amount: totalCashback,
+            status: 'approved',
+            category: 'marketplace',
+            description: `CashBack Marketplace - Pedido #${order.id.slice(-8)}`,
+          },
         })
       }
-    } else if (paymentMethod === 'balance') {
-      // Not enough balance - roll back
-      await db.deleteFrom('MarketplaceOrder', '"id" = $1', [(order as any).id])
-      // Delete order items
-      await db.execute(
-        `DELETE FROM "MarketplaceOrderItem" WHERE "orderId" = $1`,
-        [(order as any).id]
-      )
-      // Restore stock
-      for (const item of items) {
-        const product = await db.findOne('MarketplaceProduct', '"id" = $1', [item.productId]) as any
-        if (product) {
-          await db.update(
-            'MarketplaceProduct',
-            '"id" = $1',
-            { stock: product.stock + item.quantity },
-            [item.productId]
-          )
-        }
-      }
-      return error('Saldo insuficiente', 400)
     }
 
     // Get the order with items
-    const orderItems = await db.find(
-      'MarketplaceOrderItem',
-      '"orderId" = $1',
-      [(order as any).id]
-    )
+    const orderWithItems = await prisma.marketplaceOrder.findUnique({
+      where: { id: order.id },
+      include: { items: true },
+    })
 
-    return success({ order: { ...order, items: orderItems } }, 201)
+    return success({ order: orderWithItems }, 201)
   } catch (err) {
     console.error('Create order error:', err)
     return error('Internal server error', 500)

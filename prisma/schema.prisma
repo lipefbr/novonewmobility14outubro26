@@ -90,8 +90,27 @@ model User {
   marketplaceOrders    MarketplaceOrder[]
   marketplaceOrderItems MarketplaceOrderItem[]
   beneficiaries        Beneficiary[]
+  bets                 Bet[]
   referrals            User[]               @relation("Referrals")
   referredBy           User?                @relation("Referrals", fields: [referredById], references: [id])
+}
+
+model Bet {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  eventId         String
+  eventLabel      String
+  selection       String
+  selectionLabel  String
+  odds            Float
+  amountInCents   Int
+  potentialWinInCents Int
+  status          String   @default("pending")
+  result          String?
+  settledAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model MatrixPosition {

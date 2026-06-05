@@ -372,6 +372,28 @@ export const leaderboardApi = {
   },
 }
 
+// Sports & Bets
+export const betApi = {
+  getOdds: () =>
+    apiFetch<any>('/sports/odds'),
+  placeBet: (userId: string, eventId: string, eventLabel: string, selection: string, selectionLabel: string, odds: number, amountInCents: number) =>
+    apiFetch<any>('/bets', {
+      method: 'POST',
+      body: JSON.stringify({ userId, eventId, eventLabel, selection, selectionLabel, odds, amountInCents }),
+    }),
+  getBets: (userId: string, status?: string, limit?: number) => {
+    const params = new URLSearchParams({ userId })
+    if (status && status !== 'all') params.set('status', status)
+    if (limit) params.set('limit', String(limit))
+    return apiFetch<any>(`/bets?${params}`)
+  },
+  settleBet: (betId: string, result: 'won' | 'lost', userId?: string) =>
+    apiFetch<any>(`/bets/${betId}/settle`, {
+      method: 'POST',
+      body: JSON.stringify({ result, userId }),
+    }),
+}
+
 // Marketplace
 export const marketplaceApi = {
   getProducts: (params?: { search?: string; category?: string; page?: number; featured?: boolean }) => {

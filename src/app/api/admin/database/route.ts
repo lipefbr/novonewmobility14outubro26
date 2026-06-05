@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 // Allowed tables for security - only these can be browsed/modified
@@ -17,27 +17,27 @@ type AllowedTable = typeof ALLOWED_TABLES[number]
 // Map table names to Prisma model delegates
 function getModel(tableName: string) {
   const models: Record<string, any> = {
-    user: db.user,
-    transaction: db.transaction,
-    voucher: db.voucher,
-    invoice: db.invoice,
-    ticket: db.ticket,
-    ticketMessage: db.ticketMessage,
-    notification: db.notification,
-    gratification: db.gratification,
-    systemConfig: db.systemConfig,
-    cashbackEntry: db.cashbackEntry,
-    cashbackResidual: db.cashbackResidual,
-    cashbackSales: db.cashbackSales,
-    matrixPosition: db.matrixPosition,
-    careerMilestone: db.careerMilestone,
-    pointTransaction: db.pointTransaction,
-    announcement: db.announcement,
-    challenge: db.challenge,
-    userChallenge: db.userChallenge,
-    gamificationStreak: db.gamificationStreak,
-    event: db.event,
-    eventRegistration: db.eventRegistration,
+    user: prisma.user,
+    transaction: prisma.transaction,
+    voucher: prisma.voucher,
+    invoice: prisma.invoice,
+    ticket: prisma.ticket,
+    ticketMessage: prisma.ticketMessage,
+    notification: prisma.notification,
+    gratification: prisma.gratification,
+    systemConfig: prisma.systemConfig,
+    cashbackEntry: prisma.cashbackEntry,
+    cashbackResidual: prisma.cashbackResidual,
+    cashbackSales: prisma.cashbackSales,
+    matrixPosition: prisma.matrixPosition,
+    careerMilestone: prisma.careerMilestone,
+    pointTransaction: prisma.pointTransaction,
+    announcement: prisma.announcement,
+    challenge: prisma.challenge,
+    userChallenge: prisma.userChallenge,
+    gamificationStreak: prisma.gamificationStreak,
+    event: prisma.event,
+    eventRegistration: prisma.eventRegistration,
   }
   return models[tableName]
 }
@@ -47,7 +47,7 @@ const SENSITIVE_FIELDS = ['password']
 
 async function verifyAdmin(userId: string) {
   if (!userId) return false
-  const user = await db.user.findUnique({ where: { id: userId } })
+  const user = await prisma.user.findUnique({ where: { id: userId } })
   return user && user.role === 'admin'
 }
 
@@ -197,7 +197,7 @@ export async function DELETE(req: NextRequest) {
 
     // Prevent deleting users with role admin
     if (table === 'user') {
-      const target = await db.user.findUnique({ where: { id } })
+      const target = await prisma.user.findUnique({ where: { id } })
       if (target?.role === 'admin') return error('Cannot delete admin user', 403)
     }
 

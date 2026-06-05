@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 const DEFAULT_PAYMENT_CONFIGS: Record<string, string> = {
@@ -25,10 +25,10 @@ export async function GET(req: NextRequest) {
     const userId = req.nextUrl.searchParams.get('userId')
     if (!userId) return error('userId is required', 400)
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user || user.role !== 'admin') return error('Unauthorized', 403)
 
-    const configs = await db.systemConfig.findMany({
+    const configs = await prisma.systemConfig.findMany({
       where: { key: { startsWith: 'payment_' } }
     })
 
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
 
     for (const [key, value] of Object.entries(DEFAULT_PAYMENT_CONFIGS)) {
       if (!configMap[key]) {
-        await db.systemConfig.upsert({
+        await prisma.systemConfig.upsert({
           where: { key },
           update: {},
           create: { key, value, description: `Payment config: ${key.replace('payment_', '')}` }
@@ -85,13 +85,13 @@ export async function PUT(req: NextRequest) {
     const { userId, configs } = body
     if (!userId) return error('userId is required', 400)
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user || user.role !== 'admin') return error('Unauthorized', 403)
 
     if (!configs || typeof configs !== 'object') return error('configs object is required', 400)
 
     const updates = Object.entries(configs).map(([key, value]) =>
-      db.systemConfig.upsert({
+      prisma.systemConfig.upsert({
         where: { key },
         update: { value: String(value) },
         create: { key, value: String(value), description: `Payment config: ${key.replace('payment_', '')}` },

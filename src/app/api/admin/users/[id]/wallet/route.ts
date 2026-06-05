@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error, sanitizeUser } from '@/lib/api-utils'
 
 const VALID_WALLETS = [
@@ -33,7 +33,7 @@ export async function POST(
 
     if (!userId) return error('userId is required', 400)
 
-    const admin = await db.user.findUnique({ where: { id: userId } })
+    const admin = await prisma.user.findUnique({ where: { id: userId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
     if (!wallet || !VALID_WALLETS.includes(wallet)) {
@@ -48,7 +48,7 @@ export async function POST(
       return error('description is required', 400)
     }
 
-    const user = await db.user.findUnique({ where: { id } })
+    const user = await prisma.user.findUnique({ where: { id } })
     if (!user) return error('User not found', 404)
 
     const walletKey = wallet as WalletKey
@@ -61,13 +61,13 @@ export async function POST(
     }
 
     // Update user balance and create transaction in a single logical operation
-    const updatedUser = await db.user.update({
+    const updatedUser = await prisma.user.update({
       where: { id },
       data: { [walletKey]: newBalance },
     })
 
     // Create corresponding transaction record
-    await db.transaction.create({
+    await prisma.transaction.create({
       data: {
         userId: id,
         type: amount > 0 ? 'deposit' : 'withdrawal',

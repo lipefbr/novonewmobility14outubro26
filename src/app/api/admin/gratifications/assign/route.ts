@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function POST(req: NextRequest) {
@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
 
     if (!userId) return error('userId is required', 400)
 
-    const admin = await db.user.findUnique({ where: { id: userId } })
+    const admin = await prisma.user.findUnique({ where: { id: userId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
     if (!targetUserId || !type || !amount || !category) {
@@ -20,10 +20,10 @@ export async function POST(req: NextRequest) {
       return error('amount must be a positive number', 400)
     }
 
-    const targetUser = await db.user.findUnique({ where: { id: targetUserId } })
+    const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } })
     if (!targetUser) return error('Target user not found', 404)
 
-    const gratification = await db.gratification.create({
+    const gratification = await prisma.gratification.create({
       data: {
         userId: targetUserId,
         type,

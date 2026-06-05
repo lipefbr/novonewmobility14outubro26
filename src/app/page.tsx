@@ -35,12 +35,20 @@ function PageContent() {
   const { activePage, user, setActivePage } = useStore()
 
   // Admin-only pages: redirect non-admin users to dashboard
-  const adminOnlyPages: PageKey[] = ['admin']
-  if (adminOnlyPages.includes(activePage) && user?.role !== 'admin') {
-    // Use useEffect-like pattern to avoid render loop
-    setTimeout(() => setActivePage('dashboard'), 0)
-    return <DashboardPage />
-  }
+  useEffect(() => {
+    const adminOnlyPages: PageKey[] = ['admin']
+    if (adminOnlyPages.includes(activePage) && user?.role !== 'admin') {
+      setActivePage('dashboard')
+    }
+  }, [activePage, user?.role, setActivePage])
+
+  // Lojista-only pages: redirect non-lojista users to dashboard
+  useEffect(() => {
+    const lojistaOnlyPages: PageKey[] = ['portal-lojista']
+    if (lojistaOnlyPages.includes(activePage) && user?.userType !== 'lojista') {
+      setActivePage('dashboard')
+    }
+  }, [activePage, user?.userType, setActivePage])
 
   switch (activePage) {
     case 'dashboard':

@@ -232,6 +232,7 @@ export function AdminPage() {
   // Support/Tickets tab
   const [tickets, setTickets] = useState<AdminTicket[]>([])
   const [ticketStatusFilter, setTicketStatusFilter] = useState('all')
+  const [ticketPriorityFilter, setTicketPriorityFilter] = useState('all')
   const [selectedTicket, setSelectedTicket] = useState<AdminTicket | null>(null)
   const [ticketReply, setTicketReply] = useState('')
   const [sendingReply, setSendingReply] = useState(false)
@@ -251,7 +252,7 @@ export function AdminPage() {
     if (activeTab === 'cashback') loadCashback()
     if (activeTab === 'financial') loadFinancial()
     if (activeTab === 'tickets') loadTickets()
-  }, [activeTab, searchQuery, planFilter, statusFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter])
+  }, [activeTab, searchQuery, planFilter, statusFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter, ticketPriorityFilter])
 
   const loadStats = async () => {
     try {
@@ -319,7 +320,7 @@ export function AdminPage() {
 
   const loadTickets = async () => {
     try {
-      const params = new URLSearchParams({ userId: user?.id || '', status: ticketStatusFilter })
+      const params = new URLSearchParams({ userId: user?.id || '', status: ticketStatusFilter, priority: ticketPriorityFilter })
       const data = await apiFetch<{ tickets: AdminTicket[] }>(`/admin/support/tickets?${params}`)
       setTickets(data.tickets || [])
     } catch { /* ignore */ }
@@ -1560,12 +1561,127 @@ export function AdminPage() {
                 </CardContent>
               </Card>
 
+              {/* Pending Withdrawals - Approve/Reject */}
+              {financialData.recentTransactions.filter(t => t.type === 'withdrawal' && t.status === 'pending').length > 0 && (
+                <Card className="border-amber-200 dark:border-amber-800">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-600" />
+                        Saques Pendentes ({financialData.recentTransactions.filter(t => t.type === 'withdrawal' && t.status === 'pending').length})
+                      </CardTitle>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-border bg-amber-50/50 dark:bg-amber-950/20">
+                            <th className="text-left text-xs font-semibold text-muted-foreground p-3">Usuário</th>
+                            <th className="text-left text-xs font-semibold text-muted-foreground p-3">Valor</th>
+                            <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden sm:table-cell">Data</th>
+                            <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden md:table-cell">Descrição</th>
+                            <th className="text-right text-xs font-semibold text-muted-foreground p-3">Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {financialData.recentTransactions
+                            .filter(t => t.type === 'withdrawal' && t.status === 'pending')
+                            .map(t => (
+                              <tr key={t.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                                <td className="p-3">
+                                  <div>
+                                    <p className="text-sm font-medium text-foreground">{t.userName}</p>
+                                    <p className="text-[10px] text-muted-foreground">{t.userEmail}</p>
+                                  </div>
+                                </td>
+                                <td className="p-3"><span className="text-sm font-semibold text-red-600">{formatCurrency(t.amount)}</span></td>
+                                <td className="p-3 hidden sm:table-cell"><span className="text-xs text-muted-foreground">{new Date(t.createdAt).toLocaleDateString('pt-BR')}</span></td>
+                                <td className="p-3 hidden md:table-cell"><span className="text-xs text-muted-foreground line-clamp-1">{t.description || '—'}</span></td>
+                                <td className="p-3 text-right">
+                                  <div className="flex items-center justify-end gap-1">
+                                    <Button variant="ghost" size="sm" className="h-7 gap-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" disabled={processingWithdrawal === t.id} onClick={() => handleWithdrawalAction(t.id, 'approve')}>
+                                      {processingWithdrawal === t.id ? <span className="h-3.5 w-3.5 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                                      <span className="hidden sm:inline">Aprovar</span>
+                                    </Button>
+                                    <Button variant="ghost" size="sm" className="h-7 gap-1 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30" disabled={processingWithdrawal === t.id} onClick={() => handleWithdrawalAction(t.id, 'reject')}>
+                                      <Ban className="h-3.5 w-3.5" />
+                                      <span className="hidden sm:inline">Rejeitar</span>
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Financial Health Metrics */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-emerald-600" /> Métricas de Saúde Financeira
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="p-3 bg-muted/50 rounded-lg text-center">
+                      <p className="text-xs text-muted-foreground">Taxa de Aprovação</p>
+                      <p className="text-lg font-bold text-foreground">
+                        {financialData.overview.approvedWithdrawals + financialData.overview.pendingWithdrawals > 0
+                          ? ((financialData.overview.approvedWithdrawals / (financialData.overview.approvedWithdrawals + financialData.overview.pendingWithdrawals)) * 100).toFixed(0)
+                          : '0'}%
+                      </p>
+                    </div>
+                    <div className="p-3 bg-muted/50 rounded-lg text-center">
+                      <p className="text-xs text-muted-foreground">CB / Receita</p>
+                      <p className="text-lg font-bold text-foreground">
+                        {financialData.overview.totalRevenue > 0
+                          ? ((financialData.overview.totalCashback / financialData.overview.totalRevenue) * 100).toFixed(1)
+                          : '0'}%
+                      </p>
+                    </div>
+                    <div className="p-3 bg-muted/50 rounded-lg text-center">
+                      <p className="text-xs text-muted-foreground">Saldo Líquido</p>
+                      <p className={`text-lg font-bold ${financialData.overview.totalRevenue - financialData.overview.totalCashback - financialData.overview.approvedWithdrawals >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {formatCurrency(financialData.overview.totalRevenue - financialData.overview.totalCashback - financialData.overview.approvedWithdrawals)}
+                      </p>
+                    </div>
+                    <div className="p-3 bg-muted/50 rounded-lg text-center">
+                      <p className="text-xs text-muted-foreground">Em Circulação</p>
+                      <p className="text-lg font-bold text-foreground">
+                        {financialData.overview.totalPlatformBalance > 0
+                          ? ((financialData.overview.totalInCirculation / financialData.overview.totalPlatformBalance) * 100).toFixed(1)
+                          : '0'}%
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Recent Transactions Table */}
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-sm flex items-center gap-2"><Activity className="h-4 w-4 text-emerald-600" /> Transações Recentes</CardTitle>
-                    <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => toast.info('Exportação em desenvolvimento')}>
+                    <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => {
+                      if (!financialData?.recentTransactions?.length) { toast.error('Nenhuma transação para exportar'); return }
+                      const headers = ['Data', 'Usuário', 'Email', 'Tipo', 'Valor', 'Status', 'Descrição']
+                      const typeLabels: Record<string, string> = { deposit: 'Depósito', withdrawal: 'Saque', cashback_entry: 'CB Entrada', cashback_residual: 'CB Residual', cashback_sales: 'CB Vendas', gratification: 'Gratificação', plan_payment: 'Pag. Plano', marketplace_purchase: 'Marketplace', voucher: 'Voucher', bonus: 'Bônus' }
+                      const statusLabels: Record<string, string> = { pending: 'Pendente', approved: 'Aprovado', rejected: 'Rejeitado', paid: 'Pago' }
+                      const rows = financialData.recentTransactions.map(t => [new Date(t.createdAt).toLocaleString('pt-BR'), t.userName, t.userEmail, typeLabels[t.type] || t.type, (t.amount / 100).toFixed(2), statusLabels[t.status] || t.status, t.description || ''])
+                      const csvContent = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+                      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' })
+                      const link = document.createElement('a')
+                      link.href = URL.createObjectURL(blob)
+                      link.download = `financeiro_newmobility_${new Date().toISOString().split('T')[0]}.csv`
+                      link.click()
+                      URL.revokeObjectURL(link.href)
+                      toast.success('Relatório financeiro exportado!')
+                    }}>
                       <Download className="h-3 w-3" /> Exportar
                     </Button>
                   </div>
@@ -1776,8 +1892,26 @@ export function AdminPage() {
                 <option value="resolved">Resolvido</option>
                 <option value="closed">Fechado</option>
               </select>
+              <select value={ticketPriorityFilter} onChange={(e) => setTicketPriorityFilter(e.target.value)} className="h-9 rounded-md border border-input bg-background px-3 text-sm">
+                <option value="all">Todas Prioridades</option>
+                <option value="urgent">Urgente</option>
+                <option value="high">Alta</option>
+                <option value="normal">Normal</option>
+                <option value="low">Baixa</option>
+              </select>
               <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs" onClick={loadTickets}>
                 <RefreshCw className="h-3.5 w-3.5" /> Atualizar
+              </Button>
+              <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs" onClick={async () => {
+                try {
+                  await apiFetch('/seed-tickets', { method: 'POST' })
+                  loadTickets()
+                  toast.success('Tickets de teste criados!')
+                } catch {
+                  toast.error('Erro ao criar tickets de teste')
+                }
+              }}>
+                <Plus className="h-3.5 w-3.5" /> Criar Teste
               </Button>
             </div>
           </div>
@@ -1880,6 +2014,27 @@ export function AdminPage() {
                         <p className="text-xs text-muted-foreground mt-1">
                           {selectedTicket.userName} ({selectedTicket.userEmail}) • Criado em {new Date(selectedTicket.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
                         </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge className={`${
+                            selectedTicket.status === 'open' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                            selectedTicket.status === 'in_progress' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                            selectedTicket.status === 'resolved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                            'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                          } text-[10px]`}>
+                            {selectedTicket.status === 'open' ? 'Aberto' : selectedTicket.status === 'in_progress' ? 'Em Andamento' : selectedTicket.status === 'resolved' ? 'Resolvido' : selectedTicket.status === 'closed' ? 'Fechado' : selectedTicket.status}
+                          </Badge>
+                          <Badge className={`${
+                            selectedTicket.priority === 'low' ? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' :
+                            selectedTicket.priority === 'normal' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                            selectedTicket.priority === 'high' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                            'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                          } text-[10px]`}>
+                            {selectedTicket.priority === 'low' ? 'Baixa' : selectedTicket.priority === 'normal' ? 'Normal' : selectedTicket.priority === 'high' ? 'Alta' : selectedTicket.priority === 'urgent' ? 'Urgente' : selectedTicket.priority}
+                          </Badge>
+                          <Badge variant="outline" className="text-[10px]">
+                            {selectedTicket.category === 'technical' ? 'Técnico' : selectedTicket.category === 'financial' ? 'Financeiro' : selectedTicket.category === 'account' ? 'Conta' : selectedTicket.category === 'other' ? 'Outro' : selectedTicket.category}
+                          </Badge>
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <select
@@ -1892,12 +2047,20 @@ export function AdminPage() {
                           <option value="resolved">Resolvido</option>
                           <option value="closed">Fechado</option>
                         </select>
+                        <Button variant="ghost" size="sm" className="h-8 text-xs gap-1" onClick={async () => {
+                          try {
+                            const data = await apiFetch<{ ticket: AdminTicket }>(`/admin/support/tickets/${selectedTicket.id}?userId=${user?.id}`)
+                            setSelectedTicket(data.ticket || data as unknown as AdminTicket)
+                          } catch { /* ignore */ }
+                        }}>
+                          <RefreshCw className="h-3 w-3" />
+                        </Button>
                       </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {/* Messages */}
-                    <div className="max-h-[350px] overflow-y-auto space-y-3 pr-1">
+                    <div className="max-h-[400px] overflow-y-auto space-y-3 pr-1">
                       {selectedTicket.messages?.map(msg => (
                         <div key={msg.id} className={`flex ${msg.isAdmin ? 'justify-start' : 'justify-end'}`}>
                           <div className={`max-w-[85%] rounded-lg p-3 ${msg.isAdmin ? 'bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800' : 'bg-muted/50 border border-border'}`}>
@@ -1924,17 +2087,15 @@ export function AdminPage() {
                     {/* Reply */}
                     <div className="space-y-2">
                       <Label className="text-xs font-medium">Responder como Admin</Label>
-                      <div className="flex gap-2">
-                        <textarea
-                          value={ticketReply}
-                          onChange={(e) => setTicketReply(e.target.value)}
-                          placeholder="Escreva sua resposta..."
-                          className="flex-1 min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && e.ctrlKey) handleReplyTicket()
-                          }}
-                        />
-                      </div>
+                      <textarea
+                        value={ticketReply}
+                        onChange={(e) => setTicketReply(e.target.value)}
+                        placeholder="Escreva sua resposta..."
+                        className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && e.ctrlKey) handleReplyTicket()
+                        }}
+                      />
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] text-muted-foreground">Ctrl+Enter para enviar</span>
                         <Button

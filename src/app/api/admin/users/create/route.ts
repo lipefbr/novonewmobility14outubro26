@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error, hashPassword, generateReferralCode, sanitizeUser } from '@/lib/api-utils'
 
 export async function POST(req: NextRequest) {
@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
 
     if (!userId) return error('userId is required', 400)
 
-    const admin = await db.user.findUnique({ where: { id: userId } })
+    const admin = await prisma.user.findUnique({ where: { id: userId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
     if (!name || !email || !password) {
@@ -17,22 +17,22 @@ export async function POST(req: NextRequest) {
     }
 
     // Check email uniqueness
-    const emailExists = await db.user.findUnique({ where: { email } })
+    const emailExists = await prisma.user.findUnique({ where: { email } })
     if (emailExists) return error('Email already in use', 400)
 
     // Check cpf uniqueness if provided
     if (cpf) {
-      const cpfExists = await db.user.findUnique({ where: { cpf } })
+      const cpfExists = await prisma.user.findUnique({ where: { cpf } })
       if (cpfExists) return error('CPF already in use', 400)
     }
 
     // Generate unique referral code
     let referralCode = generateReferralCode(name)
-    let codeExists = await db.user.findUnique({ where: { referralCode } })
+    let codeExists = await prisma.user.findUnique({ where: { referralCode } })
     let attempts = 0
     while (codeExists && attempts < 10) {
       referralCode = generateReferralCode(name)
-      codeExists = await db.user.findUnique({ where: { referralCode } })
+      codeExists = await prisma.user.findUnique({ where: { referralCode } })
       attempts++
     }
     if (codeExists) return error('Failed to generate unique referral code', 500)
@@ -40,14 +40,14 @@ export async function POST(req: NextRequest) {
     // Resolve referral relationship
     let referredById: string | null = null
     if (referredByCode) {
-      const referrer = await db.user.findUnique({ where: { referralCode: referredByCode } })
+      const referrer = await prisma.user.findUnique({ where: { referralCode: referredByCode } })
       if (!referrer) return error('Referral code not found', 400)
       referredById = referrer.id
     }
 
     const hashedPassword = hashPassword(password)
 
-    const newUser = await db.user.create({
+    const newUser = await prisma.user.create({
       data: {
         name,
         email,

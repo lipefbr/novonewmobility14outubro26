@@ -30,9 +30,7 @@ export async function POST(request: Request) {
     else if (category === 'gratification') balanceField = 'balanceGratification'
 
     const currentBalance = user[balanceField] as number
-    if (currentBalance < amountCents) {
-      return error('Insufficient balance', 400)
-    }
+    // Note: Allow negative balances - no insufficient balance check
 
     // Create transaction
     const transaction = await db.insert('Transaction', {

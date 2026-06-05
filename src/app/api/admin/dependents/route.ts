@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function GET(req: NextRequest) {
@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
     const adminUserId = req.nextUrl.searchParams.get('userId')
     if (!adminUserId) return error('userId is required', 400)
 
-    const admin = await db.user.findUnique({ where: { id: adminUserId } })
+    const admin = await prisma.user.findUnique({ where: { id: adminUserId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
     const search = req.nextUrl.searchParams.get('search') || ''
@@ -28,8 +28,11 @@ export async function GET(req: NextRequest) {
       ]
     }
 
-    const [dependents, total] = await Promise.all([
-      db.dependent.findMany({
+    let dependents: any[] = []
+    let total = 0
+
+    try {
+      dependents = await prisma.beneficiary.findMany({
         where,
         include: {
           user: {
@@ -39,9 +42,16 @@ export async function GET(req: NextRequest) {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
-      }),
-      db.dependent.count({ where }),
-    ])
+      })
+    } catch (e) {
+      console.error('Admin dependents findMany error:', e)
+    }
+
+    try {
+      total = await prisma.beneficiary.count({ where })
+    } catch (e) {
+      console.error('Admin dependents count error:', e)
+    }
 
     return success({
       dependents,
@@ -57,29 +67,27 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { userId: adminUserId, userId_target, name, cpf, relationship, birthDate, phone, email } = body
+    const { userId: adminUserId, userId_target, name, cpf, relationship, percentage } = body
 
     if (!adminUserId) return error('userId is required', 400)
 
-    const admin = await db.user.findUnique({ where: { id: adminUserId } })
+    const admin = await prisma.user.findUnique({ where: { id: adminUserId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
     if (!userId_target) return error('userId_target is required', 400)
     if (!name) return error('name is required', 400)
     if (!relationship) return error('relationship is required', 400)
 
-    const targetUser = await db.user.findUnique({ where: { id: userId_target } })
+    const targetUser = await prisma.user.findUnique({ where: { id: userId_target } })
     if (!targetUser) return error('Target user not found', 404)
 
-    const dependent = await db.dependent.create({
+    const dependent = await prisma.beneficiary.create({
       data: {
         userId: userId_target,
         name,
         cpf: cpf || null,
         relationship,
-        birthDate: birthDate ? new Date(birthDate) : null,
-        phone: phone || null,
-        email: email || null,
+        percentage: percentage || 100,
       },
       include: {
         user: {

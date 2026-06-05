@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function POST(req: NextRequest) {
@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
     const { userId, operations, description } = body
     if (!userId) return error('userId is required', 400)
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user || user.role !== 'admin') return error('Unauthorized', 403)
 
     if (!operations || !Array.isArray(operations) || operations.length === 0) {
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const targetUser = await db.user.findUnique({ where: { id: targetUserId } })
+        const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } })
         if (!targetUser) {
           results.push({ userId: targetUserId, success: false, message: 'User not found' })
           continue
@@ -52,12 +52,12 @@ export async function POST(req: NextRequest) {
           continue
         }
 
-        await db.user.update({
+        await prisma.user.update({
           where: { id: targetUserId },
           data: { [wallet]: currentBalance + amountCents },
         })
 
-        await db.transaction.create({
+        await prisma.transaction.create({
           data: {
             userId: targetUserId,
             type: amountCents >= 0 ? 'deposit' : 'withdrawal',
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     const successCount = results.filter(r => r.success).length
     const failCount = results.filter(r => !r.success).length
 
-    await db.systemConfig.upsert({
+    await prisma.systemConfig.upsert({
       where: { key: `batch_release_${Date.now()}` },
       update: {},
       create: {
@@ -111,22 +111,28 @@ export async function GET(req: NextRequest) {
     const userId = req.nextUrl.searchParams.get('userId')
     if (!userId) return error('userId is required', 400)
 
-    const user = await db.user.findUnique({ where: { id: userId } })
+    const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user || user.role !== 'admin') return error('Unauthorized', 403)
 
     const page = parseInt(req.nextUrl.searchParams.get('page') || '1')
     const limit = parseInt(req.nextUrl.searchParams.get('limit') || '20')
     const skip = (page - 1) * limit
 
-    const [logs, total] = await Promise.all([
-      db.systemConfig.findMany({
+    let logs: any[] = []
+    let total = 0
+
+    try {
+      logs = await prisma.systemConfig.findMany({
         where: { key: { startsWith: 'batch_release_' } },
         orderBy: { updatedAt: 'desc' },
         skip,
         take: limit,
-      }),
-      db.systemConfig.count({ where: { key: { startsWith: 'batch_release_' } } }),
-    ])
+      })
+    } catch { /* ignore */ }
+
+    try {
+      total = await prisma.systemConfig.count({ where: { key: { startsWith: 'batch_release_' } } })
+    } catch { /* ignore */ }
 
     const history = logs.map(log => {
       try {

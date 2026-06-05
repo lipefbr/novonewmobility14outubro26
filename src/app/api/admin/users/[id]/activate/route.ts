@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error, sanitizeUser } from '@/lib/api-utils'
 
 export async function PUT(
@@ -13,17 +13,17 @@ export async function PUT(
 
     if (!userId) return error('userId is required', 400)
 
-    const admin = await db.user.findUnique({ where: { id: userId } })
+    const admin = await prisma.user.findUnique({ where: { id: userId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
     if (typeof isActive !== 'boolean') {
       return error('isActive must be a boolean', 400)
     }
 
-    const user = await db.user.findUnique({ where: { id } })
+    const user = await prisma.user.findUnique({ where: { id } })
     if (!user) return error('User not found', 404)
 
-    const updatedUser = await db.user.update({
+    const updatedUser = await prisma.user.update({
       where: { id },
       data: { isActive },
     })

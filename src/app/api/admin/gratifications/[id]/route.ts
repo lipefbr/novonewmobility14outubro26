@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function PUT(
@@ -13,10 +13,10 @@ export async function PUT(
 
     if (!userId) return error('userId is required', 400)
 
-    const admin = await db.user.findUnique({ where: { id: userId } })
+    const admin = await prisma.user.findUnique({ where: { id: userId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
-    const gratification = await db.gratification.findUnique({ where: { id } })
+    const gratification = await prisma.gratification.findUnique({ where: { id } })
     if (!gratification) return error('Gratification not found', 404)
 
     const data: Record<string, unknown> = {}
@@ -36,7 +36,7 @@ export async function PUT(
       }
     }
 
-    const updatedGratification = await db.gratification.update({
+    const updatedGratification = await prisma.gratification.update({
       where: { id },
       data,
     })

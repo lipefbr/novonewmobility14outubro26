@@ -58,6 +58,7 @@ interface MenuItem {
   isBeta?: boolean
   shortcut?: string
   adminOnly?: boolean
+  lojistaOnly?: boolean
 }
 
 const allMenuItems: MenuItem[] = [
@@ -68,7 +69,7 @@ const allMenuItems: MenuItem[] = [
   { key: 'myplan', labelKey: 'sidebar.myplan', icon: CreditCard, groupKey: 'sidebar.group.main' },
   { key: 'purchases', labelKey: 'sidebar.purchases', icon: ShoppingCart, groupKey: 'sidebar.group.main' },
   { key: 'marketplace', labelKey: 'sidebar.marketplace', icon: ShoppingBag, groupKey: 'sidebar.group.main', isNew: true },
-  { key: 'portal-lojista', labelKey: 'sidebar.portal-lojista', icon: Store, groupKey: 'sidebar.group.portals', isBeta: true },
+  { key: 'portal-lojista', labelKey: 'sidebar.portal-lojista', icon: Store, groupKey: 'sidebar.group.portals', isBeta: true, lojistaOnly: true },
   { key: 'portal-gamer', labelKey: 'sidebar.portal-gamer', icon: Gamepad2, groupKey: 'sidebar.group.portals', isBeta: true },
   { key: 'portal-sportbet', labelKey: 'sidebar.portal-sportbet', icon: Trophy, groupKey: 'sidebar.group.portals', isBeta: true },
   { key: 'gratifications', labelKey: 'sidebar.gratifications', icon: Gift, groupKey: 'sidebar.group.financial' },
@@ -108,7 +109,12 @@ export function Sidebar() {
 
   // Filter menu items based on user role (admin-only items hidden for normal users)
   const isAdmin = user?.role === 'admin'
-  const menuItems = allMenuItems.filter(item => !item.adminOnly || isAdmin)
+  const isLojista = user?.userType === 'lojista'
+  const menuItems = allMenuItems.filter(item => {
+    if (item.adminOnly && !isAdmin) return false
+    if (item.lojistaOnly && !isLojista) return false
+    return true
+  })
 
   // Group menu items
   const groupedItems: { groupKey: string; items: MenuItem[] }[] = []
