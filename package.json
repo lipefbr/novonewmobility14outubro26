@@ -5,13 +5,16 @@
   "scripts": {
     "dev": "NODE_OPTIONS='--max-old-space-size=2048' next dev -p 3000 --webpack",
     "dev:prod": "NODE_ENV=production NODE_OPTIONS='--max-old-space-size=512' node .next/standalone/server.js",
-    "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
-    "start": "NODE_ENV=production NODE_OPTIONS='--max-old-space-size=512' node .next/standalone/server.js 2>&1 | tee server.log",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "build:standalone": "next build && mkdir -p .next/standalone/.next && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
+    "start:standalone": "NODE_ENV=production NODE_OPTIONS='--max-old-space-size=512' node .next/standalone/server.js",
     "lint": "eslint .",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:reset": "prisma migrate reset"
+    "db:reset": "prisma migrate reset",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
