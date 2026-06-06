@@ -147,6 +147,8 @@ export const financialApi = {
     if (endDate) params.set('endDate', endDate)
     return `/api/financial/export?${params.toString()}`
   },
+  getWithdrawals: (userId: string) =>
+    apiFetch<any>(`/financial/withdrawals?userId=${userId}`),
 }
 
 // Career

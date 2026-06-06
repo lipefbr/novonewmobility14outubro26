@@ -24,24 +24,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { ResponsiveContainer, LineChart, Line, XAxis, Tooltip as RechartsTooltip } from 'recharts'
 
-const mockReferrals = [
-  { id: '1', name: 'Ana Paula Santos', date: '2024-11-15', status: 'active', plan: 'blue5', level: 1, cashback: 125000, email: 'ana.santos@email.com' },
-  { id: '2', name: 'Roberto Ferreira', date: '2024-10-22', status: 'active', plan: 'blue3', level: 1, cashback: 89000, email: 'roberto.f@email.com' },
-  { id: '3', name: 'Maria Clara Costa', date: '2024-09-05', status: 'active', plan: 'blue5', level: 1, cashback: 234000, email: 'maria.cc@email.com' },
-  { id: '4', name: 'João Pedro Lima', date: '2024-08-18', status: 'inactive', plan: 'blue3', level: 1, cashback: 45000, email: 'jp.lima@email.com' },
-  { id: '5', name: 'Lucas Mendes', date: '2024-12-01', status: 'active', plan: 'blue5', level: 2, cashback: 67000, email: 'lucas.m@email.com' },
-  { id: '6', name: 'Fernanda Oliveira', date: '2024-07-10', status: 'active', plan: 'blue3', level: 2, cashback: 156000, email: 'fer.oliveira@email.com' },
-  { id: '7', name: 'Ricardo Souza', date: '2024-06-15', status: 'active', plan: 'blue5', level: 2, cashback: 312000, email: 'ricardo.s@email.com' },
-  { id: '8', name: 'Patricia Alves', date: '2024-05-20', status: 'inactive', plan: 'free', level: 2, cashback: 12000, email: 'pat.alves@email.com' },
-  { id: '9', name: 'Bruno Carvalho', date: '2024-11-28', status: 'active', plan: 'blue3', level: 3, cashback: 78000, email: 'bruno.c@email.com' },
-  { id: '10', name: 'Camila Rodrigues', date: '2024-10-15', status: 'active', plan: 'blue5', level: 3, cashback: 198000, email: 'camila.r@email.com' },
-  { id: '11', name: 'Diego Martins', date: '2024-09-22', status: 'active', plan: 'blue3', level: 3, cashback: 95000, email: 'diego.m@email.com' },
-  { id: '12', name: 'Elisa Barbosa', date: '2024-08-30', status: 'active', plan: 'blue5', level: 4, cashback: 445000, email: 'elisa.b@email.com' },
-  { id: '13', name: 'Thiago Nascimento', date: '2025-01-10', status: 'active', plan: 'blue3', level: 1, cashback: 32000, email: 'thiago.n@email.com' },
-  { id: '14', name: 'Carla Ferreira', date: '2025-01-18', status: 'active', plan: 'blue5', level: 1, cashback: 15000, email: 'carla.f@email.com' },
-  { id: '15', name: 'Marcos Ribeiro', date: '2025-02-01', status: 'active', plan: 'blue3', level: 3, cashback: 50000, email: 'marcos.r@email.com' },
-  { id: '16', name: 'Juliana Santos', date: '2025-02-05', status: 'active', plan: 'blue5', level: 4, cashback: 88000, email: 'juliana.s@email.com' },
-]
+// Referrals are loaded from the API - no mock data to prevent data leakage
 
 // Network growth data for mini chart
 const networkGrowthData = [
@@ -53,12 +36,7 @@ const networkGrowthData = [
   { month: 'Jan', count: 16 },
 ]
 
-// Top referrers leaderboard
-const topReferrers = [
-  { name: 'Maria Clara Costa', cashback: 234000, rank: 1 },
-  { name: 'Ricardo Souza', cashback: 312000, rank: 2 },
-  { name: 'Elisa Barbosa', cashback: 445000, rank: 3 },
-]
+// Top referrers leaderboard - derived from actual data
 
 export function ReferralsPage() {
   const { t } = useTranslation()
@@ -66,14 +44,14 @@ export function ReferralsPage() {
   const [search, setSearch] = useState('')
   const [levelFilter, setLevelFilter] = useState<number | null>(null)
   const [copied, setCopied] = useState(false)
-  const [detailReferral, setDetailReferral] = useState<typeof mockReferrals[0] | null>(null)
+  const [detailReferral, setDetailReferral] = useState<any | null>(null)
   const [showAllLevels, setShowAllLevels] = useState(false)
   const [loading, setLoading] = useState(true)
   const [networkModalOpen, setNetworkModalOpen] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
   const [planFilter, setPlanFilter] = useState<string>('all')
   const [statusFilterVal, setStatusFilterVal] = useState<string>('all')
-  const [referrals, setReferrals] = useState(mockReferrals)
+  const [referrals, setReferrals] = useState<any[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -100,7 +78,7 @@ export function ReferralsPage() {
         const data = await referralsApi.getList(user.id)
         if (cancelled) return
 
-        if (data?.directReferrals && data.directReferrals.length > 0) {
+        if (data?.directReferrals) {
           const mapped = data.directReferrals.map((r: any, idx: number) => ({
             id: r.id,
             name: r.name,
@@ -137,14 +115,15 @@ export function ReferralsPage() {
           } else {
             setReferrals(mapped)
           }
-        } else if (data?.directReferrals && data.directReferrals.length === 0) {
-          // API returned empty referrals - clear mock data and show empty state
+        } else {
+          // No referrals data - show empty state
           setReferrals([])
         }
       } catch (err) {
         if (cancelled) return
         console.error('Failed to fetch referrals:', err)
-        // Keep mock data as fallback
+        // On error, show empty state instead of mock data
+        setReferrals([])
       } finally {
         if (!cancelled) {
           setLoading(false)
@@ -182,7 +161,7 @@ export function ReferralsPage() {
     const now = new Date()
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
   }).length
-  const conversionRate = Math.round((activeCount / totalNetwork) * 100)
+  const conversionRate = totalNetwork > 0 ? Math.round((activeCount / totalNetwork) * 100) : 0
 
   const thisWeekCount = Math.max(1, Math.floor(newThisMonth * 0.4))
   const lastWeekCount = Math.max(0, thisWeekCount - 1)
@@ -192,7 +171,7 @@ export function ReferralsPage() {
     count: referrals.filter((r) => r.level === lvl).length,
   }))
 
-  const maxLevelWithData = Math.max(...referrals.map((r) => r.level))
+  const maxLevelWithData = referrals.length > 0 ? Math.max(...referrals.map((r) => r.level)) : 0
   const visibleLevels = showAllLevels ? levelCounts : levelCounts.slice(0, 4)
 
   const handleCopyLink = () => {
@@ -406,23 +385,34 @@ export function ReferralsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {topReferrers.map((referrer) => {
-                  const medal = referrer.rank === 1 ? '🥇' : referrer.rank === 2 ? '🥈' : '🥉'
-                  const medalBg = referrer.rank === 1 ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800' : referrer.rank === 2 ? 'bg-gray-50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-700' : 'bg-orange-50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800'
-                  return (
-                    <div key={referrer.name} className={`flex items-center gap-3 p-2.5 rounded-lg border ${medalBg}`}>
-                      <span className="text-xl">{medal}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">{referrer.name}</p>
-                        <p className="text-xs text-muted-foreground">Nível {referrer.rank}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(referrer.cashback)}</p>
-                        <p className="text-[10px] text-muted-foreground">CashBack</p>
-                      </div>
-                    </div>
-                  )
-                })}
+                {referrals.length > 0 ? (
+                  referrals
+                    .filter(r => r.cashback > 0)
+                    .sort((a, b) => b.cashback - a.cashback)
+                    .slice(0, 3)
+                    .map((referrer, idx) => {
+                      const rank = idx + 1
+                      const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : '🥉'
+                      const medalBg = rank === 1 ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800' : rank === 2 ? 'bg-gray-50 dark:bg-gray-900/20 border-gray-200 dark:border-gray-700' : 'bg-orange-50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800'
+                      return (
+                        <div key={referrer.id} className={`flex items-center gap-3 p-2.5 rounded-lg border ${medalBg}`}>
+                          <span className="text-xl">{medal}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">{referrer.name}</p>
+                            <p className="text-xs text-muted-foreground">Nível {referrer.level}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(referrer.cashback)}</p>
+                            <p className="text-[10px] text-muted-foreground">CashBack</p>
+                          </div>
+                        </div>
+                      )
+                    })
+                ) : (
+                  <div className="py-6 text-center">
+                    <p className="text-xs text-muted-foreground">Sem indicados ainda</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

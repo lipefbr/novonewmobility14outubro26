@@ -204,23 +204,47 @@ export function FinancialPage() {
   const [transferDestination, setTransferDestination] = useState('withdrawal')
   const [transferAmount, setTransferAmount] = useState('')
   const [selectedTransaction, setSelectedTransaction] = useState<any | null>(null)
+  const [transactions, setTransactions] = useState<any[]>([])
+  const [withdrawals, setWithdrawals] = useState<any[]>([])
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 800)
-    return () => clearTimeout(timer)
-  }, [])
+    let cancelled = false
+    async function fetchFinancialData() {
+      if (!user?.id) { setLoading(false); return }
+      try {
+        const [txData, wdData] = await Promise.all([
+          financialApi.getTransactions(user.id, 1, 50, 'all').catch(() => ({ transactions: [] })),
+          financialApi.getWithdrawals?.(user.id).catch(() => ({ withdrawals: [] })) || { withdrawals: [] },
+        ])
+        if (!cancelled) {
+          setTransactions(txData.transactions || [])
+          setWithdrawals(wdData.withdrawals || [])
+        }
+      } catch (err) {
+        console.error('Failed to fetch financial data:', err)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    fetchFinancialData()
+    return () => { cancelled = true }
+  }, [user?.id])
 
   if (loading) {
     return <FinancialSkeleton />
   }
 
-  const filtered = mockTransactions.filter((tx) => {
+  const filtered = transactions.filter((tx) => {
     if (filterType === 'all') return true
     return tx.type === filterType
   })
 
-  const totalEarnedThisMonth = 3200000
-  const totalWithdrawn = 1600000
+  const totalEarnedThisMonth = transactions
+    .filter((tx) => tx.amount > 0 && tx.status !== 'rejected')
+    .reduce((sum, tx) => sum + tx.amount, 0)
+  const totalWithdrawn = transactions
+    .filter((tx) => tx.type === 'withdrawal' && tx.status === 'paid')
+    .reduce((sum, tx) => sum + Math.abs(tx.amount), 0)
   const availableBalance = user?.balanceWithdrawal || 0
 
   const balances = [
@@ -241,7 +265,7 @@ export function FinancialPage() {
   }))
 
   // Pending transactions
-  const pendingTransactions = mockTransactions.filter((tx) => tx.status === 'pending')
+  const pendingTransactions = transactions.filter((tx) => tx.status === 'pending')
 
   const handleExportCSV = () => {
     const headers = 'Data,Descrição,Tipo,Valor,Status\n'
