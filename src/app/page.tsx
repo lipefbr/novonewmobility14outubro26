@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useStore, type PageKey } from '@/lib/store'
 import { authApi } from '@/lib/api'
 import { AppLayout } from '@/components/newmobility/app-layout'
+import { AdminLayout } from '@/components/newmobility/admin/admin-layout'
 import { LoginPage } from '@/components/newmobility/auth/login-page'
 import { RegisterPage } from '@/components/newmobility/auth/register-page'
 import { DashboardPage } from '@/components/newmobility/dashboard/dashboard-page'
@@ -116,7 +117,7 @@ function PageContent() {
 }
 
 export default function Home() {
-  const { isAuthenticated, authView, login, darkMode } = useStore()
+  const { isAuthenticated, authView, login, darkMode, user, adminViewAsUser } = useStore()
 
   // Sync dark mode class on html element from persisted state
   useEffect(() => {
@@ -143,7 +144,19 @@ export default function Home() {
     return <LoginPage />
   }
 
-  // If authenticated, show app layout with active page
+  // Admin users get their own dedicated admin layout (separate sidebar, header, navigation)
+  // unless they've toggled "Voltar para Usuário" to view the regular user panel.
+  const showAdminLayout = user?.role === 'admin' && !adminViewAsUser
+
+  if (showAdminLayout) {
+    return (
+      <AdminLayout>
+        <AdminPage />
+      </AdminLayout>
+    )
+  }
+
+  // Regular users (or admins in view-as-user mode) see the standard AppLayout
   return (
     <AppLayout>
       <PageContent />

@@ -136,6 +136,8 @@ export const financialApi = {
     apiFetch<any>(`/financial/balances?userId=${userId}`),
   getTransactions: (userId: string, page = 1, limit = 20, type = 'all') =>
     apiFetch<any>(`/financial/transactions?userId=${userId}&page=${page}&limit=${limit}&type=${type}`),
+  getWithdrawals: (userId: string) =>
+    apiFetch<any>(`/financial/withdrawals?userId=${userId}`),
   withdraw: (userId: string, amount: number, category: string) =>
     apiFetch<any>('/financial/withdraw', {
       method: 'POST',

@@ -1,6 +1,6 @@
 'use client'
 
-import { Menu, Globe, ChevronRight, Home, Moon, Sun, Search, Users, Wallet, DollarSign, TrendingUp, UserCircle } from 'lucide-react'
+import { Menu, Globe, ChevronRight, Home, Moon, Sun, Search, Users, Wallet, DollarSign, TrendingUp, UserCircle, Shield } from 'lucide-react'
 import { useStore, type PageKey } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { languageNames, type Language } from '@/lib/i18n'
@@ -70,9 +70,15 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
-  const { user, setMobileSidebarOpen, updateUser, activePage, darkMode, toggleDarkMode, setActivePage } = useStore()
+  const { user, setMobileSidebarOpen, updateUser, activePage, darkMode, toggleDarkMode, setActivePage, setAdminViewAsUser } = useStore()
   const { t } = useTranslation()
   const [searchOpen, setSearchOpen] = useState(false)
+
+  const isAdmin = user?.role === 'admin'
+
+  const handleBackToAdmin = () => {
+    setAdminViewAsUser(false)
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -142,6 +148,21 @@ export function AppLayout({ children }: AppLayoutProps) {
               </div>
 
               <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                {/* Admin "Back to Admin" button - shown when admin is in view-as-user mode */}
+                {isAdmin && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 text-xs h-8 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
+                    onClick={handleBackToAdmin}
+                    title="Voltar para o painel administrativo"
+                  >
+                    <Shield className="h-3.5 w-3.5" />
+                    <span className="hidden md:inline">Voltar para Admin</span>
+                    <span className="md:hidden">Admin</span>
+                  </Button>
+                )}
+
                 <Button
                   variant="ghost"
                   size="icon"

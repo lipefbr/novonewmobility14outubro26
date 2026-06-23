@@ -56,46 +56,49 @@ prompt
 server.log
 # Skills directory
 /skills/
-/mini-services/
-*.png
-*.jpg
-*.jpeg
-*.gif
-!public/**
-/agent-ctx/
-/worklog.md
-alive.sh
-auto-restart.sh
-auto-start.sh
-daemon.sh
-forever.sh
-keep-alive.js
-keep-alive.sh
-keep-server-alive.sh
-persistent-server.js
-persistent-server.mjs
-persistent-server.sh
-persistent-server.ts
+# Generated screenshots
+*-screenshot*.png
+*-final*.png
+*-test*.png
+admin-*.png
+user-*.png
+login-*.png
+dashboard-*.png
+preview-*.png
+browser-test.png
+current-preview.png
+marketplace-screenshot.png
 prod-browser-test.png
-resilient-prod.sh
-resilient-server.sh
-resilient-start.sh
-resilient.sh
-run-forever.js
-run-server.sh
-run.sh
-start-dev.sh
-start-loop.sh
-start-prod.sh
-start-server.sh
-start.sh
-supervise-server.sh
-supervisor.js
-watchdog-server.sh
-watchdog.sh
-seed-db.mjs
-seed-tickets.mjs
-download/
-upload/
-3000/
-Caddyfile
+
+# Tool results
+/tool-results/
+/upload/
+/download/
+
+# Scripts
+/scripts/
+
+# Build artifacts
+*.tsbuildinfo
+
+# Generated screenshots
+*-screenshot*.png
+*-final*.png
+*-test*.png
+admin-*.png
+user-*.png
+login-*.png
+dashboard-*.png
+preview-*.png
+browser-test.png
+current-preview.png
+marketplace-screenshot.png
+prod-browser-test.png
+
+# Tool results
+/tool-results/
+/upload/
+/download/
+
+# Scripts
+/scripts/

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -25,10 +25,11 @@ import {
   Plus, Trash2, Edit, Eye, Wallet, CreditCard, FileText, Ban,
   MapPin, Phone, Star, Car, Bike, Banknote, UserCheck, UserX,
   ArrowUpDown, Receipt, PieChart, Filter, Download, Calendar,
-  MessageSquare, Send,
+  MessageSquare, Send, Gift,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
+import { ReportsPage } from '@/components/newmobility/reports/reports-page'
 
 // ---------- Interfaces ----------
 
@@ -159,10 +160,28 @@ const emptyEditForm: EditFormData = {
   isDriver: false, isDelivery: false, role: 'user',
 }
 
+// Map admin sidebar pages to internal tab values
+const adminPageToTab: Record<string, string> = {
+  dashboard: 'stats',
+  users: 'users',
+  financial: 'financial',
+  plans: 'plans',
+  gratifications: 'gratifications',
+  support: 'tickets',
+  announcements: 'announcements',
+  reports: 'reports',
+  settings: 'config',
+}
+
 export function AdminPage() {
   const { t } = useTranslation()
-  const { user } = useStore()
-  const [activeTab, setActiveTab] = useState('stats')
+  const { user, adminActivePage } = useStore()
+  // Internal sub-tab for the financial admin page (overview / withdrawals / cashback)
+  const [financialSubTab, setFinancialSubTab] = useState<'financial' | 'withdrawals' | 'cashback'>('financial')
+  // Derive the active tab from the admin sidebar selection. The financial admin page
+  // uses the internal sub-tab so admins can switch between overview, withdrawals, and cashback
+  // without leaving the "Financeiro" sidebar item.
+  const activeTab = adminActivePage === 'financial' ? financialSubTab : (adminPageToTab[adminActivePage] || 'stats')
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [users, setUsers] = useState<{ users: AdminUser[]; total: number; page: number; totalPages: number } | null>(null)
   const [configs, setConfigs] = useState<SystemConfigs>({})
@@ -252,6 +271,8 @@ export function AdminPage() {
     if (activeTab === 'cashback') loadCashback()
     if (activeTab === 'financial') loadFinancial()
     if (activeTab === 'tickets') loadTickets()
+    // Also load financial data for the gratifications admin page (which shows summary)
+    if (activeTab === 'gratifications') loadFinancial()
   }, [activeTab, searchQuery, planFilter, statusFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter, ticketPriorityFilter])
 
   const loadStats = async () => {
@@ -803,37 +824,41 @@ export function AdminPage() {
         </Badge>
       </div>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="bg-muted/50 p-1 flex flex-wrap">
-          <TabsTrigger value="stats" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
-            <BarChart3 className="h-3.5 w-3.5" /> Estatísticas
-          </TabsTrigger>
-          <TabsTrigger value="users" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
-            <Users className="h-3.5 w-3.5" /> Usuários
-          </TabsTrigger>
-          <TabsTrigger value="plans" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
-            <CreditCard className="h-3.5 w-3.5" /> Planos
-          </TabsTrigger>
-          <TabsTrigger value="cashback" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
-            <Receipt className="h-3.5 w-3.5" /> Cashback
-          </TabsTrigger>
-          <TabsTrigger value="financial" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
-            <PieChart className="h-3.5 w-3.5" /> Financeiro
-          </TabsTrigger>
-          <TabsTrigger value="withdrawals" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
-            <Wallet className="h-3.5 w-3.5" /> Saques
-          </TabsTrigger>
-          <TabsTrigger value="tickets" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
-            <FileText className="h-3.5 w-3.5" /> Suporte
-          </TabsTrigger>
-          <TabsTrigger value="config" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
-            <Settings className="h-3.5 w-3.5" /> Configurações
-          </TabsTrigger>
-          <TabsTrigger value="announcements" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
-            <Megaphone className="h-3.5 w-3.5" /> Anúncios
-          </TabsTrigger>
-        </TabsList>
+      {/* Financial sub-tab navigation (only shown on the financial admin page) */}
+      {adminActivePage === 'financial' && (
+        <Card className="mb-4 border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
+          <CardContent className="p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-muted-foreground hidden sm:inline">Seção:</span>
+              {([
+                { key: 'financial' as const, label: 'Visão Geral', icon: PieChart },
+                { key: 'withdrawals' as const, label: 'Saques', icon: Wallet },
+                { key: 'cashback' as const, label: 'Cashback', icon: Receipt },
+              ]).map((sub) => {
+                const SubIcon = sub.icon
+                const isActive = financialSubTab === sub.key
+                return (
+                  <button
+                    key={sub.key}
+                    onClick={() => setFinancialSubTab(sub.key)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      isActive
+                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
+                        : 'bg-white/60 dark:bg-slate-900/40 text-muted-foreground hover:bg-white dark:hover:bg-slate-900/70 hover:text-foreground'
+                    }`}
+                  >
+                    <SubIcon className="h-3.5 w-3.5" />
+                    {sub.label}
+                  </button>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Tabs (navigation now comes from the admin sidebar) */}
+      <Tabs value={activeTab}>
 
         {/* Stats Tab */}
         <TabsContent value="stats" className="mt-4 space-y-4">
@@ -2309,6 +2334,123 @@ export function AdminPage() {
               </div>
             )}
           </div>
+        </TabsContent>
+
+        {/* Reports Tab — renders the existing ReportsPage component */}
+        <TabsContent value="reports" className="mt-4 space-y-4">
+          <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <BarChart3 className="h-4 w-4 text-emerald-600" />
+                <h3 className="text-sm font-semibold text-foreground">Relatórios & Analytics</h3>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Visualização completa de relatórios, analytics e métricas de uso da plataforma.
+              </p>
+            </CardContent>
+          </Card>
+          <ReportsPage />
+        </TabsContent>
+
+        {/* Gratifications Tab — summary of gratification balances across users */}
+        <TabsContent value="gratifications" className="mt-4 space-y-4">
+          <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Gift className="h-4 w-4 text-emerald-600" />
+                <h3 className="text-sm font-semibold text-foreground">Gratificações — Resumo Geral</h3>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Visão consolidada das gratificações distribuídas na plataforma (cashback e saldo de gratificação).
+              </p>
+            </CardContent>
+          </Card>
+
+          {financialData ? (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { label: 'Cashback Total', value: formatCurrency(financialData.overview.totalCashback), icon: Receipt, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+                  { label: 'Receita Total', value: formatCurrency(financialData.overview.totalRevenue), icon: DollarSign, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30' },
+                  { label: 'Em Circulação', value: formatCurrency(financialData.overview.totalInCirculation), icon: Wallet, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
+                  { label: 'Saldo Plataforma', value: formatCurrency(financialData.overview.totalPlatformBalance), icon: CreditCard, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/30' },
+                ].map((card, i) => (
+                  <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
+                    <Card className={`${card.bg} border-0 shadow-sm`}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2 mb-1">
+                          <card.icon className={`h-4 w-4 ${card.color}`} />
+                          <span className="text-xs font-medium text-muted-foreground">{card.label}</span>
+                        </div>
+                        <p className="text-lg font-bold text-foreground">{card.value}</p>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <PieChart className="h-4 w-4 text-emerald-600" /> Distribuição por Categoria
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {financialData.categoryBreakdown.length > 0 ? (
+                      <div className="space-y-3">
+                        {financialData.categoryBreakdown.map((cat, i) => {
+                          const max = Math.max(...financialData.categoryBreakdown.map(c => c.amount), 1)
+                          return (
+                            <div key={i} className="flex items-center justify-between gap-3">
+                              <span className="text-xs font-medium text-foreground capitalize">{cat.category || '—'}</span>
+                              <div className="flex items-center gap-2 flex-1 max-w-[200px]">
+                                <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${(cat.amount / max) * 100}%` }} />
+                                </div>
+                                <span className="text-xs font-semibold text-foreground w-20 text-right">{formatCurrency(cat.amount)}</span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground text-center py-4">Nenhum dado disponível</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4 text-emerald-600" /> Receita Mensal
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {financialData.monthlyRevenue.length > 0 ? (
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {financialData.monthlyRevenue.map((m, i) => (
+                          <div key={i} className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
+                            <span className="text-xs font-medium text-foreground">{m.month}</span>
+                            <span className="text-sm font-bold text-emerald-600">{formatCurrency(m.revenue)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground text-center py-4">Nenhum dado disponível</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          ) : (
+            <Card>
+              <CardContent className="flex items-center justify-center py-12">
+                <span className="h-6 w-6 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+                <span className="ml-3 text-sm text-muted-foreground">Carregando dados de gratificações...</span>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
 

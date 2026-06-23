@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency, formatDate, getStatusLabel, getStatusVariant, cn } from '@/lib/utils'
-import { financialApi } from '@/lib/api'
+import { financialApi, transferApi } from '@/lib/api'
 import { FinancialSkeleton } from '../ui/loading-skeletons'
 import { EmptyState } from '../ui/empty-states'
 import { InvoiceViewer } from './invoice-viewer'
@@ -62,29 +62,33 @@ import {
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 
-const mockTransactions = [
-  { id: '1', type: 'cashback_entry', amount: 45000, status: 'paid', category: 'withdrawal', description: 'CashBack Entrada - Nível 2', date: '2025-01-15' },
-  { id: '2', type: 'cashback_residual', amount: 23000, status: 'paid', category: 'withdrawal', description: 'CashBack Residual - Nível 3', date: '2025-01-14' },
-  { id: '3', type: 'withdrawal', amount: -200000, status: 'pending', category: 'withdrawal', description: 'Saque solicitado', date: '2025-01-13' },
-  { id: '4', type: 'cashback_sales', amount: 12000, status: 'paid', category: 'mobility', description: 'CashBack Vendas - Mobilidade', date: '2025-01-12' },
-  { id: '5', type: 'gratification', amount: 85000, status: 'approved', category: 'gratification', description: 'Gratificação Liderança', date: '2025-01-11' },
-  { id: '6', type: 'cashback_entry', amount: 15000, status: 'paid', category: 'withdrawal', description: 'CashBack Entrada - Nível 1', date: '2025-01-10' },
-  { id: '7', type: 'cashback_sales', amount: 8900, status: 'paid', category: 'food', description: 'CashBack Vendas - Refeição', date: '2025-01-09' },
-  { id: '8', type: 'deposit', amount: 99900, status: 'paid', category: 'withdrawal', description: 'Pagamento Plano Blue 5', date: '2025-01-08' },
-  { id: '9', type: 'cashback_residual', amount: 18000, status: 'paid', category: 'withdrawal', description: 'CashBack Residual - Nível 5', date: '2025-01-07' },
-  { id: '10', type: 'cashback_sales', amount: 5600, status: 'paid', category: 'pharmacy', description: 'CashBack Vendas - Farmácia', date: '2025-01-06' },
-  { id: '11', type: 'withdrawal', amount: -150000, status: 'paid', category: 'withdrawal', description: 'Saque processado', date: '2025-01-05' },
-  { id: '12', type: 'bonus', amount: 50000, status: 'paid', category: 'withdrawal', description: 'Bônus Indicação Direta', date: '2025-01-04' },
-]
-
-const monthlyData = [
-  { month: 'Ago', ganhos: 2850000, saques: 1200000 },
-  { month: 'Set', ganhos: 3100000, saques: 1500000 },
-  { month: 'Out', ganhos: 2950000, saques: 1100000 },
-  { month: 'Nov', ganhos: 3400000, saques: 1800000 },
-  { month: 'Dez', ganhos: 3800000, saques: 2100000 },
-  { month: 'Jan', ganhos: 3200000, saques: 1600000 },
-]
+// Monthly chart data is computed from real transactions (group by month).
+// Fallback to an empty 6-month window when no transactions exist.
+function buildMonthlyData(transactions: any[]) {
+  const now = new Date()
+  const months: { key: string; label: string; ganhos: number; saques: number }[] = []
+  const monthLabels = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`
+    months.push({ key, label: monthLabels[d.getMonth()], ganhos: 0, saques: 0 })
+  }
+  const indexByKey = new Map(months.map((m, i) => [m.key, i]))
+  for (const tx of transactions) {
+    const d = new Date(tx.createdAt || tx.date)
+    if (isNaN(d.getTime())) continue
+    const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`
+    const idx = indexByKey.get(key)
+    if (idx === undefined) continue
+    const amt = Math.abs(Number(tx.amount) || 0)
+    if (tx.type === 'withdrawal') {
+      months[idx].saques += amt
+    } else if (tx.amount > 0) {
+      months[idx].ganhos += amt
+    }
+  }
+  return months.map(({ label, ganhos, saques }) => ({ month: label, ganhos, saques }))
+}
 
 const typeLabels: Record<string, string> = {
   cashback_entry: 'CB Entrada',
@@ -172,20 +176,16 @@ function AnimatedBalance({ value, className }: { value: number; className?: stri
   return <span className={className}>{formatCurrency(display)}</span>
 }
 
-// Mock withdrawal history
-const mockWithdrawals = [
-  { id: 'wd_001', amount: 200000, status: 'completed', requestedAt: '2025-01-13T10:30:00Z', processedAt: '2025-01-14T14:22:00Z', completedAt: '2025-01-16T09:00:00Z', estimatedCompletion: null, fee: 350, bankInfo: 'Banco do Brasil - Ag 1234-5 / CC 67890-1' },
-  { id: 'wd_002', amount: 150000, status: 'completed', requestedAt: '2024-12-20T15:45:00Z', processedAt: '2024-12-21T08:30:00Z', completedAt: '2024-12-23T11:15:00Z', estimatedCompletion: null, fee: 350, bankInfo: 'Banco do Brasil - Ag 1234-5 / CC 67890-1' },
-  { id: 'wd_003', amount: 500000, status: 'processing', requestedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), processedAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(), completedAt: null, estimatedCompletion: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(), fee: 850, bankInfo: 'Banco do Brasil - Ag 1234-5 / CC 67890-1' },
-  { id: 'wd_004', amount: 100000, status: 'requested', requestedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), processedAt: null, completedAt: null, estimatedCompletion: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(), fee: 350, bankInfo: 'Banco do Brasil - Ag 1234-5 / CC 67890-1' },
-  { id: 'wd_005', amount: 75000, status: 'rejected', requestedAt: '2024-11-10T09:00:00Z', processedAt: '2024-11-10T16:45:00Z', completedAt: null, estimatedCompletion: null, fee: 0, bankInfo: 'Banco do Brasil - Ag 1234-5 / CC 67890-1' },
-]
 
 const withdrawalStatusConfig: Record<string, { label: string; icon: React.ElementType; color: string }> = {
   requested: { label: 'Solicitado', icon: Clock, color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
+  pending: { label: 'Solicitado', icon: Clock, color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
   processing: { label: 'Processando', icon: Loader2, color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
+  approved: { label: 'Processando', icon: Loader2, color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
   completed: { label: 'Concluído', icon: CheckCircle2, color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
+  paid: { label: 'Concluído', icon: CheckCircle2, color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' },
   rejected: { label: 'Rejeitado', icon: XCircle, color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+  failed: { label: 'Falhou', icon: XCircle, color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
 }
 
 export function FinancialPage() {
@@ -194,7 +194,16 @@ export function FinancialPage() {
   const [filterType, setFilterType] = useState<string>('all')
   const [withdrawOpen, setWithdrawOpen] = useState(false)
   const [withdrawAmount, setWithdrawAmount] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [withdrawSubmitting, setWithdrawSubmitting] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
+  const [transactionsLoading, setTransactionsLoading] = useState(false)
+  const [transactions, setTransactions] = useState<any[]>([])
+  const [pagination, setPagination] = useState<{ page: number; totalPages: number; total: number }>({ page: 1, totalPages: 0, total: 0 })
+  const [currentPage, setCurrentPage] = useState(1)
+  const [withdrawals, setWithdrawals] = useState<any[]>([])
+  const [withdrawalsLoading, setWithdrawalsLoading] = useState(false)
+  const [withdrawalLimits, setWithdrawalLimits] = useState<{ minWithdrawal: number; maxWithdrawal: number; withdrawalFee: number }>({ minWithdrawal: 5000, maxWithdrawal: 500000, withdrawalFee: 2 })
+  const [allTransactionsForChart, setAllTransactionsForChart] = useState<any[]>([])
   const [exportStartDate, setExportStartDate] = useState('')
   const [exportEndDate, setExportEndDate] = useState('')
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
@@ -203,48 +212,148 @@ export function FinancialPage() {
   const [transferSource, setTransferSource] = useState('mobility')
   const [transferDestination, setTransferDestination] = useState('withdrawal')
   const [transferAmount, setTransferAmount] = useState('')
+  const [transferSubmitting, setTransferSubmitting] = useState(false)
   const [selectedTransaction, setSelectedTransaction] = useState<any | null>(null)
-  const [transactions, setTransactions] = useState<any[]>([])
-  const [withdrawals, setWithdrawals] = useState<any[]>([])
 
-  useEffect(() => {
-    let cancelled = false
-    async function fetchFinancialData() {
-      if (!user?.id) { setLoading(false); return }
-      try {
-        const [txData, wdData] = await Promise.all([
-          financialApi.getTransactions(user.id, 1, 50, 'all').catch(() => ({ transactions: [] })),
-          financialApi.getWithdrawals?.(user.id).catch(() => ({ withdrawals: [] })) || { withdrawals: [] },
-        ])
-        if (!cancelled) {
-          setTransactions(txData.transactions || [])
-          setWithdrawals(wdData.withdrawals || [])
-        }
-      } catch (err) {
-        console.error('Failed to fetch financial data:', err)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
+  const PAGE_LIMIT = 20
+
+  const refreshBalances = useCallback(async () => {
+    if (!user?.id) return
+    try {
+      const data = await financialApi.getBalances(user.id)
+      const b = data.balances || data
+      updateUser({
+        balanceWithdrawal: Number(b.withdrawal ?? 0),
+        balanceMobility: Number(b.mobility ?? 0),
+        balanceShopping: Number(b.shopping ?? 0),
+        balanceFood: Number(b.food ?? 0),
+        balancePharmacy: Number(b.pharmacy ?? 0),
+        balanceGratification: Number(b.gratification ?? 0),
+      })
+    } catch (err) {
+      // silent - balance refresh is best-effort
+      console.error('Failed to refresh balances', err)
     }
-    fetchFinancialData()
+  }, [user?.id, updateUser])
+
+  const refreshTransactions = useCallback(async (page: number, type: string) => {
+    if (!user?.id) return
+    setTransactionsLoading(true)
+    try {
+      const data = await financialApi.getTransactions(user.id, page, PAGE_LIMIT, type)
+      setTransactions(data.transactions || [])
+      setPagination({
+        page: data.pagination?.page ?? page,
+        totalPages: data.pagination?.totalPages ?? 0,
+        total: data.pagination?.total ?? 0,
+      })
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao carregar transações')
+      setTransactions([])
+    } finally {
+      setTransactionsLoading(false)
+    }
+  }, [user?.id])
+
+  const refreshWithdrawals = useCallback(async () => {
+    if (!user?.id) return
+    setWithdrawalsLoading(true)
+    try {
+      const data = await financialApi.getWithdrawals(user.id)
+      setWithdrawals(data.withdrawals || [])
+      if (data.limits) {
+        setWithdrawalLimits({
+          minWithdrawal: Number(data.limits.minWithdrawal ?? 5000),
+          maxWithdrawal: Number(data.limits.maxWithdrawal ?? 500000),
+          withdrawalFee: Number(data.limits.withdrawalFee ?? 2),
+        })
+      }
+    } catch (err: any) {
+      // silent - withdrawals list is best-effort
+      console.error('Failed to refresh withdrawals', err)
+      setWithdrawals([])
+    } finally {
+      setWithdrawalsLoading(false)
+    }
+  }, [user?.id])
+
+  // Fetch all transactions (up to 200) for the monthly chart and CSV export.
+  const refreshAllTransactionsForChart = useCallback(async () => {
+    if (!user?.id) return
+    try {
+      const data = await financialApi.getTransactions(user.id, 1, 200, 'all')
+      setAllTransactionsForChart(data.transactions || [])
+    } catch {
+      setAllTransactionsForChart([])
+    }
+  }, [user?.id])
+
+  // Initial mount: fetch balances, transactions (page 1), withdrawals, chart data
+  useEffect(() => {
+    if (!user?.id) {
+      setInitialLoading(false)
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      setInitialLoading(true)
+      await Promise.all([
+        refreshBalances(),
+        refreshTransactions(1, 'all'),
+        refreshWithdrawals(),
+        refreshAllTransactionsForChart(),
+      ])
+      if (!cancelled) setInitialLoading(false)
+    })()
     return () => { cancelled = true }
   }, [user?.id])
 
-  if (loading) {
+  // Refetch transactions when filter or page changes
+  useEffect(() => {
+    if (initialLoading || !user?.id) return
+    refreshTransactions(currentPage, filterType)
+  }, [currentPage, filterType, initialLoading, user?.id, refreshTransactions])
+
+  const handleFilterChange = (type: string) => {
+    setFilterType(type)
+    setCurrentPage(1)
+  }
+
+  const goToPrevPage = () => setCurrentPage((p) => Math.max(1, p - 1))
+  const goToNextPage = () => setCurrentPage((p) => Math.max(1, Math.min(pagination.totalPages || 1, p + 1)))
+
+  const refreshAllAfterAction = useCallback(async () => {
+    await Promise.all([
+      refreshBalances(),
+      refreshTransactions(currentPage, filterType),
+      refreshWithdrawals(),
+      refreshAllTransactionsForChart(),
+    ])
+  }, [refreshBalances, refreshTransactions, refreshWithdrawals, refreshAllTransactionsForChart, currentPage, filterType])
+
+  if (initialLoading) {
     return <FinancialSkeleton />
   }
 
-  const filtered = transactions.filter((tx) => {
-    if (filterType === 'all') return true
-    return tx.type === filterType
-  })
+  // Use API transactions (already filtered by type on the server)
+  const filtered = transactions
 
-  const totalEarnedThisMonth = transactions
-    .filter((tx) => tx.amount > 0 && tx.status !== 'rejected')
-    .reduce((sum, tx) => sum + tx.amount, 0)
-  const totalWithdrawn = transactions
-    .filter((tx) => tx.type === 'withdrawal' && tx.status === 'paid')
-    .reduce((sum, tx) => sum + Math.abs(tx.amount), 0)
+  // Compute this-month earnings and total withdrawn from real transactions
+  const now = new Date()
+  const currentMonth = now.getMonth()
+  const currentYear = now.getFullYear()
+  let totalEarnedThisMonth = 0
+  let totalWithdrawn = 0
+  for (const tx of allTransactionsForChart) {
+    const d = new Date(tx.createdAt || tx.date)
+    if (isNaN(d.getTime())) continue
+    const amt = Number(tx.amount) || 0
+    if (tx.type === 'withdrawal') {
+      totalWithdrawn += Math.abs(amt)
+    } else if (d.getMonth() === currentMonth && d.getFullYear() === currentYear && amt > 0) {
+      totalEarnedThisMonth += amt
+    }
+  }
   const availableBalance = user?.balanceWithdrawal || 0
 
   const balances = [
@@ -264,13 +373,16 @@ export function FinancialPage() {
     color: b.gradient.includes('emerald') ? '#059669' : b.gradient.includes('blue') ? '#3b82f6' : b.gradient.includes('purple') ? '#8b5cf6' : b.gradient.includes('orange') ? '#f97316' : b.gradient.includes('rose') ? '#f43f5e' : '#f59e0b',
   }))
 
-  // Pending transactions
-  const pendingTransactions = transactions.filter((tx) => tx.status === 'pending')
+  // Monthly chart data computed from real transactions (no mock)
+  const monthlyData = buildMonthlyData(allTransactionsForChart)
+
+  // Pending transactions (only withdrawals show up as pending in the API)
+  const pendingTransactions = allTransactionsForChart.filter((tx) => tx.status === 'pending')
 
   const handleExportCSV = () => {
     const headers = 'Data,Descrição,Tipo,Valor,Status\n'
-    const rows = filtered.map(tx =>
-      `${tx.date},"${tx.description}",${typeLabels[tx.type] || tx.type},${tx.amount / 100},${getStatusLabel(tx.status)}`
+    const rows = (filtered.length > 0 ? filtered : allTransactionsForChart).map(tx =>
+      `${tx.createdAt || tx.date},"${tx.description}",${typeLabels[tx.type] || tx.type},${tx.amount / 100},${getStatusLabel(tx.status)}`
     ).join('\n')
     const csv = headers + rows
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -308,14 +420,18 @@ export function FinancialPage() {
     if (!user?.id || !transferAmount || !transferSource || !transferDestination) return
     if (transferSource === transferDestination) { toast.error(t('transfer.sameBalance')); return }
     if (amountCents > (balanceValues[transferSource] || 0)) { toast.error(t('transfer.insufficientFunds')); return }
+    setTransferSubmitting(true)
     try {
-      const { transferApi } = await import('@/lib/api')
       await transferApi.transfer(user.id, transferSource, transferDestination, amountNum)
       toast.success(t('transfer.success'))
       setTransferOpen(false)
       setTransferAmount('')
+      // Refresh balances (updates store), transactions, withdrawals, and chart data
+      await refreshAllAfterAction()
     } catch (err: any) {
       toast.error(err.message || 'Erro na transferência')
+    } finally {
+      setTransferSubmitting(false)
     }
   }
 
@@ -384,16 +500,19 @@ export function FinancialPage() {
                 </div>
                 <div className="space-y-2">
                   <Label className="flex items-center gap-1.5">{t('financial.withdrawAmount')} <span className="text-[10px] text-muted-foreground font-normal">(valor em R$)</span></Label>
-                  {/* Quick amount presets */}
+                  {/* Quick amount presets - derived from real limits */}
                   <div className="flex gap-2 flex-wrap">
-                    {[50, 100, 250, 500, 1000].map((amount) => (
+                    {[withdrawalLimits.minWithdrawal / 100, Math.round(withdrawalLimits.minWithdrawal / 100 * 2), Math.round(withdrawalLimits.minWithdrawal / 100 * 5), Math.round(withdrawalLimits.maxWithdrawal / 100 * 0.5), withdrawalLimits.maxWithdrawal / 100]
+                      .filter((v, i, arr) => v > 0 && arr.indexOf(v) === i)
+                      .slice(0, 5)
+                      .map((amount) => (
                       <button
                         key={amount}
                         type="button"
                         onClick={() => setWithdrawAmount(String(amount))}
                         className="px-3 py-1 rounded-full text-xs font-medium border border-border hover:border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:text-emerald-600 transition-colors"
                       >
-                        R$ {amount.toLocaleString('pt-BR')}
+                        R$ {amount.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
                       </button>
                     ))}
                   </div>
@@ -409,17 +528,22 @@ export function FinancialPage() {
                       step="0.01"
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground">{t('financial.minimumWithdrawal')}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Mínimo: {formatCurrency(withdrawalLimits.minWithdrawal)} · Máximo: {formatCurrency(withdrawalLimits.maxWithdrawal)}
+                  </p>
                 </div>
                 {/* Fee calculation display */}
                 {withdrawAmount && Number(withdrawAmount) > 0 && (() => {
                   const withdrawReais = Number(withdrawAmount)
                   const withdrawCents = Math.round(withdrawReais * 100)
-                  const FEE_PERCENT = 2
+                  const FEE_PERCENT = withdrawalLimits.withdrawalFee
                   const feeCents = Math.round(withdrawCents * FEE_PERCENT / 100)
                   const netCents = withdrawCents - feeCents
                   const currentBalance = user?.balanceWithdrawal || 0
                   const newBalance = currentBalance - withdrawCents
+                  const belowMin = withdrawCents < withdrawalLimits.minWithdrawal
+                  const aboveMax = withdrawCents > withdrawalLimits.maxWithdrawal
+                  const aboveBalance = withdrawCents > currentBalance
                   return (
                     <div className="bg-gradient-to-b from-muted/50 to-muted/30 rounded-lg p-3 space-y-2 border border-border">
                       <div className="flex items-center gap-1.5 mb-1">
@@ -442,11 +566,28 @@ export function FinancialPage() {
                           netCents > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
                         )}>{formatCurrency(netCents)}</span>
                       </div>
-                      {newBalance < 0 && (
-                        <div className="mt-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-2">
-                          <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">
-                            ⚠️ Seu saldo ficará negativo: {formatCurrency(newBalance)}
-                          </p>
+                      {(belowMin || aboveMax || aboveBalance || newBalance < 0) && (
+                        <div className="mt-2 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-2 space-y-1">
+                          {belowMin && (
+                            <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">
+                              ⚠️ Valor abaixo do mínimo permitido ({formatCurrency(withdrawalLimits.minWithdrawal)})
+                            </p>
+                          )}
+                          {aboveMax && (
+                            <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">
+                              ⚠️ Valor acima do máximo permitido ({formatCurrency(withdrawalLimits.maxWithdrawal)})
+                            </p>
+                          )}
+                          {aboveBalance && (
+                            <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">
+                              ⚠️ Saldo insuficiente para este saque
+                            </p>
+                          )}
+                          {!aboveBalance && newBalance < 0 && (
+                            <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">
+                              ⚠️ Seu saldo ficará negativo: {formatCurrency(newBalance)}
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
@@ -454,25 +595,48 @@ export function FinancialPage() {
                 })()}
                 <Button
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                  disabled={withdrawSubmitting || !withdrawAmount || Number(withdrawAmount) <= 0}
                   onClick={async () => {
                     if (!user?.id || !withdrawAmount || Number(withdrawAmount) <= 0) return
+                    const withdrawReais = Number(withdrawAmount)
+                    const withdrawCents = Math.round(withdrawReais * 100)
+                    // Validate against real limits from API (limits are in cents)
+                    if (withdrawCents < withdrawalLimits.minWithdrawal) {
+                      toast.error(`Valor mínimo para saque: ${formatCurrency(withdrawalLimits.minWithdrawal)}`)
+                      return
+                    }
+                    if (withdrawCents > withdrawalLimits.maxWithdrawal) {
+                      toast.error(`Valor máximo para saque: ${formatCurrency(withdrawalLimits.maxWithdrawal)}`)
+                      return
+                    }
+                    if (withdrawCents > (user?.balanceWithdrawal || 0)) {
+                      toast.error('Saldo insuficiente para saque')
+                      return
+                    }
+                    setWithdrawSubmitting(true)
                     try {
                       // Send amount in BRL (reais) - the backend converts to cents
-                      const withdrawReais = Number(withdrawAmount)
-                      const withdrawCents = Math.round(withdrawReais * 100)
                       await financialApi.withdraw(user.id, withdrawReais, 'withdrawal')
-                      // Update store balance immediately (store uses cents)
-                      const currentBalance = user?.balanceWithdrawal || 0
-                      updateUser({ balanceWithdrawal: currentBalance - withdrawCents })
                       setWithdrawOpen(false)
                       setWithdrawAmount('')
                       toast.success('Saque solicitado com sucesso!')
+                      // Refresh balances (updates store), transactions, withdrawals, and chart data
+                      await refreshAllAfterAction()
                     } catch (err: any) {
                       toast.error(err.message || 'Erro ao solicitar saque')
+                    } finally {
+                      setWithdrawSubmitting(false)
                     }
                   }}
                 >
-                  {t('financial.confirmWithdrawal')}
+                  {withdrawSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Processando...
+                    </>
+                  ) : (
+                    t('financial.confirmWithdrawal')
+                  )}
                 </Button>
               </div>
             </DialogContent>
@@ -839,7 +1003,7 @@ export function FinancialPage() {
               return (
                 <button
                   key={chip.key}
-                  onClick={() => setFilterType(chip.key)}
+                  onClick={() => handleFilterChange(chip.key)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
                     isActive
                       ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
@@ -863,78 +1027,132 @@ export function FinancialPage() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="divide-y divide-border max-h-96 overflow-y-auto custom-scrollbar">
-                {filtered.map((tx, i) => {
-                  const isPositive = tx.amount > 0
-                  const isPending = tx.status === 'pending'
-                  const txIconCfg = typeIconConfig[tx.type]
-                  const txStatusCfg = statusConfig[tx.status]
-                  return (
-                    <motion.div
-                      key={tx.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: i * 0.03 }}
-                      className={`flex items-center gap-3 px-4 py-3 transition-all duration-200 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 ${i % 2 === 1 ? 'bg-muted/20' : ''}`}
-                    >
-                      <div className="flex items-center gap-2">
-                        {/* Color-coded transaction type icon */}
-                        {txIconCfg ? (
-                          <div className={`p-1.5 rounded-lg ${txIconCfg.bgColor} ${txIconCfg.color}`}>
-                            <txIconCfg.icon className="h-3.5 w-3.5" />
-                          </div>
-                        ) : (
-                          <div className={`p-1.5 rounded-lg ${isPositive ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400' : 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400'}`}>
-                            {isPositive ? <ArrowDownLeft className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
-                          </div>
-                        )}
-                        {/* Status indicator with background */}
-                        {txStatusCfg && (
-                          <div className={`p-0.5 rounded-full ${txStatusCfg.bgColor}`}>
-                            <txStatusCfg.icon className={`h-3 w-3 ${txStatusCfg.color} ${isPending ? 'animate-pulse' : ''}`} />
-                          </div>
-                        )}
+              {transactionsLoading ? (
+                <div className="p-6 space-y-3">
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <div key={i} className="flex items-center gap-3 animate-pulse">
+                      <div className="h-8 w-8 rounded-lg bg-muted" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-3 w-1/2 rounded bg-muted" />
+                        <div className="h-2 w-1/4 rounded bg-muted/70" />
                       </div>
-                      <div className="flex-1 min-w-0">
+                      <div className="h-4 w-20 rounded bg-muted" />
+                    </div>
+                  ))}
+                </div>
+              ) : filtered.length === 0 ? (
+                <EmptyState
+                  icon={ArrowRightLeft}
+                  title="Nenhuma transação encontrada"
+                  description={filterType === 'all' ? 'Você ainda não possui transações. Suas atividades financeiras aparecerão aqui.' : 'Não há transações deste tipo no momento. Tente outro filtro.'}
+                  className="py-10"
+                />
+              ) : (
+                <>
+                <div className="divide-y divide-border max-h-96 overflow-y-auto custom-scrollbar">
+                  {filtered.map((tx, i) => {
+                    const isPositive = tx.amount > 0
+                    const isPending = tx.status === 'pending'
+                    const txIconCfg = typeIconConfig[tx.type]
+                    const txStatusCfg = statusConfig[tx.status]
+                    return (
+                      <motion.div
+                        key={tx.id}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: i * 0.03 }}
+                        className={`flex items-center gap-3 px-4 py-3 transition-all duration-200 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 ${i % 2 === 1 ? 'bg-muted/20' : ''}`}
+                      >
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-foreground truncate">{tx.description}</span>
-                          {/* Color-coded type badge */}
-                          {(() => {
-                            const badgeCfg = typeBadgeConfig[tx.type]
-                            return badgeCfg ? (
-                              <Badge className={`text-[10px] shrink-0 hidden sm:inline-flex border ${badgeCfg.bg} ${badgeCfg.text} ${badgeCfg.border}`}>
-                                {typeLabels[tx.type] || tx.type}
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-[10px] shrink-0 hidden sm:inline-flex">
-                                {typeLabels[tx.type] || tx.type}
-                              </Badge>
-                            )
-                          })()}
+                          {/* Color-coded transaction type icon */}
+                          {txIconCfg ? (
+                            <div className={`p-1.5 rounded-lg ${txIconCfg.bgColor} ${txIconCfg.color}`}>
+                              <txIconCfg.icon className="h-3.5 w-3.5" />
+                            </div>
+                          ) : (
+                            <div className={`p-1.5 rounded-lg ${isPositive ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400' : 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400'}`}>
+                              {isPositive ? <ArrowDownLeft className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
+                            </div>
+                          )}
+                          {/* Status indicator with background */}
+                          {txStatusCfg && (
+                            <div className={`p-0.5 rounded-full ${txStatusCfg.bgColor}`}>
+                              <txStatusCfg.icon className={`h-3 w-3 ${txStatusCfg.color} ${isPending ? 'animate-pulse' : ''}`} />
+                            </div>
+                          )}
                         </div>
-                        <span className="text-xs text-muted-foreground">{formatDate(tx.date)}</span>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <div className="flex items-center gap-1.5 justify-end">
-                          <p className={`text-sm font-semibold ${isPositive ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                            {isPositive ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
-                          </p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-foreground truncate">{tx.description}</span>
+                            {/* Color-coded type badge */}
+                            {(() => {
+                              const badgeCfg = typeBadgeConfig[tx.type]
+                              return badgeCfg ? (
+                                <Badge className={`text-[10px] shrink-0 hidden sm:inline-flex border ${badgeCfg.bg} ${badgeCfg.text} ${badgeCfg.border}`}>
+                                  {typeLabels[tx.type] || tx.type}
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-[10px] shrink-0 hidden sm:inline-flex">
+                                  {typeLabels[tx.type] || tx.type}
+                                </Badge>
+                              )
+                            })()}
+                          </div>
+                          <span className="text-xs text-muted-foreground">{formatDate(tx.createdAt || tx.date)}</span>
                         </div>
-                        {/* Status badge with enhanced colors */}
-                        {txStatusCfg ? (
-                          <Badge className={`text-[10px] border ${txStatusCfg.bgColor} ${txStatusCfg.color}`}>
-                            {txStatusCfg.label}
-                          </Badge>
-                        ) : (
-                          <Badge variant={getStatusVariant(tx.status)} className="text-[10px]">
-                            {getStatusLabel(tx.status)}
-                          </Badge>
-                        )}
-                      </div>
-                    </motion.div>
-                  )
-                })}
-              </div>
+                        <div className="text-right shrink-0">
+                          <div className="flex items-center gap-1.5 justify-end">
+                            <p className={`text-sm font-semibold ${isPositive ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                              {isPositive ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
+                            </p>
+                          </div>
+                          {/* Status badge with enhanced colors */}
+                          {txStatusCfg ? (
+                            <Badge className={`text-[10px] border ${txStatusCfg.bgColor} ${txStatusCfg.color}`}>
+                              {txStatusCfg.label}
+                            </Badge>
+                          ) : (
+                            <Badge variant={getStatusVariant(tx.status)} className="text-[10px]">
+                              {getStatusLabel(tx.status)}
+                            </Badge>
+                          )}
+                        </div>
+                      </motion.div>
+                    )
+                  })}
+                </div>
+                {/* Pagination */}
+                {(pagination.totalPages > 1 || pagination.total > PAGE_LIMIT) && (
+                  <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border bg-muted/20">
+                    <span className="text-xs text-muted-foreground">
+                      Página {pagination.page} de {Math.max(1, pagination.totalPages)} · {pagination.total} transações
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1 text-xs"
+                        onClick={goToPrevPage}
+                        disabled={currentPage <= 1 || transactionsLoading}
+                      >
+                        <ArrowUpRight className="h-3 w-3 rotate-180" />
+                        Anterior
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1 text-xs"
+                        onClick={goToNextPage}
+                        disabled={currentPage >= pagination.totalPages || transactionsLoading}
+                      >
+                        Próximo
+                        <ArrowUpRight className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -948,74 +1166,111 @@ export function FinancialPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="divide-y divide-border">
-                {mockWithdrawals.map((wd, i) => {
-                  const config = withdrawalStatusConfig[wd.status] || withdrawalStatusConfig.requested
-                  const StatusIcon = config.icon
-                  const isPending = wd.status === 'requested' || wd.status === 'processing'
-                  return (
-                    <motion.div
-                      key={wd.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: i * 0.05 }}
-                      className="p-4 hover:bg-muted/50 transition-colors"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <Badge className={`text-[10px] gap-1 ${config.color}`}>
-                            <StatusIcon className={`h-3 w-3 ${wd.status === 'processing' ? 'animate-spin' : ''}`} />
-                            {config.label}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground font-mono">#{wd.id.toUpperCase()}</span>
+              {withdrawalsLoading ? (
+                <div className="p-6 space-y-3">
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} className="space-y-2 animate-pulse">
+                      <div className="flex justify-between">
+                        <div className="h-3 w-24 rounded bg-muted" />
+                        <div className="h-4 w-32 rounded bg-muted" />
+                      </div>
+                      <div className="h-2 w-full rounded bg-muted/70" />
+                      <div className="h-2 w-2/3 rounded bg-muted/50" />
+                    </div>
+                  ))}
+                </div>
+              ) : withdrawals.length === 0 ? (
+                <EmptyState
+                  icon={ArrowDownToLine}
+                  title="Nenhum saque solicitado"
+                  description="Você ainda não solicitou nenhum saque. Ao solicitar, o histórico aparecerá aqui com o status de processamento."
+                  actionLabel={t('financial.withdraw')}
+                  onAction={() => setWithdrawOpen(true)}
+                  className="py-10"
+                />
+              ) : (
+                <div className="divide-y divide-border">
+                  {withdrawals.map((wd, i) => {
+                    const config = withdrawalStatusConfig[wd.status] || withdrawalStatusConfig.pending
+                    const StatusIcon = config.icon
+                    const isPending = wd.status === 'pending' || wd.status === 'approved' || wd.status === 'requested' || wd.status === 'processing'
+                    const requestedAt = wd.requestedAt || wd.createdAt
+                    const processedAt = wd.processedAt || (wd.status === 'approved' || wd.status === 'paid' ? wd.updatedAt : null)
+                    const completedAt = wd.completedAt || (wd.status === 'paid' ? wd.updatedAt : null)
+                    const estimatedCompletion = wd.estimatedCompletion || wd.estimatedDate
+                    const amountAbs = Math.abs(Number(wd.amount) || 0)
+                    const feeAbs = Math.abs(Number(wd.fee) || 0)
+                    return (
+                      <motion.div
+                        key={wd.id}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: i * 0.05 }}
+                        className="p-4 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Badge className={`text-[10px] gap-1 ${config.color}`}>
+                              <StatusIcon className={`h-3 w-3 ${wd.status === 'processing' || wd.status === 'approved' ? 'animate-spin' : ''}`} />
+                              {config.label}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground font-mono">#{String(wd.id).toUpperCase().slice(0, 12)}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-lg font-bold text-foreground">{formatCurrency(amountAbs)}</p>
+                            {isPending && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 h-7 gap-1"
+                                onClick={() => toast.info('Entre em contato com o suporte para cancelar um saque em processamento.')}
+                              >
+                                <Ban className="h-3 w-3" />
+                                {t('withdrawals.cancel')}
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-lg font-bold text-foreground">{formatCurrency(wd.amount)}</p>
-                          {isPending && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 h-7 gap-1"
-                              onClick={() => toast.success(t('withdrawals.cancelled'))}
-                            >
-                              <Ban className="h-3 w-3" />
-                              {t('withdrawals.cancel')}
-                            </Button>
+
+                        {/* Status Timeline */}
+                        <div className="flex items-center gap-1 mt-3">
+                          <div className={`flex items-center gap-1.5 text-[10px] ${requestedAt ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-muted-foreground'}`}>
+                            <div className={`w-3 h-3 rounded-full ${requestedAt ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`} />
+                            {t('withdrawals.requested')}
+                          </div>
+                          <div className={`flex-1 h-0.5 ${processedAt ? 'bg-emerald-400' : 'bg-muted-foreground/20'}`} />
+                          <div className={`flex items-center gap-1.5 text-[10px] ${processedAt ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-muted-foreground'}`}>
+                            <div className={`w-3 h-3 rounded-full ${processedAt ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`} />
+                            {t('withdrawals.processing')}
+                          </div>
+                          <div className={`flex-1 h-0.5 ${(completedAt || wd.status === 'rejected' || wd.status === 'failed') ? 'bg-emerald-400' : 'bg-muted-foreground/20'}`} />
+                          <div className={`flex items-center gap-1.5 text-[10px] ${completedAt ? 'text-emerald-600 dark:text-emerald-400 font-medium' : wd.status === 'rejected' || wd.status === 'failed' ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
+                            <div className={`w-3 h-3 rounded-full ${completedAt ? 'bg-emerald-500' : wd.status === 'rejected' || wd.status === 'failed' ? 'bg-red-500' : 'bg-muted-foreground/30'}`} />
+                            {wd.status === 'rejected' || wd.status === 'failed' ? t('withdrawals.rejected') : t('withdrawals.completed')}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-[10px] text-muted-foreground">
+                          {requestedAt && (
+                            <span>{t('withdrawals.requestedAt')}: {new Date(requestedAt).toLocaleDateString('pt-BR')}</span>
+                          )}
+                          {estimatedCompletion && isPending && (
+                            <span className="text-amber-600 dark:text-amber-400">
+                              {t('withdrawals.estimated')}: {new Date(estimatedCompletion).toLocaleDateString('pt-BR')}
+                            </span>
+                          )}
+                          <span>{t('withdrawals.fee')}: {formatCurrency(feeAbs)}</span>
+                          {wd.netAmount !== undefined && (
+                            <span className="text-emerald-600 dark:text-emerald-400">
+                              Líquido: {formatCurrency(Math.abs(Number(wd.netAmount) || 0))}
+                            </span>
                           )}
                         </div>
-                      </div>
-
-                      {/* Status Timeline */}
-                      <div className="flex items-center gap-1 mt-3">
-                        <div className={`flex items-center gap-1.5 text-[10px] ${wd.requestedAt ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-muted-foreground'}`}>
-                          <div className={`w-3 h-3 rounded-full ${wd.requestedAt ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`} />
-                          {t('withdrawals.requested')}
-                        </div>
-                        <div className={`flex-1 h-0.5 ${wd.processedAt ? 'bg-emerald-400' : 'bg-muted-foreground/20'}`} />
-                        <div className={`flex items-center gap-1.5 text-[10px] ${wd.processedAt ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-muted-foreground'}`}>
-                          <div className={`w-3 h-3 rounded-full ${wd.processedAt ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`} />
-                          {t('withdrawals.processing')}
-                        </div>
-                        <div className={`flex-1 h-0.5 ${(wd.completedAt || wd.status === 'rejected') ? 'bg-emerald-400' : 'bg-muted-foreground/20'}`} />
-                        <div className={`flex items-center gap-1.5 text-[10px] ${wd.completedAt ? 'text-emerald-600 dark:text-emerald-400 font-medium' : wd.status === 'rejected' ? 'text-red-600 font-medium' : 'text-muted-foreground'}`}>
-                          <div className={`w-3 h-3 rounded-full ${wd.completedAt ? 'bg-emerald-500' : wd.status === 'rejected' ? 'bg-red-500' : 'bg-muted-foreground/30'}`} />
-                          {wd.status === 'rejected' ? t('withdrawals.rejected') : t('withdrawals.completed')}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-4 mt-2 text-[10px] text-muted-foreground">
-                        <span>{t('withdrawals.requestedAt')}: {new Date(wd.requestedAt).toLocaleDateString('pt-BR')}</span>
-                        {wd.estimatedCompletion && isPending && (
-                          <span className="text-amber-600 dark:text-amber-400">
-                            {t('withdrawals.estimated')}: {new Date(wd.estimatedCompletion).toLocaleDateString('pt-BR')}
-                          </span>
-                        )}
-                        <span>{t('withdrawals.fee')}: {formatCurrency(wd.fee)}</span>
-                      </div>
-                    </motion.div>
-                  )
-                })}
-              </div>
+                      </motion.div>
+                    )
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1161,10 +1416,19 @@ export function FinancialPage() {
             <Button
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
               onClick={handleTransfer}
-              disabled={transferSource === transferDestination || amountNum <= 0 || amountCents > (balanceValues[transferSource] || 0)}
+              disabled={transferSubmitting || transferSource === transferDestination || amountNum <= 0 || amountCents > (balanceValues[transferSource] || 0)}
             >
-              <ArrowRightLeft className="h-4 w-4 mr-2" />
-              Confirmar Transferência
+              {transferSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Processando...
+                </>
+              ) : (
+                <>
+                  <ArrowRightLeft className="h-4 w-4 mr-2" />
+                  Confirmar Transferência
+                </>
+              )}
             </Button>
           </div>
         </DialogContent>

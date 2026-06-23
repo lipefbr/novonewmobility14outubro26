@@ -32,6 +32,17 @@ export type PageKey =
 
 export type AuthView = 'login' | 'register'
 
+export type AdminPageKey =
+  | 'dashboard'
+  | 'users'
+  | 'financial'
+  | 'plans'
+  | 'gratifications'
+  | 'support'
+  | 'announcements'
+  | 'reports'
+  | 'settings'
+
 export interface UserData {
   id: string
   name: string
@@ -82,6 +93,12 @@ interface AppState {
   sidebarCollapsed: boolean
   mobileSidebarOpen: boolean
 
+  // Admin navigation
+  adminActivePage: AdminPageKey
+  adminViewAsUser: boolean
+  adminSidebarCollapsed: boolean
+  adminMobileSidebarOpen: boolean
+
   // Theme
   darkMode: boolean
 
@@ -95,6 +112,10 @@ interface AppState {
   setActivePage: (page: PageKey) => void
   setSidebarCollapsed: (collapsed: boolean) => void
   setMobileSidebarOpen: (open: boolean) => void
+  setAdminActivePage: (page: AdminPageKey) => void
+  setAdminViewAsUser: (viewAsUser: boolean) => void
+  setAdminSidebarCollapsed: (collapsed: boolean) => void
+  setAdminMobileSidebarOpen: (open: boolean) => void
   updateUser: (data: Partial<UserData>) => void
   toggleDarkMode: () => void
   setDarkMode: (dark: boolean) => void
@@ -115,6 +136,12 @@ export const useStore = create<AppState>()(
       activePage: 'dashboard',
       sidebarCollapsed: false,
       mobileSidebarOpen: false,
+
+      // Admin navigation
+      adminActivePage: 'dashboard',
+      adminViewAsUser: false,
+      adminSidebarCollapsed: false,
+      adminMobileSidebarOpen: false,
 
       // Theme
       darkMode: false,
@@ -141,6 +168,10 @@ export const useStore = create<AppState>()(
           user,
           activePage: 'dashboard',
           mobileSidebarOpen: false,
+          // Admin always starts in admin view (not view-as-user)
+          adminViewAsUser: false,
+          adminActivePage: 'dashboard',
+          adminMobileSidebarOpen: false,
           notifications: [],
         })
       },
@@ -152,6 +183,9 @@ export const useStore = create<AppState>()(
           activePage: 'dashboard',
           authView: 'login',
           mobileSidebarOpen: false,
+          adminViewAsUser: false,
+          adminActivePage: 'dashboard',
+          adminMobileSidebarOpen: false,
           notifications: [],
         }),
 
@@ -163,6 +197,16 @@ export const useStore = create<AppState>()(
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
 
       setMobileSidebarOpen: (mobileSidebarOpen) => set({ mobileSidebarOpen }),
+
+      setAdminActivePage: (adminActivePage) =>
+        set({ adminActivePage, adminMobileSidebarOpen: false }),
+
+      setAdminViewAsUser: (adminViewAsUser) =>
+        set({ adminViewAsUser, adminMobileSidebarOpen: false, mobileSidebarOpen: false }),
+
+      setAdminSidebarCollapsed: (adminSidebarCollapsed) => set({ adminSidebarCollapsed }),
+
+      setAdminMobileSidebarOpen: (adminMobileSidebarOpen) => set({ adminMobileSidebarOpen }),
 
       updateUser: (data) =>
         set((state) => ({
@@ -211,6 +255,9 @@ export const useStore = create<AppState>()(
         user: state.user,
         activePage: state.activePage,
         darkMode: state.darkMode,
+        // Persist admin navigation so refresh keeps admin in current section
+        adminActivePage: state.adminActivePage,
+        adminViewAsUser: state.adminViewAsUser,
       }),
       // When rehydrating, validate the stored user ID matches to prevent stale data
       onRehydrateStorage: () => (state) => {
