@@ -7,6 +7,7 @@ import { languageNames, type Language } from '@/lib/i18n'
 import { Sidebar } from './sidebar'
 import { NotificationPanel } from './notifications/notification-panel'
 import { WelcomeModal } from './onboarding/welcome-modal'
+import { SubscriptionBlocker } from './onboarding/subscription-blocker'
 import { BackToTopButton, LastUpdated } from './ui/global-enhancements'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -240,6 +241,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                 transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
                 className="p-4 md:p-6 pb-20 md:pb-6"
               >
+                {/* Subscription blocker banner (shown for free users) */}
+                <SubscriptionBlocker />
                 {children}
               </motion.div>
             </AnimatePresence>

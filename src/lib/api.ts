@@ -210,15 +210,20 @@ export const invoicesApi = {
 export const plansApi = {
   getList: () =>
     apiFetch<any>('/plans'),
-  upgrade: (userId: string, plan: string) =>
+  upgrade: (userId: string, plan: string, paymentMethod: string = 'pix') =>
     apiFetch<any>('/plans/upgrade', {
       method: 'POST',
-      body: JSON.stringify({ userId, plan }),
+      body: JSON.stringify({ userId, plan, paymentMethod }),
     }),
   calculateUpgrade: (userId: string, targetPlan: string) =>
     apiFetch<any>('/plans/calculate-upgrade', {
       method: 'POST',
       body: JSON.stringify({ userId, targetPlan }),
+    }),
+  confirmPixPayment: (userId: string, invoiceId: string) =>
+    apiFetch<any>('/plans/confirm-pix', {
+      method: 'POST',
+      body: JSON.stringify({ userId, invoiceId }),
     }),
 }
 
@@ -272,12 +277,14 @@ export const userApi = {
 export const adminApi = {
   getStats: (userId: string) =>
     apiFetch<any>(`/admin/stats?userId=${userId}`),
-  getUsers: (userId: string, params?: { search?: string; plan?: string; status?: string; page?: number }) => {
+  getUsers: (userId: string, params?: { search?: string; plan?: string; status?: string; page?: number; includeMatrix?: boolean; includeBets?: boolean }) => {
     const p = new URLSearchParams({ userId })
     if (params?.search) p.set('search', params.search)
     if (params?.plan) p.set('plan', params.plan)
     if (params?.status) p.set('status', params.status)
     if (params?.page) p.set('page', String(params.page))
+    if (params?.includeMatrix) p.set('includeMatrix', 'true')
+    if (params?.includeBets) p.set('includeBets', 'true')
     return apiFetch<any>(`/admin/users?${p}`)
   },
   getConfig: (userId: string) =>
@@ -287,6 +294,48 @@ export const adminApi = {
       method: 'PUT',
       body: JSON.stringify({ userId, configs }),
     }),
+
+  // Vouchers
+  getVouchers: (userId: string, page = 1, limit = 20) =>
+    apiFetch<any>(`/admin/vouchers?userId=${userId}&page=${page}&limit=${limit}`),
+  createVoucher: (userId: string, data: { targetUserId?: string; code?: string; type: string; amount: number; description?: string; expiresAt?: string }) =>
+    apiFetch<any>('/admin/vouchers', { method: 'POST', body: JSON.stringify({ userId, ...data }) }),
+  deleteVoucher: (userId: string, voucherId: string) =>
+    apiFetch<any>(`/admin/vouchers/${voucherId}?userId=${userId}`, { method: 'DELETE' }),
+  updateVoucher: (userId: string, voucherId: string, status: string) =>
+    apiFetch<any>(`/admin/vouchers/${voucherId}`, { method: 'PUT', body: JSON.stringify({ userId, status }) }),
+
+  // Bets
+  getBets: (userId: string, status = 'all', page = 1, limit = 20) =>
+    apiFetch<any>(`/admin/bets?userId=${userId}&status=${status}&page=${page}&limit=${limit}`),
+  settleBet: (userId: string, betId: string, result: 'won' | 'lost') =>
+    apiFetch<any>(`/admin/bets/${betId}`, { method: 'PUT', body: JSON.stringify({ userId, result }) }),
+  cancelBet: (userId: string, betId: string, reason?: string) =>
+    apiFetch<any>(`/admin/bets/${betId}/cancel`, { method: 'POST', body: JSON.stringify({ userId, reason }) }),
+
+  // Matrix
+  getUserMatrix: (userId: string, targetUserId: string, matrixType: 'entrada' | 'residual' | 'vendas') =>
+    apiFetch<any>(`/admin/users/${targetUserId}/matrix?userId=${userId}&matrixType=${matrixType}`),
+
+  // Cashback config
+  getCashbackConfig: (userId: string) =>
+    apiFetch<any>(`/admin/cashback-config?userId=${userId}`),
+  updateCashbackConfig: (userId: string, configs: any) =>
+    apiFetch<any>('/admin/cashback-config', { method: 'PUT', body: JSON.stringify({ userId, configs }) }),
+
+  // Points config
+  getPointsConfig: (userId: string) =>
+    apiFetch<any>(`/admin/points-config?userId=${userId}`),
+  updatePointsConfig: (userId: string, configs: any) =>
+    apiFetch<any>('/admin/points-config', { method: 'PUT', body: JSON.stringify({ userId, configs }) }),
+
+  // Release balance (Liberar saldo)
+  releaseBalance: (userId: string, targetUserId: string, wallet: string, amount: number, description: string) =>
+    apiFetch<any>(`/admin/users/${targetUserId}/release-balance`, { method: 'POST', body: JSON.stringify({ userId, wallet, amount, description }) }),
+
+  // User tree (referral tree)
+  getUserTree: (userId: string, targetUserId: string) =>
+    apiFetch<any>(`/admin/users/${targetUserId}/tree?userId=${userId}`),
 }
 
 // Notifications

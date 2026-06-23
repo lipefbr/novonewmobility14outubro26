@@ -20,6 +20,10 @@ import {
   Moon,
   Sun,
   RefreshCw,
+  Ticket,
+  Gamepad2,
+  Network,
+  Percent,
 } from 'lucide-react'
 import { useStore, type AdminPageKey } from '@/lib/store'
 import { cn } from '@/lib/utils'
@@ -50,9 +54,13 @@ const adminNavItems: AdminNavItem[] = [
   { key: 'financial', label: 'Financeiro', icon: Wallet, description: 'Transações, saques e cashback', group: 'main' },
   { key: 'plans', label: 'Planos & Preços', icon: CreditCard, description: 'Planos e matrizes', group: 'main' },
   { key: 'gratifications', label: 'Gratificações', icon: Gift, description: 'Saldos de gratificação', group: 'main' },
+  { key: 'vouchers', label: 'Vouchers', icon: Ticket, description: 'Gerenciar vouchers e cupons', group: 'main' },
+  { key: 'bets', label: 'Jogos & Apostas', icon: Gamepad2, description: 'Gerenciar apostas e jogos', group: 'main' },
+  { key: 'matrices', label: 'Matrizes MMN', icon: Network, description: 'Visualizar matrizes de indicações', group: 'main' },
   { key: 'support', label: 'Tickets de Suporte', icon: Headphones, description: 'Atendimento ao cliente', group: 'main' },
   { key: 'announcements', label: 'Anúncios', icon: Megaphone, description: 'Comunicados da plataforma', group: 'system' },
   { key: 'reports', label: 'Relatórios', icon: BarChart3, description: 'Analytics e relatórios', group: 'system' },
+  { key: 'cashback-config', label: 'Config Cashback', icon: Percent, description: 'Configurar porcentagens e pontos', group: 'system' },
   { key: 'settings', label: 'Configurações', icon: Settings, description: 'Configurações do sistema', group: 'system' },
 ]
 

@@ -127,6 +127,11 @@ export async function POST(request: NextRequest) {
       return error('User not found', 404)
     }
 
+    // Block orders for free plan users (subscription not paid)
+    if (user.plan === 'free' && user.role !== 'admin') {
+      return error('Você precisa assinar um plano para comprar no marketplace. Acesse "Meu Plano" para assinar.', 403)
+    }
+
     // Get products and calculate total
     let totalAmount = 0
     let totalCashback = 0

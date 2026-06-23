@@ -13,7 +13,7 @@ import { formatCurrency, formatDate, getPlanName, getPlanPrice } from '@/lib/uti
 import {
   CreditCard, Check, Star, ArrowUpRight, FileText, Calendar,
   Shield, Car, Pill, ShoppingBag, Gamepad2, Trophy, Phone,
-  Heart, Zap, Gift, Users, Smartphone, Clock, Calculator, TrendingUp, Sparkles
+  Heart, Zap, Gift, Users, Smartphone, Clock, Calculator, TrendingUp, Sparkles, Copy
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
@@ -106,7 +106,7 @@ const allPlans = [
 ]
 
 export function MyPlanPage() {
-  const { user } = useStore()
+  const { user, updateUser } = useStore()
   const { toast } = useToast()
   const currentPlan = user?.plan || 'blue5'
   const currentPlanData = allPlans.find((p) => p.id === currentPlan) || allPlans[2]
@@ -115,14 +115,18 @@ export function MyPlanPage() {
   const [selectedPlan, setSelectedPlan] = useState<string>('blue5')
   const [upgradeCalc, setUpgradeCalc] = useState<any>(null)
   const [calcLoading, setCalcLoading] = useState(false)
-  const [upgradeStep, setUpgradeStep] = useState<'calculate' | 'confirm' | 'success'>('calculate')
-  const [paymentMethod, setPaymentMethod] = useState<string>('credit_card')
+  const [upgradeStep, setUpgradeStep] = useState<'calculate' | 'confirm' | 'pix_payment' | 'success'>('calculate')
+  const [paymentMethod, setPaymentMethod] = useState<string>('pix')
+  const [pixPaymentData, setPixPaymentData] = useState<any>(null)
+  const [pixCopied, setPixCopied] = useState(false)
+  const [confirmingPix, setConfirmingPix] = useState(false)
 
   const handleCalculateUpgrade = async (planId: string) => {
     if (!user?.id) return
     setSelectedPlan(planId)
     setCalcLoading(true)
     setUpgradeStep('calculate')
+    setPixPaymentData(null)
     setUpgradeDialogOpen(true)
 
     try {
@@ -151,11 +155,54 @@ export function MyPlanPage() {
   const handleConfirmUpgrade = async () => {
     if (!user?.id) return
     try {
-      await plansApi.upgrade(user.id, selectedPlan)
-      setUpgradeStep('success')
-      toast({ title: 'Upgrade realizado com sucesso!', description: `Seu plano foi atualizado para ${upgradeCalc?.targetPlan?.name || selectedPlan}` })
-    } catch (err) {
-      toast({ title: 'Erro ao realizar upgrade', description: 'Tente novamente mais tarde', variant: 'destructive' })
+      if (paymentMethod === 'pix') {
+        // Generate PIX code on screen - don't auto-approve
+        const data = await plansApi.upgrade(user.id, selectedPlan, 'pix')
+        setPixPaymentData(data)
+        setUpgradeStep('pix_payment')
+        toast({ title: 'PIX gerado!', description: 'Pague o PIX para confirmar seu upgrade' })
+      } else if (paymentMethod === 'balance') {
+        // Pay with balance - auto-approved
+        const data = await plansApi.upgrade(user.id, selectedPlan, 'balance')
+        if (data.paid) {
+          if (data.user) {
+            updateUser({
+              plan: selectedPlan,
+              isActive: true,
+              balanceFree: data.user.balanceFree,
+            })
+          }
+          setUpgradeStep('success')
+          toast({ title: 'Upgrade realizado com sucesso!', description: `Seu plano foi atualizado para ${upgradeCalc?.targetPlan?.name || selectedPlan}` })
+        }
+      } else {
+        toast({ title: 'Método indisponível', description: 'Por enquanto apenas PIX e Saldo estão disponíveis', variant: 'destructive' })
+      }
+    } catch (err: any) {
+      toast({ title: 'Erro ao realizar upgrade', description: err?.message || 'Tente novamente mais tarde', variant: 'destructive' })
+    }
+  }
+
+  const handleConfirmPixPayment = async () => {
+    if (!user?.id || !pixPaymentData?.invoice?.id) return
+    setConfirmingPix(true)
+    try {
+      const data = await plansApi.confirmPixPayment(user.id, pixPaymentData.invoice.id)
+      if (data.paid) {
+        // Update the user store with new plan
+        if (data.user) {
+          updateUser({
+            plan: data.plan || selectedPlan,
+            isActive: true,
+          })
+        }
+        setUpgradeStep('success')
+        toast({ title: 'Pagamento confirmado!', description: `Seu plano foi atualizado para ${upgradeCalc?.targetPlan?.name || selectedPlan}` })
+      }
+    } catch (err: any) {
+      toast({ title: 'Erro ao confirmar pagamento', description: err?.message || 'Tente novamente', variant: 'destructive' })
+    } finally {
+      setConfirmingPix(false)
     }
   }
 
@@ -615,6 +662,100 @@ export function MyPlanPage() {
                 </Button>
                 <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleConfirmUpgrade}>
                   Confirmar Upgrade
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {upgradeStep === 'pix_payment' && pixPaymentData && (
+            <div className="space-y-4 py-4">
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-950/40 mb-2">
+                  <Smartphone className="h-6 w-6 text-emerald-600" />
+                </div>
+                <h3 className="text-lg font-bold text-foreground">Pagamento via PIX</h3>
+                <p className="text-xs text-muted-foreground">
+                  {pixPaymentData.planName} · {formatCurrency(pixPaymentData.amount)}
+                </p>
+              </div>
+
+              {/* QR Code (visual placeholder using the PIX code as data) */}
+              <div className="flex justify-center">
+                <div className="bg-white p-4 rounded-xl border-2 border-emerald-200 dark:border-emerald-800">
+                  {/* Use a QR code service URL with the PIX code as data */}
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixPaymentData.pixCode)}`}
+                    alt="QR Code PIX"
+                    className="w-48 h-48"
+                  />
+                </div>
+              </div>
+
+              {/* PIX Copia e Cola */}
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">PIX Copia e Cola:</p>
+                <div className="bg-muted rounded-lg p-3 border border-border">
+                  <p className="text-[11px] font-mono text-foreground break-all line-clamp-3">
+                    {pixPaymentData.pixCode}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  className="w-full gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                  onClick={() => {
+                    navigator.clipboard.writeText(pixPaymentData.pixCode)
+                    setPixCopied(true)
+                    setTimeout(() => setPixCopied(false), 2000)
+                  }}
+                >
+                  {pixCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  {pixCopied ? 'Copiado!' : 'Copiar código PIX'}
+                </Button>
+              </div>
+
+              {/* Instructions */}
+              <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-lg p-3">
+                <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 mb-2">Como pagar:</p>
+                <ol className="text-[11px] text-emerald-700 dark:text-emerald-400 space-y-1 list-decimal list-inside">
+                  {(pixPaymentData.instructions || []).map((inst: string, i: number) => (
+                    <li key={i}>{inst}</li>
+                  ))}
+                </ol>
+              </div>
+
+              {/* TXID */}
+              <div className="text-center text-[11px] text-muted-foreground">
+                <span>TXID: </span>
+                <span className="font-mono">{pixPaymentData.pixTxid}</span>
+              </div>
+
+              {/* Confirm payment button */}
+              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-center">
+                <p className="text-xs text-amber-700 dark:text-amber-400 mb-2">
+                  Após pagar o PIX no seu banco, clique no botão abaixo para confirmar o pagamento e ativar seu plano.
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setUpgradeStep('confirm')}>
+                  Voltar
+                </Button>
+                <Button
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                  disabled={confirmingPix}
+                  onClick={handleConfirmPixPayment}
+                >
+                  {confirmingPix ? (
+                    <>
+                      <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Confirmando...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4" />
+                      Já paguei - Confirmar
+                    </>
+                  )}
                 </Button>
               </div>
             </div>

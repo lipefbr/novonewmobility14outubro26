@@ -42,6 +42,10 @@ export type AdminPageKey =
   | 'announcements'
   | 'reports'
   | 'settings'
+  | 'vouchers'
+  | 'bets'
+  | 'matrices'
+  | 'cashback-config'
 
 export interface UserData {
   id: string
@@ -70,6 +74,16 @@ export interface UserData {
   userType?: 'usuario' | 'lojista' | 'motorista' | string
   profileImage: string | null
   createdAt: string
+  // Bank / PIX
+  pixKey?: string | null
+  pixEnabled?: boolean
+  bankCode?: string | null
+  bankAgency?: string | null
+  bankAccount?: string | null
+  bankType?: string | null
+  // Subscription
+  subscriptionStatus?: 'active' | 'pending' | 'overdue' | 'none'
+  subscriptionDueDate?: string | null
 }
 
 export interface Notification {

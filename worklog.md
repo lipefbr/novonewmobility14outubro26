@@ -392,3 +392,298 @@ Stage Summary:
 Demo credentials:
 - User: carlos.silva@email.com / 123456 (clean data, 0 balances)
 - Admin: admin@newmobility.com / 123456 (separate admin panel)
+
+---
+Task ID: 6-a
+Agent: Code Agent (API Backend)
+Task: Add new admin API endpoints for vouchers, games/bets management, MLM tree viewer, and cashback config
+
+Work Log:
+- Read worklog.md and prisma/schema.prisma to understand the project context and existing models
+- Reviewed existing admin endpoints (/admin/users, /admin/users/[id]/wallet, /admin/users/[id]/tree, /admin/percentages, /admin/config, /admin/gratifications/assign) to follow established patterns
+- Reviewed user-facing /api/bets/route.ts and /api/bets/[betId]/settle/route.ts to understand the existing Bet workflow (stakes deducted from balanceFree at placement; winnings credited to balanceFree at settle)
+- Noted schema differences from task spec (Voucher has no `status`/`description`/`redeemedAt` fields; Bet uses `potentialWinInCents` not `potentialPayoutInCents`)
+
+Created 9 new files:
+1. /src/app/api/admin/vouchers/route.ts
+   - GET ?userId=X&page=1&limit=20 — paginated list with derived status (active/redeemed/expired based on isUsed + expiresAt)
+   - POST {userId, targetUserId?, code?, type, amount, description, expiresAt?} — create voucher
+   - type must be one of: mobility, food, pharmacy, shopping, gratification, withdrawal
+   - amount in CENTS
+   - auto-generates code `VOUCHER-XXXX-XXXX` (uppercase alphanumeric, no ambiguous chars) when code not provided
+   - if no targetUserId, assigns to admin so FK is satisfied (generic voucher)
+
+2. /src/app/api/admin/vouchers/[id]/route.ts
+   - DELETE ?userId=X — delete voucher
+   - PUT {userId, status} — update status (active/redeemed/expired/disabled)
+   - Maps abstract status to schema fields: redeemed→isUsed=true+usedAt=now; active→isUsed=false+usedAt=null; expired→expiresAt=now; disabled→isUsed=true+usedAt=now+expiresAt=now
+
+3. /src/app/api/admin/bets/route.ts
+   - GET ?userId=X&status=all&page=1&limit=20 — paginated list with user info
+   - Response includes both `potentialPayoutInCents` (spec name) and `potentialWinInCents` (schema field) for client compatibility
+   - stats: {totalBets, pendingBets, wonBets, lostBets, totalStaked, totalPaid}
+
+4. /src/app/api/admin/bets/[id]/route.ts
+   - PUT {userId, result: 'won'|'lost'} — settle bet
+   - 'won': credits potentialWinInCents to user's balanceWithdrawal + creates bet_win transaction
+   - 'lost': marks status + creates bet_loss transaction
+   - Rejects if bet already settled
+
+5. /src/app/api/admin/bets/[id]/cancel/route.ts
+   - POST {userId, reason?} — cancel pending bet + refund stake to balanceWithdrawal
+   - Creates bet_refund transaction
+   - Rejects if bet is not pending
+
+6. /src/app/api/admin/users/[id]/matrix/route.ts
+   - GET ?userId=X&matrixType=entrada|residual|vendas
+   - Builds nested matrix tree starting from user's MatrixPosition, traversing parentId chain up to 5 levels deep
+   - Each node: {id, userId, userName, userEmail, level, position, isFilled, parentId, children:[]}
+   - Stats: {totalPositions, filledPositions, emptyPositions, totalLevels, levelCounts:[{level,count}]}
+   - Uses visited set to prevent cycles in case of bad data
+
+7. /src/app/api/admin/cashback-config/route.ts
+   - GET ?userId=X — returns {entrada:{level1..5}, residual:{level1..7}, vendas:{level1..9}, raw:{}}
+   - Falls back to default values when SystemConfig rows missing
+   - PUT {userId, configs} — saves each as cashback_${type}_level_${N} in SystemConfig
+   - (New namespace, distinct from existing cashback_${type}_pct used by /api/admin/percentages)
+
+8. /src/app/api/admin/points-config/route.ts
+   - GET ?userId=X — returns 9 default points keys (referralPoints=10, planUpgradePoints=25, dailyLoginPoints=1, betPlacedPoints=1, betWonPoints=5, marketplacePurchasePoints=2, ticketResolvedPoints=1, rideCompletedPoints=1, challengeCompletedPoints=10)
+   - PUT {userId, configs} — saves each as points_${key} in SystemConfig
+
+9. /src/app/api/admin/users/[id]/release-balance/route.ts
+   - POST {userId, wallet, amount, description} — admin manual credit ("Liberar Saldo")
+   - wallet must be one of: balanceWithdrawal, balanceMobility, balanceShopping, balanceFood, balancePharmacy, balanceGratification
+   - amount in CENTS, must be positive
+   - Uses prisma.$transaction to atomically increment wallet + create deposit/approved transaction
+   - Transaction description prefixed with `[Admin Liberação]`
+   - Returns sanitized user (password removed)
+
+Modified 1 existing file:
+10. /src/app/api/admin/users/route.ts
+    - Added optional ?includeMatrix=true and ?includeBets=true query params
+    - When true, uses prisma.matrixPosition.groupBy() and prisma.bet.groupBy() to attach matrixPositionCount and betCount fields to each user
+    - Existing behavior preserved (new fields are additive; only computed when query param is true)
+
+Testing (via curl against http://localhost:3000 with admin userId cmpskrkr50000o8bubki2cgqw):
+- All 9 endpoints verified working (200 responses with expected payload shape)
+- Voucher create→update→delete cycle: VOUCHER-VXEZ-E5HP created, redeemed status correctly set isUsed:true+usedAt:now, active status correctly cleared, delete returned success
+- Bet settle (won): Carlos's balanceWithdrawal increased from 0 to 1250 cents (= potentialWinInCents); bet_win transaction created with description prefixed [Admin]
+- Bet cancel: Carlos's balanceWithdrawal increased by 1000 cents (= stake); bet_refund transaction created
+- Bet stats: totalBets=2, pendingBets=0, wonBets=1, lostBets=0, totalStaked=500, totalPaid=1250 (cancelled bets excluded from stats)
+- Edge cases verified: settling already-settled bet returns 400 "Bet already settled"; cancelling non-pending bet returns 400 "Only pending bets can be cancelled"; non-admin user gets 403 Unauthorized
+- Cashback config PUT updated 3 keys, GET verified new values (entrada.level1=7, entrada.level2=12, vendas.level1=0.15)
+- Points config PUT updated 2 keys, GET verified new values (referralPoints=15, dailyLoginPoints=2)
+- Release balance: Carlos's mobility balance increased by 1000 cents; transaction record with type:deposit, status:approved, description "[Admin Liberação] Bônus de teste"
+- Release balance validation: negative amount → 400; invalid wallet → 400
+- Matrix tree: returns nested tree for Carlos with 5 levels deep, includes user info per node
+- Enhanced user list: CLAUDINEI user now includes matrixPositionCount:3 and betCount:0 fields
+
+Lint: 0 errors in any of the 10 new/modified TypeScript files (pre-existing 16 errors in unrelated .js/.cjs files remain unchanged)
+
+Cleanup: After testing, deleted the 2 test bets, all test transactions, reset Carlos's balances to 0, deleted all cashback_*_level_* and points_* SystemConfig overrides (defaults restored), deleted all test vouchers. Verified via curl that all endpoints return clean/empty/default state after cleanup.
+
+Stage Summary:
+- ✅ 9 new admin API endpoints created + 1 existing endpoint enhanced
+- ✅ All endpoints enforce admin authorization (user.role === 'admin' check)
+- ✅ All amounts in CENTS (Int type) per project convention
+- ✅ Schema field mapping handled cleanly (Voucher.status derived from isUsed+expiresAt; Bet uses both potentialPayoutInCents + potentialWinInCents in response)
+- ✅ Cashback config uses new namespace `cashback_${type}_level_${N}` (distinct from existing `cashback_${type}_pct` used by /api/admin/percentages)
+- ✅ Points config uses namespace `points_${key}`
+- ✅ Matrix tree traversal handles 5 levels deep with cycle detection
+- ✅ Bet settle credits balanceWithdrawal (per task spec) — different from user-facing settle which credits balanceFree
+- ✅ Release balance endpoint semantically distinct from /wallet (only positive credits, [Admin Liberação] prefix, always deposit/approved)
+- ✅ User list enhancement is additive (no breaking changes to existing response shape)
+- ✅ No modifications to user-facing API endpoints, admin-page.tsx, or Prisma schema (per task constraints)
+- ✅ All test data cleaned up; database restored to pre-test state
+
+---
+Task ID: 6-b
+Agent: Code Agent (Admin UI Frontend)
+Task: Add admin sidebar items and UI sections for vouchers, games/bets, MLM matrices, cashback config, gratifications creation, and release balance
+
+Work Log:
+- Read worklog.md and agent-ctx/6-a-admin-api-endpoints.md to understand previous Task 6-a work (the 9 new admin API endpoints already implemented and tested)
+- Read existing src/lib/store.ts, src/components/newmobility/admin/admin-layout.tsx, src/components/newmobility/admin/admin-page.tsx, src/lib/api.ts to understand current admin structure
+
+1. Extended AdminPageKey type in src/lib/store.ts:
+   - Added new keys: 'vouchers', 'bets', 'matrices', 'cashback-config'
+
+2. Updated src/components/newmobility/admin/admin-layout.tsx:
+   - Imported new icons from lucide-react: Ticket, Gamepad2, Network, Percent
+   - Added 4 new adminNavItems entries (all in 'main' group except cashback-config which is in 'system' group):
+     * vouchers (Ticket icon) — "Gerenciar vouchers e cupons"
+     * bets (Gamepad2 icon) — "Gerenciar apostas e jogos"
+     * matrices (Network icon) — "Visualizar matrizes de indicações"
+     * cashback-config (Percent icon) — "Configurar porcentagens e pontos"
+   - Re-ordered items: vouchers, bets, matrices inserted after gratifications; cashback-config inserted between reports and settings
+   - Mobile bottom nav bar (4 items) left unchanged (still: dashboard, users, financial, settings)
+
+3. Updated src/lib/api.ts adminApi object — added these methods (all calling endpoints created in Task 6-a):
+   - Vouchers: getVouchers, createVoucher, deleteVoucher, updateVoucher
+   - Bets: getBets, settleBet, cancelBet
+   - Matrix: getUserMatrix
+   - Cashback config: getCashbackConfig, updateCashbackConfig
+   - Points config: getPointsConfig, updatePointsConfig
+   - Release balance: releaseBalance
+   - User tree: getUserTree
+   - Also enhanced getUsers() with optional includeMatrix + includeBets boolean params (additive, no breaking change)
+
+4. Updated src/components/newmobility/admin/admin-page.tsx:
+   - Imports: added adminApi import from '@/lib/api' (alongside existing apiFetch); added new icons: Ticket, Gamepad2, Network, Percent, TreePine, Coins, Trophy, AlertCircle
+   - Added interfaces: AdminVoucher, AdminVoucherData, AdminBet, AdminBetData, MatrixNode, MatrixData, ReferralTreeNode, CashbackConfigData, PointsConfigData
+   - Added setAdminActivePage to useStore() destructuring
+   - Updated adminPageToTab mapping: added vouchers→'vouchers', bets→'bets', matrices→'matrices', 'cashback-config'→'cashback-config'
+   - Added ~30 new state vars for vouchers, bets, matrices, cashback/points config, release balance, create gratification
+   - Added useEffect dependency on voucherStatusFilter, voucherPage, betStatusFilter, betPage, matrixSelectedUser, matrixType
+   - Added load functions: loadVouchers, loadBets, loadCashbackConfig, loadPointsConfig
+   - Added handlers: handleCreateVoucher (BRL→cents conversion), handleDeleteVoucher, handleUpdateVoucherStatus, handleSettleBet, handleCancelBet, searchUsersForMatrix, selectUserForMatrix, handleSaveCashbackConfig, handleSavePointsConfig, handleOpenReleaseBalance, handleReleaseBalance, searchUsersForGratification, handleCreateGratification, handleViewUserMatrix
+   - Added useEffect to refetch matrix when matrixType/selectedUser changes (uses cancellation flag to avoid race conditions)
+   - Added helper functions: getVoucherTypeBadge, getVoucherTypeLabel, getVoucherStatusBadge, getBetStatusBadge, renderMatrixNode (recursive), renderReferralNode (recursive)
+   - Added 4 new TabsContent sections before the closing </Tabs>:
+     * Vouchers tab: header card with "Criar Voucher" button, 4 stats cards (Total/Ativos/Resgatados/Valor Total), status filter buttons (all/active/redeemed/expired/disabled), table (Código/Usuário/Tipo/Valor/Status/Validade/Ações with disable+delete buttons), pagination, empty state
+     * Bets tab: header card, 6 stats cards (Total/Pendentes/Ganhas/Perdidas/Total Apostado/Total Pago), status filter buttons (all/pending/won/lost/cancelled), table (Usuário/Evento/Seleção/Odds/Aposta/Potencial/Status/Data/Ações with Finalizar+Cancelar buttons for pending bets), pagination, empty state
+     * Matrices tab: header card, user search box with results list, selected user header card with "Trocar Usuário" button, matrix type selector (Entrada/Residual/Vendas), 4 stats cards (Total Posições/Preenchidas/Vazias/Níveis), level distribution badges, recursive matrix tree visualization (nested divs with L·P indicators, filled vs dashed border), referral tree visualization, empty states
+     * Cashback Config tab: header card, 3 cards side-by-side (Entrada with 5 levels / Residual with 7 levels / Vendas with 9 levels) each with per-level percentage inputs and "Salvar" button, plus Points Configuration card with 9 point-type inputs and "Salvar Pontos" button
+   - Enhanced Users section: added 2 buttons at the bottom of the View User dialog: "Ver Matriz" (switches to matrices admin page with that user pre-selected via handleViewUserMatrix) and "Liberar Saldo" (opens release balance dialog)
+   - Enhanced Gratifications section: added "Criar Gratificação" button in the section header card
+   - Added 5 new dialogs at the end (before the closing </div>):
+     * Create Voucher dialog: type select, BRL amount input (with live formatCurrency preview), optional targetUserId, optional code, optional expiry date, description
+     * Settle Bet dialog: shows event/aposta/potencial info, two big buttons (Ganha/Perdida) with icons
+     * Cancel Bet dialog: warning box with irreversible action notice, optional reason input, confirm button
+     * Release Balance dialog: wallet select (6 options), BRL amount with preview, required description (mentions [Admin Liberação] prefix)
+     * Create Gratification dialog: user search with results list, type select (leadership/retirement_fund/telemedicine/tow_truck/custom), category select (gratification/withdrawal/mobility/food/pharmacy/shopping), BRL amount with preview, description
+
+5. All amount conversions: user enters BRL reais (e.g. "100,00" or "100.00"); code does parseFloat(replace(',', '.')) * 100 rounded to int before sending to API. Display uses formatCurrency(cents) which divides by 100 and formats as pt-BR currency.
+
+6. Verification:
+   - bun run lint: 0 errors, 0 warnings in src/ TypeScript files (only the 16 pre-existing errors remain in unrelated .js/.cjs files: keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, scripts/*.cjs, supervisor.js)
+   - Dev server log: all 200 responses, no compile errors after hot-reload picked up changes
+   - Did not modify: user-facing AppLayout, other user pages, Prisma schema, existing API endpoints, existing admin sections (just added new TabsContent and 5 dialogs alongside them)
+
+Stage Summary:
+- ✅ Extended AdminPageKey type with 4 new keys: vouchers, bets, matrices, cashback-config
+- ✅ Added 4 new sidebar items in admin-layout.tsx with proper Lucide icons (Ticket, Gamepad2, Network, Percent)
+- ✅ Added 15 new adminApi methods in api.ts covering vouchers, bets, matrix, cashback config, points config, release balance, user tree
+- ✅ Added 4 new TabsContent sections in admin-page.tsx (Vouchers, Bets, Matrices, Cashback Config) with full CRUD/visualization UI
+- ✅ Enhanced Users section: "Ver Matriz" button switches to matrices admin page with user pre-selected; "Liberar Saldo" button opens dialog with wallet select + BRL amount + required description
+- ✅ Enhanced Gratifications section: "Criar Gratificação" button at top opens dialog with user search, type/category selects, BRL amount, description — calls /api/admin/gratifications/assign
+- ✅ All BRL-to-cents conversions handled (multiply by 100, round, send as integer)
+- ✅ Loading states (spinners) and empty states for all new sections
+- ✅ Toast notifications (toast.success/toast.error) for all user actions
+- ✅ Framer Motion animations on stat cards (initial opacity/y, animate, transition with delay)
+- ✅ Tailwind classes consistent with existing admin sections (emerald-themed, dark mode support)
+- ✅ All API endpoints called already exist (verified via Task 6-a report) — no backend changes needed
+- ✅ Lint clean (only pre-existing errors in unrelated .js/.cjs files)
+- ✅ Dev server healthy (no compile errors after hot-reload)
+
+---
+Task ID: 7
+Agent: Main Agent
+Task: Withdrawal with PIX deduction/pending, PIX registration flow, admin beneficiaries view, plan purchase via PIX with on-screen code, subscription blocking
+
+Work Log:
+- Extended UserData interface in src/lib/store.ts with pixKey, pixEnabled, bankCode, bankAgency, bankAccount, bankType, subscriptionStatus, subscriptionDueDate fields
+- Updated mapApiUserToUserData in src/components/newmobility/auth/login-page.tsx to map PIX/bank/subscription fields from API to UserData
+- Updated register-page.tsx to initialize PIX/bank/subscription defaults on new account creation
+- Updated src/app/api/financial/withdraw/route.ts to:
+  * Block withdrawals for free plan users (subscription not paid) → 403 error
+  * Validate that user has pixKey registered before allowing withdrawal → 400 error
+  * Validate sufficient balance before creating withdrawal → 400 error
+  * Create transaction with status 'pending' (not auto-approved)
+  * Deduct balance immediately from user's wallet
+  * Return updated newBalance and pixKey in response
+- Updated src/components/newmobility/financial/financial-page.tsx:
+  * Added PIX registration dialog (with CPF/Phone/Email/Random key types)
+  * When user clicks "Solicitar Saque" without PIX key, opens PIX registration dialog instead
+  * PIX registration saves via PUT /api/user/profile (with pixKey and pixEnabled fields)
+  * After PIX registration, automatically opens withdraw dialog
+  * Updated withdraw submit handler to update local store balance immediately after API success
+  * Added error handling: if API returns PIX-related error, opens PIX registration dialog
+  * Added second withdraw trigger (EmptyState onAction) with same PIX check
+- Updated src/components/newmobility/profile/profile-page.tsx:
+  * Added PIX key field to bankInfo state (was missing)
+  * Added useEffect to sync bankInfo from user data on mount
+  * Added PIX section in bank tab with highlighted gradient background
+  * Added PIX type/active checkbox
+  * Updated handleSaveBank to call PUT /api/user/profile with all bank + PIX fields
+  * Added success/error toast notifications for bank save
+  * Added 'Check' icon to imports
+- Updated src/components/newmobility/admin/admin-page.tsx:
+  * Added viewUserBeneficiaries state
+  * Updated handleOpenViewUser to fetch beneficiaries via GET /api/user/beneficiaries in parallel
+  * Added new "Beneficiários" section at end of View User dialog showing:
+    - Total percentage allocated (with visual progress bar)
+    - List of beneficiaries with name, CPF, relationship (translated: spouse=Cônjuge, child=Filho(a), parent=Pais, sibling=Irmão(ã), other=Outro), percentage, age
+    - Empty state with "Nenhum beneficiário cadastrado" message
+  * Added Heart icon to imports
+- Rewrote src/app/api/plans/upgrade/route.ts to support PIX payment method:
+  * Added generatePixBrCode helper function (BR Code format following EMV standard)
+  * PIX flow: creates pending invoice, generates PIX code, creates pending transaction record, returns pixCode + pixTxid + instructions + simulatePayment flag
+  * Does NOT auto-approve when paying via PIX - waits for payment confirmation
+  * Balance flow: deducts from balanceFree, auto-approves immediately
+  * Rejects credit_card and boleto methods (only PIX and balance supported)
+- Created new endpoint src/app/api/plans/confirm-pix/route.ts:
+  * POST /api/plans/confirm-pix { userId, invoiceId }
+  * Marks invoice as paid, applies plan upgrade to user
+  * Creates approved transaction record
+  * Updates all pending plan_upgrade transactions to approved
+  * Returns updated user with new plan
+- Updated src/lib/api.ts plansApi:
+  * upgrade method now accepts paymentMethod parameter (default 'pix')
+  * Added confirmPixPayment method
+- Updated src/components/newmobility/myplan/myplan-page.tsx:
+  * Added 'pix_payment' to upgradeStep state type
+  * Added pixPaymentData, pixCopied, confirmingPix state
+  * Updated handleConfirmUpgrade to handle PIX flow (calls upgrade API, switches to pix_payment step)
+  * Updated handleConfirmUpgrade to handle balance flow (auto-approves, updates store)
+  * Added handleConfirmPixPayment to call /plans/confirm-pix and update user store with new plan
+  * Added new 'pix_payment' step UI with:
+    - QR Code (generated via api.qrserver.com with PIX code as data)
+    - PIX Copia e Cola code box with copy button
+    - Step-by-step payment instructions
+    - TXID display
+    - "Já paguei - Confirmar" button to confirm payment
+    - Back button to return to confirm step
+  * Added Copy icon to imports
+  * Added updateUser from useStore
+- Created src/components/newmobility/onboarding/subscription-blocker.tsx:
+  * Shows blocking modal for free plan users on non-allowed pages (marketplace, financial, portals, etc.)
+  * Shows non-blocking banner for free plan users on allowed pages (dashboard, myplan, profile, support, admin)
+  * Modal displays: Lock icon, "Assinatura Necessária" title, list of blocked features, two plan cards (Blue 3 R$97 + Blue 5 R$147), "Ver detalhes e assinar" CTA
+  * Banner displays: warning icon, "Assinatura mensal pendente" title, "Assinar agora" button, "Lembrar depois" dismiss
+- Updated src/components/newmobility/app-layout.tsx:
+  * Imported SubscriptionBlocker component
+  * Added <SubscriptionBlocker /> at top of page content (before children)
+- Added subscription blocking to backend APIs:
+  * src/app/api/financial/withdraw/route.ts: returns 403 for free plan users
+  * src/app/api/bets/route.ts: returns 403 for free plan users
+  * src/app/api/marketplace/orders/route.ts: returns 403 for free plan users
+- All blocking checks exempt admin users (role === 'admin')
+
+Testing (via agent-browser against http://localhost:3000):
+- ✅ Login as Carlos (blue5, no PIX) → click "Solicitar Saque" → PIX registration dialog opens
+- ✅ Filled CPF "123.456.789-00" → click "Cadastrar e Continuar" → PUT /api/user/profile 200 → PIX saved to store → withdraw dialog opens automatically
+- ✅ Admin login → Users page → page 2 → click "Ver" on Carlos → DADOS BANCÁRIOS shows "Chave PIX: 123.456.789-00" and "PIX Ativo: Sim" → BENEFICIÁRIOS section shows "Nenhum beneficiário cadastrado" (Carlos has no beneficiaries)
+- ✅ Login as Indicado Teste (free plan) → Dashboard shows "Assinatura mensal pendente" banner with "Assinar agora" button
+- ✅ Click Marketplace sidebar → "Assinatura Necessária" blocking modal appears with Blue 3 and Blue 5 plan cards
+- ✅ Click "Ver detalhes e assinar" → navigates to Meu Plano page with banner at top
+- ✅ Click "Upgrade para Blue 5" → Upgrade dialog opens with calculation step
+- ✅ Click "Continuar com Upgrade" → confirm step with PIX/Cartão/Boleto/Saldo options
+- ✅ Click "Confirmar Upgrade" (PIX selected) → POST /api/plans/upgrade 201 → PIX payment screen with QR Code, Copia e Cola code, TXID, instructions
+- ✅ Click "Já paguei - Confirmar" → POST /api/plans/confirm-pix 200 → "Upgrade Realizado!" success screen
+- ✅ Verified withdraw API validates free plan: returns 403 with "Você precisa assinar um plano para solicitar saques"
+- ✅ Verified withdraw API validates PIX: returns 400 with "Você precisa cadastrar uma chave PIX antes de solicitar um saque"
+- ✅ Verified bets API validates free plan: returns 403
+- ✅ Verified marketplace orders API validates free plan: returns 403
+
+Lint: 0 errors in TypeScript files (only pre-existing 16 errors remain in unrelated .js/.cjs files)
+
+Stage Summary:
+- ✅ Withdrawal flow: PIX validation + immediate balance deduction + pending status (all working)
+- ✅ PIX registration: dedicated dialog with 4 key types (CPF/Phone/Email/Random) + auto-redirect to withdraw after registration
+- ✅ Admin user view: shows full bank details (including PIX key + PIX active status) AND beneficiaries list with percentages and relationship labels
+- ✅ Plan purchase via PIX: generates BR Code on screen with QR Code image, Copia e Cola code, TXID, payment instructions, and "Já paguei" confirmation button
+- ✅ Subscription blocking: free users see banner on allowed pages and full blocking modal on blocked pages; backend APIs also reject free plan users for withdrawals/bets/marketplace orders
+- ✅ Plan upgrade via balance payment also updates user store
+- ✅ All changes tested end-to-end via agent-browser with real database interactions

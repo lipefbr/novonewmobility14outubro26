@@ -13,6 +13,8 @@ export async function GET(req: NextRequest) {
     const search = req.nextUrl.searchParams.get('search') || ''
     const plan = req.nextUrl.searchParams.get('plan') || 'all'
     const status = req.nextUrl.searchParams.get('status') || 'all'
+    const includeMatrix = req.nextUrl.searchParams.get('includeMatrix') === 'true'
+    const includeBets = req.nextUrl.searchParams.get('includeBets') === 'true'
     const page = parseInt(req.nextUrl.searchParams.get('page') || '1')
     const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '20'), 50)
     const offset = (page - 1) * limit
@@ -66,6 +68,44 @@ export async function GET(req: NextRequest) {
       total = await prisma.user.count({ where })
     } catch (e) {
       console.error('Admin users count error:', e)
+    }
+
+    // Optional enrichment: include matrix position counts per user
+    if (includeMatrix && users.length > 0) {
+      try {
+        const userIds = users.map((u: any) => u.id)
+        const matrixCounts = await prisma.matrixPosition.groupBy({
+          by: ['userId'],
+          where: { userId: { in: userIds } },
+          _count: { _all: true },
+        })
+        const countsMap: Record<string, number> = {}
+        for (const mc of matrixCounts) {
+          countsMap[mc.userId] = mc._count._all
+        }
+        users = users.map((u: any) => ({ ...u, matrixPositionCount: countsMap[u.id] || 0 }))
+      } catch (e) {
+        console.error('Admin users includeMatrix error:', e)
+      }
+    }
+
+    // Optional enrichment: include bet counts per user
+    if (includeBets && users.length > 0) {
+      try {
+        const userIds = users.map((u: any) => u.id)
+        const betCounts = await prisma.bet.groupBy({
+          by: ['userId'],
+          where: { userId: { in: userIds } },
+          _count: { _all: true },
+        })
+        const countsMap: Record<string, number> = {}
+        for (const bc of betCounts) {
+          countsMap[bc.userId] = bc._count._all
+        }
+        users = users.map((u: any) => ({ ...u, betCount: countsMap[u.id] || 0 }))
+      } catch (e) {
+        console.error('Admin users includeBets error:', e)
+      }
     }
 
     return success({ users, total, page, limit, totalPages: Math.ceil(total / limit) })

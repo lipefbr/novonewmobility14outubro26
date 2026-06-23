@@ -214,6 +214,14 @@ export function RegisterPage() {
           userType: data.user.userType || 'usuario',
           profileImage: data.user.profileImage || null,
           createdAt: data.user.createdAt || new Date().toISOString(),
+          pixKey: null,
+          pixEnabled: true,
+          bankCode: null,
+          bankAgency: null,
+          bankAccount: null,
+          bankType: null,
+          subscriptionStatus: 'none',
+          subscriptionDueDate: null,
         }
         setSuccess(true)
         setTimeout(() => {

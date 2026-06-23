@@ -34,6 +34,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 })
     }
 
+    // Block bets for free plan users (subscription not paid)
+    if (user.plan === 'free' && user.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Você precisa assinar um plano para apostar. Acesse "Meu Plano" para assinar.' },
+        { status: 403 }
+      )
+    }
+
     // Check balance
     if (user.balanceFree < amountInCents) {
       return NextResponse.json(

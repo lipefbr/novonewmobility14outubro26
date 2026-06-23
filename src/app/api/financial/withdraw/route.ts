@@ -23,6 +23,11 @@ export async function POST(request: Request) {
       return error('User not found', 404)
     }
 
+    // Block withdrawals for free plan users (subscription not paid)
+    if (user.plan === 'free' && user.role !== 'admin') {
+      return error('Você precisa assinar um plano para solicitar saques. Acesse "Meu Plano" para assinar.', 403)
+    }
+
     // Check sufficient balance based on category
     let balanceField = 'balanceWithdrawal'
     if (category === 'mobility') balanceField = 'balanceMobility'
@@ -32,19 +37,28 @@ export async function POST(request: Request) {
     else if (category === 'gratification') balanceField = 'balanceGratification'
 
     const currentBalance = user[balanceField] as number
-    // Note: Allow negative balances - no insufficient balance check
 
-    // Create transaction
+    // Validate that user has a PIX key registered (required for withdrawals)
+    if (!user.pixKey || String(user.pixKey).trim() === '') {
+      return error('Você precisa cadastrar uma chave PIX antes de solicitar um saque. Acesse seu perfil e cadastre sua chave PIX.', 400)
+    }
+
+    // Validate sufficient balance
+    if (amountCents > currentBalance) {
+      return error('Saldo insuficiente para este saque', 400)
+    }
+
+    // Create transaction (status: pending -> admin approves later)
     const transaction = await db.insert('Transaction', {
       userId,
       type: 'withdrawal',
       amount: -amountCents,
       status: 'pending',
       category: category || 'withdrawal',
-      description: `Solicitação de saque - ${category || 'withdrawal'}`,
+      description: `Solicitação de saque - ${category || 'withdrawal'} (PIX: ${user.pixKey})`,
     })
 
-    // Deduct from balance
+    // Deduct from balance immediately (funds held while withdrawal is pending)
     await db.update(
       'User',
       '"id" = $1',
@@ -52,7 +66,14 @@ export async function POST(request: Request) {
       [userId]
     )
 
-    return success({ transaction }, 201)
+    // Reload user to return updated balance
+    const updatedUser = await db.findOne('User', '"id" = $1', [userId])
+
+    return success({
+      transaction,
+      newBalance: updatedUser?.[balanceField] ?? currentBalance - amountCents,
+      pixKey: user.pixKey,
+    }, 201)
   } catch (err) {
     console.error('Withdrawal error:', err)
     return error('Internal server error', 500)

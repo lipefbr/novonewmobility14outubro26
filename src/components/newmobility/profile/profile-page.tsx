@@ -14,8 +14,8 @@ import { useStore } from '@/lib/store'
 import { formatCurrency, getPlanName, getPlanPrice, timeSince, formatDate } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
 import {
-  User, Building2, Lock, Save, Check, Camera, Shield, Calendar,
-  CreditCard, Users, DollarSign, Copy, Check as CheckIcon, ArrowUpRight, Link2, Award,
+  User, Building2, Lock, Save, Camera, Shield, Calendar,
+  CreditCard, Users, DollarSign, Copy, Check as CheckIcon, Check, ArrowUpRight, Link2, Award,
   Verified, Mail, Phone, MapPin, Pencil, Eye, EyeOff, Smartphone, Globe, Key,
   ShieldCheck, ShieldAlert, ShieldX, Chrome, Apple, Send, FileCheck, Hash,
   AlertTriangle, HelpCircle, Heart, Plus, Trash2, Edit3, X,
@@ -320,11 +320,27 @@ export function ProfilePage() {
   })
 
   const [bankInfo, setBankInfo] = useState({
-    bankCode: '001',
-    bankAgency: '1234-5',
-    bankAccount: '67890-1',
+    bankCode: '',
+    bankAgency: '',
+    bankAccount: '',
     bankType: 'cc',
+    pixKey: '',
+    pixEnabled: true,
   })
+
+  // Sync bank info from user data on mount or when user changes
+  useEffect(() => {
+    if (user) {
+      setBankInfo({
+        bankCode: user.bankCode || '',
+        bankAgency: user.bankAgency || '',
+        bankAccount: user.bankAccount || '',
+        bankType: user.bankType || 'cc',
+        pixKey: user.pixKey || '',
+        pixEnabled: user.pixEnabled ?? true,
+      })
+    }
+  }, [user?.id])
 
   const [passwordInfo, setPasswordInfo] = useState({
     currentPassword: '',
@@ -499,15 +515,44 @@ export function ProfilePage() {
     }, 800)
   }
 
-  const handleSaveBank = () => {
+  const handleSaveBank = async () => {
+    if (!user?.id) return
     setSaving(true)
-    setTimeout(() => {
-      setSaving(false)
+    try {
+      const updated = await apiFetch<any>('/user/profile', {
+        method: 'PUT',
+        body: JSON.stringify({
+          userId: user.id,
+          bankCode: bankInfo.bankCode || null,
+          bankAgency: bankInfo.bankAgency || null,
+          bankAccount: bankInfo.bankAccount || null,
+          bankType: bankInfo.bankType,
+          pixKey: bankInfo.pixKey || null,
+          pixEnabled: bankInfo.pixEnabled,
+        }),
+      })
+      // Update the store with new PIX/bank data
+      updateUser({
+        pixKey: updated.pixKey ?? bankInfo.pixKey,
+        pixEnabled: updated.pixEnabled ?? bankInfo.pixEnabled,
+        bankCode: updated.bankCode ?? bankInfo.bankCode,
+        bankAgency: updated.bankAgency ?? bankInfo.bankAgency,
+        bankAccount: updated.bankAccount ?? bankInfo.bankAccount,
+        bankType: updated.bankType ?? bankInfo.bankType,
+      })
       toast({
         title: 'Dados bancários atualizados',
-        description: 'Suas informações bancárias foram salvas com sucesso.',
+        description: 'Suas informações bancárias e chave PIX foram salvas com sucesso.',
       })
-    }, 800)
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao salvar dados',
+        description: err.message || 'Tente novamente mais tarde.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleChangePassword = () => {
@@ -911,6 +956,43 @@ export function ProfilePage() {
                     Os dados bancários são usados para saques. Certifique-se de que estão corretos.
                   </p>
                 </div>
+
+                {/* PIX Section - Highlighted */}
+                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 border border-emerald-200 dark:border-emerald-800 rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Smartphone className="h-5 w-5 text-emerald-600" />
+                      <h4 className="text-sm font-bold text-foreground">Chave PIX</h4>
+                      {bankInfo.pixKey && (
+                        <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 text-[10px]">
+                          <Check className="h-3 w-3 mr-1" />Cadastrada
+                        </Badge>
+                      )}
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={bankInfo.pixEnabled}
+                        onChange={(e) => setBankInfo((p) => ({ ...p, pixEnabled: e.target.checked }))}
+                        className="accent-emerald-600"
+                      />
+                      <span className="text-xs text-muted-foreground">PIX ativo</span>
+                    </label>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs">Chave PIX (CPF, telefone, e-mail ou chave aleatória)</Label>
+                    <Input
+                      placeholder="Ex: 000.000.000-00, +5511999999999, seu@email.com"
+                      value={bankInfo.pixKey}
+                      onChange={(e) => setBankInfo((p) => ({ ...p, pixKey: e.target.value }))}
+                      className="font-mono text-sm"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      ⚠️ A chave PIX é <strong>obrigatória</strong> para solicitar saques. Sem ela, você não poderá retirar seus ganhos.
+                    </p>
+                  </div>
+                </div>
+
                 <Separator />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <InlineField label="Banco" value={bankInfo.bankCode} onChange={(v) => setBankInfo((p) => ({ ...p, bankCode: v }))} />
@@ -932,7 +1014,7 @@ export function ProfilePage() {
                 </div>
                 <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleSaveBank} disabled={saving}>
                   {saving ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="h-4 w-4" />}
-                  Salvar Dados Bancários
+                  Salvar Dados Bancários e PIX
                 </Button>
               </CardContent>
             </Card>

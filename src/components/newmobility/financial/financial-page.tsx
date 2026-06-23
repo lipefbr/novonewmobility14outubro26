@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency, formatDate, getStatusLabel, getStatusVariant, cn } from '@/lib/utils'
-import { financialApi, transferApi } from '@/lib/api'
+import { financialApi, transferApi, apiFetch } from '@/lib/api'
 import { FinancialSkeleton } from '../ui/loading-skeletons'
 import { EmptyState } from '../ui/empty-states'
 import { InvoiceViewer } from './invoice-viewer'
@@ -50,6 +50,9 @@ import {
   Calendar,
   Send,
   Clock,
+  Smartphone,
+  Sparkles,
+  Check,
   ArrowRightLeft,
   CircleDot,
   FileText,
@@ -214,6 +217,12 @@ export function FinancialPage() {
   const [transferAmount, setTransferAmount] = useState('')
   const [transferSubmitting, setTransferSubmitting] = useState(false)
   const [selectedTransaction, setSelectedTransaction] = useState<any | null>(null)
+
+  // PIX registration dialog state
+  const [pixDialogOpen, setPixDialogOpen] = useState(false)
+  const [pixKeyType, setPixKeyType] = useState<'cpf' | 'phone' | 'email' | 'random'>('cpf')
+  const [pixKeyValue, setPixKeyValue] = useState('')
+  const [pixSaving, setPixSaving] = useState(false)
 
   const PAGE_LIMIT = 20
 
@@ -461,7 +470,14 @@ export function FinancialPage() {
             {t('transfer.title')}
           </Button>
           <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
-            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={() => setWithdrawOpen(true)}>
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={() => {
+              // PIX check: if user has no PIX key, open PIX registration dialog instead
+              if (!user?.pixKey || user.pixKey.trim() === '') {
+                setPixDialogOpen(true)
+                return
+              }
+              setWithdrawOpen(true)
+            }}>
               <ArrowDownToLine className="h-4 w-4" />
               {t('financial.withdraw')}
             </Button>
@@ -616,14 +632,26 @@ export function FinancialPage() {
                     setWithdrawSubmitting(true)
                     try {
                       // Send amount in BRL (reais) - the backend converts to cents
-                      await financialApi.withdraw(user.id, withdrawReais, 'withdrawal')
+                      const data = await financialApi.withdraw(user.id, withdrawReais, 'withdrawal')
+                      // Update local store balance immediately (backend already deducted)
+                      if (data?.newBalance !== undefined) {
+                        updateUser({ balanceWithdrawal: data.newBalance })
+                      }
                       setWithdrawOpen(false)
                       setWithdrawAmount('')
-                      toast.success('Saque solicitado com sucesso!')
+                      toast.success(`Saque solicitado com sucesso! Status: Pendente. O valor será enviado para sua chave PIX: ${data?.pixKey || user?.pixKey}.`)
                       // Refresh balances (updates store), transactions, withdrawals, and chart data
                       await refreshAllAfterAction()
                     } catch (err: any) {
-                      toast.error(err.message || 'Erro ao solicitar saque')
+                      const msg = err?.message || ''
+                      if (msg.toLowerCase().includes('pix')) {
+                        // PIX-related error: close withdraw dialog and open PIX registration
+                        setWithdrawOpen(false)
+                        setPixDialogOpen(true)
+                        toast.error(msg)
+                      } else {
+                        toast.error(msg || 'Erro ao solicitar saque')
+                      }
                     } finally {
                       setWithdrawSubmitting(false)
                     }
@@ -1185,7 +1213,13 @@ export function FinancialPage() {
                   title="Nenhum saque solicitado"
                   description="Você ainda não solicitou nenhum saque. Ao solicitar, o histórico aparecerá aqui com o status de processamento."
                   actionLabel={t('financial.withdraw')}
-                  onAction={() => setWithdrawOpen(true)}
+                  onAction={() => {
+                    if (!user?.pixKey || user.pixKey.trim() === '') {
+                      setPixDialogOpen(true)
+                      return
+                    }
+                    setWithdrawOpen(true)
+                  }}
                   className="py-10"
                 />
               ) : (
@@ -1430,6 +1464,158 @@ export function FinancialPage() {
                 </>
               )}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== PIX REGISTRATION DIALOG ===== */}
+      <Dialog open={pixDialogOpen} onOpenChange={setPixDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Smartphone className="h-5 w-5 text-emerald-600" />
+              Cadastre sua Chave PIX
+            </DialogTitle>
+            <DialogDescription>
+              Para solicitar saques, você precisa cadastrar uma chave PIX válida. Os saques serão processados e enviados para sua chave PIX.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+              <p className="text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+                <Info className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                <span>É obrigatório ter uma chave PIX cadastrada para receber saques. Escolha o tipo de chave e informe o valor correspondente.</span>
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Tipo de Chave PIX</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { id: 'cpf', label: 'CPF', icon: '🆔' },
+                  { id: 'phone', label: 'Telefone', icon: '📱' },
+                  { id: 'email', label: 'E-mail', icon: '📧' },
+                  { id: 'random', label: 'Aleatória', icon: '🎲' },
+                ].map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      setPixKeyType(opt.id as any)
+                      setPixKeyValue('')
+                    }}
+                    className={`p-3 rounded-lg border text-xs font-medium flex flex-col items-center gap-1 transition-colors ${
+                      pixKeyType === opt.id
+                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400'
+                        : 'border-border hover:border-emerald-300 text-muted-foreground'
+                    }`}
+                  >
+                    <span className="text-lg">{opt.icon}</span>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Valor da Chave PIX</Label>
+              {pixKeyType === 'random' ? (
+                <div className="space-y-2">
+                  <Input
+                    placeholder="Clique em gerar para criar uma chave aleatória"
+                    value={pixKeyValue}
+                    readOnly
+                    className="font-mono text-xs"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2"
+                    onClick={() => {
+                      // Generate a random PIX key (UUID-like format)
+                      const chars = 'abcdef0123456789'
+                      const blocks = []
+                      for (let b = 0; b < 4; b++) {
+                        let block = ''
+                        for (let i = 0; i < 8; i++) block += chars[Math.floor(Math.random() * chars.length)]
+                        blocks.push(block)
+                      }
+                      setPixKeyValue(blocks.join('-'))
+                    }}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Gerar Chave Aleatória
+                  </Button>
+                </div>
+              ) : (
+                <Input
+                  type={pixKeyType === 'email' ? 'email' : 'text'}
+                  placeholder={
+                    pixKeyType === 'cpf' ? '000.000.000-00' :
+                    pixKeyType === 'phone' ? '+55 (00) 00000-0000' :
+                    'seu@email.com'
+                  }
+                  value={pixKeyValue}
+                  onChange={(e) => setPixKeyValue(e.target.value)}
+                />
+              )}
+              <p className="text-xs text-muted-foreground">
+                {pixKeyType === 'cpf' && 'Digite seu CPF no formato 000.000.000-00'}
+                {pixKeyType === 'phone' && 'Digite seu telefone com DDD'}
+                {pixKeyType === 'email' && 'Digite seu e-mail válido'}
+                {pixKeyType === 'random' && 'Gere uma chave aleatória única'}
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" className="flex-1" onClick={() => setPixDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                disabled={pixSaving || !pixKeyValue.trim()}
+                onClick={async () => {
+                  if (!user?.id || !pixKeyValue.trim()) return
+                  setPixSaving(true)
+                  try {
+                    const updated = await apiFetch<any>('/user/profile', {
+                      method: 'PUT',
+                      body: JSON.stringify({
+                        userId: user.id,
+                        pixKey: pixKeyValue.trim(),
+                        pixEnabled: true,
+                      }),
+                    })
+                    updateUser({
+                      pixKey: updated.pixKey ?? pixKeyValue.trim(),
+                      pixEnabled: true,
+                    })
+                    toast.success('Chave PIX cadastrada com sucesso! Agora você pode solicitar saques.')
+                    setPixDialogOpen(false)
+                    setPixKeyValue('')
+                    // Now open the withdraw dialog
+                    setTimeout(() => setWithdrawOpen(true), 300)
+                  } catch (err: any) {
+                    toast.error(err.message || 'Erro ao cadastrar chave PIX')
+                  } finally {
+                    setPixSaving(false)
+                  }
+                }}
+              >
+                {pixSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4 mr-1" />
+                    Cadastrar e Continuar
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

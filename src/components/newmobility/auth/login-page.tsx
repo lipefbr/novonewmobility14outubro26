@@ -43,6 +43,16 @@ function mapApiUserToUserData(apiUser: Record<string, unknown>, balances?: Recor
     userType: (apiUser.userType as 'usuario' | 'lojista' | 'motorista') ?? 'usuario',
     profileImage: (apiUser.profileImage as string | null) || null,
     createdAt: (apiUser.createdAt as string) || new Date().toISOString(),
+    // Bank / PIX
+    pixKey: (apiUser.pixKey as string | null) || null,
+    pixEnabled: (apiUser.pixEnabled as boolean) ?? true,
+    bankCode: (apiUser.bankCode as string | null) || null,
+    bankAgency: (apiUser.bankAgency as string | null) || null,
+    bankAccount: (apiUser.bankAccount as string | null) || null,
+    bankType: (apiUser.bankType as string | null) || null,
+    // Subscription (defaults to 'none' for free plan, 'active' otherwise)
+    subscriptionStatus: (apiUser.subscriptionStatus as 'active' | 'pending' | 'overdue' | 'none') || (apiUser.plan === 'free' ? 'none' : 'active'),
+    subscriptionDueDate: (apiUser.subscriptionDueDate as string | null) || null,
   }
 }
 

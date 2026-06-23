@@ -17,7 +17,7 @@ import {
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency } from '@/lib/utils'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, adminApi } from '@/lib/api'
 import {
   Shield, Users, DollarSign, TrendingUp, Activity, Settings, Search,
   ChevronLeft, ChevronRight, BarChart3, Clock, Mail, Check, X,
@@ -25,7 +25,8 @@ import {
   Plus, Trash2, Edit, Eye, Wallet, CreditCard, FileText, Ban,
   MapPin, Phone, Star, Car, Bike, Banknote, UserCheck, UserX,
   ArrowUpDown, Receipt, PieChart, Filter, Download, Calendar,
-  MessageSquare, Send, Gift,
+  MessageSquare, Send, Gift, Ticket, Gamepad2, Network, Percent,
+  TreePine, Coins, Trophy, AlertCircle, Heart,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -135,6 +136,62 @@ interface AdminTicket {
   messages: { id: string; message: string; isAdmin: boolean; userId: string; createdAt: string }[];
 }
 
+// ---------- Vouchers ----------
+interface AdminVoucher {
+  id: string; code: string; type: string; amountInCents: number;
+  userId: string; userName?: string; userEmail?: string;
+  isUsed: boolean; usedAt: string | null; expiresAt: string | null;
+  createdAt: string; status?: string; description?: string;
+}
+
+interface AdminVoucherData {
+  vouchers: AdminVoucher[]; total: number; page: number; totalPages: number;
+  stats?: { total: number; active: number; redeemed: number; expired: number; totalValue: number };
+}
+
+// ---------- Bets ----------
+interface AdminBet {
+  id: string; userId: string; userName?: string; userEmail?: string;
+  eventId: string; eventLabel: string; selection: string; selectionLabel: string;
+  odds: number; amountInCents: number; potentialWinInCents: number;
+  potentialPayoutInCents?: number; status: string; createdAt: string;
+}
+
+interface AdminBetData {
+  bets: AdminBet[]; total: number; page: number; totalPages: number;
+  stats: { totalBets: number; pendingBets: number; wonBets: number; lostBets: number; totalStaked: number; totalPaid: number };
+}
+
+// ---------- Matrix ----------
+interface MatrixNode {
+  id: string; userId: string; userName: string; userEmail: string;
+  level: number; position: number; isFilled: boolean; parentId: string | null;
+  balance?: number; children: MatrixNode[];
+}
+
+interface MatrixData {
+  tree: MatrixNode | null;
+  stats: { totalPositions: number; filledPositions: number; emptyPositions: number; totalLevels: number; levelCounts: { level: number; count: number }[] };
+}
+
+interface ReferralTreeNode {
+  id: string; name: string; email: string; plan: string; createdAt: string;
+  children?: ReferralTreeNode[];
+}
+
+// ---------- Cashback / Points config ----------
+interface CashbackConfigData {
+  entrada: Record<string, number>;
+  residual: Record<string, number>;
+  vendas: Record<string, number>;
+  raw?: Record<string, string>;
+}
+
+interface PointsConfigData {
+  [key: string]: number;
+  raw?: Record<string, string>;
+}
+
 // ---------- Full edit form data ----------
 interface EditFormData {
   name: string; email: string; phone: string; cpf: string;
@@ -171,11 +228,15 @@ const adminPageToTab: Record<string, string> = {
   announcements: 'announcements',
   reports: 'reports',
   settings: 'config',
+  vouchers: 'vouchers',
+  bets: 'bets',
+  matrices: 'matrices',
+  'cashback-config': 'cashback-config',
 }
 
 export function AdminPage() {
   const { t } = useTranslation()
-  const { user, adminActivePage } = useStore()
+  const { user, adminActivePage, setAdminActivePage } = useStore()
   // Internal sub-tab for the financial admin page (overview / withdrawals / cashback)
   const [financialSubTab, setFinancialSubTab] = useState<'financial' | 'withdrawals' | 'cashback'>('financial')
   // Derive the active tab from the admin sidebar selection. The financial admin page
@@ -213,6 +274,7 @@ export function AdminPage() {
   const [viewUserDialogOpen, setViewUserDialogOpen] = useState(false)
   const [viewingUser, setViewingUser] = useState<ViewUserData | null>(null)
   const [loadingViewUser, setLoadingViewUser] = useState(false)
+  const [viewUserBeneficiaries, setViewUserBeneficiaries] = useState<any[]>([])
 
   // Plan dialog
   const [planDialogOpen, setPlanDialogOpen] = useState(false)
@@ -256,6 +318,62 @@ export function AdminPage() {
   const [ticketReply, setTicketReply] = useState('')
   const [sendingReply, setSendingReply] = useState(false)
 
+  // Vouchers tab
+  const [voucherData, setVoucherData] = useState<AdminVoucherData | null>(null)
+  const [voucherStatusFilter, setVoucherStatusFilter] = useState('all')
+  const [voucherPage, setVoucherPage] = useState(1)
+  const [voucherLoading, setVoucherLoading] = useState(false)
+  const [voucherCreateOpen, setVoucherCreateOpen] = useState(false)
+  const [voucherSaving, setVoucherSaving] = useState(false)
+  const [voucherForm, setVoucherForm] = useState({
+    type: 'mobility', amountBrl: '', targetUserId: '', code: '', expiresAt: '', description: '',
+  })
+
+  // Bets tab
+  const [betData, setBetData] = useState<AdminBetData | null>(null)
+  const [betStatusFilter, setBetStatusFilter] = useState('all')
+  const [betPage, setBetPage] = useState(1)
+  const [betLoading, setBetLoading] = useState(false)
+  const [betSettleOpen, setBetSettleOpen] = useState(false)
+  const [betSettleTarget, setBetSettleTarget] = useState<AdminBet | null>(null)
+  const [betSettling, setBetSettling] = useState(false)
+  const [betCancelOpen, setBetCancelOpen] = useState(false)
+  const [betCancelTarget, setBetCancelTarget] = useState<AdminBet | null>(null)
+  const [betCancelReason, setBetCancelReason] = useState('')
+  const [betCancelling, setBetCancelling] = useState(false)
+
+  // Matrices tab
+  const [matrixSearchQuery, setMatrixSearchQuery] = useState('')
+  const [matrixSearchResults, setMatrixSearchResults] = useState<AdminUser[]>([])
+  const [matrixSelectedUser, setMatrixSelectedUser] = useState<AdminUser | null>(null)
+  const [matrixType, setMatrixType] = useState<'entrada' | 'residual' | 'vendas'>('entrada')
+  const [matrixData, setMatrixData] = useState<MatrixData | null>(null)
+  const [referralTree, setReferralTree] = useState<ReferralTreeNode | null>(null)
+  const [matrixLoading, setMatrixLoading] = useState(false)
+  const [matrixSearchLoading, setMatrixSearchLoading] = useState(false)
+
+  // Cashback config tab
+  const [cashbackConfig, setCashbackConfig] = useState<CashbackConfigData | null>(null)
+  const [pointsConfig, setPointsConfig] = useState<PointsConfigData | null>(null)
+  const [cashbackConfigLoading, setCashbackConfigLoading] = useState(false)
+  const [cashbackSaving, setCashbackSaving] = useState(false)
+  const [pointsSaving, setPointsSaving] = useState(false)
+
+  // Release balance dialog (used from user view)
+  const [releaseBalanceOpen, setReleaseBalanceOpen] = useState(false)
+  const [releaseBalanceTarget, setReleaseBalanceTarget] = useState<ViewUserData | null>(null)
+  const [releaseBalanceForm, setReleaseBalanceForm] = useState({ wallet: 'balanceWithdrawal', amountBrl: '', description: '' })
+  const [releaseBalanceSaving, setReleaseBalanceSaving] = useState(false)
+
+  // Create gratification dialog (used from gratifications tab)
+  const [gratificationCreateOpen, setGratificationCreateOpen] = useState(false)
+  const [gratificationForm, setGratificationForm] = useState({
+    targetUserId: '', type: 'leadership', amountBrl: '', category: 'gratification', description: '',
+  })
+  const [gratificationSaving, setGratificationSaving] = useState(false)
+  const [gratificationUserSearch, setGratificationUserSearch] = useState('')
+  const [gratificationUserResults, setGratificationUserResults] = useState<AdminUser[]>([])
+
   const isAdmin = user?.role === 'admin'
 
   useEffect(() => {
@@ -273,7 +391,14 @@ export function AdminPage() {
     if (activeTab === 'tickets') loadTickets()
     // Also load financial data for the gratifications admin page (which shows summary)
     if (activeTab === 'gratifications') loadFinancial()
-  }, [activeTab, searchQuery, planFilter, statusFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter, ticketPriorityFilter])
+    // New tabs
+    if (activeTab === 'vouchers') loadVouchers()
+    if (activeTab === 'bets') loadBets()
+    if (activeTab === 'cashback-config') {
+      loadCashbackConfig()
+      loadPointsConfig()
+    }
+  }, [activeTab, searchQuery, planFilter, statusFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter, ticketPriorityFilter, voucherStatusFilter, voucherPage, betStatusFilter, betPage, matrixSelectedUser, matrixType])
 
   const loadStats = async () => {
     try {
@@ -345,6 +470,260 @@ export function AdminPage() {
       const data = await apiFetch<{ tickets: AdminTicket[] }>(`/admin/support/tickets?${params}`)
       setTickets(data.tickets || [])
     } catch { /* ignore */ }
+  }
+
+  // ---------- Vouchers ----------
+  const loadVouchers = async () => {
+    setVoucherLoading(true)
+    try {
+      const data = await adminApi.getVouchers(user?.id || '', voucherPage, 20)
+      setVoucherData(data)
+    } catch { /* ignore */ } finally { setVoucherLoading(false) }
+  }
+
+  const handleCreateVoucher = async () => {
+    const amountBrl = parseFloat(voucherForm.amountBrl.replace(',', '.'))
+    if (isNaN(amountBrl) || amountBrl <= 0) {
+      toast.error('Informe um valor válido')
+      return
+    }
+    const amountInCents = Math.round(amountBrl * 100)
+    setVoucherSaving(true)
+    try {
+      await adminApi.createVoucher(user?.id || '', {
+        type: voucherForm.type,
+        amount: amountInCents,
+        targetUserId: voucherForm.targetUserId || undefined,
+        code: voucherForm.code || undefined,
+        expiresAt: voucherForm.expiresAt ? new Date(voucherForm.expiresAt).toISOString() : undefined,
+        description: voucherForm.description || undefined,
+      })
+      toast.success('Voucher criado com sucesso!')
+      setVoucherCreateOpen(false)
+      setVoucherForm({ type: 'mobility', amountBrl: '', targetUserId: '', code: '', expiresAt: '', description: '' })
+      loadVouchers()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao criar voucher')
+    } finally { setVoucherSaving(false) }
+  }
+
+  const handleDeleteVoucher = async (voucherId: string) => {
+    if (!confirm('Excluir este voucher? Esta ação não pode ser desfeita.')) return
+    try {
+      await adminApi.deleteVoucher(user?.id || '', voucherId)
+      toast.success('Voucher excluído')
+      loadVouchers()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao excluir voucher')
+    }
+  }
+
+  const handleUpdateVoucherStatus = async (voucherId: string, status: string) => {
+    try {
+      await adminApi.updateVoucher(user?.id || '', voucherId, status)
+      toast.success(`Status atualizado: ${status}`)
+      loadVouchers()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao atualizar voucher')
+    }
+  }
+
+  // ---------- Bets ----------
+  const loadBets = async () => {
+    setBetLoading(true)
+    try {
+      const data = await adminApi.getBets(user?.id || '', betStatusFilter, betPage, 20)
+      setBetData(data)
+    } catch { /* ignore */ } finally { setBetLoading(false) }
+  }
+
+  const handleSettleBet = async (result: 'won' | 'lost') => {
+    if (!betSettleTarget) return
+    setBetSettling(true)
+    try {
+      await adminApi.settleBet(user?.id || '', betSettleTarget.id, result)
+      toast.success(`Aposta finalizada como ${result === 'won' ? 'Ganha' : 'Perdida'}`)
+      setBetSettleOpen(false)
+      setBetSettleTarget(null)
+      loadBets()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao finalizar aposta')
+    } finally { setBetSettling(false) }
+  }
+
+  const handleCancelBet = async () => {
+    if (!betCancelTarget) return
+    setBetCancelling(true)
+    try {
+      await adminApi.cancelBet(user?.id || '', betCancelTarget.id, betCancelReason || undefined)
+      toast.success('Aposta cancelada e valor estornado')
+      setBetCancelOpen(false)
+      setBetCancelTarget(null)
+      setBetCancelReason('')
+      loadBets()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao cancelar aposta')
+    } finally { setBetCancelling(false) }
+  }
+
+  // ---------- Matrices ----------
+  const searchUsersForMatrix = async () => {
+    if (!matrixSearchQuery.trim()) return
+    setMatrixSearchLoading(true)
+    try {
+      const data = await adminApi.getUsers(user?.id || '', { search: matrixSearchQuery, page: 1 })
+      setMatrixSearchResults(data.users || [])
+    } catch { /* ignore */ } finally { setMatrixSearchLoading(false) }
+  }
+
+  const selectUserForMatrix = async (u: AdminUser) => {
+    setMatrixSelectedUser(u)
+    setMatrixSearchResults([])
+    setMatrixSearchQuery('')
+    setMatrixLoading(true)
+    // Matrix tree will be loaded by the useEffect watching [matrixType, matrixSelectedUser]
+    // We just need to fetch the referral tree here
+    try {
+      const tree = await adminApi.getUserTree(user?.id || '', u.id).catch(() => null)
+      setReferralTree(tree)
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao carregar árvore de indicações')
+      setReferralTree(null)
+    } finally {
+      // matrixLoading will be reset by the useEffect when matrix fetch completes
+    }
+  }
+
+  // Re-fetch matrix when matrixType or selected user changes
+  useEffect(() => {
+    if (!matrixSelectedUser) return
+    let cancelled = false
+    setMatrixLoading(true)
+    adminApi.getUserMatrix(user?.id || '', matrixSelectedUser.id, matrixType)
+      .then((data) => { if (!cancelled) setMatrixData(data) })
+      .catch(() => { if (!cancelled) setMatrixData(null) })
+      .finally(() => { if (!cancelled) setMatrixLoading(false) })
+    return () => { cancelled = true }
+  }, [matrixType, matrixSelectedUser, user?.id])
+
+  // ---------- Cashback / Points Config ----------
+  const loadCashbackConfig = async () => {
+    setCashbackConfigLoading(true)
+    try {
+      const data = await adminApi.getCashbackConfig(user?.id || '')
+      setCashbackConfig(data)
+    } catch { /* ignore */ } finally { setCashbackConfigLoading(false) }
+  }
+
+  const loadPointsConfig = async () => {
+    try {
+      const data = await adminApi.getPointsConfig(user?.id || '')
+      setPointsConfig(data)
+    } catch { /* ignore */ }
+  }
+
+  const handleSaveCashbackConfig = async (type: 'entrada' | 'residual' | 'vendas') => {
+    if (!cashbackConfig) return
+    setCashbackSaving(true)
+    try {
+      const configs = { [type]: cashbackConfig[type] }
+      await adminApi.updateCashbackConfig(user?.id || '', configs)
+      toast.success(`Configuração de cashback ${type} salva!`)
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao salvar cashback')
+    } finally { setCashbackSaving(false) }
+  }
+
+  const handleSavePointsConfig = async () => {
+    if (!pointsConfig) return
+    setPointsSaving(true)
+    try {
+      const { raw, ...configs } = pointsConfig
+      await adminApi.updatePointsConfig(user?.id || '', configs)
+      toast.success('Configuração de pontos salva!')
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao salvar pontos')
+    } finally { setPointsSaving(false) }
+  }
+
+  // ---------- Release Balance ----------
+  const handleOpenReleaseBalance = (u: ViewUserData) => {
+    setReleaseBalanceTarget(u)
+    setReleaseBalanceForm({ wallet: 'balanceWithdrawal', amountBrl: '', description: '' })
+    setReleaseBalanceOpen(true)
+  }
+
+  const handleReleaseBalance = async () => {
+    if (!releaseBalanceTarget) return
+    const amountBrl = parseFloat(releaseBalanceForm.amountBrl.replace(',', '.'))
+    if (isNaN(amountBrl) || amountBrl <= 0) {
+      toast.error('Informe um valor válido')
+      return
+    }
+    if (!releaseBalanceForm.description.trim()) {
+      toast.error('Informe uma descrição')
+      return
+    }
+    const amountInCents = Math.round(amountBrl * 100)
+    setReleaseBalanceSaving(true)
+    try {
+      await adminApi.releaseBalance(user?.id || '', releaseBalanceTarget.id, releaseBalanceForm.wallet, amountInCents, releaseBalanceForm.description)
+      toast.success(`Saldo liberado: ${formatCurrency(amountInCents)} para ${releaseBalanceTarget.name}`)
+      setReleaseBalanceOpen(false)
+      setReleaseBalanceTarget(null)
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao liberar saldo')
+    } finally { setReleaseBalanceSaving(false) }
+  }
+
+  // ---------- Create Gratification ----------
+  const searchUsersForGratification = async () => {
+    if (!gratificationUserSearch.trim()) return
+    try {
+      const data = await adminApi.getUsers(user?.id || '', { search: gratificationUserSearch, page: 1 })
+      setGratificationUserResults(data.users || [])
+    } catch { /* ignore */ }
+  }
+
+  const handleCreateGratification = async () => {
+    if (!gratificationForm.targetUserId) {
+      toast.error('Selecione um usuário')
+      return
+    }
+    const amountBrl = parseFloat(gratificationForm.amountBrl.replace(',', '.'))
+    if (isNaN(amountBrl) || amountBrl <= 0) {
+      toast.error('Informe um valor válido')
+      return
+    }
+    const amountInCents = Math.round(amountBrl * 100)
+    setGratificationSaving(true)
+    try {
+      await apiFetch('/admin/gratifications/assign', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: user?.id,
+          targetUserId: gratificationForm.targetUserId,
+          type: gratificationForm.type,
+          amount: amountInCents,
+          category: gratificationForm.category,
+          description: gratificationForm.description,
+        }),
+      })
+      toast.success('Gratificação criada com sucesso!')
+      setGratificationCreateOpen(false)
+      setGratificationForm({ targetUserId: '', type: 'leadership', amountBrl: '', category: 'gratification', description: '' })
+      setGratificationUserSearch('')
+      setGratificationUserResults([])
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao criar gratificação')
+    } finally { setGratificationSaving(false) }
+  }
+
+  // ---------- Matrix view shortcut from Users tab ----------
+  const handleViewUserMatrix = (u: AdminUser) => {
+    setViewUserDialogOpen(false)
+    setAdminActivePage('matrices')
+    selectUserForMatrix(u)
   }
 
   const handleReplyTicket = async () => {
@@ -485,6 +864,7 @@ export function AdminPage() {
   const handleOpenViewUser = async (u: AdminUser) => {
     setViewUserDialogOpen(true)
     setLoadingViewUser(true)
+    setViewUserBeneficiaries([])
     try {
       const data = await apiFetch<ViewUserData>(`/admin/users/${u.id}?userId=${user?.id}`)
       setViewingUser(data)
@@ -493,6 +873,13 @@ export function AdminPage() {
       setViewingUser(u as unknown as ViewUserData)
     } finally {
       setLoadingViewUser(false)
+    }
+    // Fetch beneficiaries in parallel (non-blocking)
+    try {
+      const beneData = await apiFetch<{ beneficiaries: any[] }>(`/user/beneficiaries?userId=${u.id}`)
+      setViewUserBeneficiaries(beneData.beneficiaries || [])
+    } catch {
+      setViewUserBeneficiaries([])
     }
   }
 
@@ -792,6 +1179,111 @@ export function AdminPage() {
 
   const updateEditField = <K extends keyof EditFormData>(key: K, value: EditFormData[K]) => {
     setEditUserData(d => ({ ...d, [key]: value }))
+  }
+
+  // ---------- New helpers for vouchers / bets / matrix ----------
+  const getVoucherTypeBadge = (type: string) => {
+    const map: Record<string, string> = {
+      mobility: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+      food: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+      pharmacy: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+      shopping: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+      gratification: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400',
+      withdrawal: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400',
+    }
+    return map[type] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+  }
+
+  const getVoucherTypeLabel = (type: string) => {
+    const map: Record<string, string> = {
+      mobility: 'Mobilidade', food: 'Refeição', pharmacy: 'Farmácia',
+      shopping: 'Compras', gratification: 'Gratificação', withdrawal: 'Saque',
+    }
+    return map[type] || type
+  }
+
+  const getVoucherStatusBadge = (v: AdminVoucher) => {
+    const status = (v.status || (v.isUsed ? 'redeemed' : (v.expiresAt && new Date(v.expiresAt) < new Date() ? 'expired' : 'active')))
+    const map: Record<string, { badge: string; label: string }> = {
+      active: { badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', label: 'Ativo' },
+      redeemed: { badge: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', label: 'Resgatado' },
+      expired: { badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400', label: 'Expirado' },
+      disabled: { badge: 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300', label: 'Desativado' },
+    }
+    return map[status] || map.active
+  }
+
+  const getBetStatusBadge = (status: string) => {
+    const map: Record<string, { badge: string; label: string }> = {
+      pending: { badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400', label: 'Pendente' },
+      won: { badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', label: 'Ganha' },
+      lost: { badge: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400', label: 'Perdida' },
+      cancelled: { badge: 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300', label: 'Cancelada' },
+    }
+    return map[status] || { badge: 'bg-gray-100 text-gray-700', label: status }
+  }
+
+  // Recursive matrix node renderer
+  const renderMatrixNode = (node: MatrixNode, depth = 0): React.ReactNode => {
+    if (!node) return null
+    return (
+      <div key={node.id || `${node.userId}-${depth}-${node.position}`} style={{ marginLeft: depth > 0 ? 20 : 0 }}>
+        <div
+          className={`flex items-center gap-2 p-2 rounded-lg mb-1 border ${
+            node.isFilled
+              ? 'bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-200/60 dark:border-emerald-800/50'
+              : 'bg-muted/30 border-dashed border-muted-foreground/30'
+          }`}
+        >
+          <span className="text-[10px] font-mono text-muted-foreground w-12 shrink-0">L{node.level}·P{node.position}</span>
+          <div className="flex-1 min-w-0">
+            {node.isFilled ? (
+              <>
+                <p className="text-xs font-medium text-foreground truncate">{node.userName || node.userId}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{node.userEmail}</p>
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground italic">Posição vazia</p>
+            )}
+          </div>
+          {node.isFilled && (
+            <Badge variant="outline" className="text-[9px] gap-1">
+              <Check className="h-2.5 w-2.5 text-emerald-500" />
+              Preenchida
+            </Badge>
+          )}
+        </div>
+        {node.children && node.children.length > 0 && (
+          <div className="border-l border-muted-foreground/20 ml-4 pl-1">
+            {node.children.map((child) => renderMatrixNode(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Recursive referral tree renderer
+  const renderReferralNode = (node: ReferralTreeNode, depth = 0): React.ReactNode => {
+    if (!node) return null
+    return (
+      <div key={node.id} style={{ marginLeft: depth > 0 ? 20 : 0 }}>
+        <div className="flex items-center gap-2 p-2 rounded-lg mb-1 bg-muted/30 hover:bg-muted/60 transition-colors">
+          <div className="h-6 w-6 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold flex items-center justify-center shrink-0">
+            {node.name?.charAt(0)?.toUpperCase() || '?'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-foreground truncate">{node.name}</p>
+            <p className="text-[10px] text-muted-foreground truncate">{node.email}</p>
+          </div>
+          <Badge variant="outline" className="text-[9px]">{node.plan}</Badge>
+        </div>
+        {node.children && node.children.length > 0 && (
+          <div className="border-l border-emerald-200/50 dark:border-emerald-800/40 ml-3 pl-1">
+            {node.children.map((child) => renderReferralNode(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    )
   }
 
   // Admin access guard
@@ -2355,14 +2847,19 @@ export function AdminPage() {
         {/* Gratifications Tab — summary of gratification balances across users */}
         <TabsContent value="gratifications" className="mt-4 space-y-4">
           <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <Gift className="h-4 w-4 text-emerald-600" />
-                <h3 className="text-sm font-semibold text-foreground">Gratificações — Resumo Geral</h3>
+            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Gift className="h-4 w-4 text-emerald-600" />
+                  <h3 className="text-sm font-semibold text-foreground">Gratificações — Resumo Geral</h3>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Visão consolidada das gratificações distribuídas na plataforma (cashback e saldo de gratificação).
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Visão consolidada das gratificações distribuídas na plataforma (cashback e saldo de gratificação).
-              </p>
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shrink-0" onClick={() => setGratificationCreateOpen(true)}>
+                <Plus className="h-4 w-4" /> Criar Gratificação
+              </Button>
             </CardContent>
           </Card>
 
@@ -2452,6 +2949,633 @@ export function AdminPage() {
             </Card>
           )}
         </TabsContent>
+
+        {/* ===== VOUCHERS TAB ===== */}
+        <TabsContent value="vouchers" className="mt-4 space-y-4">
+          <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
+            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Ticket className="h-4 w-4 text-emerald-600" />
+                  <h3 className="text-sm font-semibold text-foreground">Vouchers & Cupons</h3>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Crie e gerencie vouchers promocionais para os usuários. Valores em reais (R$).
+                </p>
+              </div>
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shrink-0" onClick={() => setVoucherCreateOpen(true)}>
+                <Plus className="h-4 w-4" /> Criar Voucher
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Stats cards */}
+          {voucherData?.stats && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { label: 'Total', value: voucherData.stats.total, icon: Ticket, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
+                { label: 'Ativos', value: voucherData.stats.active, icon: Check, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+                { label: 'Resgatados', value: voucherData.stats.redeemed, icon: Trophy, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30' },
+                { label: 'Valor Total', value: formatCurrency(voucherData.stats.totalValue), icon: DollarSign, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/30' },
+              ].map((card, i) => (
+                <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
+                  <Card className={`${card.bg} border-0`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <card.icon className={`h-4 w-4 ${card.color}`} />
+                        <span className="text-xs font-medium text-muted-foreground">{card.label}</span>
+                      </div>
+                      <p className="text-lg font-bold text-foreground">{card.value}</p>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </div>
+          )}
+
+          {/* Filters */}
+          <Card>
+            <CardContent className="p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Filter className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground hidden sm:inline">Filtrar:</span>
+                {(['all', 'active', 'redeemed', 'expired', 'disabled'] as const).map((status) => {
+                  const labels: Record<string, string> = { all: 'Todos', active: 'Ativos', redeemed: 'Resgatados', expired: 'Expirados', disabled: 'Desativados' }
+                  return (
+                    <button
+                      key={status}
+                      onClick={() => { setVoucherStatusFilter(status); setVoucherPage(1) }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        voucherStatusFilter === status ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                      }`}
+                    >
+                      {labels[status]}
+                    </button>
+                  )
+                })}
+                <span className="text-xs text-muted-foreground ml-auto">{voucherData?.total ?? 0} vouchers</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Table */}
+          <Card>
+            <CardContent className="p-0">
+              {voucherLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <span className="h-6 w-6 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+                  <span className="ml-3 text-sm text-muted-foreground">Carregando vouchers...</span>
+                </div>
+              ) : voucherData?.vouchers && voucherData.vouchers.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3">Código</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden sm:table-cell">Usuário</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3">Tipo</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3">Valor</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3">Status</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden md:table-cell">Validade</th>
+                        <th className="text-right text-xs font-semibold text-muted-foreground p-3">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {voucherData.vouchers.map(v => {
+                        const statusInfo = getVoucherStatusBadge(v)
+                        return (
+                          <tr key={v.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                            <td className="p-3">
+                              <p className="text-sm font-mono font-semibold text-foreground">{v.code}</p>
+                              <p className="text-[10px] text-muted-foreground">{new Date(v.createdAt).toLocaleDateString('pt-BR')}</p>
+                            </td>
+                            <td className="p-3 hidden sm:table-cell">
+                              <p className="text-sm text-foreground">{v.userName || '—'}</p>
+                              <p className="text-[10px] text-muted-foreground">{v.userEmail || ''}</p>
+                            </td>
+                            <td className="p-3"><Badge className={getVoucherTypeBadge(v.type)}>{getVoucherTypeLabel(v.type)}</Badge></td>
+                            <td className="p-3"><span className="text-sm font-semibold text-foreground">{formatCurrency(v.amountInCents)}</span></td>
+                            <td className="p-3"><Badge className={statusInfo.badge}>{statusInfo.label}</Badge></td>
+                            <td className="p-3 hidden md:table-cell">
+                              <span className="text-xs text-muted-foreground">
+                                {v.expiresAt ? new Date(v.expiresAt).toLocaleDateString('pt-BR') : '—'}
+                              </span>
+                            </td>
+                            <td className="p-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                {v.status !== 'redeemed' && v.status !== 'disabled' && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 gap-1 text-amber-600 hover:text-amber-700 text-xs"
+                                    onClick={() => handleUpdateVoucherStatus(v.id, 'disabled')}
+                                    title="Desativar voucher"
+                                  >
+                                    <Ban className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 gap-1 text-red-500 hover:text-red-600 text-xs"
+                                  onClick={() => handleDeleteVoucher(v.id)}
+                                  title="Excluir voucher"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 gap-2">
+                  <Ticket className="h-8 w-8 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">Nenhum voucher encontrado</p>
+                  <p className="text-xs text-muted-foreground/70">Clique em "Criar Voucher" para adicionar o primeiro.</p>
+                </div>
+              )}
+              {voucherData && voucherData.totalPages > 1 && (
+                <div className="flex items-center justify-between p-3 border-t border-border">
+                  <span className="text-xs text-muted-foreground">{voucherData.total} vouchers</span>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" disabled={voucherPage <= 1} onClick={() => setVoucherPage(p => p - 1)}><ChevronLeft className="h-3 w-3" /></Button>
+                    <span className="text-xs text-muted-foreground">{voucherPage}/{voucherData.totalPages}</span>
+                    <Button variant="outline" size="sm" disabled={voucherPage >= voucherData.totalPages} onClick={() => setVoucherPage(p => p + 1)}><ChevronRight className="h-3 w-3" /></Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ===== BETS TAB ===== */}
+        <TabsContent value="bets" className="mt-4 space-y-4">
+          <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Gamepad2 className="h-4 w-4 text-emerald-600" />
+                <h3 className="text-sm font-semibold text-foreground">Jogos & Apostas</h3>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Gerencie as apostas dos usuários. Finalize apostas pendentes ou cancele com estorno do valor.
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Stats cards */}
+          {betData?.stats && (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              {[
+                { label: 'Total Apostas', value: betData.stats.totalBets, icon: Gamepad2, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
+                { label: 'Pendentes', value: betData.stats.pendingBets, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30' },
+                { label: 'Ganhas', value: betData.stats.wonBets, icon: Trophy, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+                { label: 'Perdidas', value: betData.stats.lostBets, icon: X, color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/30' },
+                { label: 'Total Apostado', value: formatCurrency(betData.stats.totalStaked), icon: DollarSign, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/30' },
+                { label: 'Total Pago', value: formatCurrency(betData.stats.totalPaid), icon: Wallet, color: 'text-emerald-700', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+              ].map((card, i) => (
+                <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
+                  <Card className={`${card.bg} border-0`}>
+                    <CardContent className="p-3">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <card.icon className={`h-3.5 w-3.5 ${card.color}`} />
+                        <span className="text-[11px] font-medium text-muted-foreground">{card.label}</span>
+                      </div>
+                      <p className="text-base font-bold text-foreground">{card.value}</p>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </div>
+          )}
+
+          {/* Filters */}
+          <Card>
+            <CardContent className="p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Filter className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground hidden sm:inline">Status:</span>
+                {(['all', 'pending', 'won', 'lost', 'cancelled'] as const).map((status) => {
+                  const labels: Record<string, string> = { all: 'Todas', pending: 'Pendentes', won: 'Ganhas', lost: 'Perdidas', cancelled: 'Canceladas' }
+                  return (
+                    <button
+                      key={status}
+                      onClick={() => { setBetStatusFilter(status); setBetPage(1) }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        betStatusFilter === status ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                      }`}
+                    >
+                      {labels[status]}
+                    </button>
+                  )
+                })}
+                <span className="text-xs text-muted-foreground ml-auto">{betData?.total ?? 0} apostas</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Table */}
+          <Card>
+            <CardContent className="p-0">
+              {betLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <span className="h-6 w-6 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+                  <span className="ml-3 text-sm text-muted-foreground">Carregando apostas...</span>
+                </div>
+              ) : betData?.bets && betData.bets.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3">Usuário</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3">Evento</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden md:table-cell">Seleção</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3">Odds</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3">Aposta</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden sm:table-cell">Potencial</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3">Status</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden lg:table-cell">Data</th>
+                        <th className="text-right text-xs font-semibold text-muted-foreground p-3">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {betData.bets.map(b => {
+                        const statusInfo = getBetStatusBadge(b.status)
+                        return (
+                          <tr key={b.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                            <td className="p-3">
+                              <p className="text-sm font-medium text-foreground">{b.userName || b.userId.slice(-8)}</p>
+                              <p className="text-[10px] text-muted-foreground">{b.userEmail || ''}</p>
+                            </td>
+                            <td className="p-3"><span className="text-xs text-foreground">{b.eventLabel}</span></td>
+                            <td className="p-3 hidden md:table-cell"><span className="text-xs text-foreground">{b.selectionLabel || b.selection}</span></td>
+                            <td className="p-3"><span className="text-xs font-mono text-foreground">{b.odds.toFixed(2)}</span></td>
+                            <td className="p-3"><span className="text-sm font-semibold text-foreground">{formatCurrency(b.amountInCents)}</span></td>
+                            <td className="p-3 hidden sm:table-cell"><span className="text-sm text-emerald-600">{formatCurrency(b.potentialWinInCents)}</span></td>
+                            <td className="p-3"><Badge className={statusInfo.badge}>{statusInfo.label}</Badge></td>
+                            <td className="p-3 hidden lg:table-cell"><span className="text-xs text-muted-foreground">{new Date(b.createdAt).toLocaleDateString('pt-BR')}</span></td>
+                            <td className="p-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                {b.status === 'pending' && (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 gap-1 text-emerald-600 hover:text-emerald-700 text-xs"
+                                      onClick={() => { setBetSettleTarget(b); setBetSettleOpen(true) }}
+                                    >
+                                      <Check className="h-3.5 w-3.5" />
+                                      <span className="hidden sm:inline">Finalizar</span>
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 gap-1 text-red-500 hover:text-red-600 text-xs"
+                                      onClick={() => { setBetCancelTarget(b); setBetCancelOpen(true) }}
+                                    >
+                                      <Ban className="h-3.5 w-3.5" />
+                                      <span className="hidden sm:inline">Cancelar</span>
+                                    </Button>
+                                  </>
+                                )}
+                                {b.status !== 'pending' && (
+                                  <span className="text-[10px] text-muted-foreground italic">—</span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 gap-2">
+                  <Gamepad2 className="h-8 w-8 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">Nenhuma aposta encontrada</p>
+                </div>
+              )}
+              {betData && betData.totalPages > 1 && (
+                <div className="flex items-center justify-between p-3 border-t border-border">
+                  <span className="text-xs text-muted-foreground">{betData.total} apostas</span>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" disabled={betPage <= 1} onClick={() => setBetPage(p => p - 1)}><ChevronLeft className="h-3 w-3" /></Button>
+                    <span className="text-xs text-muted-foreground">{betPage}/{betData.totalPages}</span>
+                    <Button variant="outline" size="sm" disabled={betPage >= betData.totalPages} onClick={() => setBetPage(p => p + 1)}><ChevronRight className="h-3 w-3" /></Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ===== MATRICES TAB ===== */}
+        <TabsContent value="matrices" className="mt-4 space-y-4">
+          <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Network className="h-4 w-4 text-emerald-600" />
+                <h3 className="text-sm font-semibold text-foreground">Matrizes MMN — Visualização</h3>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Busque um usuário para visualizar suas matrizes de indicação (Entrada, Residual e Vendas) e a árvore de referências.
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Search */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por nome, email ou código de indicação..."
+                    value={matrixSearchQuery}
+                    onChange={(e) => setMatrixSearchQuery(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') searchUsersForMatrix() }}
+                    className="pl-9"
+                  />
+                </div>
+                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={searchUsersForMatrix} disabled={matrixSearchLoading}>
+                  {matrixSearchLoading ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Search className="h-4 w-4" />}
+                  Buscar
+                </Button>
+              </div>
+              {matrixSearchResults.length > 0 && (
+                <div className="mt-3 max-h-64 overflow-y-auto border border-border rounded-lg divide-y divide-border/50">
+                  {matrixSearchResults.map(u => (
+                    <button
+                      key={u.id}
+                      onClick={() => selectUserForMatrix(u)}
+                      className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors text-left"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{u.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{u.email}</p>
+                      </div>
+                      <Badge className={getPlanBadge(u.plan)}>{getPlanName(u.plan)}</Badge>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Selected user + matrix */}
+          {!matrixSelectedUser ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-16 gap-2">
+                <TreePine className="h-10 w-10 text-muted-foreground/40" />
+                <p className="text-sm text-muted-foreground">Selecione um usuário para visualizar suas matrizes</p>
+                <p className="text-xs text-muted-foreground/70">Use a busca acima para encontrar usuários</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {/* Selected user header */}
+              <Card className="border-emerald-200 dark:border-emerald-800">
+                <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-bold flex items-center justify-center">
+                      {matrixSelectedUser.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{matrixSelectedUser.name}</p>
+                      <p className="text-xs text-muted-foreground">{matrixSelectedUser.email}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">Código: {matrixSelectedUser.referralCode}</p>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => { setMatrixSelectedUser(null); setMatrixData(null); setReferralTree(null) }}>
+                    Trocar Usuário
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Matrix type selector */}
+              <div className="flex gap-2 flex-wrap">
+                {(['entrada', 'residual', 'vendas'] as const).map((mt) => {
+                  const labels: Record<string, string> = { entrada: 'Entrada', residual: 'Residual', vendas: 'Vendas' }
+                  return (
+                    <button
+                      key={mt}
+                      onClick={() => setMatrixType(mt)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        matrixType === mt ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20' : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                      }`}
+                    >
+                      {labels[mt]}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Stats */}
+              {matrixData?.stats && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {[
+                    { label: 'Total Posições', value: matrixData.stats.totalPositions, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
+                    { label: 'Preenchidas', value: matrixData.stats.filledPositions, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+                    { label: 'Vazias', value: matrixData.stats.emptyPositions, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30' },
+                    { label: 'Níveis', value: matrixData.stats.totalLevels, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/30' },
+                  ].map((card, i) => (
+                    <Card key={i} className={`${card.bg} border-0`}>
+                      <CardContent className="p-4">
+                        <p className="text-lg font-bold text-foreground">{card.value}</p>
+                        <p className={`text-xs ${card.color} font-medium`}>{card.label}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+
+              {/* Level distribution */}
+              {matrixData?.stats?.levelCounts && matrixData.stats.levelCounts.length > 0 && (
+                <Card>
+                  <CardHeader><CardTitle className="text-xs flex items-center gap-2"><BarChart3 className="h-3.5 w-3.5 text-emerald-600" /> Distribuição por Nível</CardTitle></CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {matrixData.stats.levelCounts.map(lc => (
+                        <Badge key={lc.level} variant="outline" className="text-xs">Nível {lc.level}: {lc.count}</Badge>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Matrix tree */}
+              <Card>
+                <CardHeader><CardTitle className="text-sm flex items-center gap-2"><Network className="h-4 w-4 text-emerald-600" /> Árvore da Matriz ({matrixType})</CardTitle></CardHeader>
+                <CardContent>
+                  {matrixLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <span className="h-6 w-6 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+                      <span className="ml-3 text-sm text-muted-foreground">Carregando matriz...</span>
+                    </div>
+                  ) : matrixData?.tree ? (
+                    <div className="max-h-[480px] overflow-y-auto pr-2">
+                      {renderMatrixNode(matrixData.tree)}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-8 gap-2">
+                      <AlertCircle className="h-6 w-6 text-muted-foreground/40" />
+                      <p className="text-sm text-muted-foreground">Usuário não possui posição nesta matriz</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Referral tree */}
+              <Card>
+                <CardHeader><CardTitle className="text-sm flex items-center gap-2"><TreePine className="h-4 w-4 text-emerald-600" /> Árvore de Indicações</CardTitle></CardHeader>
+                <CardContent>
+                  {referralTree ? (
+                    <div className="max-h-[400px] overflow-y-auto pr-2">
+                      {renderReferralNode(referralTree)}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">Sem indicações</p>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </TabsContent>
+
+        {/* ===== CASHBACK CONFIG TAB ===== */}
+        <TabsContent value="cashback-config" className="mt-4 space-y-4">
+          <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Percent className="h-4 w-4 text-emerald-600" />
+                <h3 className="text-sm font-semibold text-foreground">Configuração de Cashback & Pontos</h3>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Defina as porcentagens de cashback por nível para cada matriz e os pontos atribuídos por ação.
+              </p>
+            </CardContent>
+          </Card>
+
+          {cashbackConfigLoading ? (
+            <Card>
+              <CardContent className="flex items-center justify-center py-12">
+                <span className="h-6 w-6 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+                <span className="ml-3 text-sm text-muted-foreground">Carregando configurações...</span>
+              </CardContent>
+            </Card>
+          ) : cashbackConfig ? (
+            <>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {(['entrada', 'residual', 'vendas'] as const).map((mtype) => {
+                  const levelCount = mtype === 'entrada' ? 5 : mtype === 'residual' ? 7 : 9
+                  const labels: Record<string, string> = { entrada: 'Entrada', residual: 'Residual', vendas: 'Vendas' }
+                  return (
+                    <Card key={mtype}>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <Receipt className={`h-4 w-4 ${mtype === 'entrada' ? 'text-blue-600' : mtype === 'residual' ? 'text-purple-600' : 'text-emerald-600'}`} />
+                          Cashback {labels[mtype]}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {Array.from({ length: levelCount }, (_, i) => {
+                          const levelKey = `level${i + 1}` as keyof typeof cashbackConfig[typeof mtype]
+                          const value = cashbackConfig[mtype]?.[levelKey as string] ?? 0
+                          return (
+                            <div key={levelKey} className="flex items-center gap-2">
+                              <Label className="text-xs w-16 shrink-0">Nível {i + 1}</Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={value}
+                                onChange={(e) => {
+                                  const newValue = parseFloat(e.target.value) || 0
+                                  setCashbackConfig(prev => prev ? {
+                                    ...prev,
+                                    [mtype]: { ...(prev[mtype] || {}), [`level${i + 1}`]: newValue },
+                                  } : prev)
+                                }}
+                                className="h-8 text-sm"
+                              />
+                              <span className="text-xs text-muted-foreground">%</span>
+                            </div>
+                          )
+                        })}
+                        <Button
+                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2 h-8 text-xs"
+                          onClick={() => handleSaveCashbackConfig(mtype)}
+                          disabled={cashbackSaving}
+                        >
+                          {cashbackSaving ? <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                          Salvar {labels[mtype]}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+
+              {/* Points config */}
+              {pointsConfig && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Star className="h-4 w-4 text-emerald-600" />
+                      Configuração de Pontos
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {Object.entries(pointsConfig)
+                        .filter(([k]) => k !== 'raw')
+                        .map(([key, value]) => {
+                          const labels: Record<string, string> = {
+                            referralPoints: 'Indicação',
+                            planUpgradePoints: 'Upgrade de Plano',
+                            dailyLoginPoints: 'Login Diário',
+                            betPlacedPoints: 'Aposta Realizada',
+                            betWonPoints: 'Aposta Ganha',
+                            marketplacePurchasePoints: 'Compra no Marketplace',
+                            ticketResolvedPoints: 'Ticket Resolvido',
+                            rideCompletedPoints: 'Corrida Concluída',
+                            challengeCompletedPoints: 'Desafio Concluído',
+                          }
+                          return (
+                            <div key={key} className="space-y-1.5">
+                              <Label className="text-xs">{labels[key] || key}</Label>
+                              <Input
+                                type="number"
+                                value={value}
+                                onChange={(e) => {
+                                  const newValue = parseInt(e.target.value) || 0
+                                  setPointsConfig(prev => prev ? { ...prev, [key]: newValue } : prev)
+                                }}
+                                className="h-8 text-sm"
+                              />
+                              <p className="text-[10px] text-muted-foreground">pontos por ação</p>
+                            </div>
+                          )
+                        })}
+                    </div>
+                    <Button
+                      className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white gap-2 h-9 text-xs"
+                      onClick={handleSavePointsConfig}
+                      disabled={pointsSaving}
+                    >
+                      {pointsSaving ? <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                      Salvar Pontos
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          ) : (
+            <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">Falha ao carregar configurações.</CardContent></Card>
+          )}
+        </TabsContent>
       </Tabs>
 
       {/* ===== VIEW USER DIALOG ===== */}
@@ -2537,7 +3661,7 @@ export function AdminPage() {
                   </div>
                   <div className="p-2 bg-muted/50 rounded-lg">
                     <p className="text-[10px] text-muted-foreground">Estrelas</p>
-                    <p className="text-sm font-bold text-foreground">{'★'.repeat(viewingUser.stars)}{'☆'.repeat(5 - viewingUser.stars)}</p>
+                    <p className="text-sm font-bold text-foreground">{'★'.repeat(Math.max(0, Math.min(viewingUser.stars || 0, 5)))}{'☆'.repeat(Math.max(0, 5 - Math.min(viewingUser.stars || 0, 5)))}</p>
                   </div>
                 </div>
               </div>
@@ -2568,6 +3692,85 @@ export function AdminPage() {
                   <div className="col-span-2"><span className="text-muted-foreground text-xs">Indicado por</span><p className="font-medium text-foreground">{(viewingUser as ViewUserData).referrer ? `${(viewingUser as ViewUserData).referrer!.name} (${(viewingUser as ViewUserData).referrer!.email})` : 'Nenhum'}</p></div>
                   <div className="col-span-2"><span className="text-muted-foreground text-xs">Data de Cadastro</span><p className="font-medium text-foreground">{new Date(viewingUser.createdAt).toLocaleString('pt-BR')}</p></div>
                 </div>
+              </div>
+
+              {/* Admin quick actions */}
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-blue-600 hover:text-blue-700 border-blue-200 hover:bg-blue-50 dark:border-blue-800 dark:hover:bg-blue-950/30"
+                  onClick={() => handleViewUserMatrix(viewingUser as unknown as AdminUser)}
+                >
+                  <Network className="h-3.5 w-3.5" />
+                  Ver Matriz
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-emerald-600 hover:text-emerald-700 border-emerald-200 hover:bg-emerald-50 dark:border-emerald-800 dark:hover:bg-emerald-950/30"
+                  onClick={() => handleOpenReleaseBalance(viewingUser)}
+                >
+                  <Coins className="h-3.5 w-3.5" />
+                  Liberar Saldo
+                </Button>
+              </div>
+
+              <Separator />
+
+              {/* Beneficiaries */}
+              <div>
+                <h4 className="text-xs font-semibold text-emerald-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Heart className="h-3.5 w-3.5" /> Beneficiários
+                </h4>
+                {viewUserBeneficiaries.length === 0 ? (
+                  <div className="text-center py-4 text-muted-foreground text-xs bg-muted/30 rounded-lg">
+                    <Heart className="h-6 w-6 mx-auto mb-1 opacity-30" />
+                    Nenhum beneficiário cadastrado
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {/* Total percentage bar */}
+                    <div className="bg-muted/50 rounded-lg p-2">
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-muted-foreground">Total alocado</span>
+                        <span className="font-bold text-foreground">
+                          {viewUserBeneficiaries.reduce((sum: number, b: any) => sum + (b.percentage || 0), 0)}%
+                        </span>
+                      </div>
+                      <div className="h-1.5 bg-background rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-500 rounded-full transition-all"
+                          style={{ width: `${Math.min(100, viewUserBeneficiaries.reduce((sum: number, b: any) => sum + (b.percentage || 0), 0))}%` }}
+                        />
+                      </div>
+                    </div>
+                    {/* List of beneficiaries */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {viewUserBeneficiaries.map((b: any) => {
+                        const relMap: Record<string, string> = {
+                          spouse: 'Cônjuge', child: 'Filho(a)', parent: 'Pais',
+                          sibling: 'Irmão(ã)', other: 'Outro',
+                        }
+                        return (
+                          <div key={b.id} className="p-3 bg-muted/40 rounded-lg border border-border/50">
+                            <div className="flex justify-between items-start mb-1">
+                              <p className="font-medium text-foreground text-sm">{b.name}</p>
+                              <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[10px]">
+                                {b.percentage}%
+                              </Badge>
+                            </div>
+                            <div className="space-y-0.5 text-[11px] text-muted-foreground">
+                              {b.cpf && <p>CPF: <span className="font-mono">{b.cpf}</span></p>}
+                              <p>Relação: <span className="text-foreground">{relMap[b.relationship] || b.relationship}</span></p>
+                              {b.age !== null && b.age !== undefined && <p>Idade: <span className="text-foreground">{b.age} anos</span></p>}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ) : null}
@@ -3002,6 +4205,354 @@ export function AdminPage() {
               <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleSaveAnnouncement} disabled={savingAnnouncement || !editAnnouncementData.title || !editAnnouncementData.message}>
                 {savingAnnouncement ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="h-4 w-4" />}
                 Salvar
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== CREATE VOUCHER DIALOG ===== */}
+      <Dialog open={voucherCreateOpen} onOpenChange={setVoucherCreateOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Ticket className="h-4 w-4 text-emerald-600" />
+              Criar Voucher
+            </DialogTitle>
+            <DialogDescription>Preencha os dados do novo voucher. O código será gerado automaticamente se não informado.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Tipo</Label>
+                <Select value={voucherForm.type} onValueChange={(v) => setVoucherForm(d => ({ ...d, type: v }))}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mobility">Mobilidade</SelectItem>
+                    <SelectItem value="food">Refeição</SelectItem>
+                    <SelectItem value="pharmacy">Farmácia</SelectItem>
+                    <SelectItem value="shopping">Compras</SelectItem>
+                    <SelectItem value="gratification">Gratificação</SelectItem>
+                    <SelectItem value="withdrawal">Saque</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Valor (R$)</Label>
+                <Input
+                  value={voucherForm.amountBrl}
+                  onChange={(e) => setVoucherForm(d => ({ ...d, amountBrl: e.target.value }))}
+                  placeholder="50,00"
+                  inputMode="decimal"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  {voucherForm.amountBrl && !isNaN(parseFloat(voucherForm.amountBrl.replace(',', '.')))
+                    ? formatCurrency(Math.round(parseFloat(voucherForm.amountBrl.replace(',', '.')) * 100))
+                    : 'Informe o valor em reais'}
+                </p>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">ID do Usuário (opcional)</Label>
+              <Input
+                value={voucherForm.targetUserId}
+                onChange={(e) => setVoucherForm(d => ({ ...d, targetUserId: e.target.value }))}
+                placeholder="Deixe vazio para voucher genérico"
+              />
+              <p className="text-[10px] text-muted-foreground">Se informado, o voucher ficará vinculado a este usuário.</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Código (opcional)</Label>
+                <Input
+                  value={voucherForm.code}
+                  onChange={(e) => setVoucherForm(d => ({ ...d, code: e.target.value }))}
+                  placeholder="Auto-gerado"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Validade (opcional)</Label>
+                <Input
+                  type="date"
+                  value={voucherForm.expiresAt}
+                  onChange={(e) => setVoucherForm(d => ({ ...d, expiresAt: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Descrição (opcional)</Label>
+              <Input
+                value={voucherForm.description}
+                onChange={(e) => setVoucherForm(d => ({ ...d, description: e.target.value }))}
+                placeholder="Descrição do voucher..."
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setVoucherCreateOpen(false)} disabled={voucherSaving}>Cancelar</Button>
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleCreateVoucher} disabled={voucherSaving || !voucherForm.amountBrl}>
+                {voucherSaving ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Plus className="h-4 w-4" />}
+                Criar Voucher
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== SETTLE BET DIALOG ===== */}
+      <Dialog open={betSettleOpen} onOpenChange={setBetSettleOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trophy className="h-4 w-4 text-emerald-600" />
+              Finalizar Aposta
+            </DialogTitle>
+            <DialogDescription>
+              {betSettleTarget ? `Evento: ${betSettleTarget.eventLabel} • Aposta: ${formatCurrency(betSettleTarget.amountInCents)} • Potencial: ${formatCurrency(betSettleTarget.potentialWinInCents)}` : 'Selecione o resultado da aposta.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Selecione o resultado. Se <strong>Ganha</strong>, o valor potencial será creditado na carteira de saque do usuário. Se <strong>Perdida</strong>, a aposta será apenas marcada como perdida.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                variant="outline"
+                className="h-16 flex flex-col gap-1 border-emerald-200 hover:bg-emerald-50 dark:border-emerald-800 dark:hover:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400"
+                onClick={() => handleSettleBet('won')}
+                disabled={betSettling}
+              >
+                <Trophy className="h-5 w-5" />
+                <span className="text-sm font-semibold">Ganha</span>
+              </Button>
+              <Button
+                variant="outline"
+                className="h-16 flex flex-col gap-1 border-red-200 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-950/30 text-red-700 dark:text-red-400"
+                onClick={() => handleSettleBet('lost')}
+                disabled={betSettling}
+              >
+                <X className="h-5 w-5" />
+                <span className="text-sm font-semibold">Perdida</span>
+              </Button>
+            </div>
+            {betSettling && (
+              <p className="text-xs text-center text-muted-foreground flex items-center justify-center gap-2">
+                <span className="h-3 w-3 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+                Processando...
+              </p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== CANCEL BET DIALOG ===== */}
+      <Dialog open={betCancelOpen} onOpenChange={setBetCancelOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Ban className="h-4 w-4 text-red-500" />
+              Cancelar Aposta
+            </DialogTitle>
+            <DialogDescription>
+              {betCancelTarget ? `Estornar ${formatCurrency(betCancelTarget.amountInCents)} para a carteira de saque de ${betCancelTarget.userName || betCancelTarget.userId.slice(-8)}.` : 'Confirma o cancelamento da aposta?'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                <p className="text-xs text-red-700 dark:text-red-300">
+                  Esta ação é irreversível. O valor apostado será devolvido à carteira de saque do usuário e a aposta marcada como cancelada.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Motivo (opcional)</Label>
+              <Input
+                value={betCancelReason}
+                onChange={(e) => setBetCancelReason(e.target.value)}
+                placeholder="Ex: erro de sistema, solicitação do usuário..."
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setBetCancelOpen(false)} disabled={betCancelling}>Voltar</Button>
+              <Button className="bg-red-600 hover:bg-red-700 text-white gap-2" onClick={handleCancelBet} disabled={betCancelling}>
+                {betCancelling ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Ban className="h-4 w-4" />}
+                Confirmar Cancelamento
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== RELEASE BALANCE DIALOG ===== */}
+      <Dialog open={releaseBalanceOpen} onOpenChange={setReleaseBalanceOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Coins className="h-4 w-4 text-emerald-600" />
+              Liberar Saldo
+            </DialogTitle>
+            <DialogDescription>
+              {releaseBalanceTarget ? `Creditar saldo manualmente para ${releaseBalanceTarget.name}.` : 'Crédito manual de saldo para o usuário.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Carteira de Destino</Label>
+              <Select value={releaseBalanceForm.wallet} onValueChange={(v) => setReleaseBalanceForm(d => ({ ...d, wallet: v }))}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="balanceWithdrawal">Saque</SelectItem>
+                  <SelectItem value="balanceMobility">Mobilidade</SelectItem>
+                  <SelectItem value="balanceShopping">Compras</SelectItem>
+                  <SelectItem value="balanceFood">Refeição</SelectItem>
+                  <SelectItem value="balancePharmacy">Farmácia</SelectItem>
+                  <SelectItem value="balanceGratification">Gratificação</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Valor (R$)</Label>
+              <Input
+                value={releaseBalanceForm.amountBrl}
+                onChange={(e) => setReleaseBalanceForm(d => ({ ...d, amountBrl: e.target.value }))}
+                placeholder="100,00"
+                inputMode="decimal"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                {releaseBalanceForm.amountBrl && !isNaN(parseFloat(releaseBalanceForm.amountBrl.replace(',', '.')))
+                  ? `Será creditado: ${formatCurrency(Math.round(parseFloat(releaseBalanceForm.amountBrl.replace(',', '.')) * 100))}`
+                  : 'Informe o valor em reais'}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Descrição (obrigatória)</Label>
+              <Input
+                value={releaseBalanceForm.description}
+                onChange={(e) => setReleaseBalanceForm(d => ({ ...d, description: e.target.value }))}
+                placeholder="Ex: Bônus de boas-vindas, ajuste manual..."
+              />
+              <p className="text-[10px] text-muted-foreground">O prefixo "[Admin Liberação]" será adicionado automaticamente.</p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setReleaseBalanceOpen(false)} disabled={releaseBalanceSaving}>Cancelar</Button>
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleReleaseBalance} disabled={releaseBalanceSaving || !releaseBalanceForm.amountBrl || !releaseBalanceForm.description.trim()}>
+                {releaseBalanceSaving ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Coins className="h-4 w-4" />}
+                Liberar Saldo
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== CREATE GRATIFICATION DIALOG ===== */}
+      <Dialog open={gratificationCreateOpen} onOpenChange={setGratificationCreateOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Gift className="h-4 w-4 text-emerald-600" />
+              Criar Gratificação
+            </DialogTitle>
+            <DialogDescription>Atribua uma gratificação manualmente a um usuário específico.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* User search */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Buscar Usuário</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={gratificationUserSearch}
+                  onChange={(e) => setGratificationUserSearch(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') searchUsersForGratification() }}
+                  placeholder="Nome, email ou código..."
+                />
+                <Button type="button" variant="outline" size="sm" onClick={searchUsersForGratification}>
+                  <Search className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              {gratificationForm.targetUserId && (
+                <p className="text-[10px] text-emerald-600 font-medium">
+                  ✓ Usuário selecionado: {gratificationForm.targetUserId.slice(-8)}
+                </p>
+              )}
+              {gratificationUserResults.length > 0 && (
+                <div className="max-h-40 overflow-y-auto border border-border rounded-lg divide-y divide-border/50">
+                  {gratificationUserResults.map(u => (
+                    <button
+                      key={u.id}
+                      onClick={() => {
+                        setGratificationForm(d => ({ ...d, targetUserId: u.id }))
+                        setGratificationUserSearch(`${u.name} (${u.email})`)
+                        setGratificationUserResults([])
+                      }}
+                      className="w-full flex items-center justify-between p-2 hover:bg-muted/50 transition-colors text-left"
+                    >
+                      <div>
+                        <p className="text-xs font-medium text-foreground">{u.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{u.email}</p>
+                      </div>
+                      <Badge className={getPlanBadge(u.plan)}>{getPlanName(u.plan)}</Badge>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Tipo</Label>
+                <Select value={gratificationForm.type} onValueChange={(v) => setGratificationForm(d => ({ ...d, type: v }))}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="leadership">Liderança</SelectItem>
+                    <SelectItem value="retirement_fund">Fundo Aposentadoria</SelectItem>
+                    <SelectItem value="telemedicine">Telemedicina</SelectItem>
+                    <SelectItem value="tow_truck">Guincho</SelectItem>
+                    <SelectItem value="custom">Personalizada</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Categoria</Label>
+                <Select value={gratificationForm.category} onValueChange={(v) => setGratificationForm(d => ({ ...d, category: v }))}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="gratification">Gratificação</SelectItem>
+                    <SelectItem value="withdrawal">Saque</SelectItem>
+                    <SelectItem value="mobility">Mobilidade</SelectItem>
+                    <SelectItem value="food">Refeição</SelectItem>
+                    <SelectItem value="pharmacy">Farmácia</SelectItem>
+                    <SelectItem value="shopping">Compras</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Valor (R$)</Label>
+              <Input
+                value={gratificationForm.amountBrl}
+                onChange={(e) => setGratificationForm(d => ({ ...d, amountBrl: e.target.value }))}
+                placeholder="100,00"
+                inputMode="decimal"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                {gratificationForm.amountBrl && !isNaN(parseFloat(gratificationForm.amountBrl.replace(',', '.')))
+                  ? formatCurrency(Math.round(parseFloat(gratificationForm.amountBrl.replace(',', '.')) * 100))
+                  : 'Valor em reais'}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Descrição</Label>
+              <Input
+                value={gratificationForm.description}
+                onChange={(e) => setGratificationForm(d => ({ ...d, description: e.target.value }))}
+                placeholder="Descrição da gratificação..."
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setGratificationCreateOpen(false)} disabled={gratificationSaving}>Cancelar</Button>
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleCreateGratification} disabled={gratificationSaving || !gratificationForm.targetUserId || !gratificationForm.amountBrl}>
+                {gratificationSaving ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Gift className="h-4 w-4" />}
+                Criar Gratificação
               </Button>
             </DialogFooter>
           </div>
