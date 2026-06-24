@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,356 +8,341 @@ datasource db {
 }
 
 model User {
-  id                String   @id @default(cuid())
-  email             String   @unique
-  name              String
-  username          String?  @unique
-  phone             String?
-  cpf               String?  @unique
-  password          String
-  role              String   @default("user")
-  isActive          Boolean  @default(false)
-  plan              String   @default("free")
-  language          String   @default("pt")
-  
-  // Referral system
-  referralCode      String   @unique
-  referredById      String?
-  
-  // Matrix positions
-  entradaLevel      Int      @default(0)
-  residualLevel     Int      @default(0)
-  vendasLevel       Int      @default(0)
-  
-  // Balances (in cents to avoid floating point)
-  balanceWithdrawal     Int    @default(0)
-  balanceMobility       Int    @default(0)
-  balanceShopping       Int    @default(0)
-  balanceFood           Int    @default(0)
-  balancePharmacy       Int    @default(0)
-  balanceGratification  Int    @default(0)
-  balanceFree           Int    @default(0)
-  balancePending        Int    @default(0)
-
-  // User type
-  userType          String   @default("usuario")
-  
-  // Points
-  careerPoints      Int      @default(0)
-  personalPoints    Int      @default(0)
-  stars             Int      @default(0)
-  
-  // Driver-specific
-  isDriver          Boolean  @default(false)
-  isDelivery        Boolean  @default(false)
-  totalRides        Int      @default(0)
-  
-  // Metadata
-  profileImage      String?
-  address           String?
-  city              String?
-  state             String?
-  country           String?  @default("BR")
-  bankCode          String?
-  bankAgency        String?
-  bankAccount       String?
-  bankType          String?
-  pixKey            String?
-  pixEnabled        Boolean  @default(true)
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  // Relations
-  cashbackEntries      CashbackEntry[]
-  cashbackResiduals    CashbackResidual[]
-  cashbackSales        CashbackSales[]
-  transactions         Transaction[]
-  vouchers             Voucher[]
-  tickets              Ticket[]
-  ticketMessages       TicketMessage[]
-  notifications        Notification[]
-  invoices             Invoice[]
-  careerMilestones     CareerMilestone[]
-  matrixPositions      MatrixPosition[]
-  gratifications       Gratification[]
-  pointTransactions    PointTransaction[]
-  gamificationStreak   GamificationStreak?
-  userChallenges       UserChallenge[]
-  marketplaceOrders    MarketplaceOrder[]
+  id                    String                 @id @default(cuid())
+  email                 String                 @unique
+  name                  String
+  username              String?                @unique
+  phone                 String?
+  cpf                   String?                @unique
+  password              String
+  role                  String                 @default("user")
+  isActive              Boolean                @default(false)
+  plan                  String                 @default("free")
+  language              String                 @default("pt")
+  referralCode          String                 @unique
+  referredById          String?
+  entradaLevel          Int                    @default(0)
+  residualLevel         Int                    @default(0)
+  vendasLevel           Int                    @default(0)
+  balanceWithdrawal     Int                    @default(0)
+  balanceMobility       Int                    @default(0)
+  balanceShopping       Int                    @default(0)
+  balanceFood           Int                    @default(0)
+  balancePharmacy       Int                    @default(0)
+  balanceGratification  Int                    @default(0)
+  careerPoints          Int                    @default(0)
+  personalPoints        Int                    @default(0)
+  stars                 Int                    @default(0)
+  isDriver              Boolean                @default(false)
+  isDelivery            Boolean                @default(false)
+  totalRides            Int                    @default(0)
+  profileImage          String?
+  address               String?
+  city                  String?
+  state                 String?
+  country               String?                @default("BR")
+  bankCode              String?
+  bankAgency            String?
+  bankAccount           String?
+  bankType              String?
+  pixKey                String?
+  pixEnabled            Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  balanceFree           Int                    @default(0)
+  balancePending        Int                    @default(0)
+  userType              String                 @default("usuario")
+  planId                String?
+  beneficiaries         Beneficiary[]
+  bets                  Bet[]
+  careerMilestones      CareerMilestone[]
+  cashbackEntries       CashbackEntry[]
+  cashbackResiduals     CashbackResidual[]
+  cashbackSales         CashbackSales[]
+  gamificationStreak    GamificationStreak?
+  gratifications        Gratification[]
+  invoices              Invoice[]
+  marketplaceOrders     MarketplaceOrder[]
   marketplaceOrderItems MarketplaceOrderItem[]
-  beneficiaries        Beneficiary[]
-  bets                 Bet[]
-  referrals            User[]               @relation("Referrals")
-  referredBy           User?                @relation("Referrals", fields: [referredById], references: [id])
+  matrixPositions       MatrixPosition[]
+  notifications         Notification[]
+  pointTransactions     PointTransaction[]
+  tickets               Ticket[]
+  ticketMessages        TicketMessage[]
+  transactions          Transaction[]
+  Plan                  Plan?                  @relation(fields: [planId], references: [id])
+  referredBy            User?                  @relation("Referrals", fields: [referredById], references: [id])
+  referrals             User[]                 @relation("Referrals")
+  userChallenges        UserChallenge[]
+  vouchers              Voucher[]
 }
 
 model Bet {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  eventId         String
-  eventLabel      String
-  selection       String
-  selectionLabel  String
-  odds            Float
-  amountInCents   Int
+  id                  String    @id @default(cuid())
+  userId              String
+  eventId             String
+  eventLabel          String
+  selection           String
+  selectionLabel      String
+  odds                Float
+  amountInCents       Int
   potentialWinInCents Int
-  status          String   @default("pending")
-  result          String?
-  settledAt       DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  status              String    @default("pending")
+  result              String?
+  settledAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  user                User      @relation(fields: [userId], references: [id])
 }
 
 model MatrixPosition {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  matrixType      String
-  parentId        String?
-  level           Int      @default(0)
-  position        Int      @default(0)
-  isFilled        Boolean  @default(true)
-  createdAt       DateTime @default(now())
+  id         String   @id @default(cuid())
+  userId     String
+  matrixType String
+  parentId   String?
+  level      Int      @default(0)
+  position   Int      @default(0)
+  isFilled   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id])
 }
 
 model CashbackEntry {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  fromUserId      String
-  amount          Int
-  level           Int
-  percentage      Float
-  description     String?
-  createdAt       DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String
+  fromUserId  String
+  amount      Int
+  level       Int
+  percentage  Float
+  description String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
 }
 
 model CashbackResidual {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  fromUserId      String
-  amount          Int
-  level           Int
-  percentage      Float
-  description     String?
-  createdAt       DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String
+  fromUserId  String
+  amount      Int
+  level       Int
+  percentage  Float
+  description String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
 }
 
 model CashbackSales {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  fromUserId      String
-  amount          Int
-  level           Int
-  percentage      Float
-  category        String
-  description     String?
-  createdAt       DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String
+  fromUserId  String
+  amount      Int
+  level       Int
+  percentage  Float
+  category    String
+  description String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
 }
 
 model Transaction {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  type            String
-  amount          Int
-  status          String   @default("pending")
-  category        String?
-  description     String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id          String   @id @default(cuid())
+  userId      String
+  type        String
+  amount      Int
+  status      String   @default("pending")
+  category    String?
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id])
 }
 
 model Invoice {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  amount          Int
-  type            String
-  status          String   @default("pending")
-  dueDate         DateTime
-  paidAt          DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id        String    @id @default(cuid())
+  userId    String
+  amount    Int
+  type      String
+  status    String    @default("pending")
+  dueDate   DateTime
+  paidAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id])
 }
 
 model Voucher {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  code            String   @unique
-  amount          Int
-  type            String
-  isUsed          Boolean  @default(false)
-  usedAt          DateTime?
-  expiresAt       DateTime?
-  createdAt       DateTime @default(now())
+  id        String    @id @default(cuid())
+  userId    String
+  code      String    @unique
+  amount    Int
+  type      String
+  isUsed    Boolean   @default(false)
+  usedAt    DateTime?
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
 }
 
 model Ticket {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  subject         String
-  category        String
-  status          String   @default("open")
-  priority        String   @default("normal")
-  messages        TicketMessage[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id        String          @id @default(cuid())
+  userId    String
+  subject   String
+  category  String
+  status    String          @default("open")
+  priority  String          @default("normal")
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  user      User            @relation(fields: [userId], references: [id])
+  messages  TicketMessage[]
 }
 
 model TicketMessage {
-  id              String   @id @default(cuid())
-  ticketId        String
-  ticket          Ticket   @relation(fields: [ticketId], references: [id])
-  userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  message         String
-  isAdmin         Boolean  @default(false)
-  attachments     String?
-  createdAt       DateTime @default(now())
+  id          String   @id @default(cuid())
+  ticketId    String
+  userId      String
+  message     String
+  isAdmin     Boolean  @default(false)
+  attachments String?
+  createdAt   DateTime @default(now())
+  ticket      Ticket   @relation(fields: [ticketId], references: [id])
+  user        User     @relation(fields: [userId], references: [id])
 }
 
 model Notification {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  title           String
-  message         String
-  type            String
-  isRead          Boolean  @default(false)
-  createdAt       DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 model CareerMilestone {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  milestone       String
-  pointsRequired  Int
-  achieved        Boolean  @default(false)
-  achievedAt      DateTime?
-  createdAt       DateTime @default(now())
+  id             String    @id @default(cuid())
+  userId         String
+  milestone      String
+  pointsRequired Int
+  achieved       Boolean   @default(false)
+  achievedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  user           User      @relation(fields: [userId], references: [id])
 }
 
 model Gratification {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  type            String
-  amount          Int
-  category        String
-  description     String?
-  isClaimed       Boolean  @default(false)
-  claimedAt       DateTime?
-  createdAt       DateTime @default(now())
+  id          String    @id @default(cuid())
+  userId      String
+  type        String
+  amount      Int
+  category    String
+  description String?
+  isClaimed   Boolean   @default(false)
+  claimedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id])
 }
 
 model PointTransaction {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  amount          Int
-  type            String
-  description     String?
-  referenceId     String?
-  createdAt       DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String
+  amount      Int
+  type        String
+  description String?
+  referenceId String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
 }
 
 model SystemConfig {
-  id              String   @id @default(cuid())
-  key             String   @unique
-  value           String
-  description     String?
-  updatedAt       DateTime @updatedAt
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
 }
 
 model Announcement {
-  id              String   @id @default(cuid())
-  title           String
-  message         String
-  type            String   @default("info")
-  priority        String   @default("normal")
-  isActive        Boolean  @default(true)
-  startDate       DateTime?
-  endDate         DateTime?
-  actionLabel     String?
-  actionUrl       String?
-  createdBy       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id          String    @id @default(cuid())
+  title       String
+  message     String
+  type        String    @default("info")
+  priority    String    @default("normal")
+  isActive    Boolean   @default(true)
+  startDate   DateTime?
+  endDate     DateTime?
+  actionLabel String?
+  actionUrl   String?
+  createdBy   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model GamificationStreak {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id])
-  currentStreak   Int      @default(0)
-  longestStreak   Int      @default(0)
-  lastLoginDate   DateTime?
-  totalPoints     Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  currentStreak Int       @default(0)
+  longestStreak Int       @default(0)
+  lastLoginDate DateTime?
+  totalPoints   Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  user          User      @relation(fields: [userId], references: [id])
 }
 
 model Challenge {
-  id              String   @id @default(cuid())
-  title           String
-  description     String
-  type            String
-  targetValue     Int
-  rewardPoints    Int
-  isActive        Boolean  @default(true)
-  startDate       DateTime?
-  endDate         DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  userChallenges  UserChallenge[]
+  id             String          @id @default(cuid())
+  title          String
+  description    String
+  type           String
+  targetValue    Int
+  rewardPoints   Int
+  isActive       Boolean         @default(true)
+  startDate      DateTime?
+  endDate        DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  userChallenges UserChallenge[]
 }
 
 model UserChallenge {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  challengeId     String
-  challenge       Challenge @relation(fields: [challengeId], references: [id])
-  currentValue    Int      @default(0)
-  completed       Boolean  @default(false)
-  completedAt     DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id           String    @id @default(cuid())
+  userId       String
+  challengeId  String
+  currentValue Int       @default(0)
+  completed    Boolean   @default(false)
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  challenge    Challenge @relation(fields: [challengeId], references: [id])
+  user         User      @relation(fields: [userId], references: [id])
 }
 
 model Event {
-  id              String   @id @default(cuid())
-  title           String
-  description     String
-  type            String
-  status          String   @default("upcoming")
-  eventDate       DateTime
-  endDate         DateTime?
-  location        String?
-  meetingUrl      String?
-  maxAttendees    Int?
-  imageUrl        String?
-  isActive        Boolean  @default(true)
-  createdBy       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  registrations   EventRegistration[]
+  id            String              @id @default(cuid())
+  title         String
+  description   String
+  type          String
+  status        String              @default("upcoming")
+  eventDate     DateTime
+  endDate       DateTime?
+  location      String?
+  meetingUrl    String?
+  maxAttendees  Int?
+  imageUrl      String?
+  isActive      Boolean             @default(true)
+  createdBy     String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  registrations EventRegistration[]
 }
 
 model EventRegistration {
-  id              String   @id @default(cuid())
-  eventId         String
-  event           Event    @relation(fields: [eventId], references: [id])
-  userId          String
-  registeredAt    DateTime @default(now())
+  id           String   @id @default(cuid())
+  eventId      String
+  userId       String
+  registeredAt DateTime @default(now())
+  event        Event    @relation(fields: [eventId], references: [id])
 
   @@unique([eventId, userId])
 }
@@ -368,17 +350,17 @@ model EventRegistration {
 model Beneficiary {
   id           String   @id @default(cuid())
   userId       String
-  user         User     @relation(fields: [userId], references: [id])
   name         String
   cpf          String?
   relationship String
   percentage   Int
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id])
 }
 
 model MarketplaceProduct {
-  id              String   @id @default(cuid())
+  id              String                 @id @default(cuid())
   name            String
   description     String?
   price           Int
@@ -386,47 +368,153 @@ model MarketplaceProduct {
   category        String
   imageUrl        String?
   images          String?
-  stock           Int      @default(0)
-  isActive        Boolean  @default(true)
-  isFeatured      Boolean  @default(false)
-  cashbackPercent Float    @default(0)
-  rating          Float    @default(0)
-  reviewCount     Int      @default(0)
+  stock           Int                    @default(0)
+  isActive        Boolean                @default(true)
+  isFeatured      Boolean                @default(false)
+  cashbackPercent Float                  @default(0)
+  rating          Float                  @default(0)
+  reviewCount     Int                    @default(0)
   sellerName      String?
   tags            String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
   orderItems      MarketplaceOrderItem[]
 }
 
 model MarketplaceOrder {
-  id              String   @id @default(cuid())
+  id              String                 @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  status          String   @default("pending")
+  status          String                 @default("pending")
   totalAmount     Int
-  cashbackEarned  Int      @default(0)
+  cashbackEarned  Int                    @default(0)
   shippingAddress String?
   paymentMethod   String?
   paidAt          DateTime?
   shippedAt       DateTime?
   deliveredAt     DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  user            User                   @relation(fields: [userId], references: [id])
   items           MarketplaceOrderItem[]
 }
 
 model MarketplaceOrderItem {
-  id              String   @id @default(cuid())
+  id              String             @id @default(cuid())
   orderId         String
-  order           MarketplaceOrder @relation(fields: [orderId], references: [id])
   productId       String
-  product         MarketplaceProduct @relation(fields: [productId], references: [id])
   userId          String
-  user            User     @relation(fields: [userId], references: [id])
   productName     String
-  quantity        Int      @default(1)
+  quantity        Int                @default(1)
   unitPrice       Int
+  cashbackPercent Float              @default(0)
+  createdAt       DateTime           @default(now())
+  order           MarketplaceOrder   @relation(fields: [orderId], references: [id])
+  product         MarketplaceProduct @relation(fields: [productId], references: [id])
+  user            User               @relation(fields: [userId], references: [id])
+}
+
+model Plan {
+  id                                           String      @id
+  code                                         String      @unique
+  name                                         String
+  priceCents                                   Int         @default(0)
+  description                                  String?
+  features                                     String      @default("[]")
+  isActive                                     Boolean     @default(true)
+  isDefault                                    Boolean     @default(false)
+  sortOrder                                    Int         @default(0)
+  matrixEntradaId                              String?
+  matrixResidualId                             String?
+  matrixVendasId                               String?
+  createdAt                                    DateTime    @default(now())
+  updatedAt                                    DateTime    @updatedAt
+  MatrixType_Plan_matrixEntradaIdToMatrixType  MatrixType? @relation("Plan_matrixEntradaIdToMatrixType", fields: [matrixEntradaId], references: [id])
+  MatrixType_Plan_matrixResidualIdToMatrixType MatrixType? @relation("Plan_matrixResidualIdToMatrixType", fields: [matrixResidualId], references: [id])
+  MatrixType_Plan_matrixVendasIdToMatrixType   MatrixType? @relation("Plan_matrixVendasIdToMatrixType", fields: [matrixVendasId], references: [id])
+  User                                         User[]
+}
+
+model AccreditedNetworkItem {
+  id              String   @id
+  name            String
+  category        String   @default("posto")
+  brand           String?
+  city            String
+  state           String
+  address         String?
+  phone           String?
+  discountText    String?
   cashbackPercent Float    @default(0)
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
   createdAt       DateTime @default(now())
+  updatedAt       DateTime
+
+  @@index([brand])
+  @@index([category])
+  @@index([state])
+}
+
+model DiscountClubPartner {
+  id              String   @id
+  name            String
+  logoUrl         String?
+  category        String   @default("geral")
+  discountText    String?
+  cashbackPercent Float    @default(0)
+  description     String?
+  websiteUrl      String?
+  phone           String?
+  isActive        Boolean  @default(true)
+  isFeatured      Boolean  @default(false)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime
+}
+
+model MatrixLevelEarning {
+  id              String     @id
+  matrixTypeId    String
+  level           Int
+  percentage      Float      @default(0)
+  fixedBonusCents Int        @default(0)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime
+  MatrixType      MatrixType @relation(fields: [matrixTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([matrixTypeId, level])
+}
+
+model MatrixType {
+  id                                     String               @id
+  code                                   String               @unique
+  name                                   String
+  matrixKind                             String
+  width                                  Int                  @default(4)
+  depth                                  Int                  @default(5)
+  description                            String?
+  color                                  String?
+  isActive                               Boolean              @default(true)
+  createdAt                              DateTime             @default(now())
+  updatedAt                              DateTime
+  MatrixLevelEarning                     MatrixLevelEarning[]
+  Plan_Plan_matrixEntradaIdToMatrixType  Plan[]               @relation("Plan_matrixEntradaIdToMatrixType")
+  Plan_Plan_matrixResidualIdToMatrixType Plan[]               @relation("Plan_matrixResidualIdToMatrixType")
+  Plan_Plan_matrixVendasIdToMatrixType   Plan[]               @relation("Plan_matrixVendasIdToMatrixType")
+}
+
+model TalkMobiPlan {
+  id            String   @id
+  name          String
+  dataAmount    String
+  priceCents    Int
+  cashbackCents Int      @default(0)
+  rewardPoints  Int      @default(0)
+  features      String   @default("[]")
+  isPopular     Boolean  @default(false)
+  isRecommended Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime
 }

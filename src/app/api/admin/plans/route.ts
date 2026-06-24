@@ -2,21 +2,28 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
-const DEFAULT_PLANS = [
+// Default plans - used only for initial seeding (when DB is empty)
+const DEFAULT_PLANS_SEED = [
   {
     id: 'free',
+    code: 'free',
     name: 'Gratuito',
-    price: 0,
+    priceCents: 0,
+    description: 'Plano gratuito para cadastro e indicações.',
     features: ['Cadastro gratuito', 'Indicação de usuários'],
-    matrixEntrada: '-',
-    matrixResidual: '-',
-    matrixVendas: '-',
+    matrixEntradaCode: 'entrada_4x5',
+    matrixResidualCode: 'residual_4x7',
+    matrixVendasCode: 'vendas_4x9',
     isActive: true,
+    isDefault: true,
+    sortOrder: 0,
   },
   {
     id: 'blue3',
+    code: 'blue3',
     name: 'Blue 3',
-    price: 9700,
+    priceCents: 9700,
+    description: 'Plano Blue 3 com acesso completo às matrizes e apps.',
     features: [
       'Cashback Entrada (matriz 4x5)',
       'Cashback Residual (matriz 4x7)',
@@ -28,15 +35,19 @@ const DEFAULT_PLANS = [
       'Gratificações disponíveis',
       'Plano de Carreira',
     ],
-    matrixEntrada: '4x5',
-    matrixResidual: '4x7',
-    matrixVendas: '4x9',
+    matrixEntradaCode: 'entrada_4x5',
+    matrixResidualCode: 'residual_4x7',
+    matrixVendasCode: 'vendas_4x9',
     isActive: true,
+    isDefault: true,
+    sortOrder: 1,
   },
   {
     id: 'blue5',
+    code: 'blue5',
     name: 'Blue 5',
-    price: 14700,
+    priceCents: 14700,
+    description: 'Plano Blue 5 premium com benefícios exclusivos.',
     features: [
       'Tudo do plano Blue 3',
       'Gratificações exclusivas',
@@ -47,14 +58,87 @@ const DEFAULT_PLANS = [
       'Telemedicina',
       'Assistência funerária',
     ],
-    matrixEntrada: '4x5',
-    matrixResidual: '4x7',
-    matrixVendas: '4x9',
+    matrixEntradaCode: 'entrada_4x5',
+    matrixResidualCode: 'residual_4x7',
+    matrixVendasCode: 'vendas_4x9',
     isActive: true,
+    isDefault: true,
+    sortOrder: 2,
   },
 ]
 
-// GET all plans (admin view) - returns defaults with user counts
+async function seedDefaultPlansIfEmpty() {
+  const count = await prisma.plan.count()
+  if (count > 0) return
+
+  // Resolve matrix type IDs by code
+  const matrixTypes = await prisma.matrixType.findMany()
+  const findMt = (code: string) => matrixTypes.find((m) => m.code === code)?.id || null
+
+  for (const p of DEFAULT_PLANS_SEED) {
+    await prisma.plan.create({
+      data: {
+        id: p.id,
+        code: p.code,
+        name: p.name,
+        priceCents: p.priceCents,
+        description: p.description,
+        features: JSON.stringify(p.features),
+        isActive: p.isActive,
+        isDefault: p.isDefault,
+        sortOrder: p.sortOrder,
+        matrixEntradaId: findMt(p.matrixEntradaCode),
+        matrixResidualId: findMt(p.matrixResidualCode),
+        matrixVendasId: findMt(p.matrixVendasCode),
+      },
+    })
+  }
+}
+
+// Helper to format plan for API response (with optional matrix info)
+async function formatPlan(plan: any) {
+  let matrixEntrada = '-'
+  let matrixResidual = '-'
+  let matrixVendas = '-'
+
+  if (plan.matrixEntradaId) {
+    const mt = await prisma.matrixType.findUnique({ where: { id: plan.matrixEntradaId } })
+    if (mt) matrixEntrada = `${mt.width}x${mt.depth}`
+  }
+  if (plan.matrixResidualId) {
+    const mt = await prisma.matrixType.findUnique({ where: { id: plan.matrixResidualId } })
+    if (mt) matrixResidual = `${mt.width}x${mt.depth}`
+  }
+  if (plan.matrixVendasId) {
+    const mt = await prisma.matrixType.findUnique({ where: { id: plan.matrixVendasId } })
+    if (mt) matrixVendas = `${mt.width}x${mt.depth}`
+  }
+
+  let features: string[] = []
+  try {
+    features = typeof plan.features === 'string' ? JSON.parse(plan.features) : plan.features || []
+  } catch { features = [] }
+
+  return {
+    id: plan.id,
+    code: plan.code,
+    name: plan.name,
+    price: plan.priceCents,
+    description: plan.description || '',
+    features,
+    matrixEntrada,
+    matrixResidual,
+    matrixVendas,
+    matrixEntradaId: plan.matrixEntradaId,
+    matrixResidualId: plan.matrixResidualId,
+    matrixVendasId: plan.matrixVendasId,
+    isActive: plan.isActive,
+    isDefault: plan.isDefault,
+    sortOrder: plan.sortOrder,
+  }
+}
+
+// GET all plans (admin view) - returns DB plans with user counts
 export async function GET(req: NextRequest) {
   try {
     const userId = req.nextUrl.searchParams.get('userId')
@@ -63,21 +147,24 @@ export async function GET(req: NextRequest) {
     const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user || user.role !== 'admin') return error('Unauthorized', 403)
 
-    // Get user count per plan - use findMany instead of groupBy for SQLite compat
-    let planGroups: { plan: string }[] = []
-    try {
-      planGroups = await prisma.user.findMany({ select: { plan: true } })
-    } catch { /* ignore */ }
+    // Seed defaults if no plans exist
+    await seedDefaultPlansIfEmpty()
 
+    const plans = await prisma.plan.findMany({ orderBy: { sortOrder: 'asc' } })
+
+    // Get user count per plan (by code stored on User.plan field)
+    const userPlans = await prisma.user.findMany({ select: { plan: true } })
     const planCountMap: Record<string, number> = {}
-    for (const u of planGroups) {
+    for (const u of userPlans) {
       planCountMap[u.plan] = (planCountMap[u.plan] || 0) + 1
     }
 
-    const plansWithCount = DEFAULT_PLANS.map((p) => ({
-      ...p,
-      userCount: planCountMap[p.id] || 0,
-    }))
+    const plansWithCount = await Promise.all(
+      plans.map(async (p) => {
+        const formatted = await formatPlan(p)
+        return { ...formatted, userCount: planCountMap[p.code] || 0 }
+      })
+    )
 
     return success({ plans: plansWithCount })
   } catch (err) {
@@ -86,11 +173,22 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST create a new plan (returns it as a virtual plan - not stored in DB since no Plan model)
+// POST create a new plan
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { userId, name, price, features, matrixEntrada, matrixResidual, matrixVendas } = body
+    const {
+      userId,
+      name,
+      price,
+      features,
+      matrixEntradaId,
+      matrixResidualId,
+      matrixVendasId,
+      description,
+      isActive = true,
+      sortOrder = 99,
+    } = body
 
     if (!userId) return error('userId is required', 400)
 
@@ -99,22 +197,48 @@ export async function POST(req: NextRequest) {
 
     if (!name || price === undefined) return error('name and price are required', 400)
 
-    // Generate a plan ID from name
-    const planId = name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+    // Generate plan ID and code from name
+    const baseCode = name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+    let code = baseCode
+    let id = baseCode
 
-    const newPlan = {
-      id: planId,
-      name,
-      price: Number(price),
-      features: features || [],
-      matrixEntrada: matrixEntrada || '-',
-      matrixResidual: matrixResidual || '-',
-      matrixVendas: matrixVendas || '-',
-      isActive: true,
-      userCount: 0,
+    // Ensure uniqueness
+    let suffix = 1
+    while (await prisma.plan.findUnique({ where: { code } })) {
+      code = `${baseCode}_${suffix}`
+      id = `${baseCode}_${suffix}`
+      suffix++
+    }
+    // Ensure ID uniqueness too (with cuid fallback if needed)
+    if (await prisma.plan.findUnique({ where: { id } })) {
+      id = `${baseCode}_${Date.now()}`
     }
 
-    return success(newPlan)
+    const featuresArray = Array.isArray(features)
+      ? features
+      : typeof features === 'string'
+        ? features.split(',').map((f: string) => f.trim()).filter(Boolean)
+        : []
+
+    const created = await prisma.plan.create({
+      data: {
+        id,
+        code,
+        name,
+        priceCents: Number(price),
+        description: description || '',
+        features: JSON.stringify(featuresArray),
+        isActive: Boolean(isActive),
+        isDefault: false,
+        sortOrder: Number(sortOrder),
+        matrixEntradaId: matrixEntradaId || null,
+        matrixResidualId: matrixResidualId || null,
+        matrixVendasId: matrixVendasId || null,
+      },
+    })
+
+    const formatted = await formatPlan(created)
+    return success(formatted)
   } catch (err) {
     console.error('Create plan error:', err)
     return error('Failed to create plan', 500)

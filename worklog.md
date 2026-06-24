@@ -687,3 +687,61 @@ Stage Summary:
 - ✅ Subscription blocking: free users see banner on allowed pages and full blocking modal on blocked pages; backend APIs also reject free plan users for withdrawals/bets/marketplace orders
 - ✅ Plan upgrade via balance payment also updates user store
 - ✅ All changes tested end-to-end via agent-browser with real database interactions
+
+---
+Task ID: 6
+Agent: Main Agent
+Task: Fix "planos não salvam" bug - admin plan form was not persisting to DB
+
+Work Log:
+- Investigated admin plan form: GET /api/admin/plans returned hardcoded DEFAULT_PLANS array (3 plans), POST returned virtual plan object without persisting, PUT/DELETE returned success without DB changes
+- Discovered another agent had previously created Plan, MatrixType, MatrixLevelEarning, DiscountClubPartner, AccreditedNetworkItem, TalkMobiPlan tables in Neon DB but the local prisma/schema.prisma didn't have these models
+- Ran `prisma db pull` to sync schema.prisma with actual DB state (32 models introspected)
+- Regenerated Prisma client with `prisma generate`
+- Refactored /api/admin/plans/route.ts (GET/POST) to use prisma.plan.findMany/create with proper Plan model fields (id, code, name, priceCents, features, description, isActive, isDefault, sortOrder, matrixEntradaId, matrixResidualId, matrixVendasId)
+- Added seedDefaultPlansIfEmpty() to auto-seed defaults if DB is empty
+- Added formatPlan() helper that resolves matrixEntradaId/matrixResidualId/matrixVendasId to "WxD" display strings and parses features JSON
+- GET now returns plans with: id, code, name, price, description, features[], matrixEntrada, matrixResidual, matrixVendas, matrixEntradaId, matrixResidualId, matrixVendasId, isActive, isDefault, sortOrder, userCount
+- Refactored /api/admin/plans/[planId]/route.ts (PUT/DELETE) to actually persist changes via prisma.plan.update/delete
+- DELETE now checks existing.isDefault (DB field) instead of hardcoded IDs
+- DELETE checks if any users are using the plan (by planId or plan code) before allowing deletion
+- Created new endpoint /api/admin/matrix-types/route.ts (GET/POST) for managing matrix types with their level earnings
+- GET returns matrix types with nested MatrixLevelEarning array (level, percentage, fixedBonusCents)
+- POST creates matrix type with optional levelEarnings array
+- Updated admin-page.tsx AdminPlan interface to include matrixEntradaId, matrixResidualId, matrixVendasId, description, isDefault, sortOrder, userCount
+- Added new AdminMatrixType interface
+- Added matrixTypes state and loadMatrixTypes() function
+- Updated useEffect to call loadMatrixTypes() when plans tab is active
+- Updated planFormData to use matrixEntradaId/matrixResidualId/matrixVendasId instead of plain text strings
+- Updated handleOpenEditPlan to load matrix IDs from plan
+- Updated handleSavePlan to send matrixType IDs (not text) to API
+- Updated handleDeletePlan to use plan.isDefault from DB and confirm before deletion
+- Replaced text Inputs for matrices with proper <select> dropdowns that show available matrix types filtered by matrixKind (entrada/residual/vendas)
+- Added description field, sortOrder field, isActive checkbox to plan form
+- Made dialog content scrollable (max-h-[70vh] overflow-y-auto)
+- Updated plan card rendering to:
+  * Show user count badge ("9 usuários")
+  * Show "Padrão" badge from plan.isDefault (not hardcoded IDs)
+  * Show "Inativo" badge when plan is inactive
+  * Show plan.description
+  * Use plan.code for blue5 highlight (not plan.id which is cuid)
+  * Color-coded matrix info dots (blue/purple/emerald)
+  * Safe JSON.parse with try/catch for features
+- Tested end-to-end via agent-browser:
+  * Login as admin → click Planos & Preços → 3 plans displayed with user counts
+  * Click Editar on Blue 3 → form opens with all fields populated, matrix dropdowns show selected matrices
+  * Edit description → click Salvar → dialog closes, "Plano atualizado com sucesso!"
+  * Verified in DB: description updated and persisted
+  * Click Novo Plano → fill form (name, price, description, features, select matrices) → click Criar Plano → "4 planos cadastrados"
+  * Verified in DB: new plan "Plano Premium Teste" persisted
+  * Deleted test plan via API → back to 3 plans
+- Lint: 0 new errors (only pre-existing JS file errors remain)
+
+Stage Summary:
+- ✅ Root cause fixed: plans are now persisted in Neon PostgreSQL via Prisma Plan model
+- ✅ All CRUD operations work: Create, Read, Update, Delete
+- ✅ Matrix types properly loaded and selectable via dropdowns
+- ✅ Default plans protected from deletion (isDefault flag from DB)
+- ✅ User count badge shows how many users are on each plan
+- ✅ Schema synced: prisma/schema.prisma now has all 32 models including Plan, MatrixType, MatrixLevelEarning, DiscountClubPartner, AccreditedNetworkItem, TalkMobiPlan
+- ⚠️ Pre-existing tables (DiscountClubPartner 12 rows, AccreditedNetworkItem 46 rows, MatrixLevelEarning 27 rows, MatrixType 4 rows, TalkMobiPlan 5 rows) already exist with seeded data from previous agent - ready for use

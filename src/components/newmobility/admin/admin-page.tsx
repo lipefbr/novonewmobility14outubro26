@@ -84,7 +84,14 @@ interface AdminAnnouncement {
 interface AdminPlan {
   id: string; name: string; price: number; features: string[] | string;
   matrixEntrada: string; matrixResidual: string; matrixVendas: string;
-  isActive: boolean;
+  matrixEntradaId?: string | null; matrixResidualId?: string | null; matrixVendasId?: string | null;
+  description?: string; isActive: boolean; isDefault?: boolean; sortOrder?: number; userCount?: number;
+}
+
+interface AdminMatrixType {
+  id: string; code: string; name: string; matrixKind: string;
+  width: number; depth: number; description?: string | null;
+  color?: string | null; isActive: boolean;
 }
 
 interface AdminWithdrawal {
@@ -279,8 +286,9 @@ export function AdminPage() {
   // Plan dialog
   const [planDialogOpen, setPlanDialogOpen] = useState(false)
   const [editingPlan, setEditingPlan] = useState<AdminPlan | null>(null)
-  const [planFormData, setPlanFormData] = useState({ name: '', price: 0, features: '', matrixEntrada: '-', matrixResidual: '-', matrixVendas: '-', isActive: true })
+  const [planFormData, setPlanFormData] = useState({ name: '', price: 0, features: '', description: '', matrixEntradaId: '', matrixResidualId: '', matrixVendasId: '', isActive: true, sortOrder: 99 })
   const [savingPlan, setSavingPlan] = useState(false)
+  const [matrixTypes, setMatrixTypes] = useState<AdminMatrixType[]>([])
 
   // Withdrawal action
   const [processingWithdrawal, setProcessingWithdrawal] = useState<string | null>(null)
@@ -384,7 +392,7 @@ export function AdminPage() {
     if (activeTab === 'users') loadUsers()
     if (activeTab === 'config') loadConfigs()
     if (activeTab === 'announcements') loadAnnouncements()
-    if (activeTab === 'plans') loadPlans()
+    if (activeTab === 'plans') { loadPlans(); loadMatrixTypes() }
     if (activeTab === 'withdrawals') loadWithdrawals()
     if (activeTab === 'cashback') loadCashback()
     if (activeTab === 'financial') loadFinancial()
@@ -883,26 +891,38 @@ export function AdminPage() {
     }
   }
 
+  // ---------- Matrix Types ----------
+  const loadMatrixTypes = async () => {
+    try {
+      const data = await apiFetch<{ matrixTypes: AdminMatrixType[] }>(`/admin/matrix-types?userId=${user?.id}`)
+      setMatrixTypes(data.matrixTypes || [])
+    } catch {
+      setMatrixTypes([])
+    }
+  }
+
   // ---------- Plans CRUD ----------
   const handleOpenNewPlan = () => {
     setEditingPlan(null)
-    setPlanFormData({ name: '', price: 0, features: '', matrixEntrada: '-', matrixResidual: '-', matrixVendas: '-', isActive: true })
+    setPlanFormData({ name: '', price: 0, features: '', description: '', matrixEntradaId: '', matrixResidualId: '', matrixVendasId: '', isActive: true, sortOrder: 99 })
     setPlanDialogOpen(true)
   }
 
   const handleOpenEditPlan = (plan: AdminPlan) => {
     setEditingPlan(plan)
     const featuresList = typeof plan.features === 'string'
-      ? JSON.parse(plan.features || '[]').join(', ')
+      ? (() => { try { return JSON.parse(plan.features || '[]').join(', ') } catch { return plan.features || '' } })()
       : (plan.features || []).join(', ')
     setPlanFormData({
       name: plan.name,
       price: plan.price,
       features: featuresList,
-      matrixEntrada: plan.matrixEntrada || '-',
-      matrixResidual: plan.matrixResidual || '-',
-      matrixVendas: plan.matrixVendas || '-',
+      description: plan.description || '',
+      matrixEntradaId: plan.matrixEntradaId || '',
+      matrixResidualId: plan.matrixResidualId || '',
+      matrixVendasId: plan.matrixVendasId || '',
       isActive: plan.isActive,
+      sortOrder: plan.sortOrder ?? 99,
     })
     setPlanDialogOpen(true)
   }
@@ -923,10 +943,12 @@ export function AdminPage() {
             name: planFormData.name,
             price: planFormData.price,
             features: featuresArray,
-            matrixEntrada: planFormData.matrixEntrada,
-            matrixResidual: planFormData.matrixResidual,
-            matrixVendas: planFormData.matrixVendas,
+            description: planFormData.description,
+            matrixEntradaId: planFormData.matrixEntradaId || null,
+            matrixResidualId: planFormData.matrixResidualId || null,
+            matrixVendasId: planFormData.matrixVendasId || null,
             isActive: planFormData.isActive,
+            sortOrder: planFormData.sortOrder,
           }),
         })
         toast.success('Plano atualizado com sucesso!')
@@ -938,9 +960,12 @@ export function AdminPage() {
             name: planFormData.name,
             price: planFormData.price,
             features: featuresArray,
-            matrixEntrada: planFormData.matrixEntrada,
-            matrixResidual: planFormData.matrixResidual,
-            matrixVendas: planFormData.matrixVendas,
+            description: planFormData.description,
+            matrixEntradaId: planFormData.matrixEntradaId || null,
+            matrixResidualId: planFormData.matrixResidualId || null,
+            matrixVendasId: planFormData.matrixVendasId || null,
+            isActive: planFormData.isActive,
+            sortOrder: planFormData.sortOrder,
           }),
         })
         toast.success('Plano criado com sucesso!')
@@ -948,24 +973,26 @@ export function AdminPage() {
       setPlanDialogOpen(false)
       setEditingPlan(null)
       loadPlans()
-    } catch {
-      toast.error('Erro ao salvar plano')
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao salvar plano')
     } finally {
       setSavingPlan(false)
     }
   }
 
   const handleDeletePlan = async (planId: string) => {
-    if (planId === 'free' || planId === 'blue3' || planId === 'blue5') {
+    const plan = plans.find(p => p.id === planId)
+    if (plan?.isDefault || ['free', 'blue3', 'blue5'].includes(plan?.code || '')) {
       toast.error('Não é possível excluir planos padrão')
       return
     }
+    if (!confirm(`Tem certeza que deseja excluir o plano "${plan?.name}"?`)) return
     try {
       await apiFetch(`/admin/plans/${planId}?userId=${user?.id}`, { method: 'DELETE' })
       loadPlans()
       toast.success('Plano excluído!')
-    } catch {
-      toast.error('Erro ao excluir plano')
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao excluir plano')
     }
   }
 
@@ -1602,21 +1629,30 @@ export function AdminPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {plans.map((plan, i) => {
               const features = typeof plan.features === 'string'
-                ? JSON.parse(plan.features || '[]')
+                ? (() => { try { return JSON.parse(plan.features || '[]') } catch { return [] } })()
                 : plan.features || []
-              const isDefault = ['free', 'blue3', 'blue5'].includes(plan.id)
+              const isDefault = plan.isDefault || ['free', 'blue3', 'blue5'].includes(plan.code || plan.id)
 
               return (
                 <motion.div key={plan.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-                  <Card className={`shadow-sm hover:shadow-md transition-shadow ${plan.id === 'blue5' ? 'border-2 border-emerald-300 dark:border-emerald-700' : ''}`}>
+                  <Card className={`shadow-sm hover:shadow-md transition-shadow ${plan.code === 'blue5' ? 'border-2 border-emerald-300 dark:border-emerald-700' : ''}`}>
                     <CardHeader className="pb-3">
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-base font-bold text-foreground">{plan.name}</CardTitle>
-                        {isDefault && <Badge variant="outline" className="text-[9px]">Padrão</Badge>}
+                        <div className="flex items-center gap-1">
+                          {plan.userCount !== undefined && (
+                            <Badge variant="outline" className="text-[9px] text-emerald-600 border-emerald-300">{plan.userCount} usuários</Badge>
+                          )}
+                          {isDefault && <Badge variant="outline" className="text-[9px]">Padrão</Badge>}
+                          {!plan.isActive && <Badge variant="outline" className="text-[9px] text-amber-600 border-amber-300">Inativo</Badge>}
+                        </div>
                       </div>
                       <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
                         {plan.price === 0 ? 'Grátis' : formatCurrency(plan.price)}
                       </p>
+                      {plan.description && (
+                        <p className="text-[10px] text-muted-foreground line-clamp-2">{plan.description}</p>
+                      )}
                     </CardHeader>
                     <CardContent className="pt-0">
                       <div className="space-y-1.5 mb-4 max-h-48 overflow-y-auto">
@@ -1628,11 +1664,11 @@ export function AdminPage() {
                         ))}
                       </div>
                       <div className="flex items-center gap-2 text-[10px] text-muted-foreground mb-3">
-                        <span>Entrada: {plan.matrixEntrada}</span>
+                        <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-blue-500" />Entrada: {plan.matrixEntrada}</span>
                         <span>•</span>
-                        <span>Residual: {plan.matrixResidual}</span>
+                        <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-purple-500" />Residual: {plan.matrixResidual}</span>
                         <span>•</span>
-                        <span>Vendas: {plan.matrixVendas}</span>
+                        <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />Vendas: {plan.matrixVendas}</span>
                       </div>
                       <div className="flex gap-2">
                         <Button variant="outline" size="sm" className="flex-1 h-8 text-xs gap-1" onClick={() => handleOpenEditPlan(plan)}>
@@ -4103,34 +4139,84 @@ export function AdminPage() {
               {editingPlan ? 'Atualize os dados do plano.' : 'Preencha os dados do novo plano.'}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
             <div className="space-y-2">
-              <Label className="text-xs font-medium">Nome do Plano</Label>
+              <Label className="text-xs font-medium">Nome do Plano *</Label>
               <Input value={planFormData.name} onChange={(e) => setPlanFormData(d => ({ ...d, name: e.target.value }))} placeholder="Ex: Blue 7" />
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Preço (centavos)</Label>
+                <Input value={planFormData.price} onChange={(e) => setPlanFormData(d => ({ ...d, price: parseInt(e.target.value) || 0 }))} type="number" placeholder="9700" />
+                <p className="text-[10px] text-muted-foreground">{planFormData.price > 0 ? formatCurrency(planFormData.price) : 'Grátis'}</p>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Ordem</Label>
+                <Input value={planFormData.sortOrder} onChange={(e) => setPlanFormData(d => ({ ...d, sortOrder: parseInt(e.target.value) || 0 }))} type="number" placeholder="0" />
+              </div>
+            </div>
             <div className="space-y-2">
-              <Label className="text-xs font-medium">Preço (centavos)</Label>
-              <Input value={planFormData.price} onChange={(e) => setPlanFormData(d => ({ ...d, price: parseInt(e.target.value) || 0 }))} type="number" placeholder="9700" />
-              <p className="text-[10px] text-muted-foreground">{planFormData.price > 0 ? formatCurrency(planFormData.price) : 'Grátis'}</p>
+              <Label className="text-xs font-medium">Descrição</Label>
+              <Input value={planFormData.description} onChange={(e) => setPlanFormData(d => ({ ...d, description: e.target.value }))} placeholder="Descrição curta do plano" />
             </div>
             <div className="space-y-2">
               <Label className="text-xs font-medium">Features (separadas por vírgula)</Label>
-              <Input value={planFormData.features} onChange={(e) => setPlanFormData(d => ({ ...d, features: e.target.value }))} placeholder="CashBack Entrada, App Mobilidade, Telemedicina" />
+              <textarea
+                className="flex min-h-[70px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                value={planFormData.features}
+                onChange={(e) => setPlanFormData(d => ({ ...d, features: e.target.value }))}
+                placeholder="CashBack Entrada, App Mobilidade, Telemedicina"
+              />
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="space-y-2">
-                <Label className="text-xs font-medium">Matriz Entrada</Label>
-                <Input value={planFormData.matrixEntrada} onChange={(e) => setPlanFormData(d => ({ ...d, matrixEntrada: e.target.value }))} placeholder="4x5" />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs font-medium">Matriz Residual</Label>
-                <Input value={planFormData.matrixResidual} onChange={(e) => setPlanFormData(d => ({ ...d, matrixResidual: e.target.value }))} placeholder="4x7" />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs font-medium">Matriz Vendas</Label>
-                <Input value={planFormData.matrixVendas} onChange={(e) => setPlanFormData(d => ({ ...d, matrixVendas: e.target.value }))} placeholder="4x9" />
-              </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-medium flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-blue-500" /> Matriz de Entrada
+              </Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={planFormData.matrixEntradaId}
+                onChange={(e) => setPlanFormData(d => ({ ...d, matrixEntradaId: e.target.value }))}
+              >
+                <option value="">— Sem matriz —</option>
+                {matrixTypes.filter(m => m.matrixKind === 'entrada' || m.matrixKind === 'mixed').map(m => (
+                  <option key={m.id} value={m.id}>{m.name} ({m.width}x{m.depth})</option>
+                ))}
+              </select>
             </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-medium flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-purple-500" /> Matriz Residual
+              </Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={planFormData.matrixResidualId}
+                onChange={(e) => setPlanFormData(d => ({ ...d, matrixResidualId: e.target.value }))}
+              >
+                <option value="">— Sem matriz —</option>
+                {matrixTypes.filter(m => m.matrixKind === 'residual' || m.matrixKind === 'mixed').map(m => (
+                  <option key={m.id} value={m.id}>{m.name} ({m.width}x{m.depth})</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs font-medium flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" /> Matriz de Vendas
+              </Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                value={planFormData.matrixVendasId}
+                onChange={(e) => setPlanFormData(d => ({ ...d, matrixVendasId: e.target.value }))}
+              >
+                <option value="">— Sem matriz —</option>
+                {matrixTypes.filter(m => m.matrixKind === 'vendas' || m.matrixKind === 'mixed').map(m => (
+                  <option key={m.id} value={m.id}>{m.name} ({m.width}x{m.depth})</option>
+                ))}
+              </select>
+            </div>
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input type="checkbox" checked={planFormData.isActive} onChange={(e) => setPlanFormData(d => ({ ...d, isActive: e.target.checked }))} className="rounded" />
+              Plano ativo (visível para usuários)
+            </label>
             <DialogFooter>
               <Button variant="outline" onClick={() => setPlanDialogOpen(false)} disabled={savingPlan}>Cancelar</Button>
               <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleSavePlan} disabled={savingPlan || !planFormData.name}>
