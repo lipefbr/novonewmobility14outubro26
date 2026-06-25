@@ -53,6 +53,19 @@ model User {
   balancePending        Int                    @default(0)
   userType              String                 @default("usuario")
   planId                String?
+  // Personal data fields
+  birthDate             DateTime?
+  rg                    String?
+  maritalStatus         String?
+  gender                String?
+  education             String?
+  zipCode               String?
+  sponsorId             String?
+  qualification         String?
+  // Emergency contact
+  emergencyName         String?
+  emergencyPhone        String?
+  emergencyRelation     String?
   beneficiaries         Beneficiary[]
   bets                  Bet[]
   careerMilestones      CareerMilestone[]
@@ -354,6 +367,7 @@ model Beneficiary {
   cpf          String?
   relationship String
   percentage   Int
+  age          Int?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   user         User     @relation(fields: [userId], references: [id])
@@ -517,4 +531,73 @@ model TalkMobiPlan {
   sortOrder     Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime
+}
+
+model Achievement {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  icon        String?
+  category    String   @default("general")
+  pointsReward Int     @default(0)
+  targetValue Int      @default(1)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CareerPlan {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  name         String
+  description  String?
+  minPoints    Int      @default(0)
+  bonusCents   Int      @default(0)
+  color        String?
+  icon         String?
+  isActive     Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model StreakReward {
+  id           String   @id @default(cuid())
+  streakDays   Int
+  rewardType   String   @default("points")
+  rewardAmount Int      @default(0)
+  description  String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([streakDays])
+}
+
+model FAQ {
+  id          String   @id @default(cuid())
+  question    String
+  answer      String
+  category    String   @default("geral")
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model GameConfig {
+  id              String   @id @default(cuid())
+  gameCode        String   @unique
+  name            String
+  description     String?
+  pointsPerWin    Int      @default(10)
+  pointsPerPlay   Int      @default(1)
+  cashbackPerWin  Int      @default(0)
+  minBetCents     Int      @default(0)
+  maxPlaysPerDay  Int      @default(10)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }

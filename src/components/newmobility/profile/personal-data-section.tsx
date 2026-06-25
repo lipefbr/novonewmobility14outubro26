@@ -1,0 +1,536 @@
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
+import {
+  Calendar, IdCard, Heart, Users, GraduationCap, MapPin, Award, User,
+  Pencil, Check, X, Loader2, Siren, Phone,
+} from 'lucide-react'
+import { userApi } from '@/lib/api'
+import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
+
+// ---------- Static option lists ----------
+
+const QUALIFICATION_OPTIONS = [
+  { value: 'motorista', label: 'Motorista' },
+  { value: 'passageiro', label: 'Passageiro' },
+  { value: 'passageiro_60', label: 'Passageiro 60+' },
+  { value: 'passageiro_pcd', label: 'Passageiro com Mobilidade Reduzida' },
+  { value: 'comercio', label: 'Comércio' },
+  { value: 'entregador', label: 'Entregador' },
+] as const
+
+const MARITAL_STATUS_OPTIONS = [
+  'Solteiro(a)',
+  'Casado(a)',
+  'Divorciado(a)',
+  'Viúvo(a)',
+  'União Estável',
+] as const
+
+const GENDER_OPTIONS = [
+  'Masculino',
+  'Feminino',
+  'Outro',
+  'Prefiro não informar',
+] as const
+
+const EDUCATION_OPTIONS = [
+  'Ensino Fundamental',
+  'Ensino Médio',
+  'Ensino Médio Incompleto',
+  'Ensino Superior Incompleto',
+  'Ensino Superior Completo',
+  'Pós-Graduação',
+  'Mestrado',
+  'Doutorado',
+] as const
+
+// ---------- Helpers ----------
+
+function formatZipCode(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 8)
+  if (digits.length <= 5) return digits
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`
+}
+
+function formatDateBR(iso: string | null | undefined): string {
+  if (!iso) return '-'
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return '-'
+  return d.toLocaleDateString('pt-BR')
+}
+
+function toDateInputValue(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  // Use local date to avoid timezone shift
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function getQualificationLabel(value: string | null | undefined): string {
+  if (!value) return '-'
+  return QUALIFICATION_OPTIONS.find((o) => o.value === value)?.label || value
+}
+
+// ---------- Types ----------
+
+interface PersonalData {
+  birthDate: string | null
+  rg: string | null
+  maritalStatus: string | null
+  gender: string | null
+  education: string | null
+  zipCode: string | null
+  sponsorId: string | null
+  qualification: string | null
+  emergencyName: string | null
+  emergencyPhone: string | null
+  emergencyRelation: string | null
+}
+
+interface SponsorInfo {
+  id: string
+  name: string
+}
+
+// ---------- Component ----------
+
+export function PersonalDataSection({ userId }: { userId: string }) {
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [editing, setEditing] = useState(false)
+
+  const [data, setData] = useState<PersonalData>({
+    birthDate: null,
+    rg: null,
+    maritalStatus: null,
+    gender: null,
+    education: null,
+    zipCode: null,
+    sponsorId: null,
+    qualification: null,
+    emergencyName: null,
+    emergencyPhone: null,
+    emergencyRelation: null,
+  })
+
+  // Editable copy while in edit mode
+  const [draft, setDraft] = useState<PersonalData>(data)
+  const [sponsor, setSponsor] = useState<SponsorInfo | null>(null)
+
+  const fetchProfile = useCallback(async () => {
+    setLoading(true)
+    try {
+      const profile = await userApi.getProfile(userId)
+      const next: PersonalData = {
+        birthDate: profile.birthDate ?? null,
+        rg: profile.rg ?? null,
+        maritalStatus: profile.maritalStatus ?? null,
+        gender: profile.gender ?? null,
+        education: profile.education ?? null,
+        zipCode: profile.zipCode ?? null,
+        sponsorId: profile.sponsorId ?? null,
+        qualification: profile.qualification ?? null,
+        emergencyName: profile.emergencyName ?? null,
+        emergencyPhone: profile.emergencyPhone ?? null,
+        emergencyRelation: profile.emergencyRelation ?? null,
+      }
+      setData(next)
+      setDraft(next)
+
+      // Fetch sponsor info if available
+      if (profile.sponsorId) {
+        try {
+          const sponsorProfile = await userApi.getProfile(profile.sponsorId)
+          setSponsor({ id: profile.sponsorId, name: sponsorProfile.name || 'Usuário' })
+        } catch {
+          setSponsor({ id: profile.sponsorId, name: 'Usuário' })
+        }
+      } else {
+        setSponsor(null)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao carregar dados pessoais.'
+      toast.error(msg)
+    } finally {
+      setLoading(false)
+    }
+  }, [userId])
+
+  useEffect(() => {
+    if (userId) {
+      void fetchProfile()
+    }
+  }, [userId, fetchProfile])
+
+  const handleEdit = () => {
+    setDraft(data)
+    setEditing(true)
+  }
+
+  const handleCancel = () => {
+    setDraft(data)
+    setEditing(false)
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await userApi.updateProfile(userId, {
+        birthDate: draft.birthDate || null,
+        rg: draft.rg || null,
+        maritalStatus: draft.maritalStatus || null,
+        gender: draft.gender || null,
+        education: draft.education || null,
+        zipCode: draft.zipCode || null,
+        sponsorId: draft.sponsorId || null,
+        qualification: draft.qualification || null,
+        emergencyName: draft.emergencyName || null,
+        emergencyPhone: draft.emergencyPhone || null,
+        emergencyRelation: draft.emergencyRelation || null,
+      })
+      toast.success('Dados pessoais salvos com sucesso!')
+      setEditing(false)
+      await fetchProfile()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao salvar dados pessoais.'
+      toast.error(msg)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const setField = <K extends keyof PersonalData>(field: K, value: PersonalData[K]) => {
+    setDraft((prev) => ({ ...prev, [field]: value }))
+  }
+
+  // Show data row helper
+  const DataField = ({
+    label,
+    value,
+    icon: Icon,
+  }: {
+    label: string
+    value: string
+    icon: React.ElementType
+  }) => (
+    <div className="space-y-1">
+      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+        <Icon className="h-3 w-3" />
+        {label}
+      </Label>
+      <p className="text-sm font-medium text-foreground">{value || '-'}</p>
+    </div>
+  )
+
+  return (
+    <Card className="border-border shadow-sm">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+        <div className="space-y-1">
+          <CardTitle className="text-base font-bold flex items-center gap-2">
+            <IdCard className="h-4 w-4 text-emerald-600" />
+            Dados Pessoais Completos
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Informações complementares do seu perfil
+          </CardDescription>
+        </div>
+        {!editing && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleEdit}
+            disabled={loading}
+            className="gap-1.5"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Editar
+          </Button>
+        )}
+      </CardHeader>
+
+      <CardContent className="space-y-5">
+        {loading ? (
+          <div className="flex items-center justify-center py-8 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin mr-2" />
+            Carregando dados...
+          </div>
+        ) : !editing ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <DataField
+              label="Qualificação"
+              value={getQualificationLabel(data.qualification)}
+              icon={Award}
+            />
+            <DataField
+              label="Data de Nascimento"
+              value={formatDateBR(data.birthDate)}
+              icon={Calendar}
+            />
+            <DataField label="RG" value={data.rg || '-'} icon={IdCard} />
+            <DataField
+              label="Estado Civil"
+              value={data.maritalStatus || '-'}
+              icon={Heart}
+            />
+            <DataField label="Gênero" value={data.gender || '-'} icon={Users} />
+            <DataField
+              label="Escolaridade"
+              value={data.education || '-'}
+              icon={GraduationCap}
+            />
+            <DataField label="CEP" value={data.zipCode || '-'} icon={MapPin} />
+            <DataField
+              label="Patrocinado por"
+              value={sponsor ? sponsor.name : data.sponsorId || '-'}
+              icon={User}
+            />
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Qualification */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Award className="h-3 w-3" />
+                  Qualificação
+                </Label>
+                <Select
+                  value={draft.qualification || ''}
+                  onValueChange={(v) => setField('qualification', v)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {QUALIFICATION_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Birth Date */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  Data de Nascimento
+                </Label>
+                <Input
+                  type="date"
+                  value={toDateInputValue(draft.birthDate)}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setField('birthDate', val ? new Date(val).toISOString() : null)
+                  }}
+                />
+              </div>
+
+              {/* RG */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <IdCard className="h-3 w-3" />
+                  RG
+                </Label>
+                <Input
+                  value={draft.rg || ''}
+                  onChange={(e) => setField('rg', e.target.value)}
+                  placeholder="00.000.000-0"
+                />
+              </div>
+
+              {/* CEP */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <MapPin className="h-3 w-3" />
+                  CEP
+                </Label>
+                <Input
+                  value={draft.zipCode || ''}
+                  onChange={(e) => setField('zipCode', formatZipCode(e.target.value))}
+                  placeholder="00000-000"
+                />
+              </div>
+
+              {/* Marital Status */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Heart className="h-3 w-3" />
+                  Estado Civil
+                </Label>
+                <Select
+                  value={draft.maritalStatus || ''}
+                  onValueChange={(v) => setField('maritalStatus', v)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MARITAL_STATUS_OPTIONS.map((opt) => (
+                      <SelectItem key={opt} value={opt}>
+                        {opt}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Gender */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Users className="h-3 w-3" />
+                  Gênero
+                </Label>
+                <Select
+                  value={draft.gender || ''}
+                  onValueChange={(v) => setField('gender', v)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GENDER_OPTIONS.map((opt) => (
+                      <SelectItem key={opt} value={opt}>
+                        {opt}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Education */}
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <GraduationCap className="h-3 w-3" />
+                  Escolaridade
+                </Label>
+                <Select
+                  value={draft.education || ''}
+                  onValueChange={(v) => setField('education', v)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Selecione" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EDUCATION_OPTIONS.map((opt) => (
+                      <SelectItem key={opt} value={opt}>
+                        {opt}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Sponsor (read-only) */}
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <User className="h-3 w-3" />
+                  Patrocinado por
+                </Label>
+                <Input
+                  value={sponsor ? sponsor.name : draft.sponsorId || ''}
+                  disabled
+                  className="bg-muted/50"
+                  placeholder="Sem patrocinador"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Campo somente leitura. Definido no cadastro.
+                </p>
+              </div>
+            </div>
+
+            {/* Emergency Contact Section */}
+            <div className="pt-3 border-t border-border">
+              <div className="flex items-center gap-2 mb-3">
+                <Siren className="h-4 w-4 text-red-500" />
+                <h4 className="text-sm font-semibold text-foreground">
+                  Contato de Emergência
+                </h4>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Nome</Label>
+                  <Input
+                    value={draft.emergencyName || ''}
+                    onChange={(e) => setField('emergencyName', e.target.value)}
+                    placeholder="Nome do contato"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Phone className="h-3 w-3" />
+                    Telefone
+                  </Label>
+                  <Input
+                    value={draft.emergencyPhone || ''}
+                    onChange={(e) => setField('emergencyPhone', e.target.value)}
+                    placeholder="(11) 99999-9999"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Relação</Label>
+                  <Input
+                    value={draft.emergencyRelation || ''}
+                    onChange={(e) => setField('emergencyRelation', e.target.value)}
+                    placeholder="Ex: Cônjuge, Pai, Mãe..."
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex justify-end gap-2 pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCancel}
+                disabled={saving}
+                className="gap-1.5"
+              >
+                <X className="h-3.5 w-3.5" />
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className={cn(
+                  'bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5',
+                )}
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-3.5 w-3.5" />
+                    Salvar Dados
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+export default PersonalDataSection

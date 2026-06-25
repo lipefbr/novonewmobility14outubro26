@@ -213,7 +213,7 @@ export function FinancialPage() {
   const [financialTab, setFinancialTab] = useState('transactions')
   const [transferOpen, setTransferOpen] = useState(false)
   const [transferSource, setTransferSource] = useState('mobility')
-  const [transferDestination, setTransferDestination] = useState('withdrawal')
+  const [transferDestination, setTransferDestination] = useState('bills')
   const [transferAmount, setTransferAmount] = useState('')
   const [transferSubmitting, setTransferSubmitting] = useState(false)
   const [selectedTransaction, setSelectedTransaction] = useState<any | null>(null)
@@ -238,6 +238,7 @@ export function FinancialPage() {
         balanceFood: Number(b.food ?? 0),
         balancePharmacy: Number(b.pharmacy ?? 0),
         balanceGratification: Number(b.gratification ?? 0),
+        balancePending: Number(b.bills ?? b.pending ?? 0),
       })
     } catch (err) {
       // silent - balance refresh is best-effort
@@ -340,6 +341,20 @@ export function FinancialPage() {
     ])
   }, [refreshBalances, refreshTransactions, refreshWithdrawals, refreshAllTransactionsForChart, currentPage, filterType])
 
+  // Keep the transfer destination valid whenever the source changes: it must never equal
+  // the source and must never be `withdrawal` (Saldo para Saque), which is only ever a
+  // source wallet. Must run before any early return so hook order stays stable.
+  useEffect(() => {
+    setTransferDestination((prev) => {
+      if (prev === transferSource || prev === 'withdrawal') {
+        // Pick the first wallet that isn't the source and isn't `withdrawal`.
+        const fallbackOrder = ['bills', 'mobility', 'shopping', 'food', 'pharmacy', 'gratification']
+        return fallbackOrder.find((k) => k !== transferSource) || 'bills'
+      }
+      return prev
+    })
+  }, [transferSource])
+
   if (initialLoading) {
     return <FinancialSkeleton />
   }
@@ -401,22 +416,33 @@ export function FinancialPage() {
     link.click()
   }
 
-  // 5% fee for non-Saque source transfers, 0% for Saque source
+  // 5% fee for non-Saque source transfers, 0% for Saque source.
+  // `bills` (Saldo para Faturas) follows the standard 5% conversion fee.
   const TRANSFER_FEES: Record<string, number> = {
     'mobility->withdrawal': 5, 'shopping->withdrawal': 5, 'food->withdrawal': 5,
-    'pharmacy->withdrawal': 5, 'gratification->withdrawal': 5, 'withdrawal->mobility': 0,
+    'pharmacy->withdrawal': 5, 'gratification->withdrawal': 5,
+    'withdrawal->mobility': 0,
     'withdrawal->shopping': 0, 'withdrawal->food': 0, 'withdrawal->pharmacy': 0,
+    'withdrawal->gratification': 0, 'withdrawal->bills': 0,
   }
+  // Labels and balances for every wallet that can appear in the transfer dialog.
+  // `bills` (Saldo para Faturas) is backed by the `balancePending` column on the User model.
   const balanceLabels: Record<string, string> = {
     withdrawal: t('financial.balance.withdrawal'), mobility: t('financial.balance.mobility'),
     shopping: t('financial.balance.shopping'), food: t('financial.balance.food'),
     pharmacy: t('financial.balance.pharmacy'), gratification: t('financial.balance.gratification'),
+    bills: t('financial.balance.bills'),
   }
   const balanceValues: Record<string, number> = {
     withdrawal: user?.balanceWithdrawal || 0, mobility: user?.balanceMobility || 0,
     shopping: user?.balanceShopping || 0, food: user?.balanceFood || 0,
     pharmacy: user?.balancePharmacy || 0, gratification: user?.balanceGratification || 0,
+    bills: user?.balancePending || 0,
   }
+  // `withdrawal` (Saldo para Saque) can only be a transfer SOURCE - never a destination.
+  // Users move money OUT of that wallet through the dedicated withdraw flow.
+  const destinationBalanceKeys = Object.keys(balanceLabels).filter((k) => k !== 'withdrawal')
+
   const feeKey = `${transferSource}->${transferDestination}`
   const feePercent = TRANSFER_FEES[feeKey] ?? 5
   const amountNum = Number(transferAmount) || 0
@@ -428,6 +454,10 @@ export function FinancialPage() {
   const handleTransfer = async () => {
     if (!user?.id || !transferAmount || !transferSource || !transferDestination) return
     if (transferSource === transferDestination) { toast.error(t('transfer.sameBalance')); return }
+    if (transferDestination === 'withdrawal') {
+      toast.error('Não é permitido transferir para o Saldo para Saque. Use o fluxo de saque.')
+      return
+    }
     if (amountCents > (balanceValues[transferSource] || 0)) { toast.error(t('transfer.insufficientFunds')); return }
     setTransferSubmitting(true)
     try {
@@ -1366,7 +1396,7 @@ export function FinancialPage() {
               </Select>
             </div>
 
-            {/* Destination select */}
+            {/* Destination select - excludes `withdrawal` (Saldo para Saque) */}
             <div className="space-y-2">
               <Label className="text-xs flex items-center gap-1">
                 <ArrowDownToLine className="h-3 w-3" />
@@ -1377,16 +1407,16 @@ export function FinancialPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(balanceLabels).map(([key, label]) => (
-                    <SelectItem key={key} value={key}>{label}</SelectItem>
+                  {destinationBalanceKeys.map((key) => (
+                    <SelectItem key={key} value={key}>{balanceLabels[key]}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Amount */}
+            {/* Amount - this is a transfer between wallets, not a withdrawal */}
             <div className="space-y-2">
-              <Label className="text-xs">{t('financial.withdrawAmount')}</Label>
+              <Label className="text-xs">{t('transfer.amount')}</Label>
               <Input
                 type="number"
                 placeholder="0,00"

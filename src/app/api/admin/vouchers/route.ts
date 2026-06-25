@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
-const VALID_TYPES = ['mobility', 'food', 'pharmacy', 'shopping', 'gratification', 'withdrawal']
+const VALID_TYPES = ['mobility', 'food', 'pharmacy', 'shopping', 'gratification', 'withdrawal', 'cashback']
 
 function generateVoucherCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'

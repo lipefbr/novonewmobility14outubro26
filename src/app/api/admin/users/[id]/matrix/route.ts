@@ -3,7 +3,14 @@ import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 const VALID_MATRIX_TYPES = ['entrada', 'residual', 'vendas']
-const MAX_DEPTH = 5
+
+// Depth per matrix type — must match the matrix dimensions in the database
+// (entrada_4x5 → 5 levels, residual_4x7 → 7 levels, vendas_4x9 → 9 levels).
+const MATRIX_DEPTH: Record<string, number> = {
+  entrada: 5,
+  residual: 7,
+  vendas: 9,
+}
 
 interface MatrixNode {
   id: string
@@ -18,7 +25,8 @@ interface MatrixNode {
 }
 
 // GET /api/admin/users/[id]/matrix?userId=X&matrixType=entrada
-// Returns the matrix tree for a user (starting at level 0 for that user), down 5 levels.
+// Returns the matrix tree for a user. The user's own root position is level 1,
+// and levels go up to the matrix depth (entrada=5, residual=7, vendas=9).
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -36,6 +44,8 @@ export async function GET(
       return error(`matrixType must be one of: ${VALID_MATRIX_TYPES.join(', ')}`, 400)
     }
 
+    const maxDepth = MATRIX_DEPTH[matrixType]
+
     const targetUser = await prisma.user.findUnique({ where: { id } })
     if (!targetUser) return error('User not found', 404)
 
@@ -46,14 +56,22 @@ export async function GET(
     })
 
     if (rootPositions.length === 0) {
+      // Return an empty shell that still declares the expected number of levels
+      // so the admin UI can render the level distribution consistently.
+      const emptyLevelCounts = Array.from({ length: maxDepth }, (_, i) => ({
+        level: i + 1,
+        count: 0,
+      }))
       return success({
         tree: null,
         stats: {
           totalPositions: 0,
           filledPositions: 0,
           emptyPositions: 0,
-          totalLevels: 0,
-          levelCounts: [],
+          totalLevels: maxDepth,
+          levelCounts: emptyLevelCounts,
+          matrixType,
+          maxDepth,
         },
       })
     }
@@ -68,7 +86,8 @@ export async function GET(
       positionId: string,
       level: number
     ): Promise<MatrixNode | null> => {
-      if (level > MAX_DEPTH) return null
+      // Levels are 1-indexed (1 = the user's own root position, up to maxDepth).
+      if (level > maxDepth) return null
       if (visited.has(positionId)) return null
       visited.add(positionId)
 
@@ -108,15 +127,17 @@ export async function GET(
       }
     }
 
-    // Use the first root position as the tree root (level 0)
+    // Use the first root position as the tree root (level 1).
     const root = rootPositions[0]
-    const tree = await buildNode(root.id, 0)
+    const tree = await buildNode(root.id, 1)
 
-    const levelCounts = Object.entries(levelCountsMap)
-      .map(([level, count]) => ({ level: parseInt(level), count }))
-      .sort((a, b) => a.level - b.level)
-
-    const totalLevels = levelCounts.length
+    // Build levelCounts for ALL levels 1..maxDepth, even when count is 0,
+    // so the admin UI can render the full level distribution consistently
+    // regardless of which levels happen to be filled.
+    const levelCounts = Array.from({ length: maxDepth }, (_, i) => {
+      const level = i + 1
+      return { level, count: levelCountsMap[level] || 0 }
+    })
 
     return success({
       tree,
@@ -124,8 +145,10 @@ export async function GET(
         totalPositions,
         filledPositions,
         emptyPositions: totalPositions - filledPositions,
-        totalLevels,
+        totalLevels: maxDepth,
         levelCounts,
+        matrixType,
+        maxDepth,
       },
     })
   } catch (err) {

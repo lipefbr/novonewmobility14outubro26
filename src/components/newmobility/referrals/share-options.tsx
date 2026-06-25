@@ -18,13 +18,13 @@ function QRCodeDisplay({ referralLink }: { referralLink: string }) {
   const size = 160
   const cellSize = size / 25
   const cells: boolean[][] = []
-  
+
   // Create a deterministic pattern from the URL
   let hash = 0
   for (let i = 0; i < referralLink.length; i++) {
     hash = ((hash << 5) - hash + referralLink.charCodeAt(i)) | 0
   }
-  
+
   for (let y = 0; y < 25; y++) {
     cells[y] = []
     for (let x = 0; x < 25; x++) {
@@ -67,6 +67,7 @@ function QRCodeDisplay({ referralLink }: { referralLink: string }) {
 export function ShareOptions({ referralLink, referralCode }: ShareOptionsProps) {
   const [copied, setCopied] = useState(false)
   const [showQR, setShowQR] = useState(false)
+  const [isSharing, setIsSharing] = useState(false)
 
   const shareText = `🚀 Junte-se à NewMobility e ganhe CashBack em até 9 níveis! Use meu código: ${referralCode}`
   const encodedText = encodeURIComponent(shareText)
@@ -79,7 +80,78 @@ export function ShareOptions({ referralLink, referralCode }: ShareOptionsProps) 
       toast.success('Link copiado!')
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      toast.error('Erro ao copiar')
+      // Fallback for older browsers / insecure contexts
+      try {
+        const textarea = document.createElement('textarea')
+        textarea.value = referralLink
+        textarea.style.position = 'fixed'
+        textarea.style.opacity = '0'
+        document.body.appendChild(textarea)
+        textarea.focus()
+        textarea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textarea)
+        setCopied(true)
+        toast.success('Link copiado!')
+        setTimeout(() => setCopied(false), 2000)
+      } catch {
+        toast.error('Não foi possível copiar o link')
+      }
+    }
+  }
+
+  // Primary share button: uses Web Share API when available, falls back to clipboard copy
+  const handleShare = async () => {
+    setIsSharing(true)
+    const shareData = {
+      title: 'NewMobility - Indique e Ganhe',
+      text: shareText,
+      url: referralLink,
+    }
+
+    // Feature detection for Web Share API
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        await navigator.share(shareData)
+        toast.success('Compartilhado com sucesso!')
+      } catch (err: any) {
+        // AbortError happens when user dismisses the share sheet — not a real error
+        if (err?.name !== 'AbortError') {
+          // Fallback to clipboard copy on non-abort errors
+          try {
+            await navigator.clipboard.writeText(`${shareText}\n\n${referralLink}`)
+            toast.success('Link copiado para a área de transferência!')
+          } catch {
+            toast.error('Não foi possível compartilhar. Copie o link manualmente.')
+          }
+        }
+      } finally {
+        setIsSharing(false)
+      }
+      return
+    }
+
+    // Fallback: copy to clipboard with a friendly message
+    try {
+      await navigator.clipboard.writeText(`${shareText}\n\n${referralLink}`)
+      toast.success('Link copiado! Cole onde quiser compartilhar.')
+    } catch {
+      try {
+        const textarea = document.createElement('textarea')
+        textarea.value = `${shareText}\n\n${referralLink}`
+        textarea.style.position = 'fixed'
+        textarea.style.opacity = '0'
+        document.body.appendChild(textarea)
+        textarea.focus()
+        textarea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textarea)
+        toast.success('Link copiado! Cole onde quiser compartilhar.')
+      } catch {
+        toast.error('Não foi possível compartilhar. Copie o link manualmente.')
+      }
+    } finally {
+      setIsSharing(false)
     }
   }
 
@@ -99,6 +171,16 @@ export function ShareOptions({ referralLink, referralCode }: ShareOptionsProps) 
 
   return (
     <div className="space-y-3">
+      {/* Primary Share Button — uses Web Share API with clipboard fallback */}
+      <Button
+        onClick={handleShare}
+        disabled={isSharing}
+        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+      >
+        <Share2 className="h-4 w-4" />
+        {isSharing ? 'Compartilhando...' : 'Compartilhar'}
+      </Button>
+
       {/* Link copy section */}
       <div className="flex items-center gap-2">
         <div className="flex-1 bg-white dark:bg-gray-800 rounded-lg border border-emerald-200 dark:border-emerald-800 px-3 py-2 text-sm font-mono text-gray-700 dark:text-gray-300 truncate">

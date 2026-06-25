@@ -2,11 +2,11 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
 import { useStore } from '@/lib/store'
 import { formatDate } from '@/lib/utils'
-import { Star, TrendingUp, Users, ShoppingCart, Award, Trophy } from 'lucide-react'
+import { Star, TrendingUp, Users, ShoppingCart, Award, Trophy, Zap, Flame, Target, Car, LifeBuoy, Loader2 } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 import { AchievementsSection } from './achievements-section'
 
 const mockPointHistory = [
@@ -40,6 +40,47 @@ const typeColors: Record<string, string> = {
   payment: 'bg-rose-100 text-rose-700',
 }
 
+// Map icon string from the API to a lucide-react component.
+const ICON_MAP: Record<string, React.ElementType> = {
+  Users,
+  Zap,
+  Flame,
+  Target,
+  Trophy,
+  ShoppingCart,
+  Car,
+  Award,
+  LifeBuoy,
+  Star,
+  TrendingUp,
+}
+
+interface HowToEarnItem {
+  key: string
+  label: string
+  icon: string
+  points: number
+}
+
+// Fallback used while the API is loading or if it fails. Matches the admin's
+// default configuration (DEFAULT_POINTS_CONFIG).
+const FALLBACK_HOW_TO_EARN: HowToEarnItem[] = [
+  { key: 'referralPoints', label: 'Indicar um amigo', icon: 'Users', points: 10 },
+  { key: 'planUpgradePoints', label: 'Upgrade de plano', icon: 'Zap', points: 25 },
+  { key: 'dailyLoginPoints', label: 'Login diário', icon: 'Flame', points: 1 },
+  { key: 'betPlacedPoints', label: 'Apostar', icon: 'Target', points: 1 },
+  { key: 'betWonPoints', label: 'Aposta vencedora', icon: 'Trophy', points: 5 },
+  { key: 'marketplacePurchasePoints', label: 'Compra no marketplace', icon: 'ShoppingCart', points: 2 },
+  { key: 'rideCompletedPoints', label: 'Corrida concluída', icon: 'Car', points: 1 },
+  { key: 'challengeCompletedPoints', label: 'Desafio concluído', icon: 'Award', points: 10 },
+  { key: 'ticketResolvedPoints', label: 'Ticket resolvido', icon: 'LifeBuoy', points: 1 },
+]
+
+function formatPoints(points: number): string {
+  if (points === 1) return '+1 ponto'
+  return `+${points} pontos`
+}
+
 export function PointsPage() {
   const { user } = useStore()
   const totalPoints = user?.careerPoints || 42
@@ -47,6 +88,39 @@ export function PointsPage() {
   const networkPoints = totalPoints - personalPoints
 
   const totalEarned = mockPointHistory.reduce((acc, p) => acc + p.amount, 0)
+
+  const [howToEarn, setHowToEarn] = useState<HowToEarnItem[]>(FALLBACK_HOW_TO_EARN)
+  const [loadingConfig, setLoadingConfig] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadConfig() {
+      if (!user?.id) {
+        setLoadingConfig(false)
+        return
+      }
+      try {
+        const res = await fetch(
+          `/api/points/config?userId=${encodeURIComponent(user.id)}`,
+          { cache: 'no-store' }
+        )
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        if (!cancelled && Array.isArray(data?.howToEarn) && data.howToEarn.length > 0) {
+          setHowToEarn(data.howToEarn)
+        }
+      } catch (err) {
+        console.error('Failed to load points config:', err)
+        // keep fallback list on error
+      } finally {
+        if (!cancelled) setLoadingConfig(false)
+      }
+    }
+    loadConfig()
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
 
   return (
     <div className="space-y-6">
@@ -151,32 +225,41 @@ export function PointsPage() {
         </CardContent>
       </Card>
 
-      {/* How to earn */}
+      {/* How to earn - values synced with admin /api/admin/points-config via /api/points/config */}
       <Card className="shadow-sm">
         <CardHeader>
           <CardTitle className="text-base font-bold flex items-center gap-2">
             <ShoppingCart className="h-4 w-4 text-emerald-600" />
             Como Ganhar Pontos
+            {loadingConfig && (
+              <Loader2 className="h-3 w-3 ml-1 animate-spin text-muted-foreground" />
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {[
-              { action: 'Indicação direta ativa', points: '+2 pontos', icon: '👥' },
-              { action: 'Uso do App Mobilidade', points: '+1 ponto', icon: '🚗' },
-              { action: 'Compra no Shopping', points: '+1 ponto', icon: '🛍️' },
-              { action: 'Avaliação positiva recebida', points: '+1 ponto', icon: '⭐' },
-              { action: 'Pagamento em dia', points: '+2 pontos', icon: '💳' },
-              { action: 'Avaliação do upline', points: '+1 ponto', icon: '🔄' },
-            ].map((item, i) => (
-              <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                <span className="text-lg">{item.icon}</span>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900">{item.action}</p>
-                  <p className="text-xs text-emerald-600 font-semibold">{item.points}</p>
-                </div>
-              </div>
-            ))}
+            {howToEarn.map((item, i) => {
+              const Icon = ICON_MAP[item.icon] ?? Star
+              return (
+                <motion.div
+                  key={item.key}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: i * 0.03 }}
+                  className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg"
+                >
+                  <div className="p-2 rounded-lg bg-emerald-100 text-emerald-600">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900">{item.label}</p>
+                    <p className="text-xs text-emerald-600 font-semibold">
+                      {formatPoints(item.points)}
+                    </p>
+                  </div>
+                </motion.div>
+              )
+            })}
           </div>
         </CardContent>
       </Card>

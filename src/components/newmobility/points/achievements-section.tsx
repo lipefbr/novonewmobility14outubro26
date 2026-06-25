@@ -7,46 +7,60 @@ import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import {
   Trophy, Star, Users, DollarSign, ArrowDownToLine, Award,
-  Zap, Target, Crown, Flame, Gift, Shield, Lock
+  Zap, Target, Crown, Flame, Gift, Shield, Lock, Loader2, Car, LifeBuoy
 } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 
 interface Achievement {
   id: string
-  icon: React.ElementType
-  titleKey: string
-  descriptionKey: string
-  progress: number
-  maxProgress: number
-  earned: boolean
-  earnedDate?: string
-  category: 'referral' | 'financial' | 'engagement' | 'milestone'
+  code: string
+  name: string
+  description: string
+  icon: string | null
+  category: string
   rarity: 'common' | 'rare' | 'epic' | 'legendary'
+  pointsReward: number
+  progress: number
+  targetValue: number
+  earned: boolean
+  earnedDate?: string | null
+  sortOrder?: number
 }
 
-const achievements: Achievement[] = [
-  { id: 'first_referral', icon: Users, titleKey: 'achievements.firstReferral', descriptionKey: 'achievements.firstReferralDesc', progress: 1, maxProgress: 1, earned: true, earnedDate: '2024-08-15', category: 'referral', rarity: 'common' },
-  { id: 'ten_referrals', icon: UserPlus, titleKey: 'achievements.tenReferrals', descriptionKey: 'achievements.tenReferralsDesc', progress: 6, maxProgress: 10, earned: false, category: 'referral', rarity: 'rare' },
-  { id: 'fifty_referrals', icon: Crown, titleKey: 'achievements.fiftyReferrals', descriptionKey: 'achievements.fiftyReferralsDesc', progress: 6, maxProgress: 50, earned: false, category: 'referral', rarity: 'epic' },
-  { id: 'cashback_1000', icon: DollarSign, titleKey: 'achievements.cashback1000', descriptionKey: 'achievements.cashback1000Desc', progress: 100000, maxProgress: 100000, earned: true, earnedDate: '2024-10-22', category: 'financial', rarity: 'common' },
-  { id: 'cashback_5000', icon: DollarSign, titleKey: 'achievements.cashback5000', descriptionKey: 'achievements.cashback5000Desc', progress: 3258000, maxProgress: 5000000, earned: false, category: 'financial', rarity: 'rare' },
-  { id: 'first_withdrawal', icon: ArrowDownToLine, titleKey: 'achievements.firstWithdrawal', descriptionKey: 'achievements.firstWithdrawalDesc', progress: 1, maxProgress: 1, earned: true, earnedDate: '2024-09-10', category: 'financial', rarity: 'common' },
-  { id: 'weekly_active', icon: Flame, titleKey: 'achievements.weeklyActive', descriptionKey: 'achievements.weeklyActiveDesc', progress: 3, maxProgress: 4, earned: false, category: 'engagement', rarity: 'rare' },
-  { id: 'first_voucher', icon: Gift, titleKey: 'achievements.firstVoucher', descriptionKey: 'achievements.firstVoucherDesc', progress: 1, maxProgress: 1, earned: true, earnedDate: '2024-11-05', category: 'engagement', rarity: 'common' },
-  { id: 'plan_upgrade', icon: Zap, titleKey: 'achievements.planUpgrade', descriptionKey: 'achievements.planUpgradeDesc', progress: 1, maxProgress: 1, earned: true, earnedDate: '2024-08-20', category: 'milestone', rarity: 'common' },
-  { id: 'network_builder', icon: Target, titleKey: 'achievements.networkBuilder', descriptionKey: 'achievements.networkBuilderDesc', progress: 16, maxProgress: 25, earned: false, category: 'referral', rarity: 'rare' },
-  { id: 'top_earner', icon: Trophy, titleKey: 'achievements.topEarner', descriptionKey: 'achievements.topEarnerDesc', progress: 65, maxProgress: 100, earned: false, category: 'financial', rarity: 'epic' },
-  { id: 'security_master', icon: Shield, titleKey: 'achievements.securityMaster', descriptionKey: 'achievements.securityMasterDesc', progress: 2, maxProgress: 3, earned: false, category: 'engagement', rarity: 'legendary' },
-  { id: 'career_bronze', icon: Award, titleKey: 'achievements.careerBronze', descriptionKey: 'achievements.careerBronzeDesc', progress: 42, maxProgress: 50, earned: false, category: 'milestone', rarity: 'rare' },
-  { id: 'loyalty_1year', icon: Star, titleKey: 'achievements.loyalty1year', descriptionKey: 'achievements.loyalty1yearDesc', progress: 7, maxProgress: 12, earned: false, category: 'milestone', rarity: 'epic' },
-]
+interface AchievementsSummary {
+  earned: number
+  total: number
+  completionPct: number
+  points: number
+}
 
-function UserPlus(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" x2="19" y1="8" y2="14" /><line x1="22" x2="16" y1="11" y2="11" />
-    </svg>
-  )
+// Map icon string (from DB or fallback) to a lucide-react component.
+// Icons from the DB may be emojis (🎯, 🥉) — those are rendered as text fallback.
+const ICON_MAP: Record<string, React.ElementType> = {
+  Users,
+  DollarSign,
+  ArrowDownToLine,
+  Award,
+  Zap,
+  Target,
+  Crown,
+  Flame,
+  Gift,
+  Shield,
+  Star,
+  Trophy,
+  Car,
+  LifeBuoy,
+}
+
+function isEmoji(str: string): boolean {
+  // Heuristic: if the string contains characters outside the basic ASCII range,
+  // or is short (<=2 chars), treat it as an emoji / literal text.
+  if (!str) return false
+  if (str.length <= 2) return true
+  // Match characters outside ASCII printable range (emoji, symbols, etc.)
+  return /[^\x20-\x7E]/.test(str)
 }
 
 const rarityColors: Record<string, { bg: string; text: string; border: string; glow: string }> = {
@@ -63,28 +77,88 @@ const rarityLabels: Record<string, string> = {
   legendary: 'Lendário',
 }
 
-const categoryIcons: Record<string, React.ElementType> = {
-  referral: Users,
-  financial: DollarSign,
-  engagement: Zap,
-  milestone: Award,
-}
-
 export function AchievementsSection() {
   const { user } = useStore()
   const { t } = useTranslation()
 
-  const earnedCount = achievements.filter(a => a.earned).length
-  const totalPoints = achievements.reduce((acc, a) => acc + (a.earned ? (a.rarity === 'legendary' ? 4 : a.rarity === 'epic' ? 3 : a.rarity === 'rare' ? 2 : 1) : 0), 0)
+  const [achievements, setAchievements] = useState<Achievement[]>([])
+  const [summary, setSummary] = useState<AchievementsSummary>({
+    earned: 0,
+    total: 0,
+    completionPct: 0,
+    points: 0,
+  })
+  const [loading, setLoading] = useState(true)
 
-  const earnedAchievements = achievements.filter(a => a.earned)
-  const lockedAchievements = achievements.filter(a => !a.earned)
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      if (!user?.id) {
+        setLoading(false)
+        return
+      }
+      try {
+        const res = await fetch(
+          `/api/achievements?userId=${encodeURIComponent(user.id)}`,
+          { cache: 'no-store' }
+        )
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        if (!cancelled) {
+          setAchievements(Array.isArray(data?.achievements) ? data.achievements : [])
+          if (data?.summary) setSummary(data.summary)
+        }
+      } catch (err) {
+        console.error('Failed to load achievements:', err)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
+
+  const earnedAchievements = achievements.filter((a) => a.earned)
+  const lockedAchievements = achievements.filter((a) => !a.earned)
 
   const formatProgress = (a: Achievement) => {
-    if (a.maxProgress >= 100000) {
-      return `R$ ${(a.progress / 100).toLocaleString('pt-BR')} / R$ ${(a.maxProgress / 100).toLocaleString('pt-BR')}`
+    if (a.targetValue >= 100000) {
+      // Cashback values are stored in cents — format as BRL.
+      return `R$ ${(a.progress / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / R$ ${(a.targetValue / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     }
-    return `${a.progress} / ${a.maxProgress}`
+    return `${a.progress} / ${a.targetValue}`
+  }
+
+  const renderIcon = (iconStr: string | null, className?: string) => {
+    if (!iconStr) {
+      return <Award className={className} />
+    }
+    if (isEmoji(iconStr)) {
+      return <span className="text-lg leading-none" aria-hidden>{iconStr}</span>
+    }
+    const Icon = ICON_MAP[iconStr] ?? Award
+    return <Icon className={className} />
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin mr-2" />
+        <span className="text-sm">Carregando conquistas...</span>
+      </div>
+    )
+  }
+
+  if (achievements.length === 0) {
+    return (
+      <Card className="shadow-sm bg-card">
+        <CardContent className="p-6 text-center text-muted-foreground text-sm">
+          {t('achievements.lockedTitle')}: nenhuma conquista configurada.
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
@@ -94,21 +168,23 @@ export function AchievementsSection() {
         <Card className="shadow-sm bg-card">
           <CardContent className="p-3 text-center">
             <Trophy className="h-5 w-5 text-amber-500 mx-auto mb-1" />
-            <p className="text-xl font-bold text-foreground">{earnedCount}/{achievements.length}</p>
+            <p className="text-xl font-bold text-foreground">
+              {summary.earned}/{summary.total}
+            </p>
             <p className="text-[10px] text-muted-foreground font-medium">{t('achievements.earned')}</p>
           </CardContent>
         </Card>
         <Card className="shadow-sm bg-card">
           <CardContent className="p-3 text-center">
             <Star className="h-5 w-5 text-emerald-500 mx-auto mb-1" />
-            <p className="text-xl font-bold text-foreground">{totalPoints}</p>
+            <p className="text-xl font-bold text-foreground">{summary.points}</p>
             <p className="text-[10px] text-muted-foreground font-medium">{t('achievements.points')}</p>
           </CardContent>
         </Card>
         <Card className="shadow-sm bg-card">
           <CardContent className="p-3 text-center">
             <Flame className="h-5 w-5 text-orange-500 mx-auto mb-1" />
-            <p className="text-xl font-bold text-foreground">{Math.round((earnedCount / achievements.length) * 100)}%</p>
+            <p className="text-xl font-bold text-foreground">{summary.completionPct}%</p>
             <p className="text-[10px] text-muted-foreground font-medium">{t('achievements.completion')}</p>
           </CardContent>
         </Card>
@@ -119,9 +195,9 @@ export function AchievementsSection() {
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-foreground">{t('achievements.overallProgress')}</span>
-            <span className="text-sm font-bold text-emerald-600">{Math.round((earnedCount / achievements.length) * 100)}%</span>
+            <span className="text-sm font-bold text-emerald-600">{summary.completionPct}%</span>
           </div>
-          <Progress value={(earnedCount / achievements.length) * 100} className="h-2" />
+          <Progress value={summary.completionPct} className="h-2" />
         </CardContent>
       </Card>
 
@@ -137,7 +213,6 @@ export function AchievementsSection() {
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {earnedAchievements.map((achievement, i) => {
-                const Icon = achievement.icon
                 const colors = rarityColors[achievement.rarity]
                 return (
                   <motion.div
@@ -148,20 +223,25 @@ export function AchievementsSection() {
                     className={`relative p-4 rounded-xl border ${colors.border} ${colors.bg} ${colors.glow ? `shadow-md ${colors.glow}` : ''}`}
                   >
                     <div className="flex items-start gap-3">
-                      <div className={`p-2.5 rounded-lg ${colors.bg} ${colors.text} border ${colors.border}`}>
-                        <Icon className="h-5 w-5" />
+                      <div className={`p-2.5 rounded-lg ${colors.bg} ${colors.text} border ${colors.border} flex items-center justify-center min-w-[2.5rem] min-h-[2.5rem]`}>
+                        {renderIcon(achievement.icon, 'h-5 w-5')}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-bold text-foreground">{t(achievement.titleKey)}</h4>
+                          <h4 className="text-sm font-bold text-foreground">{achievement.name}</h4>
                           <Badge className={`text-[9px] ${colors.text} ${colors.bg} border ${colors.border}`}>
                             {rarityLabels[achievement.rarity]}
                           </Badge>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">{t(achievement.descriptionKey)}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{achievement.description}</p>
                         <div className="flex items-center gap-1 mt-1.5 text-[10px] text-emerald-600 dark:text-emerald-400">
                           <Star className="h-3 w-3" />
-                          {achievement.earnedDate ? new Date(achievement.earnedDate).toLocaleDateString('pt-BR') : ''}
+                          {achievement.earnedDate
+                            ? new Date(achievement.earnedDate).toLocaleDateString('pt-BR')
+                            : ''}
+                          {achievement.pointsReward > 0 && (
+                            <span className="ml-1">· +{achievement.pointsReward} pts</span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -189,44 +269,57 @@ export function AchievementsSection() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {lockedAchievements.map((achievement, i) => {
-              const Icon = achievement.icon
-              const colors = rarityColors[achievement.rarity]
-              const progressPct = Math.min(100, (achievement.progress / achievement.maxProgress) * 100)
-              return (
-                <motion.div
-                  key={achievement.id}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: i * 0.05 }}
-                  className="relative p-4 rounded-xl border border-border bg-muted/30 opacity-80 hover:opacity-100 transition-opacity"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="p-2.5 rounded-lg bg-muted text-muted-foreground border border-border">
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-bold text-muted-foreground">{t(achievement.titleKey)}</h4>
-                        <Badge className={`text-[9px] ${colors.text} ${colors.bg} border ${colors.border}`}>
-                          {rarityLabels[achievement.rarity]}
-                        </Badge>
+          {lockedAchievements.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              Todas as conquistas foram desbloqueadas! 🎉
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {lockedAchievements.map((achievement, i) => {
+                const colors = rarityColors[achievement.rarity]
+                const progressPct =
+                  achievement.targetValue > 0
+                    ? Math.min(100, (achievement.progress / achievement.targetValue) * 100)
+                    : 0
+                return (
+                  <motion.div
+                    key={achievement.id}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="relative p-4 rounded-xl border border-border bg-muted/30 opacity-80 hover:opacity-100 transition-opacity"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="p-2.5 rounded-lg bg-muted text-muted-foreground border border-border flex items-center justify-center min-w-[2.5rem] min-h-[2.5rem]">
+                        {renderIcon(achievement.icon, 'h-5 w-5')}
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">{t(achievement.descriptionKey)}</p>
-                      <div className="mt-2">
-                        <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
-                          <span>{formatProgress(achievement)}</span>
-                          <span>{progressPct.toFixed(0)}%</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-muted-foreground">{achievement.name}</h4>
+                          <Badge className={`text-[9px] ${colors.text} ${colors.bg} border ${colors.border}`}>
+                            {rarityLabels[achievement.rarity]}
+                          </Badge>
                         </div>
-                        <Progress value={progressPct} className="h-1.5" />
+                        <p className="text-xs text-muted-foreground mt-0.5">{achievement.description}</p>
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
+                            <span>{formatProgress(achievement)}</span>
+                            <span>{progressPct.toFixed(0)}%</span>
+                          </div>
+                          <Progress value={progressPct} className="h-1.5" />
+                        </div>
+                        {achievement.pointsReward > 0 && (
+                          <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1.5">
+                            Recompensa: +{achievement.pointsReward} pts
+                          </p>
+                        )}
                       </div>
                     </div>
-                  </div>
-                </motion.div>
-              )
-            })}
-          </div>
+                  </motion.div>
+                )
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

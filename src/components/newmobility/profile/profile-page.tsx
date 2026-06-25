@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -24,6 +24,7 @@ import {
 import { motion } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
 import { TwoFactorSetup } from './two-factor-setup'
+import { PersonalDataSection } from './personal-data-section'
 import { userApi, apiFetch } from '@/lib/api'
 import { toast as sonnerToast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -318,6 +319,11 @@ export function ProfilePage() {
     phone: '',
     relationship: '',
   })
+  const [emergencySaving, setEmergencySaving] = useState(false)
+
+  // Profile image upload state
+  const [profileImageUploading, setProfileImageUploading] = useState(false)
+  const profileImageInputRef = useRef<HTMLInputElement | null>(null)
 
   const [bankInfo, setBankInfo] = useState({
     bankCode: '',
@@ -339,6 +345,21 @@ export function ProfilePage() {
         pixKey: user.pixKey || '',
         pixEnabled: user.pixEnabled ?? true,
       })
+      // Sync emergency contact from user data (user is Partial<UserData> plus
+      // extra fields returned from /api/user/profile GET)
+      const u = user as any
+      setEmergencyContact({
+        name: u.emergencyName || '',
+        phone: u.emergencyPhone || '',
+        relationship: u.emergencyRelation || '',
+      })
+      // Sync personal info (address/city/state may come from server)
+      setPersonalInfo((p) => ({
+        ...p,
+        address: u.address || p.address,
+        city: u.city || p.city,
+        state: u.state || p.state,
+      }))
     }
   }, [user?.id])
 
@@ -503,16 +524,134 @@ export function ProfilePage() {
     setShowBeneficiaryDialog(true)
   }
 
-  const handleSavePersonal = () => {
+  const handleSavePersonal = async () => {
+    if (!user?.id) return
     setSaving(true)
-    setTimeout(() => {
-      updateUser({ name: personalInfo.name, email: personalInfo.email, phone: personalInfo.phone })
-      setSaving(false)
+    try {
+      const updated = await apiFetch<any>('/user/profile', {
+        method: 'PUT',
+        body: JSON.stringify({
+          userId: user.id,
+          name: personalInfo.name,
+          phone: personalInfo.phone,
+          address: personalInfo.address,
+          city: personalInfo.city,
+          state: personalInfo.state,
+        }),
+      })
+      // Update the local store with the latest data from the server
+      updateUser({
+        name: updated.name ?? personalInfo.name,
+        phone: updated.phone ?? personalInfo.phone,
+      })
       toast({
         title: 'Dados atualizados',
         description: 'Suas informações pessoais foram salvas com sucesso.',
       })
-    }, 800)
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao salvar dados',
+        description: err.message || 'Tente novamente mais tarde.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleSaveEmergencyContact = async () => {
+    if (!user?.id) return
+    if (!emergencyContact.name || !emergencyContact.phone) {
+      toast({
+        title: 'Campos obrigatórios',
+        description: 'Preencha pelo menos o nome e o telefone do contato de emergência.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setEmergencySaving(true)
+    try {
+      await apiFetch<any>('/user/profile', {
+        method: 'PUT',
+        body: JSON.stringify({
+          userId: user.id,
+          emergencyName: emergencyContact.name,
+          emergencyPhone: emergencyContact.phone,
+          emergencyRelation: emergencyContact.relationship || null,
+        }),
+      })
+      toast({
+        title: 'Contato de emergência salvo',
+        description: 'As informações do contato de emergência foram atualizadas com sucesso.',
+      })
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao salvar contato',
+        description: err.message || 'Tente novamente mais tarde.',
+        variant: 'destructive',
+      })
+    } finally {
+      setEmergencySaving(false)
+    }
+  }
+
+  const handleProfileImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!user?.id) return
+    const file = e.target.files?.[0]
+    if (!file) return
+    // Client-side validation: max 5 MB, must be an image
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: 'Arquivo muito grande',
+        description: 'A imagem deve ter no máximo 5 MB.',
+        variant: 'destructive',
+      })
+      e.target.value = ''
+      return
+    }
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: 'Formato inválido',
+        description: 'Selecione um arquivo de imagem (JPEG, PNG, WebP ou GIF).',
+        variant: 'destructive',
+      })
+      e.target.value = ''
+      return
+    }
+    setProfileImageUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('userId', user.id)
+      formData.append('file', file)
+      const res = await fetch('/api/user/profile/image', {
+        method: 'POST',
+        body: formData,
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || `Erro ${res.status} ao fazer upload`)
+      }
+      const data = await res.json()
+      if (data.profileImage) {
+        updateUser({ profileImage: data.profileImage })
+        toast({
+          title: 'Foto atualizada',
+          description: 'Sua foto de perfil foi atualizada com sucesso.',
+        })
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao enviar foto',
+        description: err.message || 'Tente novamente mais tarde.',
+        variant: 'destructive',
+      })
+    } finally {
+      setProfileImageUploading(false)
+      // Reset the input so the same file can be re-selected later
+      if (profileImageInputRef.current) {
+        profileImageInputRef.current.value = ''
+      }
+    }
   }
 
   const handleSaveBank = async () => {
@@ -693,15 +832,42 @@ export function ProfilePage() {
             <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4">
               <div className="relative group/avatar">
                 <Avatar className="h-24 w-24 border-4 border-card shadow-xl">
+                  {user?.profileImage ? (
+                    <AvatarImage
+                      src={user.profileImage}
+                      alt={user?.name || 'Avatar'}
+                      className="object-cover"
+                    />
+                  ) : null}
                   <AvatarFallback className="bg-emerald-100 text-emerald-700 text-2xl font-bold">
                     {user?.name?.split(' ').map((n) => n[0]).slice(0, 2).join('') || 'CS'}
                   </AvatarFallback>
                 </Avatar>
-                <div className="absolute inset-0 rounded-full bg-black/0 group-hover/avatar:bg-black/40 transition-colors flex items-center justify-center">
-                  <button className="opacity-0 group-hover/avatar:opacity-100 transition-opacity p-2 bg-emerald-600 rounded-full text-white shadow-lg hover:bg-emerald-700">
-                    <Camera className="h-4 w-4" />
-                  </button>
-                </div>
+                {/* Hidden file input for photo upload */}
+                <input
+                  ref={profileImageInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="hidden"
+                  onChange={handleProfileImageChange}
+                />
+                <button
+                  type="button"
+                  onClick={() => profileImageInputRef.current?.click()}
+                  disabled={profileImageUploading}
+                  title="Alterar foto de perfil"
+                  className="absolute inset-0 rounded-full bg-black/0 group-hover/avatar:bg-black/40 transition-colors flex items-center justify-center disabled:cursor-not-allowed"
+                >
+                  {profileImageUploading ? (
+                    <span className="opacity-100 p-2 bg-emerald-600 rounded-full text-white shadow-lg">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    </span>
+                  ) : (
+                    <span className="opacity-0 group-hover/avatar:opacity-100 transition-opacity p-2 bg-emerald-600 rounded-full text-white shadow-lg hover:bg-emerald-700 flex items-center gap-1">
+                      <Camera className="h-4 w-4" />
+                    </span>
+                  )}
+                </button>
                 <div className="absolute -bottom-1 -right-1 bg-card rounded-full p-0.5">
                   <div className="bg-emerald-500 rounded-full p-1" title="Conta verificada">
                     <Verified className="h-3.5 w-3.5 text-white" />
@@ -927,16 +1093,21 @@ export function ProfilePage() {
                 </div>
                 <Button
                   className="bg-red-600 hover:bg-red-700 text-white gap-2"
-                  onClick={() => {
-                    sonnerToast.success('Contato de emergência salvo com sucesso!')
-                  }}
-                  disabled={!emergencyContact.name || !emergencyContact.phone}
+                  onClick={handleSaveEmergencyContact}
+                  disabled={emergencySaving || !emergencyContact.name || !emergencyContact.phone}
                 >
-                  <Save className="h-4 w-4" />
+                  {emergencySaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
                   Salvar Contato de Emergência
                 </Button>
               </CardContent>
             </Card>
+
+            {/* Additional Personal Data Section (birthDate, RG, marital status, etc.) */}
+            <PersonalDataSection userId={user?.id || ''} />
           </motion.div>
         </TabsContent>
 

@@ -9,9 +9,11 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Progress } from '@/components/ui/progress'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Eye, EyeOff, Mail, Lock, User, Phone, CreditCard, Users, ArrowLeft, ArrowRight, Check,
   Shield, Sparkles, Gift, Crown, Star, Zap, MessageSquare, ShoppingCart, Gamepad2, Dices, LockKeyhole,
+  IdCard,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
@@ -95,6 +97,20 @@ const steps = [
   { key: 'review', label: 'Revisão', icon: Check },
 ]
 
+// Qualification options (required field at registration)
+const qualificationOptions = [
+  { value: 'motorista', label: 'Motorista' },
+  { value: 'passageiro', label: 'Passageiro' },
+  { value: 'passageiro_60', label: 'Passageiro 60+' },
+  { value: 'passageiro_pcd', label: 'Passageiro com Mobilidade Reduzida' },
+  { value: 'comercio', label: 'Comércio' },
+  { value: 'entregador', label: 'Entregador' },
+] as const
+
+function getQualificationLabel(value: string): string {
+  return qualificationOptions.find((o) => o.value === value)?.label || value
+}
+
 export function RegisterPage() {
   const { setAuthView, login } = useStore()
   const [step, setStep] = useState(0)
@@ -108,6 +124,7 @@ export function RegisterPage() {
     referralCode: '',
     plan: 'blue5',
     terms: false,
+    qualification: '',
   })
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -139,7 +156,13 @@ export function RegisterPage() {
 
   const canGoNext = () => {
     if (step === 0) {
-      return formData.name.trim() !== '' && formData.email.trim() !== '' && formData.password.length >= 6 && formData.password === formData.confirmPassword
+      return (
+        formData.name.trim() !== '' &&
+        formData.email.trim() !== '' &&
+        formData.password.length >= 6 &&
+        formData.password === formData.confirmPassword &&
+        formData.qualification.trim() !== ''
+      )
     }
     if (step === 1) {
       return formData.plan !== ''
@@ -183,6 +206,7 @@ export function RegisterPage() {
         password: formData.password,
         referralCode: formData.referralCode || undefined,
         plan: formData.plan,
+        qualification: formData.qualification,
       })
       clearTimeout(safetyTimer)
       if (data.user) {
@@ -462,6 +486,34 @@ export function RegisterPage() {
                   </div>
 
                   <div className="space-y-2">
+                    <Label htmlFor="qualification" className="flex items-center gap-1.5">
+                      <IdCard className="h-3.5 w-3.5 text-muted-foreground" />
+                      Qualificação
+                      <span className="text-[10px] text-red-500 font-normal">*</span>
+                    </Label>
+                    <Select
+                      value={formData.qualification}
+                      onValueChange={(value) => handleChange('qualification', value)}
+                    >
+                      <SelectTrigger id="qualification" className="w-full">
+                        <SelectValue placeholder="Selecione sua qualificação" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {qualificationOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {!formData.qualification && (
+                      <p className="text-[10px] text-muted-foreground">
+                        Campo obrigatório. Selecione uma opção para continuar.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
                     <Label htmlFor="reg-password">Senha</Label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -724,6 +776,15 @@ export function RegisterPage() {
                           <span className="text-sm font-medium text-foreground">{formData.phone}</span>
                         </div>
                       )}
+                      <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50 border border-border">
+                        <div className="flex items-center gap-2">
+                          <IdCard className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground">Qualificação</span>
+                        </div>
+                        <span className="text-sm font-medium text-foreground">
+                          {getQualificationLabel(formData.qualification)}
+                        </span>
+                      </div>
                       <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50 border border-border">
                         <div className="flex items-center gap-2">
                           <Crown className="h-4 w-4 text-muted-foreground" />

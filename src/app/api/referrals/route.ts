@@ -77,7 +77,7 @@ export async function GET(request: Request) {
       return tree
     }
 
-    const referralTree = await buildTree(userId, 1, 3)
+    const referralTree = await buildTree(userId, 1, 5)
 
     return success({
       directReferrals: directReferralData,

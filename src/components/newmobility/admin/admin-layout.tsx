@@ -24,6 +24,11 @@ import {
   Gamepad2,
   Network,
   Percent,
+  Trophy,
+  Crown,
+  Flame,
+  Calendar,
+  HelpCircle,
 } from 'lucide-react'
 import { useStore, type AdminPageKey } from '@/lib/store'
 import { cn } from '@/lib/utils'
@@ -60,6 +65,11 @@ const adminNavItems: AdminNavItem[] = [
   { key: 'support', label: 'Tickets de Suporte', icon: Headphones, description: 'Atendimento ao cliente', group: 'main' },
   { key: 'announcements', label: 'Anúncios', icon: Megaphone, description: 'Comunicados da plataforma', group: 'system' },
   { key: 'reports', label: 'Relatórios', icon: BarChart3, description: 'Analytics e relatórios', group: 'system' },
+  { key: 'achievements', label: 'Conquistas', icon: Trophy, description: 'Gerenciar conquistas e prêmios', group: 'system' },
+  { key: 'career-plans', label: 'Plano de Carreira', icon: Crown, description: 'Níveis e bônus de carreira', group: 'system' },
+  { key: 'streak-rewards', label: 'Recompensas de Sequência', icon: Flame, description: 'Prêmios por dias consecutivos', group: 'system' },
+  { key: 'events', label: 'Eventos', icon: Calendar, description: 'Eventos, webinars e promoções', group: 'system' },
+  { key: 'faq', label: 'Perguntas Frequentes', icon: HelpCircle, description: 'FAQ da plataforma', group: 'system' },
   { key: 'cashback-config', label: 'Config Cashback', icon: Percent, description: 'Configurar porcentagens e pontos', group: 'system' },
   { key: 'settings', label: 'Configurações', icon: Settings, description: 'Configurações do sistema', group: 'system' },
 ]

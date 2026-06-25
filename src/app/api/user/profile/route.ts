@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error, sanitizeUser } from '@/lib/api-utils'
 
 export async function GET(request: Request) {
@@ -10,32 +10,30 @@ export async function GET(request: Request) {
       return error('userId is required')
     }
 
-    const user = await db.findOne('User', '"id" = $1', [userId])
+    const user = await prisma.user.findUnique({ where: { id: userId } })
 
     if (!user) {
       return error('User not found', 404)
     }
 
     // Fetch referrals (users whose referredById matches this user's id)
-    const referrals = await db.find(
-      'User',
-      '"referredById" = $1',
-      [userId],
-      'ORDER BY "createdAt" DESC LIMIT 10'
-    )
+    const referrals = await prisma.user.findMany({
+      where: { referredById: userId },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        createdAt: true,
+        isActive: true,
+        plan: true,
+      },
+    })
 
-    // Select only the fields that were included in the original Prisma select
-    const safeUser = sanitizeUser(user)
-    const mappedReferrals = (referrals as any[]).map((r) => ({
-      id: r.id,
-      name: r.name,
-      email: r.email,
-      createdAt: r.createdAt,
-      isActive: r.isActive,
-      plan: r.plan,
-    }))
+    const safeUser = sanitizeUser(user as unknown as Record<string, unknown>)
 
-    return success({ ...safeUser, referrals: mappedReferrals })
+    return success({ ...safeUser, referrals })
   } catch (err) {
     console.error('Profile fetch error:', err)
     return error('Internal server error', 500)
@@ -47,6 +45,7 @@ export async function PUT(request: Request) {
     const body = await request.json()
     const {
       userId,
+      // Existing editable fields
       name,
       username,
       phone,
@@ -60,13 +59,26 @@ export async function PUT(request: Request) {
       language,
       pixKey,
       pixEnabled,
+      // New personal data fields
+      birthDate,
+      rg,
+      maritalStatus,
+      gender,
+      education,
+      zipCode,
+      sponsorId,
+      qualification,
+      // Emergency contact
+      emergencyName,
+      emergencyPhone,
+      emergencyRelation,
     } = body
 
     if (!userId) {
       return error('userId is required')
     }
 
-    const user = await db.findOne('User', '"id" = $1', [userId])
+    const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user) {
       return error('User not found', 404)
     }
@@ -86,9 +98,37 @@ export async function PUT(request: Request) {
     if (pixKey !== undefined) updateData.pixKey = pixKey
     if (pixEnabled !== undefined) updateData.pixEnabled = pixEnabled
 
-    const updatedUser = await db.update('User', '"id" = $1', updateData, [userId])
+    // New personal data fields
+    if (birthDate !== undefined) {
+      // Accept either an ISO string or null. Empty string -> null.
+      if (birthDate === null || birthDate === '') {
+        updateData.birthDate = null
+      } else {
+        const parsed = new Date(birthDate)
+        if (!isNaN(parsed.getTime())) {
+          updateData.birthDate = parsed
+        }
+      }
+    }
+    if (rg !== undefined) updateData.rg = rg === '' ? null : rg
+    if (maritalStatus !== undefined) updateData.maritalStatus = maritalStatus === '' ? null : maritalStatus
+    if (gender !== undefined) updateData.gender = gender === '' ? null : gender
+    if (education !== undefined) updateData.education = education === '' ? null : education
+    if (zipCode !== undefined) updateData.zipCode = zipCode === '' ? null : zipCode
+    if (sponsorId !== undefined) updateData.sponsorId = sponsorId === '' ? null : sponsorId
+    if (qualification !== undefined) updateData.qualification = qualification === '' ? null : qualification
 
-    return success(sanitizeUser(updatedUser))
+    // Emergency contact
+    if (emergencyName !== undefined) updateData.emergencyName = emergencyName === '' ? null : emergencyName
+    if (emergencyPhone !== undefined) updateData.emergencyPhone = emergencyPhone === '' ? null : emergencyPhone
+    if (emergencyRelation !== undefined) updateData.emergencyRelation = emergencyRelation === '' ? null : emergencyRelation
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+    })
+
+    return success(sanitizeUser(updatedUser as unknown as Record<string, unknown>))
   } catch (err) {
     console.error('Profile update error:', err)
     return error('Internal server error', 500)

@@ -12,7 +12,27 @@ function generateId(): string {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { name, email, phone, cpf, password, referralCode, plan } = body
+    const {
+      name,
+      email,
+      phone,
+      cpf,
+      password,
+      referralCode,
+      plan,
+      // New personal data fields
+      qualification,
+      sponsorId,
+      birthDate,
+      rg,
+      maritalStatus,
+      gender,
+      education,
+      zipCode,
+      emergencyName,
+      emergencyPhone,
+      emergencyRelation,
+    } = body
 
     // --- Validation ---
     if (!name || typeof name !== 'string' || name.trim().length < 2) {
@@ -23,6 +43,19 @@ export async function POST(request: Request) {
     }
     if (!password || typeof password !== 'string' || password.length < 6) {
       return error('Senha é obrigatória e deve ter pelo menos 6 caracteres')
+    }
+
+    // Qualification is REQUIRED at registration
+    const validQualifications = [
+      'motorista',
+      'passageiro',
+      'passageiro_60',
+      'passageiro_pcd',
+      'comercio',
+      'entregador',
+    ]
+    if (!qualification || typeof qualification !== 'string' || !validQualifications.includes(qualification)) {
+      return error('Qualificação é obrigatória e deve ser uma das opções válidas')
     }
 
     // Check unique email
@@ -108,6 +141,25 @@ export async function POST(request: Request) {
     let user: any
     try {
       const now = new Date().toISOString()
+
+      // Build optional personal data fields - only include if provided and non-empty
+      const personalData: Record<string, any> = {}
+      if (sponsorId && typeof sponsorId === 'string') personalData.sponsorId = sponsorId
+      if (birthDate && typeof birthDate === 'string') {
+        const parsed = new Date(birthDate)
+        if (!isNaN(parsed.getTime())) {
+          personalData.birthDate = parsed
+        }
+      }
+      if (rg && typeof rg === 'string') personalData.rg = rg
+      if (maritalStatus && typeof maritalStatus === 'string') personalData.maritalStatus = maritalStatus
+      if (gender && typeof gender === 'string') personalData.gender = gender
+      if (education && typeof education === 'string') personalData.education = education
+      if (zipCode && typeof zipCode === 'string') personalData.zipCode = zipCode
+      if (emergencyName && typeof emergencyName === 'string') personalData.emergencyName = emergencyName
+      if (emergencyPhone && typeof emergencyPhone === 'string') personalData.emergencyPhone = emergencyPhone
+      if (emergencyRelation && typeof emergencyRelation === 'string') personalData.emergencyRelation = emergencyRelation
+
       user = await db.insert('User', {
         id: userId,
         name,
@@ -120,10 +172,13 @@ export async function POST(request: Request) {
         referredById: referrer?.id || null,
         plan: userPlan,
         isActive,
+        qualification,
+        ...personalData,
         createdAt: now,
         updatedAt: now,
       })
       console.log('[Register] User created successfully:', userId)
+      console.log('[Register] Saved qualification:', qualification)
     } catch (dbErr) {
       console.error('[Register] CRITICAL: Error creating user:', dbErr)
       return error('Erro ao criar conta. Tente novamente.', 500)

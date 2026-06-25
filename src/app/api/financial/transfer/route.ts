@@ -1,7 +1,10 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error, reaisToCents, centsToReais } from '@/lib/api-utils'
 
+// Map the public balance keys (used by the UI) to the underlying User model columns.
+// Note: `bills` is backed by `balancePending` to avoid a DB schema migration; the UI
+// labels it as "Saldo para Faturas".
 const BALANCE_FIELDS: Record<string, string> = {
   mobility: 'balanceMobility',
   shopping: 'balanceShopping',
@@ -9,19 +12,33 @@ const BALANCE_FIELDS: Record<string, string> = {
   pharmacy: 'balancePharmacy',
   gratification: 'balanceGratification',
   withdrawal: 'balanceWithdrawal',
+  bills: 'balancePending',
+  free: 'balanceFree',
 }
 
-// 5% fee for non-Saque source transfers, 0% for Saque source
+// Transfers TO `withdrawal` (Saldo para Saque) are NOT allowed - users must use the
+// dedicated withdraw flow to move money out of that wallet. The destination list below
+// lists every valid destination key.
+const VALID_DESTINATIONS = new Set([
+  'mobility',
+  'shopping',
+  'food',
+  'pharmacy',
+  'gratification',
+  'bills',
+  'free',
+])
+
+// Transfers FROM `withdrawal` to any other wallet are free (0% fee). All other transfers
+// incur a 5% conversion fee.
 const TRANSFER_FEES: Record<string, number> = {
-  'mobility->withdrawal': 5,
-  'shopping->withdrawal': 5,
-  'food->withdrawal': 5,
-  'pharmacy->withdrawal': 5,
-  'gratification->withdrawal': 5,
   'withdrawal->mobility': 0,
   'withdrawal->shopping': 0,
   'withdrawal->food': 0,
   'withdrawal->pharmacy': 0,
+  'withdrawal->gratification': 0,
+  'withdrawal->bills': 0,
+  'withdrawal->free': 0,
 }
 
 export async function POST(req: NextRequest) {
@@ -29,12 +46,21 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const { userId, source, destination, amount } = body
 
-    if (!userId || !source || !destination || !amount) {
+    if (!userId || !source || !destination || amount === undefined) {
       return error('userId, source, destination e amount são obrigatórios')
     }
 
     if (source === destination) {
       return error('Origem e destino não podem ser iguais')
+    }
+
+    // Block any transfer TO `withdrawal` - users must use the withdraw flow for that.
+    if (destination === 'withdrawal') {
+      return error('Não é permitido transferir para o Saldo para Saque. Use o fluxo de saque.')
+    }
+
+    if (!VALID_DESTINATIONS.has(destination)) {
+      return error('Tipo de saldo de destino inválido')
     }
 
     const sourceField = BALANCE_FIELDS[source]
@@ -44,55 +70,73 @@ export async function POST(req: NextRequest) {
       return error('Tipo de saldo inválido')
     }
 
-    const amountCents = reaisToCents(amount)
-    if (amountCents <= 0) {
+    const amountCents = reaisToCents(Number(amount))
+    if (!Number.isFinite(amountCents) || amountCents <= 0) {
       return error('Valor deve ser positivo')
     }
 
-    const user = await db.findOne('User', '"id" = $1', [userId])
-    if (!user) {
-      return error('Usuário não encontrado', 404)
-    }
+    // Run the read + write inside a transaction so we always see consistent balances
+    // and the update is atomic.
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: {
+          [sourceField]: true,
+          [destField]: true,
+        },
+      })
 
-    const sourceBalance = (user as any)[sourceField] as number
-    if (sourceBalance < amountCents) {
-      return error('Saldo insuficiente')
-    }
+      if (!user) {
+        throw new Error('USER_NOT_FOUND')
+      }
 
-    const feeKey = `${source}->${destination}`
-    const feePercent = TRANSFER_FEES[feeKey] ?? 5
-    const feeCents = Math.round(amountCents * feePercent / 100)
-    const netAmount = amountCents - feeCents
+      const sourceBalance = (user as any)[sourceField] as number
+      if (sourceBalance < amountCents) {
+        throw new Error('SALDO_INSUFICIENTE')
+      }
 
-    if (netAmount <= 0) {
-      return error('Valor insuficiente para cobrir a taxa')
-    }
+      const feeKey = `${source}->${destination}`
+      const feePercent = TRANSFER_FEES[feeKey] ?? 5
+      const feeCents = Math.round((amountCents * feePercent) / 100)
+      const netAmount = amountCents - feeCents
 
-    // Update source balance (decrement)
-    await db.update(
-      'User',
-      '"id" = $1',
-      { [sourceField]: sourceBalance - amountCents, [destField]: ((user as any)[destField] as number) + netAmount },
-      [userId]
-    )
+      if (netAmount <= 0) {
+        throw new Error('VALOR_INSUFICIENTE')
+      }
 
-    // Create transaction records
-    await db.insert('Transaction', {
-      userId,
-      type: 'transfer_out',
-      amount: -amountCents,
-      status: 'paid',
-      category: source,
-      description: `Transferência de ${source} para ${destination}`,
-    })
+      const destBalance = (user as any)[destField] as number
 
-    await db.insert('Transaction', {
-      userId,
-      type: 'transfer_in',
-      amount: netAmount,
-      status: 'paid',
-      category: destination,
-      description: `Transferência recebida de ${source} (taxa: ${feePercent}%)`,
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          [sourceField]: sourceBalance - amountCents,
+          [destField]: destBalance + netAmount,
+        },
+      })
+
+      await tx.transaction.create({
+        data: {
+          userId,
+          type: 'transfer_out',
+          amount: -amountCents,
+          status: 'paid',
+          category: source,
+          description: `Transferência de ${source} para ${destination}`,
+        },
+      })
+
+      await tx.transaction.create({
+        data: {
+          userId,
+          type: 'transfer_in',
+          amount: netAmount,
+          status: 'paid',
+          category: destination,
+          description: `Transferência recebida de ${source} (taxa: ${feePercent}%)`,
+        },
+      })
+
+      return { feePercent, feeCents, netAmount }
     })
 
     return success({
@@ -100,11 +144,20 @@ export async function POST(req: NextRequest) {
       source,
       destination,
       grossAmount: centsToReais(amountCents),
-      fee: centsToReais(feeCents),
-      feePercent,
-      netAmount: centsToReais(netAmount),
+      fee: centsToReais(result.feeCents),
+      feePercent: result.feePercent,
+      netAmount: centsToReais(result.netAmount),
     })
   } catch (err: any) {
-    return error(err.message || 'Erro interno do servidor', 500)
+    if (err?.message === 'USER_NOT_FOUND') {
+      return error('Usuário não encontrado', 404)
+    }
+    if (err?.message === 'SALDO_INSUFICIENTE') {
+      return error('Saldo insuficiente')
+    }
+    if (err?.message === 'VALOR_INSUFICIENTE') {
+      return error('Valor insuficiente para cobrir a taxa')
+    }
+    return error(err?.message || 'Erro interno do servidor', 500)
   }
 }

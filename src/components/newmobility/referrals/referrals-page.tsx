@@ -89,7 +89,10 @@ export function ReferralsPage() {
             cashback: 0,
             email: r.email || '',
           }))
-          // Add network referrals from tree if available
+          // The referralTree returned by /api/referrals has the same root
+          // nodes as directReferrals (the direct referrals themselves).
+          // To avoid double-counting direct referrals, we skip the tree root
+          // and only flatten the children, starting at level 2.
           if (data.referralTree && data.referralTree.length > 0) {
             function flattenTree(nodes: any[], level: number): any[] {
               const result: any[] = []
@@ -102,7 +105,7 @@ export function ReferralsPage() {
                   plan: node.plan || 'free',
                   level,
                   cashback: 0,
-                  email: '',
+                  email: node.email || '',
                 })
                 if (node.children && node.children.length > 0) {
                   result.push(...flattenTree(node.children, level + 1))
@@ -110,7 +113,9 @@ export function ReferralsPage() {
               }
               return result
             }
-            const networkReferrals = flattenTree(data.referralTree, 2)
+            // Start from the children of the tree root (which are level 2)
+            const level2Nodes = data.referralTree.flatMap((n: any) => n.children || [])
+            const networkReferrals = flattenTree(level2Nodes, 2)
             setReferrals([...mapped, ...networkReferrals])
           } else {
             setReferrals(mapped)
@@ -143,7 +148,9 @@ export function ReferralsPage() {
     return <ReferralsSkeleton />
   }
 
-  const referralLink = `https://newmobility.com.br/ref/${user?.referralCode || 'USER2025'}`
+  const referralLink = typeof window !== 'undefined'
+    ? `${window.location.origin}/?ref=${user?.referralCode || 'USER2025'}`
+    : `https://newmobility.com.br/?ref=${user?.referralCode || 'USER2025'}`
 
   const filtered = referrals.filter((r) => {
     const matchesSearch = r.name.toLowerCase().includes(search.toLowerCase())
@@ -166,13 +173,20 @@ export function ReferralsPage() {
   const thisWeekCount = Math.max(1, Math.floor(newThisMonth * 0.4))
   const lastWeekCount = Math.max(0, thisWeekCount - 1)
 
-  const levelCounts = Array.from({ length: 7 }, (_, i) => i + 1).map((lvl) => ({
+  const levelCounts = Array.from({ length: 5 }, (_, i) => i + 1).map((lvl) => ({
     level: lvl,
     count: referrals.filter((r) => r.level === lvl).length,
   }))
 
   const maxLevelWithData = referrals.length > 0 ? Math.max(...referrals.map((r) => r.level)) : 0
-  const visibleLevels = showAllLevels ? levelCounts : levelCounts.slice(0, 4)
+  // Show 5 levels for entrada matrix (4x5 = 5 levels deep). When there is data
+  // beyond level 5, allow expanding to see all of it.
+  const visibleLevels = showAllLevels ? levelCounts.concat(
+    Array.from({ length: Math.max(0, maxLevelWithData - 5) }, (_, i) => {
+      const lvl = i + 6
+      return { level: lvl, count: referrals.filter((r) => r.level === lvl).length }
+    })
+  ) : levelCounts
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(referralLink).then(() => {
@@ -575,7 +589,7 @@ export function ReferralsPage() {
               <Award className="h-4 w-4 text-emerald-600" />
               Níveis da Rede
             </CardTitle>
-            {maxLevelWithData > 4 && (
+            {maxLevelWithData > 5 && (
               <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={() => setShowAllLevels(!showAllLevels)}>
                 {showAllLevels ? 'Ver menos' : 'Ver todos'}
                 {showAllLevels ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
@@ -584,7 +598,7 @@ export function ReferralsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <AnimatePresence>
               {visibleLevels.map((lvl, i) => {
                 const barWidth = totalNetwork > 0 ? Math.max((lvl.count / totalNetwork) * 100, 8) : 8
@@ -632,7 +646,7 @@ export function ReferralsPage() {
           />
         </div>
         <div className="flex gap-2 flex-wrap">
-          {[null, 1, 2, 3, 4].map((level) => (
+          {[null, 1, 2, 3, 4, 5].map((level) => (
             <button
               key={level ?? 'all'}
               onClick={() => setLevelFilter(level)}

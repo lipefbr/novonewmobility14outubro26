@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function GET(request: Request) {
@@ -10,7 +10,20 @@ export async function GET(request: Request) {
       return error('userId is required')
     }
 
-    const user = await db.findOne('User', '"id" = $1', [userId])
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        balanceWithdrawal: true,
+        balanceMobility: true,
+        balanceShopping: true,
+        balanceFood: true,
+        balancePharmacy: true,
+        balanceGratification: true,
+        balanceFree: true,
+        balancePending: true,
+      },
+    })
+
     if (!user) {
       return error('User not found', 404)
     }
@@ -22,6 +35,9 @@ export async function GET(request: Request) {
       food: user.balanceFood,
       pharmacy: user.balancePharmacy,
       gratification: user.balanceGratification,
+      free: user.balanceFree,
+      // "Saldo para Faturas" is backed by the balancePending column to avoid schema changes
+      bills: user.balancePending,
       total:
         user.balanceWithdrawal +
         user.balanceMobility +

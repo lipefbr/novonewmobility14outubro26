@@ -20,13 +20,13 @@ import { formatCurrency } from '@/lib/utils'
 import { apiFetch, adminApi } from '@/lib/api'
 import {
   Shield, Users, DollarSign, TrendingUp, Activity, Settings, Search,
-  ChevronLeft, ChevronRight, BarChart3, Clock, Mail, Check, X,
+  ChevronLeft, ChevronRight, ChevronDown, BarChart3, Clock, Mail, Check, X,
   ToggleLeft, ToggleRight, Save, RefreshCw, AlertTriangle, Info, Megaphone,
   Plus, Trash2, Edit, Eye, Wallet, CreditCard, FileText, Ban,
   MapPin, Phone, Star, Car, Bike, Banknote, UserCheck, UserX,
   ArrowUpDown, Receipt, PieChart, Filter, Download, Calendar,
   MessageSquare, Send, Gift, Ticket, Gamepad2, Network, Percent,
-  TreePine, Coins, Trophy, AlertCircle, Heart,
+  TreePine, Coins, Trophy, AlertCircle, Heart, UsersRound,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -182,7 +182,16 @@ interface MatrixData {
 }
 
 interface ReferralTreeNode {
-  id: string; name: string; email: string; plan: string; createdAt: string;
+  id: string;
+  name: string;
+  email: string;
+  plan: string;
+  createdAt: string;
+  isActive?: boolean;
+  referralCode?: string | null;
+  profileImage?: string | null;
+  level?: number;
+  referralCount?: number;
   children?: ReferralTreeNode[];
 }
 
@@ -197,6 +206,98 @@ interface CashbackConfigData {
 interface PointsConfigData {
   [key: string]: number;
   raw?: Record<string, string>;
+}
+
+// ---------- Game Config ----------
+interface GameConfigItem {
+  id: string;
+  gameCode: string;
+  name: string;
+  description?: string | null;
+  pointsPerWin: number;
+  pointsPerPlay: number;
+  cashbackPerWin: number;
+  minBetCents: number;
+  maxPlaysPerDay: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------- Achievements ----------
+interface AchievementItem {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  icon?: string | null;
+  category: string;
+  pointsReward: number;
+  targetValue: number;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------- Career Plans ----------
+interface CareerPlanItem {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  minPoints: number;
+  bonusCents: number;
+  color?: string | null;
+  icon?: string | null;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------- Streak Rewards ----------
+interface StreakRewardItem {
+  id: string;
+  streakDays: number;
+  rewardType: string;
+  rewardAmount: number;
+  description?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------- Events ----------
+interface EventItem {
+  id: string;
+  title: string;
+  description: string;
+  type: string;
+  status: string;
+  eventDate: string;
+  endDate?: string | null;
+  location?: string | null;
+  meetingUrl?: string | null;
+  maxAttendees?: number | null;
+  imageUrl?: string | null;
+  isActive: boolean;
+  createdBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  registrationCount: number;
+}
+
+// ---------- FAQ ----------
+interface FAQItem {
+  id: string;
+  question: string;
+  answer: string;
+  category: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ---------- Full edit form data ----------
@@ -239,6 +340,11 @@ const adminPageToTab: Record<string, string> = {
   bets: 'bets',
   matrices: 'matrices',
   'cashback-config': 'cashback-config',
+  achievements: 'achievements',
+  'career-plans': 'career-plans',
+  'streak-rewards': 'streak-rewards',
+  events: 'events',
+  faq: 'faq',
 }
 
 export function AdminPage() {
@@ -357,6 +463,8 @@ export function AdminPage() {
   const [matrixType, setMatrixType] = useState<'entrada' | 'residual' | 'vendas'>('entrada')
   const [matrixData, setMatrixData] = useState<MatrixData | null>(null)
   const [referralTree, setReferralTree] = useState<ReferralTreeNode | null>(null)
+  const [referralTreeLoading, setReferralTreeLoading] = useState(false)
+  const [referralExpanded, setReferralExpanded] = useState<Set<string>>(new Set())
   const [matrixLoading, setMatrixLoading] = useState(false)
   const [matrixSearchLoading, setMatrixSearchLoading] = useState(false)
 
@@ -382,6 +490,71 @@ export function AdminPage() {
   const [gratificationUserSearch, setGratificationUserSearch] = useState('')
   const [gratificationUserResults, setGratificationUserResults] = useState<AdminUser[]>([])
 
+  // ---------- Game Config (inside Bets tab) ----------
+  const [gameConfigs, setGameConfigs] = useState<GameConfigItem[]>([])
+  const [gameConfigLoading, setGameConfigLoading] = useState(false)
+  const [gameConfigDialogOpen, setGameConfigDialogOpen] = useState(false)
+  const [editingGameConfig, setEditingGameConfig] = useState<GameConfigItem | null>(null)
+  const [gameConfigForm, setGameConfigForm] = useState({
+    gameCode: '', name: '', description: '', pointsPerWin: 10, pointsPerPlay: 1,
+    cashbackPerWin: 0, minBetCents: 0, maxPlaysPerDay: 10, isActive: true,
+  })
+  const [gameConfigSaving, setGameConfigSaving] = useState(false)
+
+  // ---------- Achievements ----------
+  const [achievements, setAchievements] = useState<AchievementItem[]>([])
+  const [achievementLoading, setAchievementLoading] = useState(false)
+  const [achievementDialogOpen, setAchievementDialogOpen] = useState(false)
+  const [editingAchievement, setEditingAchievement] = useState<AchievementItem | null>(null)
+  const [achievementForm, setAchievementForm] = useState({
+    code: '', name: '', description: '', icon: '', category: 'general',
+    pointsReward: 0, targetValue: 1, isActive: true, sortOrder: 99,
+  })
+  const [achievementSaving, setAchievementSaving] = useState(false)
+
+  // ---------- Career Plans ----------
+  const [careerPlans, setCareerPlans] = useState<CareerPlanItem[]>([])
+  const [careerPlanLoading, setCareerPlanLoading] = useState(false)
+  const [careerPlanDialogOpen, setCareerPlanDialogOpen] = useState(false)
+  const [editingCareerPlan, setEditingCareerPlan] = useState<CareerPlanItem | null>(null)
+  const [careerPlanForm, setCareerPlanForm] = useState({
+    code: '', name: '', description: '', minPoints: 0, bonusCents: 0,
+    color: '#6b7280', icon: '🏅', isActive: true, sortOrder: 99,
+  })
+  const [careerPlanSaving, setCareerPlanSaving] = useState(false)
+
+  // ---------- Streak Rewards ----------
+  const [streakRewards, setStreakRewards] = useState<StreakRewardItem[]>([])
+  const [streakRewardLoading, setStreakRewardLoading] = useState(false)
+  const [streakRewardDialogOpen, setStreakRewardDialogOpen] = useState(false)
+  const [editingStreakReward, setEditingStreakReward] = useState<StreakRewardItem | null>(null)
+  const [streakRewardForm, setStreakRewardForm] = useState({
+    streakDays: 7, rewardType: 'points', rewardAmount: 0, description: '', isActive: true,
+  })
+  const [streakRewardSaving, setStreakRewardSaving] = useState(false)
+
+  // ---------- Events ----------
+  const [events, setEvents] = useState<EventItem[]>([])
+  const [eventLoading, setEventLoading] = useState(false)
+  const [eventDialogOpen, setEventDialogOpen] = useState(false)
+  const [editingEvent, setEditingEvent] = useState<EventItem | null>(null)
+  const [eventForm, setEventForm] = useState({
+    title: '', description: '', type: 'webinar', status: 'upcoming',
+    eventDate: '', endDate: '', location: '', meetingUrl: '',
+    maxAttendees: 0, imageUrl: '', isActive: true,
+  })
+  const [eventSaving, setEventSaving] = useState(false)
+
+  // ---------- FAQ ----------
+  const [faqs, setFaqs] = useState<FAQItem[]>([])
+  const [faqLoading, setFaqLoading] = useState(false)
+  const [faqDialogOpen, setFaqDialogOpen] = useState(false)
+  const [editingFaq, setEditingFaq] = useState<FAQItem | null>(null)
+  const [faqForm, setFaqForm] = useState({
+    question: '', answer: '', category: 'geral', isActive: true, sortOrder: 99,
+  })
+  const [faqSaving, setFaqSaving] = useState(false)
+
   const isAdmin = user?.role === 'admin'
 
   useEffect(() => {
@@ -401,11 +574,16 @@ export function AdminPage() {
     if (activeTab === 'gratifications') loadFinancial()
     // New tabs
     if (activeTab === 'vouchers') loadVouchers()
-    if (activeTab === 'bets') loadBets()
+    if (activeTab === 'bets') { loadBets(); loadGameConfigs() }
     if (activeTab === 'cashback-config') {
       loadCashbackConfig()
       loadPointsConfig()
     }
+    if (activeTab === 'achievements') loadAchievements()
+    if (activeTab === 'career-plans') loadCareerPlans()
+    if (activeTab === 'streak-rewards') loadStreakRewards()
+    if (activeTab === 'events') loadEvents()
+    if (activeTab === 'faq') loadFAQs()
   }, [activeTab, searchQuery, planFilter, statusFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter, ticketPriorityFilter, voucherStatusFilter, voucherPage, betStatusFilter, betPage, matrixSelectedUser, matrixType])
 
   const loadStats = async () => {
@@ -589,17 +767,48 @@ export function AdminPage() {
     setMatrixSearchResults([])
     setMatrixSearchQuery('')
     setMatrixLoading(true)
+    setReferralTreeLoading(true)
+    // Auto-expand the root node so its direct referrals are visible
+    setReferralExpanded(new Set([u.id]))
     // Matrix tree will be loaded by the useEffect watching [matrixType, matrixSelectedUser]
-    // We just need to fetch the referral tree here
+    // We just need to fetch the referral tree here.
+    // The admin user tree API returns { tree, levelCounts, ... } — we only want
+    // the root node (with nested children) for rendering.
     try {
-      const tree = await adminApi.getUserTree(user?.id || '', u.id).catch(() => null)
-      setReferralTree(tree)
+      const resp = await adminApi.getUserTree(user?.id || '', u.id).catch(() => null)
+      const rootNode = (resp && (resp as any).tree) ? (resp as any).tree : null
+      setReferralTree(rootNode)
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao carregar árvore de indicações')
       setReferralTree(null)
     } finally {
+      setReferralTreeLoading(false)
       // matrixLoading will be reset by the useEffect when matrix fetch completes
     }
+  }
+
+  const toggleReferralNode = (id: string) => {
+    setReferralExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const expandAllReferralNodes = () => {
+    const all = new Set<string>()
+    const collect = (n: ReferralTreeNode | null) => {
+      if (!n) return
+      all.add(n.id)
+      n.children?.forEach(collect)
+    }
+    collect(referralTree)
+    setReferralExpanded(all)
+  }
+
+  const collapseAllReferralNodes = () => {
+    setReferralExpanded(referralTree ? new Set([referralTree.id]) : new Set())
   }
 
   // Re-fetch matrix when matrixType or selected user changes
@@ -725,6 +934,485 @@ export function AdminPage() {
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao criar gratificação')
     } finally { setGratificationSaving(false) }
+  }
+
+  // ---------- Game Config ----------
+  const loadGameConfigs = async () => {
+    setGameConfigLoading(true)
+    try {
+      const data = await apiFetch<{ configs: GameConfigItem[] }>(`/admin/game-config?userId=${user?.id}`)
+      setGameConfigs(data.configs || [])
+    } catch { /* ignore */ } finally { setGameConfigLoading(false) }
+  }
+
+  const handleOpenCreateGameConfig = () => {
+    setEditingGameConfig(null)
+    setGameConfigForm({
+      gameCode: '', name: '', description: '', pointsPerWin: 10, pointsPerPlay: 1,
+      cashbackPerWin: 0, minBetCents: 0, maxPlaysPerDay: 10, isActive: true,
+    })
+    setGameConfigDialogOpen(true)
+  }
+
+  const handleOpenEditGameConfig = (g: GameConfigItem) => {
+    setEditingGameConfig(g)
+    setGameConfigForm({
+      gameCode: g.gameCode,
+      name: g.name,
+      description: g.description || '',
+      pointsPerWin: g.pointsPerWin,
+      pointsPerPlay: g.pointsPerPlay,
+      cashbackPerWin: g.cashbackPerWin,
+      minBetCents: g.minBetCents,
+      maxPlaysPerDay: g.maxPlaysPerDay,
+      isActive: g.isActive,
+    })
+    setGameConfigDialogOpen(true)
+  }
+
+  const handleSaveGameConfig = async () => {
+    if (!gameConfigForm.gameCode || !gameConfigForm.name) {
+      toast.error('Preencha código e nome do jogo')
+      return
+    }
+    setGameConfigSaving(true)
+    try {
+      const payload: Record<string, unknown> = {
+        userId: user?.id,
+        gameCode: gameConfigForm.gameCode,
+        name: gameConfigForm.name,
+        description: gameConfigForm.description || undefined,
+        pointsPerWin: Number(gameConfigForm.pointsPerWin) || 0,
+        pointsPerPlay: Number(gameConfigForm.pointsPerPlay) || 0,
+        cashbackPerWin: Number(gameConfigForm.cashbackPerWin) || 0,
+        minBetCents: Number(gameConfigForm.minBetCents) || 0,
+        maxPlaysPerDay: Number(gameConfigForm.maxPlaysPerDay) || 0,
+        isActive: Boolean(gameConfigForm.isActive),
+      }
+      if (editingGameConfig) {
+        await apiFetch(`/admin/game-config/${editingGameConfig.id}`, {
+          method: 'PUT', body: JSON.stringify(payload),
+        })
+        toast.success('Configuração de jogo atualizada!')
+      } else {
+        await apiFetch('/admin/game-config', {
+          method: 'POST', body: JSON.stringify(payload),
+        })
+        toast.success('Configuração de jogo criada!')
+      }
+      setGameConfigDialogOpen(false)
+      loadGameConfigs()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao salvar configuração')
+    } finally { setGameConfigSaving(false) }
+  }
+
+  const handleDeleteGameConfig = async (id: string) => {
+    if (!confirm('Excluir esta configuração de jogo?')) return
+    try {
+      await apiFetch(`/admin/game-config/${id}?userId=${user?.id}`, { method: 'DELETE' })
+      toast.success('Configuração excluída')
+      loadGameConfigs()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao excluir')
+    }
+  }
+
+  // ---------- Achievements ----------
+  const loadAchievements = async () => {
+    setAchievementLoading(true)
+    try {
+      const data = await apiFetch<{ achievements: AchievementItem[] }>(`/admin/achievements?userId=${user?.id}`)
+      setAchievements(data.achievements || [])
+    } catch { /* ignore */ } finally { setAchievementLoading(false) }
+  }
+
+  const handleOpenCreateAchievement = () => {
+    setEditingAchievement(null)
+    setAchievementForm({
+      code: '', name: '', description: '', icon: '', category: 'general',
+      pointsReward: 0, targetValue: 1, isActive: true, sortOrder: 99,
+    })
+    setAchievementDialogOpen(true)
+  }
+
+  const handleOpenEditAchievement = (a: AchievementItem) => {
+    setEditingAchievement(a)
+    setAchievementForm({
+      code: a.code,
+      name: a.name,
+      description: a.description || '',
+      icon: a.icon || '',
+      category: a.category,
+      pointsReward: a.pointsReward,
+      targetValue: a.targetValue,
+      isActive: a.isActive,
+      sortOrder: a.sortOrder,
+    })
+    setAchievementDialogOpen(true)
+  }
+
+  const handleSaveAchievement = async () => {
+    if (!achievementForm.code || !achievementForm.name) {
+      toast.error('Preencha código e nome')
+      return
+    }
+    setAchievementSaving(true)
+    try {
+      const payload: Record<string, unknown> = {
+        userId: user?.id,
+        code: achievementForm.code,
+        name: achievementForm.name,
+        description: achievementForm.description || undefined,
+        icon: achievementForm.icon || undefined,
+        category: achievementForm.category,
+        pointsReward: Number(achievementForm.pointsReward) || 0,
+        targetValue: Number(achievementForm.targetValue) || 1,
+        isActive: Boolean(achievementForm.isActive),
+        sortOrder: Number(achievementForm.sortOrder) || 0,
+      }
+      if (editingAchievement) {
+        await apiFetch(`/admin/achievements/${editingAchievement.id}`, {
+          method: 'PUT', body: JSON.stringify(payload),
+        })
+        toast.success('Conquista atualizada!')
+      } else {
+        await apiFetch('/admin/achievements', {
+          method: 'POST', body: JSON.stringify(payload),
+        })
+        toast.success('Conquista criada!')
+      }
+      setAchievementDialogOpen(false)
+      loadAchievements()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao salvar conquista')
+    } finally { setAchievementSaving(false) }
+  }
+
+  const handleDeleteAchievement = async (id: string) => {
+    if (!confirm('Excluir esta conquista?')) return
+    try {
+      await apiFetch(`/admin/achievements/${id}?userId=${user?.id}`, { method: 'DELETE' })
+      toast.success('Conquista excluída')
+      loadAchievements()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao excluir')
+    }
+  }
+
+  // ---------- Career Plans ----------
+  const loadCareerPlans = async () => {
+    setCareerPlanLoading(true)
+    try {
+      const data = await apiFetch<{ plans: CareerPlanItem[] }>(`/admin/career-plans?userId=${user?.id}`)
+      setCareerPlans(data.plans || [])
+    } catch { /* ignore */ } finally { setCareerPlanLoading(false) }
+  }
+
+  const handleOpenCreateCareerPlan = () => {
+    setEditingCareerPlan(null)
+    setCareerPlanForm({
+      code: '', name: '', description: '', minPoints: 0, bonusCents: 0,
+      color: '#6b7280', icon: '🏅', isActive: true, sortOrder: 99,
+    })
+    setCareerPlanDialogOpen(true)
+  }
+
+  const handleOpenEditCareerPlan = (c: CareerPlanItem) => {
+    setEditingCareerPlan(c)
+    setCareerPlanForm({
+      code: c.code,
+      name: c.name,
+      description: c.description || '',
+      minPoints: c.minPoints,
+      bonusCents: c.bonusCents,
+      color: c.color || '#6b7280',
+      icon: c.icon || '🏅',
+      isActive: c.isActive,
+      sortOrder: c.sortOrder,
+    })
+    setCareerPlanDialogOpen(true)
+  }
+
+  const handleSaveCareerPlan = async () => {
+    if (!careerPlanForm.code || !careerPlanForm.name) {
+      toast.error('Preencha código e nome')
+      return
+    }
+    setCareerPlanSaving(true)
+    try {
+      const payload: Record<string, unknown> = {
+        userId: user?.id,
+        code: careerPlanForm.code,
+        name: careerPlanForm.name,
+        description: careerPlanForm.description || undefined,
+        minPoints: Number(careerPlanForm.minPoints) || 0,
+        bonusCents: Number(careerPlanForm.bonusCents) || 0,
+        color: careerPlanForm.color || undefined,
+        icon: careerPlanForm.icon || undefined,
+        isActive: Boolean(careerPlanForm.isActive),
+        sortOrder: Number(careerPlanForm.sortOrder) || 0,
+      }
+      if (editingCareerPlan) {
+        await apiFetch(`/admin/career-plans/${editingCareerPlan.id}`, {
+          method: 'PUT', body: JSON.stringify(payload),
+        })
+        toast.success('Plano de carreira atualizado!')
+      } else {
+        await apiFetch('/admin/career-plans', {
+          method: 'POST', body: JSON.stringify(payload),
+        })
+        toast.success('Plano de carreira criado!')
+      }
+      setCareerPlanDialogOpen(false)
+      loadCareerPlans()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao salvar plano de carreira')
+    } finally { setCareerPlanSaving(false) }
+  }
+
+  const handleDeleteCareerPlan = async (id: string) => {
+    if (!confirm('Excluir este plano de carreira?')) return
+    try {
+      await apiFetch(`/admin/career-plans/${id}?userId=${user?.id}`, { method: 'DELETE' })
+      toast.success('Plano de carreira excluído')
+      loadCareerPlans()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao excluir')
+    }
+  }
+
+  // ---------- Streak Rewards ----------
+  const loadStreakRewards = async () => {
+    setStreakRewardLoading(true)
+    try {
+      const data = await apiFetch<{ rewards: StreakRewardItem[] }>(`/admin/streak-rewards?userId=${user?.id}`)
+      setStreakRewards(data.rewards || [])
+    } catch { /* ignore */ } finally { setStreakRewardLoading(false) }
+  }
+
+  const handleOpenCreateStreakReward = () => {
+    setEditingStreakReward(null)
+    setStreakRewardForm({
+      streakDays: 7, rewardType: 'points', rewardAmount: 0, description: '', isActive: true,
+    })
+    setStreakRewardDialogOpen(true)
+  }
+
+  const handleOpenEditStreakReward = (s: StreakRewardItem) => {
+    setEditingStreakReward(s)
+    setStreakRewardForm({
+      streakDays: s.streakDays,
+      rewardType: s.rewardType,
+      rewardAmount: s.rewardAmount,
+      description: s.description || '',
+      isActive: s.isActive,
+    })
+    setStreakRewardDialogOpen(true)
+  }
+
+  const handleSaveStreakReward = async () => {
+    if (!streakRewardForm.streakDays || Number(streakRewardForm.streakDays) <= 0) {
+      toast.error('Informe uma quantidade de dias válida')
+      return
+    }
+    setStreakRewardSaving(true)
+    try {
+      const payload: Record<string, unknown> = {
+        userId: user?.id,
+        streakDays: Number(streakRewardForm.streakDays),
+        rewardType: streakRewardForm.rewardType,
+        rewardAmount: Number(streakRewardForm.rewardAmount) || 0,
+        description: streakRewardForm.description || undefined,
+        isActive: Boolean(streakRewardForm.isActive),
+      }
+      if (editingStreakReward) {
+        await apiFetch(`/admin/streak-rewards/${editingStreakReward.id}`, {
+          method: 'PUT', body: JSON.stringify(payload),
+        })
+        toast.success('Recompensa atualizada!')
+      } else {
+        await apiFetch('/admin/streak-rewards', {
+          method: 'POST', body: JSON.stringify(payload),
+        })
+        toast.success('Recompensa criada!')
+      }
+      setStreakRewardDialogOpen(false)
+      loadStreakRewards()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao salvar recompensa')
+    } finally { setStreakRewardSaving(false) }
+  }
+
+  const handleDeleteStreakReward = async (id: string) => {
+    if (!confirm('Excluir esta recompensa de sequência?')) return
+    try {
+      await apiFetch(`/admin/streak-rewards/${id}?userId=${user?.id}`, { method: 'DELETE' })
+      toast.success('Recompensa excluída')
+      loadStreakRewards()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao excluir')
+    }
+  }
+
+  // ---------- Events ----------
+  const loadEvents = async () => {
+    setEventLoading(true)
+    try {
+      const data = await apiFetch<{ events: EventItem[] }>(`/admin/events?userId=${user?.id}`)
+      setEvents(data.events || [])
+    } catch { /* ignore */ } finally { setEventLoading(false) }
+  }
+
+  const handleOpenCreateEvent = () => {
+    setEditingEvent(null)
+    setEventForm({
+      title: '', description: '', type: 'webinar', status: 'upcoming',
+      eventDate: '', endDate: '', location: '', meetingUrl: '',
+      maxAttendees: 0, imageUrl: '', isActive: true,
+    })
+    setEventDialogOpen(true)
+  }
+
+  const handleOpenEditEvent = (e: EventItem) => {
+    setEditingEvent(e)
+    setEventForm({
+      title: e.title,
+      description: e.description,
+      type: e.type,
+      status: e.status,
+      eventDate: e.eventDate ? new Date(e.eventDate).toISOString().slice(0, 16) : '',
+      endDate: e.endDate ? new Date(e.endDate).toISOString().slice(0, 16) : '',
+      location: e.location || '',
+      meetingUrl: e.meetingUrl || '',
+      maxAttendees: e.maxAttendees || 0,
+      imageUrl: e.imageUrl || '',
+      isActive: e.isActive,
+    })
+    setEventDialogOpen(true)
+  }
+
+  const handleSaveEvent = async () => {
+    if (!eventForm.title || !eventForm.description || !eventForm.eventDate) {
+      toast.error('Preencha título, descrição e data')
+      return
+    }
+    setEventSaving(true)
+    try {
+      const payload: Record<string, unknown> = {
+        userId: user?.id,
+        title: eventForm.title,
+        description: eventForm.description,
+        type: eventForm.type,
+        status: eventForm.status,
+        eventDate: new Date(eventForm.eventDate).toISOString(),
+        endDate: eventForm.endDate ? new Date(eventForm.endDate).toISOString() : undefined,
+        location: eventForm.location || undefined,
+        meetingUrl: eventForm.meetingUrl || undefined,
+        maxAttendees: Number(eventForm.maxAttendees) || undefined,
+        imageUrl: eventForm.imageUrl || undefined,
+        isActive: Boolean(eventForm.isActive),
+      }
+      if (editingEvent) {
+        await apiFetch(`/admin/events/${editingEvent.id}`, {
+          method: 'PUT', body: JSON.stringify(payload),
+        })
+        toast.success('Evento atualizado!')
+      } else {
+        await apiFetch('/admin/events', {
+          method: 'POST', body: JSON.stringify(payload),
+        })
+        toast.success('Evento criado!')
+      }
+      setEventDialogOpen(false)
+      loadEvents()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao salvar evento')
+    } finally { setEventSaving(false) }
+  }
+
+  const handleDeleteEvent = async (id: string) => {
+    if (!confirm('Excluir este evento? Todos os registros serão removidos.')) return
+    try {
+      await apiFetch(`/admin/events/${id}?userId=${user?.id}`, { method: 'DELETE' })
+      toast.success('Evento excluído')
+      loadEvents()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao excluir')
+    }
+  }
+
+  // ---------- FAQ ----------
+  const loadFAQs = async () => {
+    setFaqLoading(true)
+    try {
+      const data = await apiFetch<{ faqs: FAQItem[] }>(`/admin/faq?userId=${user?.id}`)
+      setFaqs(data.faqs || [])
+    } catch { /* ignore */ } finally { setFaqLoading(false) }
+  }
+
+  const handleOpenCreateFaq = () => {
+    setEditingFaq(null)
+    setFaqForm({
+      question: '', answer: '', category: 'geral', isActive: true, sortOrder: 99,
+    })
+    setFaqDialogOpen(true)
+  }
+
+  const handleOpenEditFaq = (f: FAQItem) => {
+    setEditingFaq(f)
+    setFaqForm({
+      question: f.question,
+      answer: f.answer,
+      category: f.category,
+      isActive: f.isActive,
+      sortOrder: f.sortOrder,
+    })
+    setFaqDialogOpen(true)
+  }
+
+  const handleSaveFaq = async () => {
+    if (!faqForm.question || !faqForm.answer) {
+      toast.error('Preencha pergunta e resposta')
+      return
+    }
+    setFaqSaving(true)
+    try {
+      const payload: Record<string, unknown> = {
+        userId: user?.id,
+        question: faqForm.question,
+        answer: faqForm.answer,
+        category: faqForm.category,
+        isActive: Boolean(faqForm.isActive),
+        sortOrder: Number(faqForm.sortOrder) || 0,
+      }
+      if (editingFaq) {
+        await apiFetch(`/admin/faq/${editingFaq.id}`, {
+          method: 'PUT', body: JSON.stringify(payload),
+        })
+        toast.success('FAQ atualizado!')
+      } else {
+        await apiFetch('/admin/faq', {
+          method: 'POST', body: JSON.stringify(payload),
+        })
+        toast.success('FAQ criado!')
+      }
+      setFaqDialogOpen(false)
+      loadFAQs()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao salvar FAQ')
+    } finally { setFaqSaving(false) }
+  }
+
+  const handleDeleteFaq = async (id: string) => {
+    if (!confirm('Excluir esta pergunta frequente?')) return
+    try {
+      await apiFetch(`/admin/faq/${id}?userId=${user?.id}`, { method: 'DELETE' })
+      toast.success('FAQ excluído')
+      loadFAQs()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao excluir')
+    }
   }
 
   // ---------- Matrix view shortcut from Users tab ----------
@@ -1289,26 +1977,66 @@ export function AdminPage() {
     )
   }
 
-  // Recursive referral tree renderer
+  // Recursive referral tree renderer — collapsible, click chevron to toggle
   const renderReferralNode = (node: ReferralTreeNode, depth = 0): React.ReactNode => {
     if (!node) return null
+    const hasChildren = (node.children?.length ?? 0) > 0
+    const isExpanded = referralExpanded.has(node.id)
+    const isActive = node.isActive !== false
     return (
-      <div key={node.id} style={{ marginLeft: depth > 0 ? 20 : 0 }}>
-        <div className="flex items-center gap-2 p-2 rounded-lg mb-1 bg-muted/30 hover:bg-muted/60 transition-colors">
+      <div key={node.id}>
+        <div
+          className={`flex items-center gap-2 p-2 rounded-lg mb-1 transition-colors ${
+            depth === 0
+              ? 'bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800'
+              : 'bg-muted/30 hover:bg-muted/60'
+          } ${!isActive ? 'opacity-60' : ''}`}
+          style={{ marginLeft: depth > 0 ? 16 : 0 }}
+        >
+          {hasChildren ? (
+            <button
+              type="button"
+              onClick={() => toggleReferralNode(node.id)}
+              className="shrink-0 p-0.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              aria-label={isExpanded ? 'Recolher' : 'Expandir'}
+            >
+              {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            </button>
+          ) : (
+            <span className="w-4 shrink-0" />
+          )}
           <div className="h-6 w-6 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold flex items-center justify-center shrink-0">
             {node.name?.charAt(0)?.toUpperCase() || '?'}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-medium text-foreground truncate">{node.name}</p>
-            <p className="text-[10px] text-muted-foreground truncate">{node.email}</p>
+            <p className="text-[10px] text-muted-foreground truncate">
+              {node.email}{node.referralCode ? ` · ${node.referralCode}` : ''}
+            </p>
           </div>
+          {typeof node.referralCount === 'number' && node.referralCount > 0 && (
+            <Badge variant="outline" className="text-[9px] gap-0.5">
+              <UsersRound className="h-2.5 w-2.5" /> {node.referralCount}
+            </Badge>
+          )}
           <Badge variant="outline" className="text-[9px]">{node.plan}</Badge>
+          {typeof node.level === 'number' && node.level > 0 && (
+            <span className="text-[9px] text-muted-foreground shrink-0">N{node.level}</span>
+          )}
         </div>
-        {node.children && node.children.length > 0 && (
-          <div className="border-l border-emerald-200/50 dark:border-emerald-800/40 ml-3 pl-1">
-            {node.children.map((child) => renderReferralNode(child, depth + 1))}
-          </div>
-        )}
+        <AnimatePresence>
+          {hasChildren && isExpanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="overflow-hidden border-l border-emerald-200/50 dark:border-emerald-800/40 ml-3 pl-1"
+            >
+              {node.children!.map((child) => renderReferralNode(child, depth + 1))}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     )
   }
@@ -3306,6 +4034,86 @@ export function AdminPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* ===== GAME CONFIG SECTION (inside Bets tab) ===== */}
+          <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50/50 to-teal-50/50 dark:from-emerald-950/20 dark:to-teal-950/10">
+            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Settings className="h-4 w-4 text-emerald-600" />
+                  <h3 className="text-sm font-semibold text-foreground">Configuração de Jogos — Métricas</h3>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Defina pontos por vitória, pontos por participação, cashback por vitória, aposta mínima e limite de jogadas diárias para cada jogo.
+                </p>
+              </div>
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shrink-0" onClick={handleOpenCreateGameConfig}>
+                <Plus className="h-4 w-4" /> Novo Jogo
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-0">
+              {gameConfigLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <span className="h-6 w-6 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+                  <span className="ml-3 text-sm text-muted-foreground">Carregando configurações de jogos...</span>
+                </div>
+              ) : gameConfigs.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3">Jogo</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden sm:table-cell">Código</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3">Pts/Vitória</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden md:table-cell">Pts/Partida</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden md:table-cell">Cashback/Vitória</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden lg:table-cell">Aposta Mín.</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden lg:table-cell">Máx/Dia</th>
+                        <th className="text-left text-xs font-semibold text-muted-foreground p-3">Status</th>
+                        <th className="text-right text-xs font-semibold text-muted-foreground p-3">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {gameConfigs.map(g => (
+                        <tr key={g.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                          <td className="p-3">
+                            <p className="text-sm font-medium text-foreground">{g.name}</p>
+                            <p className="text-[10px] text-muted-foreground">{g.description || '—'}</p>
+                          </td>
+                          <td className="p-3 hidden sm:table-cell"><span className="text-xs font-mono text-muted-foreground">{g.gameCode}</span></td>
+                          <td className="p-3"><span className="text-sm font-semibold text-foreground">{g.pointsPerWin}</span></td>
+                          <td className="p-3 hidden md:table-cell"><span className="text-sm text-foreground">{g.pointsPerPlay}</span></td>
+                          <td className="p-3 hidden md:table-cell"><span className="text-sm text-emerald-600">{g.cashbackPerWin}</span></td>
+                          <td className="p-3 hidden lg:table-cell"><span className="text-xs text-foreground">{formatCurrency(g.minBetCents)}</span></td>
+                          <td className="p-3 hidden lg:table-cell"><span className="text-xs text-foreground">{g.maxPlaysPerDay}</span></td>
+                          <td className="p-3"><Badge className={g.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}>{g.isActive ? 'Ativo' : 'Inativo'}</Badge></td>
+                          <td className="p-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button variant="ghost" size="sm" className="h-7 text-blue-600 hover:text-blue-700 text-xs" onClick={() => handleOpenEditGameConfig(g)} title="Editar">
+                                <Edit className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-7 text-red-500 hover:text-red-600 text-xs" onClick={() => handleDeleteGameConfig(g.id)} title="Excluir">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 gap-2">
+                  <Gamepad2 className="h-8 w-8 text-muted-foreground/40" />
+                  <p className="text-sm text-muted-foreground">Nenhum jogo configurado</p>
+                  <p className="text-xs text-muted-foreground/70">Clique em "Novo Jogo" para adicionar uma configuração.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ===== MATRICES TAB ===== */}
@@ -3466,9 +4274,22 @@ export function AdminPage() {
 
               {/* Referral tree */}
               <Card>
-                <CardHeader><CardTitle className="text-sm flex items-center gap-2"><TreePine className="h-4 w-4 text-emerald-600" /> Árvore de Indicações</CardTitle></CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+                  <CardTitle className="text-sm flex items-center gap-2"><TreePine className="h-4 w-4 text-emerald-600" /> Árvore de Indicações</CardTitle>
+                  {referralTree && (referralTree.children?.length ?? 0) > 0 && (
+                    <div className="flex gap-1">
+                      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={expandAllReferralNodes}>Expandir tudo</Button>
+                      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={collapseAllReferralNodes}>Recolher tudo</Button>
+                    </div>
+                  )}
+                </CardHeader>
                 <CardContent>
-                  {referralTree ? (
+                  {referralTreeLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <span className="h-5 w-5 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+                      <span className="ml-3 text-sm text-muted-foreground">Carregando árvore...</span>
+                    </div>
+                  ) : referralTree ? (
                     <div className="max-h-[400px] overflow-y-auto pr-2">
                       {renderReferralNode(referralTree)}
                     </div>
@@ -3612,7 +4433,755 @@ export function AdminPage() {
             <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">Falha ao carregar configurações.</CardContent></Card>
           )}
         </TabsContent>
+
+        {/* ===== ACHIEVEMENTS TAB ===== */}
+        <TabsContent value="achievements" className="mt-4 space-y-4">
+          <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
+            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Trophy className="h-4 w-4 text-emerald-600" />
+                  <h3 className="text-sm font-semibold text-foreground">Conquistas</h3>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Configure as conquistas que os usuários podem desbloquear ao realizar ações específicas. Cada conquista concede pontos para o plano de carreira.
+                </p>
+              </div>
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shrink-0" onClick={handleOpenCreateAchievement}>
+                <Plus className="h-4 w-4" /> Nova Conquista
+              </Button>
+            </CardContent>
+          </Card>
+
+          {achievementLoading ? (
+            <Card><CardContent className="flex items-center justify-center py-12">
+              <span className="h-6 w-6 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+              <span className="ml-3 text-sm text-muted-foreground">Carregando conquistas...</span>
+            </CardContent></Card>
+          ) : achievements.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {achievements.map(a => (
+                <Card key={a.id} className={!a.isActive ? 'opacity-60' : ''}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                        <span className="text-2xl shrink-0">{a.icon || '🏆'}</span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-foreground truncate">{a.name}</p>
+                          <p className="text-[10px] text-muted-foreground font-mono truncate">{a.code}</p>
+                        </div>
+                      </div>
+                      <Badge className={a.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}>{a.isActive ? 'Ativo' : 'Inativo'}</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{a.description || '—'}</p>
+                    <div className="flex items-center flex-wrap gap-2 mt-3">
+                      <Badge variant="outline" className="text-[10px]">{a.category}</Badge>
+                      <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-[10px] gap-1">
+                        <Star className="h-2.5 w-2.5" /> {a.pointsReward} pts
+                      </Badge>
+                      <span className="text-[10px] text-muted-foreground">Meta: {a.targetValue}</span>
+                    </div>
+                    <div className="flex items-center justify-end gap-1 mt-3 border-t border-border pt-2">
+                      <Button variant="ghost" size="sm" className="h-7 text-blue-600 hover:text-blue-700 text-xs" onClick={() => handleOpenEditAchievement(a)} title="Editar">
+                        <Edit className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-7 text-red-500 hover:text-red-600 text-xs" onClick={() => handleDeleteAchievement(a.id)} title="Excluir">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card><CardContent className="flex flex-col items-center justify-center py-12 gap-2">
+              <Trophy className="h-8 w-8 text-muted-foreground/40" />
+              <p className="text-sm text-muted-foreground">Nenhuma conquista cadastrada</p>
+            </CardContent></Card>
+          )}
+        </TabsContent>
+
+        {/* ===== CAREER PLANS TAB ===== */}
+        <TabsContent value="career-plans" className="mt-4 space-y-4">
+          <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
+            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Trophy className="h-4 w-4 text-emerald-600" />
+                  <h3 className="text-sm font-semibold text-foreground">Plano de Carreira</h3>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Configure os níveis do plano de carreira. Cada nível exige uma pontuação mínima e concede um bônus mensal em centavos.
+                </p>
+              </div>
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shrink-0" onClick={handleOpenCreateCareerPlan}>
+                <Plus className="h-4 w-4" /> Novo Nível
+              </Button>
+            </CardContent>
+          </Card>
+
+          {careerPlanLoading ? (
+            <Card><CardContent className="flex items-center justify-center py-12">
+              <span className="h-6 w-6 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+              <span className="ml-3 text-sm text-muted-foreground">Carregando planos...</span>
+            </CardContent></Card>
+          ) : careerPlans.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {careerPlans.map(c => (
+                <Card key={c.id} className={!c.isActive ? 'opacity-60' : ''} style={{ borderTopColor: c.color || undefined, borderTopWidth: c.color ? 4 : undefined }}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">{c.icon || '🏅'}</span>
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{c.name}</p>
+                          <p className="text-[10px] text-muted-foreground font-mono">{c.code}</p>
+                        </div>
+                      </div>
+                      <Badge className={c.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}>{c.isActive ? 'Ativo' : 'Inativo'}</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{c.description || '—'}</p>
+                    <div className="grid grid-cols-2 gap-2 mt-3">
+                      <div className="p-2 bg-muted/50 rounded-lg">
+                        <p className="text-[10px] text-muted-foreground">Pontos Mínimos</p>
+                        <p className="text-sm font-bold text-foreground">{c.minPoints}</p>
+                      </div>
+                      <div className="p-2 bg-muted/50 rounded-lg">
+                        <p className="text-[10px] text-muted-foreground">Bônus Mensal</p>
+                        <p className="text-sm font-bold text-emerald-600">{formatCurrency(c.bonusCents)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-end gap-1 mt-3 border-t border-border pt-2">
+                      <Button variant="ghost" size="sm" className="h-7 text-blue-600 hover:text-blue-700 text-xs" onClick={() => handleOpenEditCareerPlan(c)} title="Editar">
+                        <Edit className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-7 text-red-500 hover:text-red-600 text-xs" onClick={() => handleDeleteCareerPlan(c.id)} title="Excluir">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card><CardContent className="flex flex-col items-center justify-center py-12 gap-2">
+              <Trophy className="h-8 w-8 text-muted-foreground/40" />
+              <p className="text-sm text-muted-foreground">Nenhum plano de carreira cadastrado</p>
+            </CardContent></Card>
+          )}
+        </TabsContent>
+
+        {/* ===== STREAK REWARDS TAB ===== */}
+        <TabsContent value="streak-rewards" className="mt-4 space-y-4">
+          <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
+            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Heart className="h-4 w-4 text-emerald-600" />
+                  <h3 className="text-sm font-semibold text-foreground">Recompensas de Sequência</h3>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Configure recompensas para usuários que acessam a plataforma por dias consecutivos. Prêmios por streak de 7, 14, 30, 60 ou 90 dias.
+                </p>
+              </div>
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shrink-0" onClick={handleOpenCreateStreakReward}>
+                <Plus className="h-4 w-4" /> Nova Recompensa
+              </Button>
+            </CardContent>
+          </Card>
+
+          {streakRewardLoading ? (
+            <Card><CardContent className="flex items-center justify-center py-12">
+              <span className="h-6 w-6 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+              <span className="ml-3 text-sm text-muted-foreground">Carregando recompensas...</span>
+            </CardContent></Card>
+          ) : streakRewards.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {streakRewards.map(s => (
+                <Card key={s.id} className={!s.isActive ? 'opacity-60' : ''}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        <div className="h-12 w-12 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 text-white font-bold flex items-center justify-center text-lg">
+                          {s.streakDays}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{s.streakDays} dias</p>
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{s.rewardType}</p>
+                        </div>
+                      </div>
+                      <Badge className={s.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}>{s.isActive ? 'Ativo' : 'Inativo'}</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">{s.description || '—'}</p>
+                    <div className="flex items-center gap-2 mt-3 p-2 bg-amber-50 dark:bg-amber-950/30 rounded-lg">
+                      <Star className="h-4 w-4 text-amber-500" />
+                      <span className="text-sm font-bold text-amber-700 dark:text-amber-400">
+                        {s.rewardType === 'points' ? `${s.rewardAmount} pontos` : formatCurrency(s.rewardAmount)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-end gap-1 mt-3 border-t border-border pt-2">
+                      <Button variant="ghost" size="sm" className="h-7 text-blue-600 hover:text-blue-700 text-xs" onClick={() => handleOpenEditStreakReward(s)} title="Editar">
+                        <Edit className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-7 text-red-500 hover:text-red-600 text-xs" onClick={() => handleDeleteStreakReward(s.id)} title="Excluir">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card><CardContent className="flex flex-col items-center justify-center py-12 gap-2">
+              <Heart className="h-8 w-8 text-muted-foreground/40" />
+              <p className="text-sm text-muted-foreground">Nenhuma recompensa de sequência cadastrada</p>
+            </CardContent></Card>
+          )}
+        </TabsContent>
+
+        {/* ===== EVENTS TAB ===== */}
+        <TabsContent value="events" className="mt-4 space-y-4">
+          <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
+            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Calendar className="h-4 w-4 text-emerald-600" />
+                  <h3 className="text-sm font-semibold text-foreground">Eventos</h3>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Gerencie webinars, encontros presenciais, lançamentos e promoções da plataforma.
+                </p>
+              </div>
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shrink-0" onClick={handleOpenCreateEvent}>
+                <Plus className="h-4 w-4" /> Novo Evento
+              </Button>
+            </CardContent>
+          </Card>
+
+          {eventLoading ? (
+            <Card><CardContent className="flex items-center justify-center py-12">
+              <span className="h-6 w-6 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+              <span className="ml-3 text-sm text-muted-foreground">Carregando eventos...</span>
+            </CardContent></Card>
+          ) : events.length > 0 ? (
+            <div className="space-y-3">
+              {events.map(e => {
+                const typeColors: Record<string, string> = {
+                  webinar: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                  promo: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+                  launch: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+                  meetup: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+                  maintenance: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+                }
+                const statusColors: Record<string, string> = {
+                  upcoming: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+                  ongoing: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                  completed: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+                  cancelled: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+                }
+                return (
+                  <Card key={e.id} className={!e.isActive ? 'opacity-60' : ''}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="text-sm font-semibold text-foreground">{e.title}</span>
+                            <Badge className={typeColors[e.type] || 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}>{e.type}</Badge>
+                            <Badge className={statusColors[e.status] || 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'}>{e.status}</Badge>
+                            {!e.isActive && <Badge className="bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 text-[10px]">Inativo</Badge>}
+                          </div>
+                          <p className="text-xs text-muted-foreground line-clamp-2">{e.description}</p>
+                          <div className="flex items-center flex-wrap gap-3 mt-2 text-[10px] text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {new Date(e.eventDate).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                            </span>
+                            {e.location && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {e.location}</span>}
+                            {e.meetingUrl && <span className="flex items-center gap-1 truncate max-w-[200px]">🔗 {e.meetingUrl}</span>}
+                            {e.maxAttendees && <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {e.registrationCount}/{e.maxAttendees}</span>}
+                            {!e.maxAttendees && e.registrationCount > 0 && <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {e.registrationCount} inscritos</span>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button variant="ghost" size="sm" className="h-7 text-blue-600 hover:text-blue-700 text-xs" onClick={() => handleOpenEditEvent(e)} title="Editar">
+                            <Edit className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-7 text-red-500 hover:text-red-600 text-xs" onClick={() => handleDeleteEvent(e.id)} title="Excluir">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          ) : (
+            <Card><CardContent className="flex flex-col items-center justify-center py-12 gap-2">
+              <Calendar className="h-8 w-8 text-muted-foreground/40" />
+              <p className="text-sm text-muted-foreground">Nenhum evento cadastrado</p>
+              <p className="text-xs text-muted-foreground/70">Clique em "Novo Evento" para criar o primeiro.</p>
+            </CardContent></Card>
+          )}
+        </TabsContent>
+
+        {/* ===== FAQ TAB ===== */}
+        <TabsContent value="faq" className="mt-4 space-y-4">
+          <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
+            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Info className="h-4 w-4 text-emerald-600" />
+                  <h3 className="text-sm font-semibold text-foreground">Perguntas Frequentes (FAQ)</h3>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Gerencie as perguntas frequentes exibidas para os usuários sobre cashback, saques, indicações, carreira e mais.
+                </p>
+              </div>
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shrink-0" onClick={handleOpenCreateFaq}>
+                <Plus className="h-4 w-4" /> Nova Pergunta
+              </Button>
+            </CardContent>
+          </Card>
+
+          {faqLoading ? (
+            <Card><CardContent className="flex items-center justify-center py-12">
+              <span className="h-6 w-6 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+              <span className="ml-3 text-sm text-muted-foreground">Carregando FAQs...</span>
+            </CardContent></Card>
+          ) : faqs.length > 0 ? (
+            <div className="space-y-3">
+              {faqs.map(f => (
+                <Card key={f.id} className={!f.isActive ? 'opacity-60' : ''}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <Badge variant="outline" className="text-[10px]">{f.category}</Badge>
+                          <span className="text-[10px] text-muted-foreground">Ordem: {f.sortOrder}</span>
+                          {!f.isActive && <Badge className="bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 text-[10px]">Inativo</Badge>}
+                        </div>
+                        <p className="text-sm font-semibold text-foreground">{f.question}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{f.answer}</p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button variant="ghost" size="sm" className="h-7 text-blue-600 hover:text-blue-700 text-xs" onClick={() => handleOpenEditFaq(f)} title="Editar">
+                          <Edit className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 text-red-500 hover:text-red-600 text-xs" onClick={() => handleDeleteFaq(f.id)} title="Excluir">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card><CardContent className="flex flex-col items-center justify-center py-12 gap-2">
+              <Info className="h-8 w-8 text-muted-foreground/40" />
+              <p className="text-sm text-muted-foreground">Nenhuma pergunta frequente cadastrada</p>
+            </CardContent></Card>
+          )}
+        </TabsContent>
       </Tabs>
+
+      {/* ===== GAME CONFIG DIALOG ===== */}
+      <Dialog open={gameConfigDialogOpen} onOpenChange={setGameConfigDialogOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Gamepad2 className="h-4 w-4 text-emerald-600" />
+              {editingGameConfig ? 'Editar Configuração de Jogo' : 'Nova Configuração de Jogo'}
+            </DialogTitle>
+            <DialogDescription>Defina as métricas de pontuação e limites do jogo.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Código do Jogo *</Label>
+                <Input value={gameConfigForm.gameCode} disabled={!!editingGameConfig} onChange={(e) => setGameConfigForm(f => ({ ...f, gameCode: e.target.value }))} placeholder="ex: tictactoe" className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Nome *</Label>
+                <Input value={gameConfigForm.name} onChange={(e) => setGameConfigForm(f => ({ ...f, name: e.target.value }))} placeholder="ex: Jogo da Velha" className="h-9 text-sm" />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Descrição</Label>
+              <Input value={gameConfigForm.description} onChange={(e) => setGameConfigForm(f => ({ ...f, description: e.target.value }))} placeholder="Descrição do jogo" className="h-9 text-sm" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Pontos por Vitória</Label>
+                <Input type="number" value={gameConfigForm.pointsPerWin} onChange={(e) => setGameConfigForm(f => ({ ...f, pointsPerWin: Number(e.target.value) }))} className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Pontos por Partida</Label>
+                <Input type="number" value={gameConfigForm.pointsPerPlay} onChange={(e) => setGameConfigForm(f => ({ ...f, pointsPerPlay: Number(e.target.value) }))} className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Cashback por Vitória (pts)</Label>
+                <Input type="number" value={gameConfigForm.cashbackPerWin} onChange={(e) => setGameConfigForm(f => ({ ...f, cashbackPerWin: Number(e.target.value) }))} className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Aposta Mínima (R$)</Label>
+                <Input type="number" step="0.01" value={gameConfigForm.minBetCents / 100} onChange={(e) => setGameConfigForm(f => ({ ...f, minBetCents: Math.round((Number(e.target.value) || 0) * 100) }))} className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Máx. Jogadas/Dia</Label>
+                <Input type="number" value={gameConfigForm.maxPlaysPerDay} onChange={(e) => setGameConfigForm(f => ({ ...f, maxPlaysPerDay: Number(e.target.value) }))} className="h-9 text-sm" />
+              </div>
+              <div className="flex items-center gap-2 pt-5">
+                <input type="checkbox" id="gc-active" checked={gameConfigForm.isActive} onChange={(e) => setGameConfigForm(f => ({ ...f, isActive: e.target.checked }))} className="rounded border-input" />
+                <Label htmlFor="gc-active" className="text-xs cursor-pointer">Ativo</Label>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGameConfigDialogOpen(false)}>Cancelar</Button>
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleSaveGameConfig} disabled={gameConfigSaving}>
+              {gameConfigSaving ? <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== ACHIEVEMENT DIALOG ===== */}
+      <Dialog open={achievementDialogOpen} onOpenChange={setAchievementDialogOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trophy className="h-4 w-4 text-emerald-600" />
+              {editingAchievement ? 'Editar Conquista' : 'Nova Conquista'}
+            </DialogTitle>
+            <DialogDescription>Cadastre uma conquista que os usuários podem desbloquear.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Código *</Label>
+                <Input value={achievementForm.code} disabled={!!editingAchievement} onChange={(e) => setAchievementForm(f => ({ ...f, code: e.target.value }))} placeholder="ex: first_referral" className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Nome *</Label>
+                <Input value={achievementForm.name} onChange={(e) => setAchievementForm(f => ({ ...f, name: e.target.value }))} placeholder="ex: Primeira Indicação" className="h-9 text-sm" />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Descrição</Label>
+              <Input value={achievementForm.description} onChange={(e) => setAchievementForm(f => ({ ...f, description: e.target.value }))} placeholder="Descrição da conquista" className="h-9 text-sm" />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <Label className="text-xs">Ícone (emoji)</Label>
+                <Input value={achievementForm.icon} onChange={(e) => setAchievementForm(f => ({ ...f, icon: e.target.value }))} placeholder="🎯" className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Categoria</Label>
+                <select value={achievementForm.category} onChange={(e) => setAchievementForm(f => ({ ...f, category: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="general">Geral</option>
+                  <option value="referral">Indicação</option>
+                  <option value="financial">Financeiro</option>
+                  <option value="plan">Plano</option>
+                  <option value="gaming">Jogos</option>
+                  <option value="engagement">Engajamento</option>
+                  <option value="career">Carreira</option>
+                </select>
+              </div>
+              <div>
+                <Label className="text-xs">Ordem</Label>
+                <Input type="number" value={achievementForm.sortOrder} onChange={(e) => setAchievementForm(f => ({ ...f, sortOrder: Number(e.target.value) }))} className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Pontos</Label>
+                <Input type="number" value={achievementForm.pointsReward} onChange={(e) => setAchievementForm(f => ({ ...f, pointsReward: Number(e.target.value) }))} className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Meta (valor)</Label>
+                <Input type="number" value={achievementForm.targetValue} onChange={(e) => setAchievementForm(f => ({ ...f, targetValue: Number(e.target.value) }))} className="h-9 text-sm" />
+              </div>
+              <div className="flex items-center gap-2 pt-5">
+                <input type="checkbox" id="ach-active" checked={achievementForm.isActive} onChange={(e) => setAchievementForm(f => ({ ...f, isActive: e.target.checked }))} className="rounded border-input" />
+                <Label htmlFor="ach-active" className="text-xs cursor-pointer">Ativo</Label>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAchievementDialogOpen(false)}>Cancelar</Button>
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleSaveAchievement} disabled={achievementSaving}>
+              {achievementSaving ? <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== CAREER PLAN DIALOG ===== */}
+      <Dialog open={careerPlanDialogOpen} onOpenChange={setCareerPlanDialogOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trophy className="h-4 w-4 text-emerald-600" />
+              {editingCareerPlan ? 'Editar Nível de Carreira' : 'Novo Nível de Carreira'}
+            </DialogTitle>
+            <DialogDescription>Configure um nível (rank) do plano de carreira.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Código *</Label>
+                <Input value={careerPlanForm.code} disabled={!!editingCareerPlan} onChange={(e) => setCareerPlanForm(f => ({ ...f, code: e.target.value }))} placeholder="ex: bronze" className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Nome *</Label>
+                <Input value={careerPlanForm.name} onChange={(e) => setCareerPlanForm(f => ({ ...f, name: e.target.value }))} placeholder="ex: Bronze" className="h-9 text-sm" />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Descrição</Label>
+              <Input value={careerPlanForm.description} onChange={(e) => setCareerPlanForm(f => ({ ...f, description: e.target.value }))} placeholder="Descrição do nível" className="h-9 text-sm" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Pontos Mínimos</Label>
+                <Input type="number" value={careerPlanForm.minPoints} onChange={(e) => setCareerPlanForm(f => ({ ...f, minPoints: Number(e.target.value) }))} className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Bônus Mensal (R$)</Label>
+                <Input type="number" step="0.01" value={careerPlanForm.bonusCents / 100} onChange={(e) => setCareerPlanForm(f => ({ ...f, bonusCents: Math.round((Number(e.target.value) || 0) * 100) }))} className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Ícone (emoji)</Label>
+                <Input value={careerPlanForm.icon} onChange={(e) => setCareerPlanForm(f => ({ ...f, icon: e.target.value }))} placeholder="🥉" className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Cor (hex)</Label>
+                <div className="flex gap-2">
+                  <Input type="color" value={careerPlanForm.color || '#6b7280'} onChange={(e) => setCareerPlanForm(f => ({ ...f, color: e.target.value }))} className="h-9 w-12 p-1" />
+                  <Input value={careerPlanForm.color || ''} onChange={(e) => setCareerPlanForm(f => ({ ...f, color: e.target.value }))} placeholder="#cd7f32" className="h-9 text-sm flex-1" />
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">Ordem</Label>
+                <Input type="number" value={careerPlanForm.sortOrder} onChange={(e) => setCareerPlanForm(f => ({ ...f, sortOrder: Number(e.target.value) }))} className="h-9 text-sm" />
+              </div>
+              <div className="flex items-center gap-2 pt-5">
+                <input type="checkbox" id="cp-active" checked={careerPlanForm.isActive} onChange={(e) => setCareerPlanForm(f => ({ ...f, isActive: e.target.checked }))} className="rounded border-input" />
+                <Label htmlFor="cp-active" className="text-xs cursor-pointer">Ativo</Label>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCareerPlanDialogOpen(false)}>Cancelar</Button>
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleSaveCareerPlan} disabled={careerPlanSaving}>
+              {careerPlanSaving ? <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== STREAK REWARD DIALOG ===== */}
+      <Dialog open={streakRewardDialogOpen} onOpenChange={setStreakRewardDialogOpen}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Heart className="h-4 w-4 text-emerald-600" />
+              {editingStreakReward ? 'Editar Recompensa de Sequência' : 'Nova Recompensa de Sequência'}
+            </DialogTitle>
+            <DialogDescription>Defina a recompensa para um streak de dias consecutivos.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Dias Consecutivos *</Label>
+                <Input type="number" value={streakRewardForm.streakDays} onChange={(e) => setStreakRewardForm(f => ({ ...f, streakDays: Number(e.target.value) }))} placeholder="ex: 7" className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Tipo de Recompensa</Label>
+                <select value={streakRewardForm.rewardType} onChange={(e) => setStreakRewardForm(f => ({ ...f, rewardType: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="points">Pontos</option>
+                  <option value="cashback">Cashback (cents)</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">{streakRewardForm.rewardType === 'points' ? 'Quantidade de Pontos' : 'Valor em Reais (R$)'}</Label>
+              <Input
+                type="number"
+                step={streakRewardForm.rewardType === 'cashback' ? '0.01' : '1'}
+                value={streakRewardForm.rewardType === 'cashback' ? streakRewardForm.rewardAmount / 100 : streakRewardForm.rewardAmount}
+                onChange={(e) => setStreakRewardForm(f => ({
+                  ...f,
+                  rewardAmount: f.rewardType === 'cashback'
+                    ? Math.round((Number(e.target.value) || 0) * 100)
+                    : Number(e.target.value) || 0,
+                }))}
+                className="h-9 text-sm"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Descrição</Label>
+              <Input value={streakRewardForm.description} onChange={(e) => setStreakRewardForm(f => ({ ...f, description: e.target.value }))} placeholder="Descrição da recompensa" className="h-9 text-sm" />
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="sr-active" checked={streakRewardForm.isActive} onChange={(e) => setStreakRewardForm(f => ({ ...f, isActive: e.target.checked }))} className="rounded border-input" />
+              <Label htmlFor="sr-active" className="text-xs cursor-pointer">Ativo</Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStreakRewardDialogOpen(false)}>Cancelar</Button>
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleSaveStreakReward} disabled={streakRewardSaving}>
+              {streakRewardSaving ? <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== EVENT DIALOG ===== */}
+      <Dialog open={eventDialogOpen} onOpenChange={setEventDialogOpen}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-emerald-600" />
+              {editingEvent ? 'Editar Evento' : 'Novo Evento'}
+            </DialogTitle>
+            <DialogDescription>Crie ou edite um evento da plataforma.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <Label className="text-xs">Título *</Label>
+                <Input value={eventForm.title} onChange={(e) => setEventForm(f => ({ ...f, title: e.target.value }))} placeholder="Título do evento" className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Tipo</Label>
+                <select value={eventForm.type} onChange={(e) => setEventForm(f => ({ ...f, type: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="webinar">Webinar</option>
+                  <option value="promo">Promoção</option>
+                  <option value="launch">Lançamento</option>
+                  <option value="meetup">Encontro Presencial</option>
+                  <option value="maintenance">Manutenção</option>
+                </select>
+              </div>
+              <div>
+                <Label className="text-xs">Status</Label>
+                <select value={eventForm.status} onChange={(e) => setEventForm(f => ({ ...f, status: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="upcoming">Próximo</option>
+                  <option value="ongoing">Em Andamento</option>
+                  <option value="completed">Concluído</option>
+                  <option value="cancelled">Cancelado</option>
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <Label className="text-xs">Descrição *</Label>
+                <Input value={eventForm.description} onChange={(e) => setEventForm(f => ({ ...f, description: e.target.value }))} placeholder="Descrição do evento" className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Data de Início *</Label>
+                <Input type="datetime-local" value={eventForm.eventDate} onChange={(e) => setEventForm(f => ({ ...f, eventDate: e.target.value }))} className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Data de Fim</Label>
+                <Input type="datetime-local" value={eventForm.endDate} onChange={(e) => setEventForm(f => ({ ...f, endDate: e.target.value }))} className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Local</Label>
+                <Input value={eventForm.location} onChange={(e) => setEventForm(f => ({ ...f, location: e.target.value }))} placeholder="Local (presencial)" className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">URL da Reunião</Label>
+                <Input value={eventForm.meetingUrl} onChange={(e) => setEventForm(f => ({ ...f, meetingUrl: e.target.value }))} placeholder="https://meet..." className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Máx. Participantes</Label>
+                <Input type="number" value={eventForm.maxAttendees} onChange={(e) => setEventForm(f => ({ ...f, maxAttendees: Number(e.target.value) }))} placeholder="0 = ilimitado" className="h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">URL da Imagem</Label>
+                <Input value={eventForm.imageUrl} onChange={(e) => setEventForm(f => ({ ...f, imageUrl: e.target.value }))} placeholder="https://..." className="h-9 text-sm" />
+              </div>
+              <div className="flex items-center gap-2 pt-5 sm:col-span-2">
+                <input type="checkbox" id="evt-active" checked={eventForm.isActive} onChange={(e) => setEventForm(f => ({ ...f, isActive: e.target.checked }))} className="rounded border-input" />
+                <Label htmlFor="evt-active" className="text-xs cursor-pointer">Ativo</Label>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEventDialogOpen(false)}>Cancelar</Button>
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleSaveEvent} disabled={eventSaving}>
+              {eventSaving ? <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== FAQ DIALOG ===== */}
+      <Dialog open={faqDialogOpen} onOpenChange={setFaqDialogOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Info className="h-4 w-4 text-emerald-600" />
+              {editingFaq ? 'Editar Pergunta Frequente' : 'Nova Pergunta Frequente'}
+            </DialogTitle>
+            <DialogDescription>Cadastre uma pergunta e resposta para o FAQ da plataforma.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Pergunta *</Label>
+              <Input value={faqForm.question} onChange={(e) => setFaqForm(f => ({ ...f, question: e.target.value }))} placeholder="Ex: Como funciona o cashback?" className="h-9 text-sm" />
+            </div>
+            <div>
+              <Label className="text-xs">Resposta *</Label>
+              <textarea
+                value={faqForm.answer}
+                onChange={(e) => setFaqForm(f => ({ ...f, answer: e.target.value }))}
+                placeholder="Resposta detalhada..."
+                rows={5}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Categoria</Label>
+                <select value={faqForm.category} onChange={(e) => setFaqForm(f => ({ ...f, category: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="geral">Geral</option>
+                  <option value="cashback">Cashback</option>
+                  <option value="financeiro">Financeiro</option>
+                  <option value="indicacoes">Indicações</option>
+                  <option value="carreira">Carreira</option>
+                  <option value="gratificacoes">Gratificações</option>
+                  <option value="eventos">Eventos</option>
+                  <option value="jogos">Jogos</option>
+                  <option value="suporte">Suporte</option>
+                  <option value="planos">Planos</option>
+                  <option value="seguranca">Segurança</option>
+                </select>
+              </div>
+              <div>
+                <Label className="text-xs">Ordem</Label>
+                <Input type="number" value={faqForm.sortOrder} onChange={(e) => setFaqForm(f => ({ ...f, sortOrder: Number(e.target.value) }))} className="h-9 text-sm" />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="faq-active" checked={faqForm.isActive} onChange={(e) => setFaqForm(f => ({ ...f, isActive: e.target.checked }))} className="rounded border-input" />
+              <Label htmlFor="faq-active" className="text-xs cursor-pointer">Ativo</Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFaqDialogOpen(false)}>Cancelar</Button>
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleSaveFaq} disabled={faqSaving}>
+              {faqSaving ? <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 
       {/* ===== VIEW USER DIALOG ===== */}
       <Dialog open={viewUserDialogOpen} onOpenChange={setViewUserDialogOpen}>

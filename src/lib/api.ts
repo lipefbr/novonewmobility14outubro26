@@ -87,6 +87,17 @@ export const authApi = {
     password: string
     referralCode?: string
     plan: string
+    qualification: string
+    sponsorId?: string
+    birthDate?: string
+    rg?: string
+    maritalStatus?: string
+    gender?: string
+    education?: string
+    zipCode?: string
+    emergencyName?: string
+    emergencyPhone?: string
+    emergencyRelation?: string
   }) =>
     apiFetch<any>('/auth/register', {
       method: 'POST',
@@ -125,9 +136,9 @@ export const cashbackApi = {
 // Referrals
 export const referralsApi = {
   getList: (userId: string) =>
-    apiFetch<any>(`/referrals?userId=${userId}`),
+    apiFetch<any>(`/referrals?userId=${userId}`, { timeoutMs: 30000 }),
   getTree: (userId: string, depth = 5) =>
-    apiFetch<any>(`/referrals/tree?userId=${userId}&depth=${depth}`),
+    apiFetch<any>(`/referrals/tree?userId=${userId}&depth=${depth}`, { timeoutMs: 30000 }),
 }
 
 // Financial
@@ -198,6 +209,11 @@ export const supportApi = {
 export const vouchersApi = {
   getList: (userId: string) =>
     apiFetch<any>(`/vouchers?userId=${userId}`),
+  redeem: (userId: string, code: string) =>
+    apiFetch<any>('/vouchers/redeem', {
+      method: 'POST',
+      body: JSON.stringify({ userId, code }),
+    }),
 }
 
 // Invoices

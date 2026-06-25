@@ -1,21 +1,78 @@
 // Database client using Prisma with PostgreSQL (Neon)
 import { PrismaClient } from '@prisma/client'
+import fs from 'fs'
+import path from 'path'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
+  __prismaUrl?: string
+}
+
+// Ensure DATABASE_URL is loaded from .env file if not already set
+// This is critical because Next.js does not override env vars already set in the shell,
+// and some shell scripts (dev.sh / start.sh) export an old SQLite `file:` URL that
+// overrides the PostgreSQL URL from .env. We detect SQLite URLs and replace them.
+function ensureEnvLoaded() {
+  const currentUrl = process.env.DATABASE_URL || ''
+  const needsUpdate = !currentUrl || currentUrl.startsWith('file:')
+
+  if (needsUpdate) {
+    try {
+      // Read .env file manually (most reliable approach)
+      const envPath = path.join(process.cwd(), '.env')
+      if (fs.existsSync(envPath)) {
+        const content = fs.readFileSync(envPath, 'utf8')
+        for (const line of content.split('\n')) {
+          const trimmed = line.trim()
+          if (!trimmed || trimmed.startsWith('#')) continue
+          const eqIdx = trimmed.indexOf('=')
+          if (eqIdx > 0) {
+            const key = trimmed.substring(0, eqIdx).trim()
+            let val = trimmed.substring(eqIdx + 1).trim()
+            // Remove surrounding quotes
+            if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+              val = val.slice(1, -1)
+            }
+            // Override if current value is SQLite or not set
+            if (key === 'DATABASE_URL' && val.startsWith('postgresql://')) {
+              process.env.DATABASE_URL = val
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[db] Failed to load .env file:', e)
+    }
+
+    if (!process.env.DATABASE_URL || process.env.DATABASE_URL.startsWith('file:')) {
+      console.error('[db] CRITICAL: DATABASE_URL is not set or points to SQLite! Cannot connect to PostgreSQL database.')
+      console.error('[db] Current DATABASE_URL:', process.env.DATABASE_URL || '(not set)')
+    }
+  }
 }
 
 // Get or create Prisma client (lazy initialization)
 export function getPrisma(): PrismaClient {
-  if (!globalForPrisma.prisma) {
+  ensureEnvLoaded()
+  const currentUrl = process.env.DATABASE_URL || ''
+  // Recreate the client if it doesn't exist OR if it was previously created
+  // with a different (e.g. SQLite `file:`) URL — this happens when the dev
+  // server was started with an old shell env that overrides .env
+  if (!globalForPrisma.prisma || globalForPrisma.__prismaUrl !== currentUrl) {
     globalForPrisma.prisma = new PrismaClient({
       log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+      datasources: {
+        db: {
+          url: currentUrl,
+        },
+      },
     })
+    globalForPrisma.__prismaUrl = currentUrl
   }
   return globalForPrisma.prisma
 }
 
-// Initialize eagerly
+// Initialize eagerly (this will call ensureEnvLoaded if needed)
 export const prisma = getPrisma()
 
 // Comprehensive db interface that maps common query patterns to Prisma calls

@@ -22,14 +22,21 @@ export async function GET(request: Request) {
       'ORDER BY "createdAt" DESC'
     )
 
-    const active = (vouchers as any[]).filter((v) => !v.isUsed)
+    const now = Date.now()
+    const isExpired = (v: any) =>
+      !v.isUsed && v.expiresAt && new Date(v.expiresAt).getTime() < now
+
+    const active = (vouchers as any[]).filter((v) => !v.isUsed && !isExpired(v))
     const used = (vouchers as any[]).filter((v) => v.isUsed)
+    const expired = (vouchers as any[]).filter((v) => !v.isUsed && isExpired(v))
 
     return success({
       active,
       used,
-      totalActive: active.reduce((sum, v) => sum + v.amount, 0),
-      totalUsed: used.reduce((sum, v) => sum + v.amount, 0),
+      expired,
+      totalActive: active.reduce((sum, v) => sum + (typeof v.amount === 'number' ? v.amount : 0), 0),
+      totalUsed: used.reduce((sum, v) => sum + (typeof v.amount === 'number' ? v.amount : 0), 0),
+      totalExpired: expired.reduce((sum, v) => sum + (typeof v.amount === 'number' ? v.amount : 0), 0),
     })
   } catch (err) {
     console.error('Vouchers error:', err)

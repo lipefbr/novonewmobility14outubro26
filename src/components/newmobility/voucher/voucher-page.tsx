@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -17,6 +18,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
 import { useStore } from '@/lib/store'
+import { vouchersApi } from '@/lib/api'
 import { EmptyState } from '../ui/empty-states'
 
 type VoucherStatus = 'active' | 'used' | 'expired'
@@ -27,23 +29,35 @@ interface Voucher {
   code: string
   amount: number
   category: VoucherCategory
+  type?: string
   expiresAt: string
   status: VoucherStatus
   usedAt: string | null
   usedAmount: number
 }
 
-const mockVouchers: Voucher[] = [
-  { id: '1', code: 'NM-MOB-2025-001', amount: 5000, category: 'mobility', expiresAt: '2025-03-15', status: 'active', usedAt: null, usedAmount: 1500 },
-  { id: '2', code: 'NM-FAR-2025-002', amount: 10000, category: 'pharmacy', expiresAt: '2025-02-28', status: 'active', usedAt: null, usedAmount: 7500 },
-  { id: '3', code: 'NM-REF-2025-003', amount: 25000, category: 'food', expiresAt: '2025-06-30', status: 'active', usedAt: null, usedAmount: 2000 },
-  { id: '4', code: 'NM-SHO-2025-004', amount: 3000, category: 'shopping', expiresAt: '2025-04-30', status: 'active', usedAt: null, usedAmount: 500 },
-  { id: '5', code: 'NM-MOB-2025-005', amount: 15000, category: 'mobility', expiresAt: '2025-01-20', status: 'used', usedAt: '2025-01-18', usedAmount: 15000 },
-  { id: '6', code: 'NM-FAR-2025-006', amount: 5000, category: 'pharmacy', expiresAt: '2025-01-10', status: 'used', usedAt: '2025-01-08', usedAmount: 5000 },
-  { id: '7', code: 'NM-REF-2025-007', amount: 8000, category: 'food', expiresAt: '2024-12-31', status: 'expired', usedAt: null, usedAmount: 0 },
-  { id: '8', code: 'NM-SHO-2025-008', amount: 2000, category: 'shopping', expiresAt: '2024-11-30', status: 'expired', usedAt: null, usedAmount: 0 },
-  { id: '9', code: 'NM-MOB-2025-009', amount: 12000, category: 'mobility', expiresAt: '2025-05-15', status: 'active', usedAt: null, usedAmount: 3000 },
-]
+// Map a voucher `type` from the API to a UI category for display.
+function typeToCategory(type: string | undefined): VoucherCategory {
+  switch (type) {
+    case 'mobility': return 'mobility'
+    case 'food': return 'food'
+    case 'pharmacy': return 'pharmacy'
+    case 'shopping': return 'shopping'
+    default: return 'shopping'
+  }
+}
+
+// Derive a UI status string from raw voucher fields
+function deriveStatus(v: { isUsed: boolean; expiresAt: string | null }): VoucherStatus {
+  if (v.isUsed) return 'used'
+  if (v.expiresAt) {
+    const expiry = new Date(v.expiresAt).getTime()
+    if (!isNaN(expiry) && expiry < Date.now()) return 'expired'
+  }
+  return 'active'
+}
+
+const mockVouchers: Voucher[] = []
 
 const categoryConfig: Record<VoucherCategory, { label: string; icon: React.ElementType; color: string; bgGradient: string; darkBg: string }> = {
   mobility: { label: 'Mobilidade', icon: Car, color: 'text-blue-600 dark:text-blue-400', bgGradient: 'from-blue-500 to-blue-600', darkBg: 'dark:from-blue-800 dark:to-blue-900' },
@@ -76,9 +90,20 @@ function CountdownTimer({ expiresAt }: { expiresAt: string }) {
 
   useEffect(() => {
     const update = () => {
+      if (!expiresAt) {
+        setTimeLeft('Sem validade')
+        setDaysLeft(999)
+        return
+      }
       const now = new Date()
       const expiry = new Date(expiresAt)
       const diff = expiry.getTime() - now.getTime()
+
+      if (isNaN(diff)) {
+        setTimeLeft('Sem validade')
+        setDaysLeft(999)
+        return
+      }
 
       if (diff <= 0) {
         setTimeLeft('Expirado')
@@ -109,6 +134,7 @@ function CountdownTimer({ expiresAt }: { expiresAt: string }) {
   // Urgency color logic: green >30, yellow 7-30, red <7
   const urgencyClass = useMemo(() => {
     if (timeLeft === 'Expirado') return 'text-gray-400'
+    if (timeLeft === 'Sem validade' || daysLeft === 999) return 'text-emerald-600 dark:text-emerald-400'
     if (daysLeft > 30) return 'text-emerald-600 dark:text-emerald-400'
     if (daysLeft >= 7) return 'text-amber-600 dark:text-amber-400'
     return 'text-red-600 dark:text-red-400 animate-countdown-pulse'
@@ -116,6 +142,7 @@ function CountdownTimer({ expiresAt }: { expiresAt: string }) {
 
   const timerIconClass = useMemo(() => {
     if (timeLeft === 'Expirado') return 'text-gray-400'
+    if (timeLeft === 'Sem validade' || daysLeft === 999) return 'text-emerald-600 dark:text-emerald-400'
     if (daysLeft > 30) return 'text-emerald-600 dark:text-emerald-400'
     if (daysLeft >= 7) return 'text-amber-600 dark:text-amber-400'
     return 'text-red-600 dark:text-red-400'
@@ -134,13 +161,14 @@ function CountdownTimer({ expiresAt }: { expiresAt: string }) {
 
 export function VoucherPage() {
   const { toast } = useToast()
-  const { setActivePage, user } = useStore()
+  const { setActivePage, user, updateUser } = useStore()
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<VoucherStatus | 'all'>('all')
   const [categoryFilter, setCategoryFilter] = useState<VoucherCategory | 'all'>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [vouchers, setVouchers] = useState<Voucher[]>(mockVouchers)
+  const [loading, setLoading] = useState(true)
 
   // Purchase dialog state
   const [purchaseDialogOpen, setPurchaseDialogOpen] = useState(false)
@@ -148,6 +176,64 @@ export function VoucherPage() {
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
   const [purchaseStep, setPurchaseStep] = useState<'category' | 'amount' | 'confirm'>('category')
   const [isPurchasing, setIsPurchasing] = useState(false)
+
+  // Redeem (Adicionar Voucher) dialog state
+  const [redeemDialogOpen, setRedeemDialogOpen] = useState(false)
+  const [redeemCode, setRedeemCode] = useState('')
+  const [isRedeeming, setIsRedeeming] = useState(false)
+
+  const fetchVouchers = useCallback(async () => {
+    if (!user?.id) {
+      setLoading(false)
+      return
+    }
+    try {
+      const data = await vouchersApi.getList(user.id)
+      const rawActive = (data?.active as any[]) || []
+      const rawUsed = (data?.used as any[]) || []
+      const rawExpired = (data?.expired as any[]) || []
+      const mapRow = (r: any, status: VoucherStatus): Voucher => ({
+        id: r.id,
+        code: r.code,
+        amount: typeof r.amount === 'number' ? r.amount : 0,
+        type: r.type,
+        category: typeToCategory(r.type),
+        expiresAt: r.expiresAt || '',
+        status,
+        usedAt: r.usedAt || null,
+        usedAmount: 0,
+      })
+      // The API now classifies vouchers into active/used/expired. If the API
+      // response omits `expired` (older versions), we derive the status from
+      // each voucher's `expiresAt` field as a safety net.
+      const active: Voucher[] = []
+      const expired: Voucher[] = []
+      for (const r of rawActive) {
+        const derived = deriveStatus({ isUsed: false, expiresAt: r.expiresAt })
+        if (derived === 'expired') {
+          expired.push(mapRow(r, 'expired'))
+        } else {
+          active.push(mapRow(r, 'active'))
+        }
+      }
+      // Append any explicitly-returned expired vouchers from the API
+      for (const r of rawExpired) {
+        expired.push(mapRow(r, 'expired'))
+      }
+      const used = rawUsed.map((r) => mapRow(r, 'used'))
+      setVouchers([...active, ...used, ...expired])
+    } catch (err) {
+      console.error('Failed to fetch vouchers:', err)
+      // Show empty state on error instead of mock data
+      setVouchers([])
+    } finally {
+      setLoading(false)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    fetchVouchers()
+  }, [fetchVouchers])
 
   const filtered = vouchers.filter((v) => {
     const matchesStatus = statusFilter === 'all' || v.status === statusFilter
@@ -177,6 +263,50 @@ export function VoucherPage() {
     setSelectedAmount(null)
     setPurchaseStep('category')
     setPurchaseDialogOpen(true)
+  }
+
+  const handleOpenRedeem = () => {
+    setRedeemCode('')
+    setRedeemDialogOpen(true)
+  }
+
+  const handleRedeem = async () => {
+    if (!user?.id) return
+    const code = redeemCode.trim()
+    if (!code) {
+      toast({ title: 'Informe o código', description: 'Digite ou cole o código do voucher.' })
+      return
+    }
+    setIsRedeeming(true)
+    try {
+      const result = await vouchersApi.redeem(user.id, code)
+      toast({
+        title: 'Voucher resgatado! 🎉',
+        description: `${formatCurrency(result?.creditedAmount || 0)} creditado em ${result?.balanceName || 'sua conta'}.`,
+      })
+      setRedeemDialogOpen(false)
+      setRedeemCode('')
+      // Refresh voucher list
+      fetchVouchers()
+      // Update user balances in the global store so other pages reflect the change
+      if (result?.user) {
+        updateUser({
+          balanceWithdrawal: result.user.balanceWithdrawal,
+          balanceMobility: result.user.balanceMobility,
+          balanceShopping: result.user.balanceShopping,
+          balanceFood: result.user.balanceFood,
+          balancePharmacy: result.user.balancePharmacy,
+          balanceGratification: result.user.balanceGratification,
+        })
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao resgatar voucher',
+        description: err?.message || 'Não foi possível resgatar o voucher. Verifique o código e tente novamente.',
+      })
+    } finally {
+      setIsRedeeming(false)
+    }
   }
 
   const handleBrowseMarketplace = () => {
@@ -292,16 +422,84 @@ export function VoucherPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h2 className="text-xl font-bold text-foreground">Voucher</h2>
           <p className="text-sm text-muted-foreground">Gerencie seus vouchers e cupons de desconto</p>
         </div>
-        <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleBuyVoucher}>
-          <Plus className="h-4 w-4" />
-          Comprar Voucher
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" onClick={handleOpenRedeem}>
+            <Ticket className="h-4 w-4" />
+            Adicionar Voucher
+          </Button>
+          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleBuyVoucher}>
+            <Plus className="h-4 w-4" />
+            Comprar Voucher
+          </Button>
+        </div>
       </div>
+
+      {/* Redeem (Adicionar Voucher) Dialog */}
+      <Dialog open={redeemDialogOpen} onOpenChange={setRedeemDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
+                <Ticket className="h-4 w-4 text-emerald-600" />
+              </div>
+              Adicionar Voucher
+            </DialogTitle>
+            <DialogDescription>
+              Digite ou cole o código do voucher para creditá-lo na sua conta.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Input
+              autoFocus
+              placeholder="Ex.: VOUCHER-ABCD-1234"
+              value={redeemCode}
+              onChange={(e) => setRedeemCode(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !isRedeeming && redeemCode.trim()) {
+                  handleRedeem()
+                }
+              }}
+              className="font-mono uppercase"
+              disabled={isRedeeming}
+            />
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 text-xs text-muted-foreground">
+              <Info className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+              <span>O valor será creditado na categoria correspondente ao tipo do voucher (Mobilidade, Refeição, Farmácia, Compras, Gratificação ou Saque).</span>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setRedeemDialogOpen(false)}
+              disabled={isRedeeming}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+              onClick={handleRedeem}
+              disabled={isRedeeming || !redeemCode.trim()}
+            >
+              {isRedeeming ? (
+                <>
+                  <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Resgatando...
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4" />
+                  Resgatar
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Purchase Dialog */}
       <Dialog open={purchaseDialogOpen} onOpenChange={setPurchaseDialogOpen}>
@@ -874,8 +1072,10 @@ export function VoucherPage() {
                             {voucher.status === 'used'
                               ? `Usado em ${voucher.usedAt ? formatDate(voucher.usedAt) : '-'}`
                               : voucher.status === 'expired'
-                              ? `Expirou em ${formatDate(voucher.expiresAt)}`
-                              : `Expira em ${formatDate(voucher.expiresAt)}`}
+                              ? `Expirou em ${voucher.expiresAt ? formatDate(voucher.expiresAt) : '-'}`
+                              : voucher.expiresAt
+                              ? `Expira em ${formatDate(voucher.expiresAt)}`
+                              : 'Sem data de validade'}
                           </p>
                           {isActive && <CountdownTimer expiresAt={voucher.expiresAt} />}
                         </div>
@@ -935,14 +1135,25 @@ export function VoucherPage() {
         </AnimatePresence>
       </div>
 
-      {filtered.length === 0 && (
+      {filtered.length === 0 && !loading && (
         <EmptyState
           icon={Ticket}
           title="Nenhum voucher ativo"
-          description="Adquira vouchers para aproveitar descontos em mobilidade, farmácia, refeição e compras!"
-          actionLabel="Comprar Voucher"
-          onAction={handleBuyVoucher}
+          description="Adicione um voucher com o código recebido ou compre um novo voucher para aproveitar descontos em mobilidade, farmácia, refeição e compras!"
+          actionLabel="Adicionar Voucher"
+          onAction={handleOpenRedeem}
         />
+      )}
+
+      {loading && (
+        <Card className="shadow-sm bg-card">
+          <CardContent className="p-8 flex items-center justify-center">
+            <div className="flex items-center gap-3 text-muted-foreground">
+              <span className="h-5 w-5 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
+              <span className="text-sm">Carregando vouchers...</span>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   )

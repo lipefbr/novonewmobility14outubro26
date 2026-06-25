@@ -46,6 +46,11 @@ export type AdminPageKey =
   | 'bets'
   | 'matrices'
   | 'cashback-config'
+  | 'achievements'
+  | 'career-plans'
+  | 'streak-rewards'
+  | 'events'
+  | 'faq'
 
 export interface UserData {
   id: string
