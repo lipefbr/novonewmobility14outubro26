@@ -1,14 +1,35 @@
 import { db, prisma } from '@/lib/db'
 import { success, error, formatTimeSince } from '@/lib/api-utils'
 
+// Build a parent->children map ONCE from a single DB query, then traverse
+// in-memory. This avoids N+1 DB round-trips (up to 9 queries per request)
+// which is critical for remote PostgreSQL (Neon) performance.
+async function buildChildrenMap(): Promise<Record<string, { id: string; isActive: boolean }[]>> {
+  const allUsers = await prisma.user.findMany({
+    select: { id: true, referredById: true, isActive: true },
+  })
+  const map: Record<string, { id: string; isActive: boolean }[]> = {}
+  for (const u of allUsers) {
+    if (u.referredById) {
+      if (!map[u.referredById]) map[u.referredById] = []
+      map[u.referredById].push({ id: u.id, isActive: u.isActive })
+    }
+  }
+  return map
+}
+
 // Count all descendants in the referral tree (recursive, up to 9 levels deep).
 // Returns the total number of descendants, a per-level breakdown, and the
 // count of descendants that are currently active.
-async function countNetworkDescendants(userId: string): Promise<{
+async function countNetworkDescendants(
+  userId: string,
+  childrenMap?: Record<string, { id: string; isActive: boolean }[]>
+): Promise<{
   total: number
   byLevel: Record<number, number>
   activeTotal: number
 }> {
+  const map = childrenMap || await buildChildrenMap()
   const byLevel: Record<number, number> = {}
   let total = 0
   let activeTotal = 0
@@ -16,16 +37,22 @@ async function countNetworkDescendants(userId: string): Promise<{
 
   for (let level = 1; level <= 9; level++) {
     if (currentLevel.length === 0) break
-    const children = await db.find(
-      'User',
-      '"referredById" IN $1',
-      [currentLevel]
-    ) as any[]
-    if (children.length === 0) break
-    byLevel[level] = children.length
-    total += children.length
-    activeTotal += children.filter((c) => c.isActive === true).length
-    currentLevel = children.map((c) => c.id)
+    const nextLevel: string[] = []
+    let levelActive = 0
+    for (const parentId of currentLevel) {
+      const kids = map[parentId]
+      if (kids) {
+        for (const k of kids) {
+          nextLevel.push(k.id)
+          if (k.isActive) levelActive++
+        }
+      }
+    }
+    if (nextLevel.length === 0) break
+    byLevel[level] = nextLevel.length
+    total += nextLevel.length
+    activeTotal += levelActive
+    currentLevel = nextLevel
   }
 
   return { total, byLevel, activeTotal }

@@ -1,6 +1,66 @@
 import { db, prisma } from '@/lib/db'
 import { success, error, getEntradaLevels } from '@/lib/api-utils'
 
+// Count all descendants in the referral tree (recursive, up to 9 levels deep).
+// Returns the total number of descendants, a per-level breakdown, and the
+// count of descendants that are currently active. Mirrors the helper in
+// /api/dashboard/route.ts so the cashback matrix counts reflect the REAL
+// referral network (not the CashbackEntry transaction table, which stays
+// empty until cashback is actually distributed).
+// Build a parent->children map ONCE from a single DB query, then traverse
+// in-memory. This avoids N+1 DB round-trips (up to 9 queries per request)
+// which is critical for remote PostgreSQL (Neon) performance.
+async function buildChildrenMap(): Promise<Record<string, { id: string; isActive: boolean }[]>> {
+  const allUsers = await prisma.user.findMany({
+    select: { id: true, referredById: true, isActive: true },
+  })
+  const map: Record<string, { id: string; isActive: boolean }[]> = {}
+  for (const u of allUsers) {
+    if (u.referredById) {
+      if (!map[u.referredById]) map[u.referredById] = []
+      map[u.referredById].push({ id: u.id, isActive: u.isActive })
+    }
+  }
+  return map
+}
+
+async function countNetworkDescendants(
+  userId: string,
+  childrenMap?: Record<string, { id: string; isActive: boolean }[]>
+): Promise<{
+  total: number
+  byLevel: Record<number, number>
+  activeTotal: number
+}> {
+  const map = childrenMap || await buildChildrenMap()
+  const byLevel: Record<number, number> = {}
+  let total = 0
+  let activeTotal = 0
+  let currentLevel: string[] = [userId]
+
+  for (let level = 1; level <= 9; level++) {
+    if (currentLevel.length === 0) break
+    const nextLevel: string[] = []
+    let levelActive = 0
+    for (const parentId of currentLevel) {
+      const kids = map[parentId]
+      if (kids) {
+        for (const k of kids) {
+          nextLevel.push(k.id)
+          if (k.isActive) levelActive++
+        }
+      }
+    }
+    if (nextLevel.length === 0) break
+    byLevel[level] = nextLevel.length
+    total += nextLevel.length
+    activeTotal += levelActive
+    currentLevel = nextLevel
+  }
+
+  return { total, byLevel, activeTotal }
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -22,15 +82,21 @@ export async function GET(request: Request) {
       [userId, 'entrada']
     )
 
-    // Get all cashback entries
+    // Walk the entire referral network (up to 9 levels deep) and count
+    // descendants by level. This drives the per-level `currentUsers` and the
+    // matrix `totalUsers` so the UI shows the REAL network size, not the
+    // CashbackEntry transaction count (which is 0 until cashback is paid).
+    const network = await countNetworkDescendants(userId)
+
+    // Get all cashback entries (used ONLY for `earned` / `earnedPerLevel` —
+    // i.e. actual cashback PAID to the user, which is correctly 0 when no
+    // cashback has been distributed yet).
     const entries = await db.find('CashbackEntry', '"userId" = $1', [userId]) as any[]
 
     // Calculate earned per level
     const earnedPerLevel: Record<number, number> = {}
-    const usersPerLevel: Record<number, number> = {}
     for (const e of entries) {
       earnedPerLevel[e.level] = (earnedPerLevel[e.level] || 0) + e.amount
-      usersPerLevel[e.level] = (usersPerLevel[e.level] || 0) + 1
     }
 
     const totalEarned = entries.reduce((sum, e) => sum + e.amount, 0)
@@ -77,7 +143,11 @@ export async function GET(request: Request) {
     const levels = percentages.map((percentage, i) => {
       const level = i + 1
       const maxUsers = Math.pow(matrixWidth, level) // e.g. 4, 16, 64, 256, 1024
-      const currentUsers = usersPerLevel[level] || 0
+      // currentUsers comes from the REAL referral network (descendants at
+      // this level), NOT from CashbackEntry transactions. This is preserved
+      // for locked levels too, so the UI can display "this level has N
+      // members but is locked — upgrade to earn from them".
+      const currentUsers = network.byLevel[level] || 0
       const locked = level > maxUnlockedLevel
       return {
         level,
@@ -119,6 +189,14 @@ export async function GET(request: Request) {
     // future re-introduction of historical payouts at locked levels).
     const totalEarnedUnlocked = visibleLevels.reduce((s, l) => s + l.earned, 0)
 
+    // totalUsers = sum of network descendants across the entrada-relevant
+    // levels (1-5), matching the dashboard's `cashbackEntrada.totalUsers`.
+    const entradaRelevantLevels = [1, 2, 3, 4, 5]
+    const totalUsers = entradaRelevantLevels.reduce(
+      (sum, lvl) => sum + (network.byLevel[lvl] || 0),
+      0
+    )
+
     return success({
       matrixPosition: matrixPosition
         ? {
@@ -135,7 +213,7 @@ export async function GET(request: Request) {
       lockedLevels,
       totalEarned: totalEarnedUnlocked,
       totalEarnedUnlocked,
-      totalUsers: Object.values(usersPerLevel).reduce((s, c) => s + c, 0),
+      totalUsers,
       directChildren,
       maxMatrixSize,
       matrixWidth,

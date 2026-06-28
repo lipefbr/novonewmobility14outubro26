@@ -93,9 +93,14 @@ interface MatrixVisualizationProps {
 // Fallback config used as the initial loading state (before the API responds)
 // and as a safety net if the fetch fails. Percentages mirror the DEFAULT_*
 // constants in api-utils.ts so admin-unconfigured installs still see
-// sensible numbers.
+// sensible structural numbers.
 // NOTE: `earnings` and `maxEarnings` were removed (privacy: no R$ on
 // user-facing pages). Per-level "members" counts come from `filled`.
+// IMPORTANT: `filled` is REAL network member count — it must be 0 until
+// the API responds with actual data. The previous hardcoded non-zero
+// values were fictitious and showed fake members during loading / on
+// API error. Only `positions`, `percentage`, `totalUsers`, and `level`
+// are structural config (matrix shape) and remain populated.
 const FALLBACK_MATRIX_CONFIG: Record<string, {
   levels: MatrixLevelData[]
   title: string
@@ -103,39 +108,39 @@ const FALLBACK_MATRIX_CONFIG: Record<string, {
 }> = {
   entrada: {
     levels: [
-      { level: 1, positions: 4, percentage: '5%', totalUsers: 4, filled: 4 },
-      { level: 2, positions: 16, percentage: '10%', totalUsers: 16, filled: 12 },
-      { level: 3, positions: 64, percentage: '10%', totalUsers: 64, filled: 32 },
-      { level: 4, positions: 256, percentage: '5%', totalUsers: 256, filled: 80 },
-      { level: 5, positions: 1024, percentage: '5%', totalUsers: 1024, filled: 200 },
+      { level: 1, positions: 4, percentage: '5%', totalUsers: 4, filled: 0 },
+      { level: 2, positions: 16, percentage: '10%', totalUsers: 16, filled: 0 },
+      { level: 3, positions: 64, percentage: '10%', totalUsers: 64, filled: 0 },
+      { level: 4, positions: 256, percentage: '5%', totalUsers: 256, filled: 0 },
+      { level: 5, positions: 1024, percentage: '5%', totalUsers: 1024, filled: 0 },
     ],
     title: 'Matriz CashBack Entrada',
     description: 'Estrutura 4x5 com 5 níveis de profundidade',
   },
   residual: {
     levels: [
-      { level: 1, positions: 4, percentage: '10%', totalUsers: 4, filled: 4 },
-      { level: 2, positions: 16, percentage: '9%', totalUsers: 16, filled: 12 },
-      { level: 3, positions: 64, percentage: '5%', totalUsers: 64, filled: 30 },
-      { level: 4, positions: 256, percentage: '5%', totalUsers: 256, filled: 60 },
-      { level: 5, positions: 1024, percentage: '4%', totalUsers: 1024, filled: 100 },
-      { level: 6, positions: 4096, percentage: '3%', totalUsers: 4096, filled: 200 },
-      { level: 7, positions: 16384, percentage: '2%', totalUsers: 16384, filled: 400 },
+      { level: 1, positions: 4, percentage: '10%', totalUsers: 4, filled: 0 },
+      { level: 2, positions: 16, percentage: '9%', totalUsers: 16, filled: 0 },
+      { level: 3, positions: 64, percentage: '5%', totalUsers: 64, filled: 0 },
+      { level: 4, positions: 256, percentage: '5%', totalUsers: 256, filled: 0 },
+      { level: 5, positions: 1024, percentage: '4%', totalUsers: 1024, filled: 0 },
+      { level: 6, positions: 4096, percentage: '3%', totalUsers: 4096, filled: 0 },
+      { level: 7, positions: 16384, percentage: '2%', totalUsers: 16384, filled: 0 },
     ],
     title: 'Matriz CashBack Residual',
     description: 'Estrutura 4x7 com 7 níveis de profundidade',
   },
   vendas: {
     levels: [
-      { level: 1, positions: 4, percentage: '0.10%', totalUsers: 4, filled: 4 },
-      { level: 2, positions: 16, percentage: '0.10%', totalUsers: 16, filled: 14 },
-      { level: 3, positions: 64, percentage: '0.10%', totalUsers: 64, filled: 40 },
-      { level: 4, positions: 256, percentage: '0.10%', totalUsers: 256, filled: 100 },
-      { level: 5, positions: 1024, percentage: '0.10%', totalUsers: 1024, filled: 250 },
-      { level: 6, positions: 4096, percentage: '0.10%', totalUsers: 4096, filled: 600 },
-      { level: 7, positions: 16384, percentage: '0.10%', totalUsers: 16384, filled: 1200 },
-      { level: 8, positions: 65536, percentage: '0.10%', totalUsers: 65536, filled: 3000 },
-      { level: 9, positions: 262144, percentage: '0.10%', totalUsers: 262144, filled: 8000 },
+      { level: 1, positions: 4, percentage: '0.10%', totalUsers: 4, filled: 0 },
+      { level: 2, positions: 16, percentage: '0.10%', totalUsers: 16, filled: 0 },
+      { level: 3, positions: 64, percentage: '0.10%', totalUsers: 64, filled: 0 },
+      { level: 4, positions: 256, percentage: '0.10%', totalUsers: 256, filled: 0 },
+      { level: 5, positions: 1024, percentage: '0.10%', totalUsers: 1024, filled: 0 },
+      { level: 6, positions: 4096, percentage: '0.10%', totalUsers: 4096, filled: 0 },
+      { level: 7, positions: 16384, percentage: '0.10%', totalUsers: 16384, filled: 0 },
+      { level: 8, positions: 65536, percentage: '0.10%', totalUsers: 65536, filled: 0 },
+      { level: 9, positions: 262144, percentage: '0.10%', totalUsers: 262144, filled: 0 },
     ],
     title: 'Matriz CashBack Vendas',
     description: 'Estrutura 4x9 com 9 níveis de profundidade',

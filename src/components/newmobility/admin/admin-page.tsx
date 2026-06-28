@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Fragment } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,7 +26,7 @@ import {
   MapPin, Phone, Star, Car, Bike, Banknote, UserCheck, UserX,
   ArrowUpDown, Receipt, PieChart, Filter, Download, Calendar,
   MessageSquare, Send, Gift, Ticket, Gamepad2, Network, Percent,
-  TreePine, Coins, Trophy, AlertCircle, Heart, UsersRound,
+  TreePine, Coins, Trophy, AlertCircle, Heart, UsersRound, Layers,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -115,6 +115,23 @@ interface CashbackData {
   entries: CashbackEntry[]; total: number; page: number; totalPages: number;
   totals: { entrada: number; residual: number; vendas: number };
   perUserSummary: { userId: string; name: string; email: string; total: number; count: number }[];
+}
+
+interface MatrixOverviewUser {
+  userId: string; userName: string; userEmail: string; plan: string;
+  isActive: boolean; referralCode: string;
+  entradaByLevel: Record<number, number>;
+  residualByLevel: Record<number, number>;
+  vendasByLevel: Record<number, number>;
+  entradaTotal: number; residualTotal: number; vendasTotal: number; networkTotal: number;
+}
+
+interface MatrixOverviewData {
+  userMatrices: MatrixOverviewUser[];
+  platformTotals: {
+    entrada: number; residual: number; vendas: number;
+    totalUsers: number; totalNetwork: number;
+  };
 }
 
 interface FinancialOverview {
@@ -363,6 +380,9 @@ export function AdminPage() {
   const [plans, setPlans] = useState<AdminPlan[]>([])
   const [withdrawals, setWithdrawals] = useState<{ withdrawals: AdminWithdrawal[]; total: number; page: number; totalPages: number; stats: WithdrawalStats } | null>(null)
   const [cashbackData, setCashbackData] = useState<CashbackData | null>(null)
+  const [matrixOverview, setMatrixOverview] = useState<MatrixOverviewData | null>(null)
+  const [matrixOverviewLoading, setMatrixOverviewLoading] = useState(false)
+  const [expandedMatrixUser, setExpandedMatrixUser] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [planFilter, setPlanFilter] = useState('all')
@@ -641,6 +661,16 @@ export function AdminPage() {
       const data = await apiFetch<CashbackData>(`/admin/cashback?${params}`)
       setCashbackData(data)
     } catch { /* ignore */ }
+
+    // Also fetch the matrix overview (independent of cashback entries —
+    // shows the real network structure even when no cashback has been paid yet)
+    try {
+      setMatrixOverviewLoading(true)
+      const mo = await apiFetch<MatrixOverviewData>(`/admin/cashback/matrix-overview?userId=${user?.id || ''}`)
+      setMatrixOverview(mo)
+    } catch { /* ignore */ } finally {
+      setMatrixOverviewLoading(false)
+    }
   }
 
   const loadFinancial = async () => {
@@ -2418,6 +2448,196 @@ export function AdminPage() {
 
         {/* Cashback Tab */}
         <TabsContent value="cashback" className="mt-4 space-y-4">
+          {/* Matriz de Compras - Visão Geral (Real network structure, independent of paid cashback) */}
+          <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50/60 to-teal-50/40 dark:from-emerald-950/20 dark:to-teal-950/10">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Layers className="h-5 w-5 text-emerald-600" />
+                  Matriz de Compras - Visão Geral
+                </CardTitle>
+                {matrixOverviewLoading && (
+                  <Badge variant="outline" className="text-emerald-700 border-emerald-300 dark:text-emerald-400 dark:border-emerald-700">
+                    <RefreshCw className="h-3 w-3 mr-1 animate-spin" /> Carregando...
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Estrutura real da rede de indicações — quantos usuários cada membro possui em cada nível (1 a 9).
+                Independente de cashback já pago (mostra a matriz mesmo antes de pagamentos serem processados).
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Platform-wide summary cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { label: 'Usuários com Rede', value: matrixOverview?.platformTotals.totalUsers ?? 0, icon: Users, color: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-100 dark:bg-emerald-950/40' },
+                  { label: 'Entrada (4x5)', value: matrixOverview?.platformTotals.entrada ?? 0, icon: ArrowUpDown, color: 'text-teal-700 dark:text-teal-400', bg: 'bg-teal-100 dark:bg-teal-950/40' },
+                  { label: 'Residual (4x7)', value: matrixOverview?.platformTotals.residual ?? 0, icon: TrendingUp, color: 'text-cyan-700 dark:text-cyan-400', bg: 'bg-cyan-100 dark:bg-cyan-950/40' },
+                  { label: 'Vendas (4x9)', value: matrixOverview?.platformTotals.vendas ?? 0, icon: Network, color: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-100 dark:bg-emerald-950/40' },
+                ].map((card, i) => (
+                  <div key={i} className={`rounded-lg ${card.bg} p-3`}>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <card.icon className={`h-3.5 w-3.5 ${card.color}`} />
+                      <span className="text-[11px] font-medium text-muted-foreground">{card.label}</span>
+                    </div>
+                    <p className="text-xl font-bold text-foreground">{card.value.toLocaleString('pt-BR')}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Users matrix table */}
+              {matrixOverview && matrixOverview.userMatrices.length > 0 ? (
+                <div className="rounded-lg border border-border overflow-hidden">
+                  <div className="max-h-96 overflow-y-auto custom-scrollbar">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-muted/95 backdrop-blur z-10">
+                        <tr className="border-b border-border">
+                          <th className="text-left font-semibold text-muted-foreground p-2.5">Usuário</th>
+                          <th className="text-center font-semibold text-muted-foreground p-2.5 hidden sm:table-cell">Plano</th>
+                          <th className="text-center font-semibold text-muted-foreground p-2.5">
+                            <span className="inline-flex flex-col items-center leading-tight">
+                              <span>Entrada</span>
+                              <span className="text-[9px] text-emerald-600 dark:text-emerald-400">L1-L5</span>
+                            </span>
+                          </th>
+                          <th className="text-center font-semibold text-muted-foreground p-2.5">
+                            <span className="inline-flex flex-col items-center leading-tight">
+                              <span>Residual</span>
+                              <span className="text-[9px] text-teal-600 dark:text-teal-400">L1-L7</span>
+                            </span>
+                          </th>
+                          <th className="text-center font-semibold text-muted-foreground p-2.5">
+                            <span className="inline-flex flex-col items-center leading-tight">
+                              <span>Vendas</span>
+                              <span className="text-[9px] text-cyan-600 dark:text-cyan-400">L1-L9</span>
+                            </span>
+                          </th>
+                          <th className="text-center font-semibold text-muted-foreground p-2.5">Total Rede</th>
+                          <th className="text-center font-semibold text-muted-foreground p-2.5 w-8"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {matrixOverview.userMatrices.map((u, idx) => {
+                          const isExpanded = expandedMatrixUser === u.userId
+                          return (
+                            <Fragment key={u.userId}>
+                              <tr
+                                onClick={() => setExpandedMatrixUser(isExpanded ? null : u.userId)}
+                                className={`border-b border-border/50 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 transition-colors cursor-pointer ${idx % 2 === 0 ? '' : 'bg-muted/20'}`}
+                              >
+                                <td className="p-2.5">
+                                  <div className="flex items-center gap-2">
+                                    <div className={`h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${u.isActive ? 'bg-emerald-600' : 'bg-gray-400'}`}>
+                                      {u.userName?.charAt(0)?.toUpperCase() || '?'}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-medium text-foreground truncate">{u.userName}</p>
+                                      <p className="text-[10px] text-muted-foreground truncate">{u.userEmail}</p>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="p-2.5 text-center hidden sm:table-cell">
+                                  <Badge variant="outline" className="text-[10px]">{getPlanName(u.plan)}</Badge>
+                                </td>
+                                <td className="p-2.5 text-center">
+                                  <span className="text-xs font-semibold text-teal-700 dark:text-teal-400">{u.entradaTotal}</span>
+                                </td>
+                                <td className="p-2.5 text-center">
+                                  <span className="text-xs font-semibold text-cyan-700 dark:text-cyan-400">{u.residualTotal}</span>
+                                </td>
+                                <td className="p-2.5 text-center">
+                                  <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">{u.vendasTotal}</span>
+                                </td>
+                                <td className="p-2.5 text-center">
+                                  <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-xs">
+                                    {u.networkTotal}
+                                  </Badge>
+                                </td>
+                                <td className="p-2.5 text-center">
+                                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                </td>
+                              </tr>
+                              {isExpanded && (
+                                <tr className="bg-emerald-50/40 dark:bg-emerald-950/10 border-b border-border/50">
+                                  <td colSpan={7} className="p-3">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                      {/* Entrada breakdown */}
+                                      <div className="rounded-md bg-teal-50 dark:bg-teal-950/20 p-2.5">
+                                        <p className="text-[11px] font-semibold text-teal-700 dark:text-teal-400 mb-1.5 flex items-center gap-1">
+                                          <ArrowUpDown className="h-3 w-3" /> Entrada (4x5) — {u.entradaTotal}
+                                        </p>
+                                        <div className="grid grid-cols-5 gap-1">
+                                          {[1, 2, 3, 4, 5].map(lvl => (
+                                            <div key={lvl} className="text-center bg-background/60 rounded p-1">
+                                              <p className="text-[9px] text-muted-foreground">L{lvl}</p>
+                                              <p className="text-xs font-bold text-teal-700 dark:text-teal-400">{u.entradaByLevel[lvl] || 0}</p>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      {/* Residual breakdown */}
+                                      <div className="rounded-md bg-cyan-50 dark:bg-cyan-950/20 p-2.5">
+                                        <p className="text-[11px] font-semibold text-cyan-700 dark:text-cyan-400 mb-1.5 flex items-center gap-1">
+                                          <TrendingUp className="h-3 w-3" /> Residual (4x7) — {u.residualTotal}
+                                        </p>
+                                        <div className="grid grid-cols-7 gap-1">
+                                          {[1, 2, 3, 4, 5, 6, 7].map(lvl => (
+                                            <div key={lvl} className="text-center bg-background/60 rounded p-1">
+                                              <p className="text-[9px] text-muted-foreground">L{lvl}</p>
+                                              <p className="text-xs font-bold text-cyan-700 dark:text-cyan-400">{u.residualByLevel[lvl] || 0}</p>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      {/* Vendas breakdown */}
+                                      <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/20 p-2.5 md:col-span-1">
+                                        <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 mb-1.5 flex items-center gap-1">
+                                          <Network className="h-3 w-3" /> Vendas (4x9) — {u.vendasTotal}
+                                        </p>
+                                        <div className="grid grid-cols-9 gap-1">
+                                          {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(lvl => (
+                                            <div key={lvl} className="text-center bg-background/60 rounded p-1">
+                                              <p className="text-[8px] text-muted-foreground">L{lvl}</p>
+                                              <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">{u.vendasByLevel[lvl] || 0}</p>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="mt-2 flex items-center gap-3 text-[10px] text-muted-foreground">
+                                      <span>Código: <span className="font-mono text-foreground">{u.referralCode || '—'}</span></span>
+                                      <span>Status: {u.isActive ? <span className="text-emerald-600">Ativo</span> : <span className="text-gray-500">Inativo</span>}</span>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-emerald-200 dark:border-emerald-800 p-8 text-center">
+                  {matrixOverviewLoading ? (
+                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                      <RefreshCw className="h-6 w-6 animate-spin text-emerald-600" />
+                      <p className="text-xs">Carregando matriz de compras...</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                      <Layers className="h-8 w-8 text-muted-foreground/50" />
+                      <p className="text-sm">Nenhum usuário com rede de indicações encontrado</p>
+                      <p className="text-[10px]">A matriz de compras aparecerá aqui assim que usuários começarem a indicar novos membros.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Cashback Totals */}
           {cashbackData?.totals && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

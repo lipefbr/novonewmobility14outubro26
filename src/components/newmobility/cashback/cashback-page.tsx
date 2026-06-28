@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { DollarSign, TrendingUp, ShoppingBag, ArrowDownRight, Download, TrendingDown, Users, Layers, BarChart3, Activity, ChevronRight, Lightbulb, Sparkles, ArrowUpRight, Zap } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { EmptyState } from '../ui/empty-states'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   BarChart,
   Bar,
@@ -38,6 +39,52 @@ const INITIAL_CASHBACK_SUMMARY = {
 }
 
 type Period = '7d' | '30d' | 'all'
+
+// Loading skeleton shown while the dashboard API is being fetched.
+// The dashboard API can take several seconds to respond (it walks the
+// full referral tree), so without this the user would briefly see the
+// EmptyState ("Nenhum CashBack registrado ainda") even if they have
+// referrals — because `cashbackSummary` is still the all-zero INITIAL
+// state during that window.
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="space-y-2">
+          <Skeleton className="h-6 w-48" />
+          <Skeleton className="h-4 w-64" />
+        </div>
+        <Skeleton className="h-8 w-40" />
+      </div>
+      {/* Hero card placeholder */}
+      <Card className="border-0 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 shadow-lg overflow-hidden">
+        <CardContent className="p-5 md:p-6">
+          <div className="space-y-3">
+            <Skeleton className="h-4 w-48 bg-white/20" />
+            <Skeleton className="h-9 w-40 bg-white/20" />
+            <div className="flex gap-3">
+              <Skeleton className="h-10 w-24 bg-white/20" />
+              <Skeleton className="h-10 w-24 bg-white/20" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      {/* Charts placeholder */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card><CardContent className="p-4"><div className="space-y-2"><Skeleton className="h-4 w-40" /><Skeleton className="h-[140px] w-full" /></div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="space-y-2"><Skeleton className="h-4 w-40" /><Skeleton className="h-[140px] w-full" /></div></CardContent></Card>
+      </div>
+      {/* Tabs placeholder */}
+      <Skeleton className="h-10 w-full sm:w-80" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {[0, 1, 2, 3].map((i) => (
+          <Card key={i}><CardContent className="p-4"><Skeleton className="h-16 w-full" /></CardContent></Card>
+        ))}
+      </div>
+      <Card><CardContent className="p-4"><Skeleton className="h-48 w-full" /></CardContent></Card>
+    </div>
+  )
+}
 
 // Animated number counter component
 function AnimatedCounter({ value, className }: { value: number; className?: string }) {
@@ -161,6 +208,11 @@ export function CashbackPage() {
   const [activeTab, setActiveTab] = useState('entrada')
   const [period, setPeriod] = useState<Period>('30d')
   const [cashbackSummary, setCashbackSummary] = useState(INITIAL_CASHBACK_SUMMARY)
+  // `loading` is true until the dashboard API responds (success or
+  // failure). While true we show a skeleton instead of the EmptyState,
+  // so users with referrals don't briefly see "Nenhum CashBack
+  // registrado ainda" during the ~8s dashboard fetch.
+  const [loading, setLoading] = useState(true)
   const { t } = useTranslation()
   const { setActivePage, user } = useStore()
 
@@ -212,6 +264,9 @@ export function CashbackPage() {
         })
       })
       .catch((err) => console.error('Failed to load cashback summary:', err))
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
 
     return () => {
       cancelled = true
@@ -227,6 +282,16 @@ export function CashbackPage() {
   // intended.
   const hasCashbackData = cashbackSummary.entrada.total > 0
 
+  // While the dashboard API is loading, show a skeleton instead of the
+  // EmptyState. This prevents the false "Nenhum CashBack registrado
+  // ainda" flash for users who DO have referrals but whose data hasn't
+  // loaded yet (dashboard API can take ~8s).
+  if (loading) {
+    return <LoadingSkeleton />
+  }
+
+  // EmptyState only shows after loading is COMPLETE and the user truly
+  // has no entrada matrix members.
   if (!hasCashbackData) {
     return (
       <div className="space-y-6">
@@ -254,7 +319,9 @@ export function CashbackPage() {
   const totalMembers = cashbackSummary.entrada.total + cashbackSummary.residual.total + cashbackSummary.vendas.total
   const totalUsers = cashbackSummary.entrada.totalUsers + cashbackSummary.residual.totalUsers + cashbackSummary.vendas.totalUsers
   const lastMonthTotal = cashbackSummary.entrada.lastMonth + cashbackSummary.residual.lastMonth + cashbackSummary.vendas.lastMonth
-  const percentChange = 8.5
+  // Previously hardcoded to 8.5 — that was fictitious data. Set to 0
+  // until the API exposes a real month-over-month change metric.
+  const percentChange = 0
 
   const getFilteredSummary = (type: 'entrada' | 'residual' | 'vendas') => {
     const s = cashbackSummary[type]
@@ -327,7 +394,7 @@ export function CashbackPage() {
                   <p className="text-lg font-bold text-white">{lastMonthTotal.toLocaleString('pt-BR')}</p>
                   <div className="flex items-center justify-center gap-1 mt-0.5">
                     <ArrowDownRight className="h-3 w-3 text-emerald-300" />
-                    <span className="text-[10px] text-emerald-300">+8.5%</span>
+                    <span className="text-[10px] text-emerald-300">+{percentChange}%</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -544,10 +611,10 @@ export function CashbackPage() {
               transition={{ duration: 0.25 }}
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" trend={5} level="high" progressPct={75} />
-                <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.entrada.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" trend={8} level="medium" progressPct={60} />
-                <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.entrada.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" trend={3} level="medium" progressPct={35} />
-                <SummaryCard label={t('cashback.pending')} value={cashbackSummary.entrada.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} level="low" progressPct={15} />
+                <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" trend={0} level="high" progressPct={undefined} />
+                <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.entrada.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" trend={0} level="medium" progressPct={undefined} />
+                <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.entrada.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" trend={0} level="medium" progressPct={undefined} />
+                <SummaryCard label={t('cashback.pending')} value={cashbackSummary.entrada.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} level="low" progressPct={undefined} />
               </div>
             </motion.div>
             <MatrixVisualization type="entrada" onUpgradeClick={() => setActivePage('myplan')} />
@@ -561,10 +628,10 @@ export function CashbackPage() {
               transition={{ duration: 0.25 }}
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" trend={3} level="high" progressPct={70} />
-                <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.residual.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" trend={6} level="medium" progressPct={55} />
-                <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.residual.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" trend={2} level="medium" progressPct={30} />
-                <SummaryCard label={t('cashback.pending')} value={cashbackSummary.residual.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} level="low" progressPct={12} />
+                <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" trend={0} level="high" progressPct={undefined} />
+                <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.residual.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" trend={0} level="medium" progressPct={undefined} />
+                <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.residual.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" trend={0} level="medium" progressPct={undefined} />
+                <SummaryCard label={t('cashback.pending')} value={cashbackSummary.residual.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} level="low" progressPct={undefined} />
               </div>
             </motion.div>
             <MatrixVisualization type="residual" />
@@ -578,10 +645,10 @@ export function CashbackPage() {
               transition={{ duration: 0.25 }}
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" trend={15} level="high" progressPct={80} />
-                <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.vendas.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" trend={10} level="high" progressPct={65} />
-                <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.vendas.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" trend={7} level="medium" progressPct={40} />
-                <SummaryCard label={t('cashback.pending')} value={cashbackSummary.vendas.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} level="low" progressPct={20} />
+                <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" trend={0} level="high" progressPct={undefined} />
+                <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.vendas.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" trend={0} level="high" progressPct={undefined} />
+                <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.vendas.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" trend={0} level="medium" progressPct={undefined} />
+                <SummaryCard label={t('cashback.pending')} value={cashbackSummary.vendas.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} level="low" progressPct={undefined} />
               </div>
             </motion.div>
             <MatrixVisualization type="vendas" />
