@@ -268,12 +268,11 @@ export function CashbackPage() {
   const currentSummary = getFilteredSummary(activeTab as 'entrada' | 'residual' | 'vendas')
 
   // Distribution chart data — values are MEMBER COUNTS, not R$.
-  // (The 4x5/4x7/4x9 names remain for backwards UI compat — the
-  // actual matrix width is 5, see matrix-visualization.tsx.)
+  // (The 4x5/4x7/4x9 names reflect the actual matrix width of 4 — see matrix-visualization.tsx.)
   const distributionData = [
-    { name: 'Entrada 5x5', value: cashbackSummary.entrada.total, color: '#059669', users: cashbackSummary.entrada.totalUsers },
-    { name: 'Residual 5x7', value: cashbackSummary.residual.total, color: '#0d9488', users: cashbackSummary.residual.totalUsers },
-    { name: 'Vendas 5x9', value: cashbackSummary.vendas.total, color: '#f59e0b', users: cashbackSummary.vendas.totalUsers },
+    { name: 'Entrada 4x5', value: cashbackSummary.entrada.total, color: '#059669', users: cashbackSummary.entrada.totalUsers },
+    { name: 'Residual 4x7', value: cashbackSummary.residual.total, color: '#0d9488', users: cashbackSummary.residual.totalUsers },
+    { name: 'Vendas 4x9', value: cashbackSummary.vendas.total, color: '#f59e0b', users: cashbackSummary.vendas.totalUsers },
   ]
 
   // Donut chart data — also member counts.
@@ -551,7 +550,7 @@ export function CashbackPage() {
                 <SummaryCard label={t('cashback.pending')} value={cashbackSummary.entrada.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} level="low" progressPct={15} />
               </div>
             </motion.div>
-            <MatrixVisualization type="entrada" />
+            <MatrixVisualization type="entrada" onUpgradeClick={() => setActivePage('myplan')} />
           </TabsContent>
 
           <TabsContent value="residual" className="mt-4 space-y-4" key="residual-content">

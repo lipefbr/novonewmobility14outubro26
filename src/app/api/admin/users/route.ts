@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
           isActive: true, referralCode: true, referredById: true,
           balanceWithdrawal: true, balanceMobility: true, balanceShopping: true,
           balanceFood: true, balancePharmacy: true, balanceGratification: true,
+          balancePaymentInvoice: true,
           balanceFree: true, balancePending: true,
           careerPoints: true, personalPoints: true, stars: true,
           city: true, state: true, country: true,

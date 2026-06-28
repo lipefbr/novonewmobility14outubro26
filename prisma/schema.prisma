@@ -30,6 +30,7 @@ model User {
   balanceFood           Int                    @default(0)
   balancePharmacy       Int                    @default(0)
   balanceGratification  Int                    @default(0)
+  balancePaymentInvoice Int                    @default(0)
   careerPoints          Int                    @default(0)
   personalPoints        Int                    @default(0)
   stars                 Int                    @default(0)
@@ -244,16 +245,30 @@ model CareerMilestone {
 }
 
 model Gratification {
-  id          String    @id @default(cuid())
-  userId      String
-  type        String
-  amount      Int
-  category    String
-  description String?
-  isClaimed   Boolean   @default(false)
-  claimedAt   DateTime?
-  createdAt   DateTime  @default(now())
-  user        User      @relation(fields: [userId], references: [id])
+  id           String    @id @default(cuid())
+  userId       String
+  type         String
+  amount       Int
+  category     String
+  description  String?
+  isClaimed    Boolean   @default(false)
+  claimedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  // New client-spec §5 fields for richer gratification tracking.
+  // - frequency: 'one_time' | 'monthly' | 'daily' (default 'one_time').
+  //   Only "Pagamento de Faturas" is recurring per client spec; everything
+  //   else is one-time. Kept as a free string so admins can introduce new
+  //   frequencies without a schema change.
+  // - qualification: human-readable qualification text (e.g. "Ao fechar o
+  //   5º nível", "6 meses de cadastro ativo"). Mirrors the client spec table.
+  // - targetValue: for goal-tracking gratifications (e.g. driver daily goal
+  //   = 18 rides). Null when not applicable.
+  // - currentValue: progress towards targetValue. Null when not applicable.
+  frequency    String?   
+  qualification String?  
+  targetValue  Int?      
+  currentValue Int?      
+  user         User      @relation(fields: [userId], references: [id])
 }
 
 model PointTransaction {
@@ -504,7 +519,7 @@ model MatrixType {
   code                                   String               @unique
   name                                   String
   matrixKind                             String
-  width                                  Int                  @default(5)
+  width                                  Int                  @default(4)
   depth                                  Int                  @default(5)
   description                            String?
   color                                  String?

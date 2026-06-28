@@ -38,8 +38,8 @@ export async function GET(request: Request) {
     const percentages = await getResidualLevels()
 
     // Read matrix structural width from the MatrixType table (admin-configurable).
-    // Falls back to 5 (the new default) if the row is missing or the lookup fails.
-    let matrixWidth = 5
+    // Falls back to 4 (the client-specified 4-wide matrix) if the row is missing or the lookup fails.
+    let matrixWidth = 4
     let matrixDepth = 7
     try {
       const mt = await prisma.matrixType.findFirst({
@@ -47,7 +47,7 @@ export async function GET(request: Request) {
         orderBy: { createdAt: 'asc' },
       })
       if (mt) {
-        matrixWidth = mt.width || 5
+        matrixWidth = mt.width || 4
         matrixDepth = mt.depth || 7
       }
     } catch (mtErr) {
@@ -67,7 +67,7 @@ export async function GET(request: Request) {
     })
 
     // Max matrix size for an N-wide, D-deep matrix: (width^(D+1) - 1) / (width - 1)
-    // For 5-wide, 7-deep: (5^8 - 1) / 4 = 97656
+    // For 4-wide, 7-deep: (4^8 - 1) / 3 = 21845
     const maxMatrixSize = matrixWidth > 1
       ? Math.floor((Math.pow(matrixWidth, matrixDepth + 1) - 1) / (matrixWidth - 1))
       : matrixDepth + 1

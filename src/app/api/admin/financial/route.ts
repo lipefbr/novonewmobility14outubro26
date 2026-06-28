@@ -69,6 +69,7 @@ export async function GET(req: NextRequest) {
           balanceFood: true,
           balancePharmacy: true,
           balanceGratification: true,
+          balancePaymentInvoice: true,
         },
       })
       const circ = circulationAgg._sum
@@ -78,7 +79,8 @@ export async function GET(req: NextRequest) {
         (circ.balanceShopping || 0) +
         (circ.balanceFood || 0) +
         (circ.balancePharmacy || 0) +
-        (circ.balanceGratification || 0)
+        (circ.balanceGratification || 0) +
+        (circ.balancePaymentInvoice || 0)
     } catch { /* ignore */ }
 
     try {

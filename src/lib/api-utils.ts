@@ -49,45 +49,49 @@ export function formatTimeSince(date: Date): string {
 
 // Default cashback level percentages (used as fallback if SystemConfig has no entries).
 // These mirror the defaults baked into the admin cashback-config route.
+// Per client spec (Índice.docx):
+//   - Entrada 4x5:   L1=5%, L2=10%, L3=10%, L4=5%, L5=5%
+//   - Residual 4x7:  L1=10%, L2=9%, L3=5%, L4=5%, L5=4%, L6=3%, L7=2%
+//   - Vendas 4x9:    all 9 levels = 0.10% (uniform, total 0.90%)
 export const DEFAULT_ENTRADA_LEVELS: number[] = [5, 10, 10, 5, 5]
-export const DEFAULT_RESIDUAL_LEVELS: number[] = [5, 5.5, 6, 6.5, 7, 7.5, 8]
-export const DEFAULT_VENDAS_LEVELS: number[] = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.2]
+export const DEFAULT_RESIDUAL_LEVELS: number[] = [10, 9, 5, 5, 4, 3, 2]
+export const DEFAULT_VENDAS_LEVELS: number[] = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
 
 // Backward-compat structured exports (kept so other files that still import the
 // old constants — e.g. /api/simulator/calculate/route.ts — don't break).
 // New code should prefer the async helpers below.
 //
-// The `users` per level reflects the 5-wide matrix structure (5^level).
+// The `users` per level reflects the 4-wide matrix structure (4^level).
 // Percentages come from DEFAULT_*_LEVELS above and may be overridden at runtime
 // by SystemConfig (admin-configurable).
 export const ENTRADA_LEVELS = [
-  { level: 1, percentage: DEFAULT_ENTRADA_LEVELS[0], users: 5 },
-  { level: 2, percentage: DEFAULT_ENTRADA_LEVELS[1], users: 25 },
-  { level: 3, percentage: DEFAULT_ENTRADA_LEVELS[2], users: 125 },
-  { level: 4, percentage: DEFAULT_ENTRADA_LEVELS[3], users: 625 },
-  { level: 5, percentage: DEFAULT_ENTRADA_LEVELS[4], users: 3125 },
+  { level: 1, percentage: DEFAULT_ENTRADA_LEVELS[0], users: Math.pow(4, 1) },
+  { level: 2, percentage: DEFAULT_ENTRADA_LEVELS[1], users: Math.pow(4, 2) },
+  { level: 3, percentage: DEFAULT_ENTRADA_LEVELS[2], users: Math.pow(4, 3) },
+  { level: 4, percentage: DEFAULT_ENTRADA_LEVELS[3], users: Math.pow(4, 4) },
+  { level: 5, percentage: DEFAULT_ENTRADA_LEVELS[4], users: Math.pow(4, 5) },
 ]
 
 export const RESIDUAL_LEVELS = [
-  { level: 1, percentage: DEFAULT_RESIDUAL_LEVELS[0], users: 5 },
-  { level: 2, percentage: DEFAULT_RESIDUAL_LEVELS[1], users: 25 },
-  { level: 3, percentage: DEFAULT_RESIDUAL_LEVELS[2], users: 125 },
-  { level: 4, percentage: DEFAULT_RESIDUAL_LEVELS[3], users: 625 },
-  { level: 5, percentage: DEFAULT_RESIDUAL_LEVELS[4], users: 3125 },
-  { level: 6, percentage: DEFAULT_RESIDUAL_LEVELS[5], users: 15625 },
-  { level: 7, percentage: DEFAULT_RESIDUAL_LEVELS[6], users: 78125 },
+  { level: 1, percentage: DEFAULT_RESIDUAL_LEVELS[0], users: Math.pow(4, 1) },
+  { level: 2, percentage: DEFAULT_RESIDUAL_LEVELS[1], users: Math.pow(4, 2) },
+  { level: 3, percentage: DEFAULT_RESIDUAL_LEVELS[2], users: Math.pow(4, 3) },
+  { level: 4, percentage: DEFAULT_RESIDUAL_LEVELS[3], users: Math.pow(4, 4) },
+  { level: 5, percentage: DEFAULT_RESIDUAL_LEVELS[4], users: Math.pow(4, 5) },
+  { level: 6, percentage: DEFAULT_RESIDUAL_LEVELS[5], users: Math.pow(4, 6) },
+  { level: 7, percentage: DEFAULT_RESIDUAL_LEVELS[6], users: Math.pow(4, 7) },
 ]
 
 export const VENDAS_LEVELS = [
-  { level: 1, percentage: DEFAULT_VENDAS_LEVELS[0], category: 'mobility', users: 5 },
-  { level: 2, percentage: DEFAULT_VENDAS_LEVELS[1], category: 'mobility', users: 25 },
-  { level: 3, percentage: DEFAULT_VENDAS_LEVELS[2], category: 'mobility', users: 125 },
-  { level: 4, percentage: DEFAULT_VENDAS_LEVELS[3], category: 'mobility', users: 625 },
-  { level: 5, percentage: DEFAULT_VENDAS_LEVELS[4], category: 'mobility', users: 3125 },
-  { level: 6, percentage: DEFAULT_VENDAS_LEVELS[5], category: 'mobility', users: 15625 },
-  { level: 7, percentage: DEFAULT_VENDAS_LEVELS[6], category: 'mobility', users: 78125 },
-  { level: 8, percentage: DEFAULT_VENDAS_LEVELS[7], category: 'mobility', users: 390625 },
-  { level: 9, percentage: DEFAULT_VENDAS_LEVELS[8], category: 'mobility', users: 1953125 },
+  { level: 1, percentage: DEFAULT_VENDAS_LEVELS[0], category: 'mobility', users: Math.pow(4, 1) },
+  { level: 2, percentage: DEFAULT_VENDAS_LEVELS[1], category: 'mobility', users: Math.pow(4, 2) },
+  { level: 3, percentage: DEFAULT_VENDAS_LEVELS[2], category: 'mobility', users: Math.pow(4, 3) },
+  { level: 4, percentage: DEFAULT_VENDAS_LEVELS[3], category: 'mobility', users: Math.pow(4, 4) },
+  { level: 5, percentage: DEFAULT_VENDAS_LEVELS[4], category: 'mobility', users: Math.pow(4, 5) },
+  { level: 6, percentage: DEFAULT_VENDAS_LEVELS[5], category: 'mobility', users: Math.pow(4, 6) },
+  { level: 7, percentage: DEFAULT_VENDAS_LEVELS[6], category: 'mobility', users: Math.pow(4, 7) },
+  { level: 8, percentage: DEFAULT_VENDAS_LEVELS[7], category: 'mobility', users: Math.pow(4, 8) },
+  { level: 9, percentage: DEFAULT_VENDAS_LEVELS[8], category: 'mobility', users: Math.pow(4, 9) },
 ]
 
 /**
@@ -174,23 +178,47 @@ export async function getVendasLevels(): Promise<number[]> {
   }
 }
 
+// Career pins per client spec (Índice.docx §6):
+// "NÃO TEM O PLANO DE CARREIRA É PARA TODOS OS USUÁRIOS EM GERAL" — the plan
+// applies to ALL users (not just drivers). Each pin is a MONTHLY bonus paid
+// every month as long as the user maintains that graduation:
+//   - PIN SAFIRA    — Categoria 3 — R$ 2.000/mês
+//   - PIN RUBI      — Categoria 2 — R$ 3.000/mês
+//   - PIN ESMERALDA — Categoria 1 — R$ 4.000/mês
+//   - PIN DIAMANTE  — Categoria 4 — R$ 5.000/mês
+//   - PIN IMPERIAL  — Categoria 5 — R$ 6.000/mês
+// (`monthlyBonusCents` is the bonus amount in centavos.)
 export const CAREER_RANKS = [
-  { name: 'Associado', minPoints: 0, stars: 0 },
-  { name: 'Bronze', minPoints: 10, stars: 1 },
-  { name: 'Prata', minPoints: 25, stars: 2 },
-  { name: 'Ouro', minPoints: 50, stars: 3 },
-  { name: 'Safira', minPoints: 100, stars: 4 },
-  { name: 'Diamante', minPoints: 250, stars: 5 },
+  { name: 'Safira',    minPoints: 100,  stars: 1, monthlyBonusCents: 200000,  category: 3 }, // R$2.000
+  { name: 'Rubi',      minPoints: 250,  stars: 2, monthlyBonusCents: 300000,  category: 2 }, // R$3.000
+  { name: 'Esmeralda', minPoints: 500,  stars: 3, monthlyBonusCents: 400000,  category: 1 }, // R$4.000
+  { name: 'Diamante',  minPoints: 1000, stars: 4, monthlyBonusCents: 500000,  category: 4 }, // R$5.000
+  { name: 'Imperial',  minPoints: 2500, stars: 5, monthlyBonusCents: 600000,  category: 5 }, // R$6.000
 ]
 
+// Virtual "Associado" rank returned by getCareerRank() when the user has not
+// yet reached the lowest pin (Safira, 100 points). Kept out of CAREER_RANKS
+// so the UI timeline only renders the 5 real jewel pins.
+export const ASSOCIADO_RANK = {
+  name: 'Associado',
+  minPoints: 0,
+  stars: 0,
+  monthlyBonusCents: 0,
+  category: 0,
+}
+
+// Returns the highest pin whose minPoints <= points, or the virtual
+// "Associado" rank if the user hasn't reached Safira yet.
 export function getCareerRank(points: number) {
-  let rank = CAREER_RANKS[0]
+  let rank = ASSOCIADO_RANK
   for (const r of CAREER_RANKS) {
     if (points >= r.minPoints) rank = r
   }
   return rank
 }
 
+// Returns the next pin above the user's current points, or null if the user
+// is already at the top (Imperial).
 export function getNextRank(points: number) {
   for (const r of CAREER_RANKS) {
     if (points < r.minPoints) return r

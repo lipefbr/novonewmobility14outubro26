@@ -13,7 +13,8 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import {
   CreditCard, Check, Star, ArrowUpRight, FileText, Calendar,
   Shield, Car, Pill, ShoppingBag, Gamepad2, Trophy, Phone,
-  Heart, Zap, Gift, Users, Smartphone, Clock, Calculator, TrendingUp, Sparkles, Copy
+  Heart, Zap, Gift, Users, Smartphone, Clock, Calculator, TrendingUp, Sparkles, Copy,
+  Lock, Wallet, ShieldCheck, ChevronRight, AlertCircle
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
@@ -186,13 +187,27 @@ function mergeApiPlan(apiPlan: ApiPlan) {
 export function MyPlanPage() {
   const { user, updateUser } = useStore()
   const { toast } = useToast()
-  const currentPlan = user?.plan || 'blue5'
+  // Normalize the user's plan: blue5/premium5 are the same tier
+  // (Premium 5 per client spec §1.1). The store may carry either code;
+  // we treat them identically.
+  const rawPlan = user?.plan || 'blue5'
+  const currentPlan = rawPlan === 'premium5' ? 'blue5' : rawPlan
+  const isPremium5 = currentPlan === 'blue5'
+  const isBlue3 = currentPlan === 'blue3'
 
   // `plans` is the runtime source of truth for the plan comparison UI.
   // Initialised with FALLBACK_PLANS so the page renders immediately
   // (no flash of empty content); replaced with DB-sourced values once
   // /api/plans resolves.
   const [plans, setPlans] = useState(FALLBACK_PLANS)
+
+  // Premium 5 upgrade dialog state
+  const [premium5DialogOpen, setPremium5DialogOpen] = useState(false)
+  const [premium5WalletSource, setPremium5WalletSource] = useState<'withdrawal' | 'paymentInvoice'>('withdrawal')
+  const [premium5Step, setPremium5Step] = useState<'choose' | 'pix' | 'success'>('choose')
+  const [premium5Processing, setPremium5Processing] = useState(false)
+  const [premium5PixData, setPremium5PixData] = useState<any>(null)
+  const [premium5Copied, setPremium5Copied] = useState(false)
 
   // Fetch plans from the API on mount so admin edits to the Plan table
   // (prices, names, active flags) propagate to the My Plan page.
@@ -326,6 +341,127 @@ export function MyPlanPage() {
     }
   }
 
+  // ─── Premium 5 upgrade handlers (Índice.docx §3) ─────────────────
+  // Two paths:
+  //   1. "Descontar Automaticamente" — POST /api/plans/upgrade with
+  //      paymentMethod: 'automatic' and walletSource: 'withdrawal' |
+  //      'paymentInvoice'. Backend deducts R$850 instantly and
+  //      unlocks entrada levels 4-5.
+  //   2. "Pagar via PIX"             — POST /api/plans/upgrade with
+  //      paymentMethod: 'manual'. Backend creates a pending invoice
+  //      and returns a PIX BR Code. User pays externally then calls
+  //      /api/plans/confirm-pix to confirm.
+  const handlePremium5Automatic = async () => {
+    if (!user?.id) return
+    setPremium5Processing(true)
+    try {
+      const res = await fetch('/api/plans/upgrade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          fromPlan: 'blue3',
+          toPlan: 'premium5',
+          paymentMethod: 'automatic',
+          walletSource: premium5WalletSource,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || data?.message || 'Falha no upgrade')
+      }
+      // Refresh the user store with the new plan + balances
+      if (data.user) {
+        updateUser({
+          plan: 'blue5',
+          isActive: true,
+          balanceWithdrawal: data.user.balanceWithdrawal,
+          balancePaymentInvoice: data.user.balancePaymentInvoice,
+        })
+      }
+      setPremium5Step('success')
+      toast({
+        title: 'Upgrade realizado com sucesso!',
+        description: 'Seu plano foi atualizado para Premium 5. Níveis 4 e 5 da matriz Entrada desbloqueados!',
+      })
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao realizar upgrade',
+        description: err?.message || 'Tente novamente mais tarde',
+        variant: 'destructive',
+      })
+    } finally {
+      setPremium5Processing(false)
+    }
+  }
+
+  const handlePremium5Manual = async () => {
+    if (!user?.id) return
+    setPremium5Processing(true)
+    try {
+      const res = await fetch('/api/plans/upgrade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          fromPlan: 'blue3',
+          toPlan: 'premium5',
+          paymentMethod: 'manual',
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || data?.message || 'Falha ao gerar PIX')
+      }
+      setPremium5PixData(data.data || data)
+      setPremium5Step('pix')
+      toast({
+        title: 'PIX gerado!',
+        description: 'Pague o PIX para confirmar seu upgrade para Premium 5',
+      })
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao gerar PIX',
+        description: err?.message || 'Tente novamente mais tarde',
+        variant: 'destructive',
+      })
+    } finally {
+      setPremium5Processing(false)
+    }
+  }
+
+  const handlePremium5ConfirmPix = async () => {
+    if (!user?.id || !premium5PixData?.invoice?.id) return
+    setPremium5Processing(true)
+    try {
+      const data = await plansApi.confirmPixPayment(user.id, premium5PixData.invoice.id)
+      if (data.paid) {
+        if (data.user) {
+          updateUser({ plan: 'blue5', isActive: true })
+        }
+        setPremium5Step('success')
+        toast({
+          title: 'Pagamento confirmado!',
+          description: 'Seu plano foi atualizado para Premium 5. Níveis 4 e 5 da matriz Entrada desbloqueados!',
+        })
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao confirmar pagamento',
+        description: err?.message || 'Tente novamente',
+        variant: 'destructive',
+      })
+    } finally {
+      setPremium5Processing(false)
+    }
+  }
+
+  const openPremium5Dialog = () => {
+    setPremium5Step('choose')
+    setPremium5PixData(null)
+    setPremium5DialogOpen(true)
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -362,7 +498,7 @@ export function MyPlanPage() {
                 {currentPlan !== 'blue5' && (
                   <Button className="bg-white text-emerald-700 hover:bg-emerald-50 gap-1" onClick={() => handleCalculateUpgrade('blue5')}>
                     <ArrowUpRight className="h-4 w-4" />
-                    Upgrade para Blue 5
+                    Upgrade para Premium 5
                   </Button>
                 )}
               </div>
@@ -379,6 +515,188 @@ export function MyPlanPage() {
                   </div>
                 ))}
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* ─── Blue 3 → Premium 5 Upgrade Card (Índice.docx §3) ───────
+          Shown only when user is on Blue 3. Lists the unlocked
+          benefits (entrada levels 4-5 + R$9.600 extra earnings
+          potential) and offers two payment paths: automatic wallet
+          deduction or manual PIX. */}
+      {isBlue3 && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <Card className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border-amber-200 dark:border-amber-800 shadow-lg overflow-hidden">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="p-2.5 rounded-xl bg-amber-500 text-white shrink-0">
+                  <Sparkles className="h-6 w-6" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-foreground">
+                    Fazer Upgrade para Premium 5 — R$ 850,00
+                  </h3>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Desbloqueie os níveis 4 e 5 da matriz Entrada e potencialize seus ganhos.
+                  </p>
+                </div>
+                <Badge className="bg-amber-500 text-white border-0">Premium 5</Badge>
+              </div>
+
+              {/* Benefits unlocked */}
+              <div className="bg-white/70 dark:bg-black/20 rounded-xl p-4 mb-4 border border-amber-100 dark:border-amber-900">
+                <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                  <Check className="h-3.5 w-3.5" />
+                  Benefícios desbloqueados
+                </p>
+                <ul className="space-y-1.5 text-sm text-foreground">
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <span>Níveis 4 e 5 da matriz Entrada desbloqueados (de 3 para 5 níveis de comissões)</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <span>Potencial de ganhos extras no nível 4: <strong>R$ 1.920,00</strong> (256 usuários × 5% × R$150)</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <span>Potencial de ganhos extras no nível 5: <strong>R$ 7.680,00</strong> (1.024 usuários × 5% × R$150)</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <span>Custo mensal combinado: <strong>R$ 999,90</strong> (R$150 Blue 3 + R$850 Premium 5)</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <span>Sem prazo — faça o upgrade quando atingir o nível e quiser receber as comissões</span>
+                  </li>
+                </ul>
+              </div>
+
+              {/* Two payment paths */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="bg-white dark:bg-card rounded-xl p-4 border border-border">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Wallet className="h-4 w-4 text-emerald-600" />
+                    <p className="text-sm font-bold text-foreground">Descontar Automaticamente</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Debita R$850 da carteira escolhida e ativa o Premium 5 imediatamente.
+                  </p>
+                  <Button
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+                    onClick={openPremium5Dialog}
+                  >
+                    <Zap className="h-4 w-4" />
+                    Descontar Fatura Automática
+                  </Button>
+                </div>
+
+                <div className="bg-white dark:bg-card rounded-xl p-4 border border-border">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Smartphone className="h-4 w-4 text-blue-600" />
+                    <p className="text-sm font-bold text-foreground">Pagar via PIX</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Gere uma fatura de R$850 e pague via PIX. Ativação após confirmação.
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="w-full border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 gap-1"
+                    onClick={handlePremium5Manual}
+                    disabled={premium5Processing}
+                  >
+                    <Smartphone className="h-4 w-4" />
+                    Pagar via PIX
+                  </Button>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-muted-foreground mt-3 flex items-start gap-1.5">
+                <AlertCircle className="h-3 w-3 shrink-0 mt-0.5" />
+                Após o upgrade, as faturas de R$150 e R$850 desaparecem do backoffice. Apenas a mensalidade recorrente de R$999,90 permanece.
+              </p>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* Premium 5 active confirmation card — shown when user is on Premium 5 */}
+      {isPremium5 && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <Card className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30 border-purple-200 dark:border-purple-800 shadow-md">
+            <CardContent className="p-5">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-purple-500 text-white shrink-0">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base font-bold text-foreground">Plano Premium 5 Ativo</h3>
+                    <Badge className="bg-purple-500 text-white border-0">5 níveis desbloqueados</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Todos os 5 níveis da matriz Entrada estão desbloqueados. Você recebe comissões dos níveis 1 ao 5.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3 text-xs">
+                    <div className="bg-white/70 dark:bg-black/20 rounded-lg p-2 border border-purple-100 dark:border-purple-900">
+                      <p className="text-muted-foreground">Nível 4 potencial</p>
+                      <p className="font-bold text-foreground">R$ 1.920,00</p>
+                    </div>
+                    <div className="bg-white/70 dark:bg-black/20 rounded-lg p-2 border border-purple-100 dark:border-purple-900">
+                      <p className="text-muted-foreground">Nível 5 potencial</p>
+                      <p className="font-bold text-foreground">R$ 7.680,00</p>
+                    </div>
+                    <div className="bg-white/70 dark:bg-black/20 rounded-lg p-2 border border-purple-100 dark:border-purple-900">
+                      <p className="text-muted-foreground">Custo mensal</p>
+                      <p className="font-bold text-foreground">R$ 999,90</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* Recurring monthly invoice card — per client spec §1.2 the
+          combined monthly cost is R$999,90 (R$150 Blue 3 + R$850 Premium 5).
+          For users on Blue 3 only, the recurring cost is R$150. */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+        <Card className="shadow-sm bg-card">
+          <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 shrink-0">
+                <Calendar className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-foreground">
+                  Mensalidade Recorrente
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {isPremium5
+                    ? 'R$150 (Blue 3) + R$850 (Premium 5)'
+                    : isBlue3
+                    ? 'R$150 (Blue 3)'
+                    : 'Sem mensalidade no plano gratuito'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Valor</p>
+                <p className="text-lg font-bold text-foreground">
+                  {isPremium5 ? 'R$ 999,90' : isBlue3 ? 'R$ 150,00' : 'R$ 0,00'}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Vencimento</p>
+                <p className="text-sm font-medium text-foreground">{nextBillingDate}</p>
+              </div>
+              <Badge variant="outline" className="text-amber-700 border-amber-300 dark:text-amber-400 dark:border-amber-700">
+                Pendente
+              </Badge>
             </div>
           </CardContent>
         </Card>
@@ -909,6 +1227,197 @@ export function MyPlanPage() {
               <Button
                 className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white"
                 onClick={() => { setUpgradeDialogOpen(false); setUpgradeStep('calculate') }}
+              >
+                Fechar
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Premium 5 Upgrade Dialog (Índice.docx §3) ─────────────
+          Wallet-source picker + automatic deduction confirmation,
+          OR PIX generation/confirmation flow. */}
+      <Dialog open={premium5DialogOpen} onOpenChange={setPremium5DialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-amber-500" />
+              Upgrade para Premium 5 — R$ 850,00
+            </DialogTitle>
+            <DialogDescription className="sr-only">Escolha a carteira para débito automático do upgrade Premium 5</DialogDescription>
+          </DialogHeader>
+
+          {premium5Step === 'choose' && (
+            <div className="space-y-4 py-4">
+              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
+                  Descontar Fatura Automática
+                </p>
+                <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-1">
+                  Escolha de qual carteira debitar R$850,00. Após a confirmação, os níveis 4 e 5 da matriz Entrada serão desbloqueados imediatamente.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground font-medium">Carteira para débito:</p>
+                <div className="grid grid-cols-1 gap-2">
+                  <button
+                    onClick={() => setPremium5WalletSource('withdrawal')}
+                    className={`p-3 rounded-lg border text-left flex items-start gap-3 transition-colors ${
+                      premium5WalletSource === 'withdrawal'
+                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/20'
+                        : 'border-border hover:border-emerald-300'
+                    }`}
+                  >
+                    <Wallet className="h-4 w-4 text-emerald-600 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-foreground">Saldo para Saque</p>
+                      <p className="text-[11px] text-muted-foreground">Debita R$850 do seu saldo liberado para saque.</p>
+                    </div>
+                    {premium5WalletSource === 'withdrawal' && (
+                      <Check className="h-4 w-4 text-emerald-600 mt-0.5" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setPremium5WalletSource('paymentInvoice')}
+                    className={`p-3 rounded-lg border text-left flex items-start gap-3 transition-colors ${
+                      premium5WalletSource === 'paymentInvoice'
+                        ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/20'
+                        : 'border-border hover:border-emerald-300'
+                    }`}
+                  >
+                    <FileText className="h-4 w-4 text-blue-600 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-foreground">Saldo para Faturas</p>
+                      <p className="text-[11px] text-muted-foreground">Debita R$850 do seu saldo destinado a faturas.</p>
+                    </div>
+                    {premium5WalletSource === 'paymentInvoice' && (
+                      <Check className="h-4 w-4 text-emerald-600 mt-0.5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setPremium5DialogOpen(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                  onClick={handlePremium5Automatic}
+                  disabled={premium5Processing}
+                >
+                  {premium5Processing ? (
+                    <>
+                      <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Processando...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="h-4 w-4" />
+                      Confirmar e Desbloquear
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {premium5Step === 'pix' && premium5PixData && (
+            <div className="space-y-4 py-4">
+              <div className="text-center">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-950/40 mb-2">
+                  <Smartphone className="h-6 w-6 text-blue-600" />
+                </div>
+                <h3 className="text-lg font-bold text-foreground">Pagamento via PIX</h3>
+                <p className="text-xs text-muted-foreground">
+                  {premium5PixData.planName} · {formatCurrency(premium5PixData.amount)}
+                </p>
+              </div>
+
+              <div className="flex justify-center">
+                <div className="bg-white p-4 rounded-xl border-2 border-blue-200 dark:border-blue-800">
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(premium5PixData.pixCode)}`}
+                    alt="QR Code PIX"
+                    className="w-48 h-48"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">PIX Copia e Cola:</p>
+                <div className="bg-muted rounded-lg p-3 border border-border">
+                  <p className="text-[11px] font-mono text-foreground break-all line-clamp-3">
+                    {premium5PixData.pixCode}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  className="w-full gap-2 border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950/30"
+                  onClick={() => {
+                    navigator.clipboard.writeText(premium5PixData.pixCode)
+                    setPremium5Copied(true)
+                    setTimeout(() => setPremium5Copied(false), 2000)
+                  }}
+                >
+                  {premium5Copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  {premium5Copied ? 'Copiado!' : 'Copiar código PIX'}
+                </Button>
+              </div>
+
+              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-center">
+                <p className="text-xs text-amber-700 dark:text-amber-400 mb-2">
+                  Após pagar o PIX no seu banco, clique no botão abaixo para confirmar o pagamento e ativar o Premium 5.
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setPremium5Step('choose')}>
+                  Voltar
+                </Button>
+                <Button
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                  disabled={premium5Processing}
+                  onClick={handlePremium5ConfirmPix}
+                >
+                  {premium5Processing ? (
+                    <>
+                      <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Confirmando...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4" />
+                      Já paguei - Confirmar
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {premium5Step === 'success' && (
+            <div className="py-8 text-center">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+              >
+                <ShieldCheck className="h-16 w-16 text-emerald-500 mx-auto mb-4" />
+              </motion.div>
+              <h3 className="text-xl font-bold text-foreground mb-2">Premium 5 Ativado!</h3>
+              <p className="text-sm text-muted-foreground">
+                Seu plano foi atualizado com sucesso. Os níveis 4 e 5 da matriz Entrada foram desbloqueados.
+              </p>
+              <Button
+                className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => { setPremium5DialogOpen(false); setPremium5Step('choose') }}
               >
                 Fechar
               </Button>

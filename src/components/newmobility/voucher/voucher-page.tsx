@@ -297,6 +297,7 @@ export function VoucherPage() {
           balanceFood: result.user.balanceFood,
           balancePharmacy: result.user.balancePharmacy,
           balanceGratification: result.user.balanceGratification,
+          balancePaymentInvoice: result.user.balancePaymentInvoice,
         })
       }
     } catch (err: any) {
@@ -439,6 +440,37 @@ export function VoucherPage() {
         </div>
       </div>
 
+      {/* Welcome Voucher Banner (client spec §7:
+          vouchers are "SOMENTE PARA USO - NÃO PODE SER SACADO".
+          New users receive a R$30 mobility voucher on registration.) */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+        <Card className="border-0 shadow-md overflow-hidden relative bg-gradient-to-r from-blue-500 via-blue-600 to-cyan-600">
+          <div className="absolute inset-0 opacity-10 pointer-events-none" style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Ccircle cx='20' cy='20' r='2'/%3E%3C/g%3E%3C/svg%3E")`,
+          }} />
+          <CardContent className="p-4 md:p-5 relative flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="p-3 rounded-xl bg-white/15 backdrop-blur-sm border border-white/20 shrink-0">
+              <Car className="h-6 w-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <Sparkles className="h-3.5 w-3.5 text-blue-100" />
+                <p className="text-sm font-bold text-white">Voucher de Boas-Vindas</p>
+                <Badge className="bg-white/20 text-white text-[9px] border-white/30">R$ 30</Badge>
+              </div>
+              <p className="text-xs text-blue-50">
+                Todo novo usuário recebe <strong>R$ 30,00 em Mobilidade</strong> ao se cadastrar.
+                Use em corridas e viagens no app parceiro.
+              </p>
+              <p className="text-[10px] text-blue-100/80 mt-1.5 flex items-center gap-1">
+                <Info className="h-3 w-3" />
+                SOMENTE PARA USO — NÃO PODE SER SACADO.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* Redeem (Adicionar Voucher) Dialog */}
       <Dialog open={redeemDialogOpen} onOpenChange={setRedeemDialogOpen}>
         <DialogContent className="sm:max-w-md">
@@ -469,7 +501,7 @@ export function VoucherPage() {
             />
             <div className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 text-xs text-muted-foreground">
               <Info className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-              <span>O valor será creditado na categoria correspondente ao tipo do voucher (Mobilidade, Refeição, Farmácia, Compras, Gratificação ou Saque).</span>
+              <span>O valor será creditado na categoria correspondente ao tipo do voucher (Mobilidade, Refeição, Farmácia, Compras, Gratificação ou Pagamento Fatura). Vouchers são SOMENTE PARA USO — NÃO PODEM SER SACADOS.</span>
             </div>
           </div>
           <DialogFooter className="gap-2">

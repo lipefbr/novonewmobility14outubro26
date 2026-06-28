@@ -9,9 +9,11 @@ function generateId(): string {
   return `c${timestamp}${random}${random2}`
 }
 
-// Matrix structural width — first 5 paying referrals go to level 1 (direct table).
-// When level 1 is full (5/5), overflow is placed via BFS in the downline.
-const MATRIX_WIDTH = 5
+// Matrix structural width — first 4 paying referrals go to level 1 (direct table).
+// When level 1 is full (4/4), overflow is placed via BFS in the downline.
+// Per client spec (Índice.docx §1.1): "Matriz 4x5 (4 diretos e 5 de profundidade)"
+// Spillover direction is RIGHT-TO-LEFT per client: "sendo da direita para esquerda"
+const MATRIX_WIDTH = 4
 
 // Default depth per matrix type (matches MatrixType.depth in the DB).
 const MATRIX_DEPTH: Record<string, number> = {
@@ -26,9 +28,10 @@ const MATRIX_DEPTH: Record<string, number> = {
  * whose direct child count is < width. Returns null if the entire
  * downline (up to MATRIX_DEPTH) is full.
  *
- * BFS guarantees left-to-right, top-to-bottom "spillover" placement,
- * so referrals fill the referrer's level-1 row first, then overflow to
- * level 2 under the first level-1 child, etc.
+ * Spillover direction is RIGHT-TO-LEFT per client spec
+ * ("derramado para baixo procurando aonde não tem os 4 sendo da direita para esquerda"):
+ * children are scanned from highest position (rightmost) to lowest (leftmost),
+ * so the rightmost child with room is filled first.
  */
 async function findSpilloverPosition(
   rootPositionId: string,
@@ -57,10 +60,12 @@ async function findSpilloverPosition(
 
     if (childCount < width) {
       // This position has room — place the new user here.
+      // Position = the rightmost empty slot (width - 1 - childCount) for right-to-left fill.
+      // Per client spec: "sendo da direita para esquerda" — newest referral goes to rightmost empty slot.
       return {
         parentId: current.id,
         level: current.level + 1,
-        position: childCount,
+        position: width - 1 - childCount,
       }
     }
 
@@ -71,8 +76,8 @@ async function findSpilloverPosition(
       [current.id, matrixType]
     ) as any[]
 
-    // Sort children by position for deterministic left-to-right traversal.
-    children.sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+    // Sort children DESCENDING by position for right-to-left traversal.
+    children.sort((a, b) => (b.position ?? 0) - (a.position ?? 0))
     for (const child of children) {
       queue.push({ id: child.id, level: current.level + 1 })
     }
@@ -289,10 +294,11 @@ export async function POST(request: Request) {
           let placement: { parentId: string; level: number; position: number }
           if (existingPositions < MATRIX_WIDTH) {
             // Referrer has room — place directly under referrer.
+            // Right-to-left fill: newest referral goes to rightmost empty slot.
             placement = {
               parentId: referrerPosition.id,
               level: referrerPosition.level + 1,
-              position: existingPositions,
+              position: MATRIX_WIDTH - 1 - existingPositions,
             }
           } else {
             // Referrer's level-1 row is full — spillover via BFS.
@@ -309,7 +315,7 @@ export async function POST(request: Request) {
               placement = {
                 parentId: referrerPosition.id,
                 level: referrerPosition.level + 1,
-                position: existingPositions,
+                position: MATRIX_WIDTH - 1 - existingPositions,
               }
               console.warn('[Register] Entrada matrix full — placing under referrer as fallback')
             }
@@ -384,10 +390,11 @@ export async function POST(request: Request) {
 
           let residualPlacement: { parentId: string; level: number; position: number }
           if (existingResidualPositions < MATRIX_WIDTH) {
+            // Right-to-left fill.
             residualPlacement = {
               parentId: referrerResidual.id,
               level: referrerResidual.level + 1,
-              position: existingResidualPositions,
+              position: MATRIX_WIDTH - 1 - existingResidualPositions,
             }
           } else {
             const spillover = await findSpilloverPosition(
@@ -402,7 +409,7 @@ export async function POST(request: Request) {
               residualPlacement = {
                 parentId: referrerResidual.id,
                 level: referrerResidual.level + 1,
-                position: existingResidualPositions,
+                position: MATRIX_WIDTH - 1 - existingResidualPositions,
               }
               console.warn('[Register] Residual matrix full — placing under referrer as fallback')
             }
@@ -472,10 +479,11 @@ export async function POST(request: Request) {
 
           let vendasPlacement: { parentId: string; level: number; position: number }
           if (existingVendasPositions < MATRIX_WIDTH) {
+            // Right-to-left fill.
             vendasPlacement = {
               parentId: referrerVendas.id,
               level: referrerVendas.level + 1,
-              position: existingVendasPositions,
+              position: MATRIX_WIDTH - 1 - existingVendasPositions,
             }
           } else {
             const spillover = await findSpilloverPosition(
@@ -490,7 +498,7 @@ export async function POST(request: Request) {
               vendasPlacement = {
                 parentId: referrerVendas.id,
                 level: referrerVendas.level + 1,
-                position: existingVendasPositions,
+                position: MATRIX_WIDTH - 1 - existingVendasPositions,
               }
               console.warn('[Register] Vendas matrix full — placing under referrer as fallback')
             }
@@ -539,6 +547,30 @@ export async function POST(request: Request) {
     } catch (matrixErr) {
       console.error('[Register] NON-CRITICAL: Error creating vendas matrix position:', matrixErr)
       // Continue - matrix position is optional
+    }
+
+    // --- Create R$30 welcome voucher ( mobility-only, non-withdrawable) ---
+    // Per client spec (Índice.docx §7): "AO PAGAR O SISTEMA LIBERA AUTOMATICO UM VOUCHER DE R$ 30,00
+    //   para uso no aplicativo de mobilidade para novos usuários, todos usuários tem este primeiro voucher de graça"
+    // Per §7: "SOMENTE PARA USO - NÃO PODE SER SACADO" — voucher credits only the mobility wallet.
+    try {
+      const voucherCode = `BEMVINDO${userReferralCode.slice(-6).toUpperCase()}${Math.random().toString(36).slice(2, 5).toUpperCase()}`
+      const expiresAt = new Date()
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1) // 1-year validity (client says "NÃO TEM VALIDADE" but DB requires a date)
+      await db.insert('Voucher', {
+        id: generateId(),
+        code: voucherCode,
+        userId: user.id,
+        type: 'mobility', // credits balanceMobility only — cannot be withdrawn
+        amount: 3000, // R$30,00 in cents
+        isUsed: false,
+        expiresAt: expiresAt.toISOString(),
+        createdAt: new Date().toISOString(),
+      })
+      console.log('[Register] Welcome voucher created:', voucherCode, 'for user', userId)
+    } catch (voucherErr) {
+      console.error('[Register] NON-CRITICAL: Error creating welcome voucher:', voucherErr)
+      // Continue - voucher is optional
     }
 
     // --- Return success with user data ---

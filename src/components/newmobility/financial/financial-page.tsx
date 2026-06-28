@@ -238,6 +238,8 @@ export function FinancialPage() {
         balanceFood: Number(b.food ?? 0),
         balancePharmacy: Number(b.pharmacy ?? 0),
         balanceGratification: Number(b.gratification ?? 0),
+        // Client spec §18 — 7th wallet: Saldo Pagamento Fatura
+        balancePaymentInvoice: Number(b.paymentInvoice ?? 0),
         balancePending: Number(b.bills ?? b.pending ?? 0),
       })
     } catch (err) {
@@ -348,7 +350,7 @@ export function FinancialPage() {
     setTransferDestination((prev) => {
       if (prev === transferSource || prev === 'withdrawal') {
         // Pick the first wallet that isn't the source and isn't `withdrawal`.
-        const fallbackOrder = ['bills', 'mobility', 'shopping', 'food', 'pharmacy', 'gratification']
+        const fallbackOrder = ['bills', 'mobility', 'shopping', 'food', 'pharmacy', 'gratification', 'paymentInvoice']
         return fallbackOrder.find((k) => k !== transferSource) || 'bills'
       }
       return prev
@@ -387,6 +389,8 @@ export function FinancialPage() {
     { label: t('financial.balance.food'), value: user?.balanceFood || 0, icon: UtensilsCrossed, color: 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400', gradient: 'from-orange-500 to-orange-600', change: 3 },
     { label: t('financial.balance.pharmacy'), value: user?.balancePharmacy || 0, icon: Pill, color: 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400', gradient: 'from-rose-500 to-rose-600', change: 6 },
     { label: t('financial.balance.gratification'), value: user?.balanceGratification || 0, icon: Gift, color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400', gradient: 'from-amber-500 to-amber-600', change: 12 },
+    // Client spec §18 — 7th wallet: Saldo Pagamento Fatura (balancePaymentInvoice)
+    { label: t('financial.balance.paymentInvoice'), value: user?.balancePaymentInvoice || 0, icon: FileText, color: 'bg-cyan-100 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-400', gradient: 'from-cyan-500 to-cyan-600', change: 4 },
   ]
 
   // Balance breakdown pie chart data
@@ -417,27 +421,33 @@ export function FinancialPage() {
   }
 
   // 5% fee for non-Saque source transfers, 0% for Saque source.
-  // `bills` (Saldo para Faturas) follows the standard 5% conversion fee.
+  // `bills` (Saldo para Faturas) and `paymentInvoice` (Saldo Pagamento Fatura, client spec §18)
+  // follow the standard 5% conversion fee when receiving from non-Saque sources.
   const TRANSFER_FEES: Record<string, number> = {
     'mobility->withdrawal': 5, 'shopping->withdrawal': 5, 'food->withdrawal': 5,
     'pharmacy->withdrawal': 5, 'gratification->withdrawal': 5,
+    'mobility->paymentInvoice': 5, 'shopping->paymentInvoice': 5, 'food->paymentInvoice': 5,
+    'pharmacy->paymentInvoice': 5, 'gratification->paymentInvoice': 5, 'bills->paymentInvoice': 5,
     'withdrawal->mobility': 0,
     'withdrawal->shopping': 0, 'withdrawal->food': 0, 'withdrawal->pharmacy': 0,
-    'withdrawal->gratification': 0, 'withdrawal->bills': 0,
+    'withdrawal->gratification': 0, 'withdrawal->bills': 0, 'withdrawal->paymentInvoice': 0,
   }
   // Labels and balances for every wallet that can appear in the transfer dialog.
   // `bills` (Saldo para Faturas) is backed by the `balancePending` column on the User model.
+  // `paymentInvoice` (Saldo Pagamento Fatura) is the dedicated invoice-payment wallet (client spec §18).
   const balanceLabels: Record<string, string> = {
     withdrawal: t('financial.balance.withdrawal'), mobility: t('financial.balance.mobility'),
     shopping: t('financial.balance.shopping'), food: t('financial.balance.food'),
     pharmacy: t('financial.balance.pharmacy'), gratification: t('financial.balance.gratification'),
     bills: t('financial.balance.bills'),
+    paymentInvoice: t('financial.balance.paymentInvoice'),
   }
   const balanceValues: Record<string, number> = {
     withdrawal: user?.balanceWithdrawal || 0, mobility: user?.balanceMobility || 0,
     shopping: user?.balanceShopping || 0, food: user?.balanceFood || 0,
     pharmacy: user?.balancePharmacy || 0, gratification: user?.balanceGratification || 0,
     bills: user?.balancePending || 0,
+    paymentInvoice: user?.balancePaymentInvoice || 0,
   }
   // `withdrawal` (Saldo para Saque) can only be a transfer SOURCE - never a destination.
   // Users move money OUT of that wallet through the dedicated withdraw flow.
@@ -701,6 +711,23 @@ export function FinancialPage() {
           </Dialog>
         </div>
       </div>
+
+      {/* Free-withdrawal window banner (client spec §15:
+          "ENTRE DIA 5 E 8 DE CADA MÊS ELE SACA SEM TAXA – APÓS TAXA DE 5%") */}
+      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+        <Card className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 shadow-sm">
+          <CardContent className="p-3 flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 shrink-0">
+              <Calendar className="h-4 w-4" />
+            </div>
+            <div className="flex-1">
+              <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                {t('financial.withdraw.freeWindow')}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
 
       {/* Balance Overview Hero with Pie Chart */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>

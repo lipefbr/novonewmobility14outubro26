@@ -9,6 +9,7 @@ const VALID_WALLETS = [
   'balanceFood',
   'balancePharmacy',
   'balanceGratification',
+  'balancePaymentInvoice',
 ] as const
 
 type WalletKey = (typeof VALID_WALLETS)[number]
@@ -20,6 +21,7 @@ const walletCategoryMap: Record<WalletKey, string> = {
   balanceFood: 'food',
   balancePharmacy: 'pharmacy',
   balanceGratification: 'gratification',
+  balancePaymentInvoice: 'paymentInvoice',
 }
 
 export async function POST(

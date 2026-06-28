@@ -6,9 +6,13 @@ const MATRIX_TYPES = ['entrada', 'residual', 'vendas'] as const
 type MatrixType = (typeof MATRIX_TYPES)[number]
 
 // Default cashback configuration (percentages per level per matrix type)
+// Per client spec (Índice.docx):
+//   - Entrada 4x5:   L1=5%, L2=10%, L3=10%, L4=5%, L5=5%
+//   - Residual 4x7:  L1=10%, L2=9%, L3=5%, L4=5%, L5=4%, L6=3%, L7=2%
+//   - Vendas 4x9:    all 9 levels = 0.10% (uniform, total 0.90%)
 const DEFAULT_CONFIG: Record<MatrixType, Record<string, number>> = {
   entrada: { level1: 5, level2: 10, level3: 10, level4: 5, level5: 5 },
-  residual: { level1: 5, level2: 5.5, level3: 6, level4: 6.5, level5: 7, level6: 7.5, level7: 8 },
+  residual: { level1: 10, level2: 9, level3: 5, level4: 5, level5: 4, level6: 3, level7: 2 },
   vendas: {
     level1: 0.1,
     level2: 0.1,
@@ -18,7 +22,7 @@ const DEFAULT_CONFIG: Record<MatrixType, Record<string, number>> = {
     level6: 0.1,
     level7: 0.1,
     level8: 0.1,
-    level9: 0.2,
+    level9: 0.1,
   },
 }
 

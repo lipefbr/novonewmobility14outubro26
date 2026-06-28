@@ -4,7 +4,8 @@ import { success, error, reaisToCents, centsToReais } from '@/lib/api-utils'
 
 // Map the public balance keys (used by the UI) to the underlying User model columns.
 // Note: `bills` is backed by `balancePending` to avoid a DB schema migration; the UI
-// labels it as "Saldo para Faturas".
+// labels it as "Saldo para Faturas". `paymentInvoice` is backed by the dedicated
+// `balancePaymentInvoice` column (client spec §18 — "Saldo Pagamento Fatura").
 const BALANCE_FIELDS: Record<string, string> = {
   mobility: 'balanceMobility',
   shopping: 'balanceShopping',
@@ -12,6 +13,7 @@ const BALANCE_FIELDS: Record<string, string> = {
   pharmacy: 'balancePharmacy',
   gratification: 'balanceGratification',
   withdrawal: 'balanceWithdrawal',
+  paymentInvoice: 'balancePaymentInvoice',
   bills: 'balancePending',
   free: 'balanceFree',
 }
@@ -25,6 +27,7 @@ const VALID_DESTINATIONS = new Set([
   'food',
   'pharmacy',
   'gratification',
+  'paymentInvoice',
   'bills',
   'free',
 ])
@@ -37,6 +40,7 @@ const TRANSFER_FEES: Record<string, number> = {
   'withdrawal->food': 0,
   'withdrawal->pharmacy': 0,
   'withdrawal->gratification': 0,
+  'withdrawal->paymentInvoice': 0,
   'withdrawal->bills': 0,
   'withdrawal->free': 0,
 }

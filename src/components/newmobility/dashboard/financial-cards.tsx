@@ -13,6 +13,7 @@ import {
   ShoppingBag,
   BarChart3,
   TrendingDown,
+  FileText,
 } from 'lucide-react'
 
 interface FinancialCardsProps {
@@ -175,6 +176,17 @@ export function FinancialCards({ data }: FinancialCardsProps) {
       icon: BarChart3,
       gradient: 'from-emerald-700 to-emerald-900',
       change: 9,
+    },
+    {
+      // Client spec §18 — 7th wallet: Saldo Pagamento Fatura (balancePaymentInvoice).
+      // This card mirrors the privacy-safe pattern of the other cards:
+      // it shows a count (direct referrals), never a R$ amount.
+      title: t('dashboard.financial.paymentInvoice'),
+      value: directReferrals,
+      subtitle: 'Indicações',
+      icon: FileText,
+      gradient: 'from-cyan-500 to-cyan-600',
+      change: 4,
     },
   ]
 

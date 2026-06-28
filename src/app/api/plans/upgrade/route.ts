@@ -6,6 +6,46 @@ import { success, error } from '@/lib/api-utils'
 // via /api/admin/plans). The `priceCents` and `sortOrder` columns on
 // each Plan row drive both the invoice amount and the upgrade-direction
 // validation below.
+//
+// ─── Blue 3 → Premium 5 upgrade flow (Índice.docx §3 + §1.1) ─────────
+// `blue3`   entry fee R$150   → locks entrada at 3 levels (earn L1-L3)
+// `premium5` upgrade R$850    → unlocks entrada levels 4-5 (earn L1-L5)
+//
+// The `premium5` plan code is an alias of the DB's `blue5` row — both
+// describe the same R$850 upgrade tier. The client spec calls it
+// "Premium 5" so we accept `toPlan: "premium5"` from the frontend and
+// resolve it to the underlying `blue5` Plan row when validating the
+// upgrade direction.
+//
+// Two payment methods are supported:
+//   1. `automatic` — deducts R$850 immediately from the user-chosen
+//      wallet (`walletSource: "withdrawal" | "paymentInvoice"`). The
+//      upgrade is applied instantly, a paid Transaction is recorded,
+//      and a Notification informs the user that levels 4-5 are unlocked.
+//   2. `manual`    — creates a pending R$850 Invoice and a pending
+//      Transaction. The user pays via PIX externally; payment is then
+//      confirmed via /api/plans/confirm-pix (or a bank webhook in prod).
+//
+// Legacy `paymentMethod: "pix" | "balance"` values are still accepted
+// for backward compatibility with the old myplan-page.tsx dialog flow.
+
+const PREMIUM5_ALIASES = new Set(['premium5', 'blue5'])
+
+// Map a `toPlan` code coming from the frontend to the canonical Plan
+// code stored in the DB. `premium5` is an alias of `blue5` (same R$850
+// upgrade tier; client spec calls it "Premium 5", DB stores it as blue5).
+function resolveToPlanCode(toPlan: string): string {
+  if (toPlan === 'premium5') return 'blue5'
+  return toPlan
+}
+
+// Map a Plan DB code back to the client-spec display name.
+function planDisplayName(code: string): string {
+  if (code === 'blue5' || code === 'premium5') return 'Premium 5'
+  if (code === 'blue3') return 'Blue 3'
+  if (code === 'free') return 'Gratuito'
+  return code
+}
 
 /**
  * Generate a mock PIX BR Code (BRcode) string.
@@ -46,19 +86,36 @@ function generatePixBrCode(amountCents: number, description: string, txid: strin
   return payload + crc
 }
 
+// Wallet column name on the User table for each `walletSource` accepted
+// by the automatic flow. Mirrors the mapping in /api/financial/transfer.
+const WALLET_FIELDS: Record<string, string> = {
+  withdrawal: 'balanceWithdrawal',
+  paymentInvoice: 'balancePaymentInvoice',
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { userId, plan, paymentMethod = 'pix' } = body
+    // Accept both the new (fromPlan/toPlan/paymentMethod/walletSource)
+    // and legacy (plan/paymentMethod) request shapes.
+    const userId = body.userId
+    const toPlanRaw = body.toPlan || body.plan // accept alias
+    const fromPlan = body.fromPlan || '' // optional, used for descriptive messages
+    // paymentMethod values: 'automatic' | 'manual' | 'pix' (legacy) | 'balance' (legacy)
+    const paymentMethod = body.paymentMethod || 'manual'
+    const walletSource = body.walletSource // 'withdrawal' | 'paymentInvoice' (automatic only)
 
-    if (!userId || !plan) {
-      return error('userId and plan are required')
+    if (!userId || !toPlanRaw) {
+      return error('userId and toPlan (or plan) are required')
     }
+
+    // Resolve alias premium5 -> blue5 for DB lookups
+    const toPlanCode = resolveToPlanCode(toPlanRaw)
 
     // Look up the target plan from the DB (single source of truth for prices).
     // Only `isDefault: true` plans are valid upgrade targets — this excludes
     // monthly add-on plans (mensalidade_*) which are billed separately.
-    const planRecord = await prisma.plan.findUnique({ where: { code: plan } })
+    const planRecord = await prisma.plan.findUnique({ where: { code: toPlanCode } })
     if (!planRecord || !planRecord.isActive || !planRecord.isDefault) {
       return error('Invalid plan. Plan not found, inactive, or not an upgrade target.')
     }
@@ -73,8 +130,10 @@ export async function POST(request: Request) {
     // Look up the user's current plan from the DB to determine upgrade
     // direction (replaces the hardcoded PLAN_ORDER map).
     let currentOrder = 0
-    if (user.plan && user.plan !== 'free') {
-      const currentPlanRecord = await prisma.plan.findUnique({ where: { code: user.plan } })
+    let currentPlanCode = user.plan || 'free'
+    if (currentPlanCode === 'premium5') currentPlanCode = 'blue5' // normalize
+    if (currentPlanCode && currentPlanCode !== 'free') {
+      const currentPlanRecord = await prisma.plan.findUnique({ where: { code: currentPlanCode } })
       currentOrder = currentPlanRecord?.sortOrder ?? 0
     }
 
@@ -90,15 +149,97 @@ export async function POST(request: Request) {
     // Generate transaction ID for PIX
     const txid = `NM${Date.now()}${Math.random().toString(36).substring(2, 8).toUpperCase()}`.substring(0, 25)
 
-    if (paymentMethod === 'pix') {
-      // ===== PIX FLOW: Create pending invoice + generate PIX code =====
-      // Do NOT auto-approve; user must pay the PIX first
+    const targetDisplayName = planDisplayName(toPlanRaw)
 
+    // ─── AUTOMATIC FLOW: deduct from chosen wallet, apply upgrade instantly
+    if (paymentMethod === 'automatic') {
+      if (!walletSource || !WALLET_FIELDS[walletSource]) {
+        return error('walletSource is required for automatic payment (use "withdrawal" or "paymentInvoice")', 400)
+      }
+      const walletField = WALLET_FIELDS[walletSource]
+      const currentBalance = (user as any)[walletField] || 0
+      if (currentBalance < price) {
+        return error(
+          `Saldo insuficiente em ${walletSource === 'withdrawal' ? 'Saldo para Saque' : 'Saldo para Faturas'}. Disponível: ${currentBalance} cents, necessário: ${price} cents.`,
+          400
+        )
+      }
+
+      // Deduct from the chosen wallet, activate plan
+      await db.update('User', '"id" = $1', {
+        plan: toPlanCode,
+        isActive: true,
+        [walletField]: currentBalance - price,
+      }, [userId])
+
+      // Mark any existing pending R$150 / R$850 invoices for this user as paid
+      // (per client spec §3: after upgrade, both invoices "disappear from
+      // backoffice" — we mark them paid so the invoices list filters them out).
+      const pendingInvoices = await db.find(
+        'Invoice',
+        '"userId" = $1 AND "status" = $2',
+        [userId, 'pending']
+      ) as any[]
+      for (const inv of pendingInvoices) {
+        if (inv.type === `plan_${toPlanCode}` || inv.type === `plan_premium5` || inv.type === `plan_blue3`) {
+          await db.update('Invoice', '"id" = $1', {
+            status: 'paid',
+            paidAt: new Date(),
+          }, [inv.id])
+        }
+      }
+
+      // Create a paid invoice recording the upgrade payment (per spec §3)
+      const invoice = await db.insert('Invoice', {
+        userId,
+        amount: price,
+        type: `plan_${toPlanCode}`,
+        status: 'paid',
+        dueDate,
+        paidAt: new Date(),
+      })
+
+      // Transaction record (negative = money out, status paid)
+      const txCategory = walletSource === 'paymentInvoice' ? 'paymentInvoice' : 'gratification'
+      await db.insert('Transaction', {
+        userId,
+        type: 'upgrade',
+        amount: -price,
+        status: 'paid',
+        category: txCategory,
+        description: `Upgrade ${planDisplayName(currentPlanCode)} → ${targetDisplayName} (R$ ${(price / 100).toFixed(2).replace('.', ',')} — descontado de ${walletSource === 'withdrawal' ? 'Saldo para Saque' : 'Saldo para Faturas'})`,
+      })
+
+      // Notification: inform user of successful upgrade + unlocked levels
+      await db.insert('Notification', {
+        userId,
+        title: `Upgrade para ${targetDisplayName} realizado!`,
+        message: `Seu plano foi atualizado para ${targetDisplayName}. Os níveis 4 e 5 da matriz Entrada foram desbloqueados — agora você pode receber comissões dos níveis 1 a 5.`,
+        type: 'plan_upgrade',
+      })
+
+      const updatedUser = await db.findOne('User', '"id" = $1', [userId])
+      return success({
+        invoice,
+        user: updatedUser,
+        plan: toPlanCode,
+        planAlias: toPlanRaw,
+        paid: true,
+        paymentMethod: 'automatic',
+        walletSource,
+        unlockedLevels: 5,
+        message: `Upgrade para ${targetDisplayName} realizado com sucesso. Níveis 4 e 5 da matriz Entrada desbloqueados.`,
+      }, 201)
+    }
+
+    // ─── MANUAL FLOW: generate a pending invoice + PIX code (user pays externally)
+    // Also accepts the legacy `paymentMethod: "pix"` value as an alias for "manual".
+    if (paymentMethod === 'manual' || paymentMethod === 'pix') {
       // Check if there's already a pending invoice for this plan/user
       const existingPending = await db.find(
         'Invoice',
         '"userId" = $1 AND "status" = $2 AND "type" = $3',
-        [userId, 'pending', `plan_${plan}`]
+        [userId, 'pending', `plan_${toPlanCode}`]
       )
 
       let invoice: any
@@ -110,7 +251,7 @@ export async function POST(request: Request) {
         invoice = await db.insert('Invoice', {
           userId,
           amount: price,
-          type: `plan_${plan}`,
+          type: `plan_${toPlanCode}`,
           status: 'pending',
           dueDate,
         })
@@ -118,14 +259,14 @@ export async function POST(request: Request) {
 
       // Generate PIX BR Code — use the DB-sourced plan name so admin
       // renames propagate to invoice descriptions and PIX payloads.
-      const planName = `Plano ${planRecord.name}`
+      const planName = `Plano ${targetDisplayName}`
       const pixCode = generatePixBrCode(price, `${planName} - NewMobility`, txid)
 
       // Create a pending transaction record for the upgrade attempt
       // (not yet applied - will be approved when PIX is paid)
       await db.insert('Transaction', {
         userId,
-        type: 'deposit',
+        type: 'upgrade',
         amount: price,
         status: 'pending',
         category: 'plan_upgrade',
@@ -138,6 +279,8 @@ export async function POST(request: Request) {
         pixTxid: txid,
         amount: price,
         planName,
+        planAlias: toPlanRaw,
+        plan: toPlanCode,
         expiresAt: dueDate.toISOString(),
         instructions: [
           'Abra o aplicativo do seu banco',
@@ -151,8 +294,7 @@ export async function POST(request: Request) {
       }, 201)
     }
 
-    // ===== Non-PIX methods (legacy auto-approve for balance/credit_card) =====
-    // For demo purposes only - in production, all should require payment confirmation
+    // ─── LEGACY balance flow (kept for backward compat with old dialog)
     if (paymentMethod === 'balance') {
       // Check if user has sufficient free balance
       if ((user.balanceFree || 0) < price) {
@@ -160,7 +302,7 @@ export async function POST(request: Request) {
       }
       // Deduct from balance and apply upgrade immediately
       await db.update('User', '"id" = $1', {
-        plan,
+        plan: toPlanCode,
         isActive: true,
         balanceFree: (user.balanceFree || 0) - price,
       }, [userId])
@@ -168,7 +310,7 @@ export async function POST(request: Request) {
       const invoice = await db.insert('Invoice', {
         userId,
         amount: price,
-        type: `plan_${plan}`,
+        type: `plan_${toPlanCode}`,
         status: 'paid',
         dueDate,
         paidAt: new Date(),
@@ -180,14 +322,14 @@ export async function POST(request: Request) {
         amount: -price,
         status: 'approved',
         category: 'plan_upgrade',
-        description: `Upgrade para ${planRecord.name} (pago com saldo)`,
+        description: `Upgrade para ${targetDisplayName} (pago com saldo)`,
       })
 
       const updatedUser = await db.findOne('User', '"id" = $1', [userId])
-      return success({ invoice, user: updatedUser, paid: true }, 201)
+      return success({ invoice, user: updatedUser, plan: toPlanCode, paid: true }, 201)
     }
 
-    return error('Método de pagamento não suportado. Use PIX.', 400)
+    return error('Método de pagamento não suportado. Use "automatic", "manual" ou "balance".', 400)
   } catch (err) {
     console.error('Plan upgrade error:', err)
     return error('Internal server error', 500)

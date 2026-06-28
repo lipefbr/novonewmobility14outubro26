@@ -19,6 +19,7 @@ export async function GET(request: Request) {
         balanceFood: true,
         balancePharmacy: true,
         balanceGratification: true,
+        balancePaymentInvoice: true,
         balanceFree: true,
         balancePending: true,
       },
@@ -35,6 +36,8 @@ export async function GET(request: Request) {
       food: user.balanceFood,
       pharmacy: user.balancePharmacy,
       gratification: user.balanceGratification,
+      // "Saldo Pagamento Fatura" — dedicated wallet for paying monthly invoices (client spec §18)
+      paymentInvoice: user.balancePaymentInvoice,
       free: user.balanceFree,
       // "Saldo para Faturas" is backed by the balancePending column to avoid schema changes
       bills: user.balancePending,

@@ -70,6 +70,7 @@ export interface UserData {
   balanceFood: number
   balancePharmacy: number
   balanceGratification: number
+  balancePaymentInvoice: number
   balanceFree: number
   balancePending: number
   careerPoints: number
@@ -308,6 +309,7 @@ export const emptyUser: UserData = {
   balanceFood: 0,
   balancePharmacy: 0,
   balanceGratification: 0,
+  balancePaymentInvoice: 0,
   balanceFree: 0,
   balancePending: 0,
   careerPoints: 0,

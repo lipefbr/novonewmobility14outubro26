@@ -5,7 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { Gift, Check, Clock, Car, ShoppingBag, Heart, Shield, Phone, Stethoscope, Fuel, UtensilsCrossed, Wrench, Home, Bike, Banknote, Loader2 } from 'lucide-react'
+import {
+  Gift, Check, Clock, Car, ShoppingBag, Heart, Shield, Phone, Stethoscope,
+  Fuel, UtensilsCrossed, Wrench, Home, Bike, Banknote, Loader2,
+  Plane, Calendar, Trophy, Award, Star, Target
+} from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '@/lib/store'
 import { gratificationsApi } from '@/lib/api'
@@ -38,15 +42,106 @@ interface GratificationCategory {
   items: GratificationItem[]
 }
 
-// Fallback static data (used when API returns no gratifications)
+// Fallback static data (used when API returns no gratifications).
+// Per client spec (Índice.docx §5):
+//   - Auxílio Combustível: R$ 2.600/mês (R$100/dia × 26 dias) — Ao fechar 5º nível
+//   - Reembolso Vale Ducha: R$ 780/mês (R$30/dia × 26 dias) — Ao fechar 5º nível
+//   - Férias 6 Meses: R$ 5.000 + 10 dias — 6 meses de cadastro ativo
+//   - Férias 12 Meses: R$ 20.000 + 20 dias — 12 meses de cadastro ativo
+//   - Meta Diária Motorista: 18 corridas/dia — Motorista/Entregador ativo
+//   - Meta Mensal Motorista: 384 corridas/mês — Motorista/Entregador ativo
+//   - Prêmio CashBack Gratificação: R$ 15.000 — Fechar equipe com 1.364 usuários
+// "Pagamento de Faturas" is the ONLY recurring gratification. Others are one-time.
 const fallbackCategories: GratificationCategory[] = [
   {
-    name: 'Mobilidade',
+    name: 'Mobilidade — Metas Motorista',
     icon: Car,
     color: 'bg-blue-100 text-blue-600',
     items: [
-      { id: '1', name: 'Equipe Mobilidade', amount: 200000, type: 'mobility_team', isClaimed: true, claimedAt: '2025-01-10' },
-      { id: '2', name: 'Auxílio Combustível', amount: 50000, type: 'fuel_aid', isClaimed: false },
+      {
+        id: 'meta_diaria_motorista',
+        name: 'Meta Diária Motorista',
+        amount: 0,
+        type: 'driver_daily_goal',
+        category: 'mobility',
+        isClaimed: false,
+        description: '18 corridas/dia — Motorista/Entregador ativo. Ao bater a meta no dia, o sistema envia notificação push avisando que aquele dia teve a meta batida.',
+      },
+      {
+        id: 'meta_mensal_motorista',
+        name: 'Meta Mensal Motorista',
+        amount: 0,
+        type: 'driver_monthly_goal',
+        category: 'mobility',
+        isClaimed: false,
+        description: '384 corridas/mês (18 corridas × ~21 dias úteis). Bonificação extra mensal ao bater a meta — Motorista/Entregador ativo.',
+      },
+    ],
+  },
+  {
+    name: 'Auxílios Mensais',
+    icon: Fuel,
+    color: 'bg-amber-100 text-amber-600',
+    items: [
+      {
+        id: 'auxilio_combustivel',
+        name: 'Auxílio Combustível',
+        amount: 260000, // R$ 2.600 (R$100/dia × 26 dias)
+        type: 'fuel_aid',
+        category: 'mobility',
+        isClaimed: false,
+        description: 'R$ 2.600/mês (R$100/dia × 26 dias). Pago no fim do mês após pagamento da fatura. Qualificação: ao fechar o 5º nível.',
+      },
+      {
+        id: 'reembolso_vale_ducha',
+        name: 'Reembolso Vale Ducha (Lava-Carro)',
+        amount: 78000, // R$ 780 (R$30/dia × 26 dias)
+        type: 'car_wash',
+        category: 'mobility',
+        isClaimed: false,
+        description: 'R$ 780/mês (R$30/dia × 26 dias). Pago diário ou no fim do mês após fatura. Qualificação: ao fechar o 5º nível.',
+      },
+    ],
+  },
+  {
+    name: 'Férias',
+    icon: Plane,
+    color: 'bg-teal-100 text-teal-600',
+    items: [
+      {
+        id: 'ferias_6_meses',
+        name: 'Férias 6 Meses',
+        amount: 500000, // R$ 5.000 + 10 dias de férias
+        type: 'vacation_6mo',
+        category: 'vacation',
+        isClaimed: false,
+        description: 'R$ 5.000 + 10 dias de férias. One-time aos 6 meses de cadastro ativo.',
+      },
+      {
+        id: 'ferias_12_meses',
+        name: 'Férias 12 Meses',
+        amount: 2000000, // R$ 20.000 + 20 dias de férias
+        type: 'vacation_12mo',
+        category: 'vacation',
+        isClaimed: false,
+        description: 'R$ 20.000 + 20 dias de férias. One-time aos 12 meses de cadastro ativo.',
+      },
+    ],
+  },
+  {
+    name: 'Prêmios Especiais',
+    icon: Trophy,
+    color: 'bg-rose-100 text-rose-600',
+    items: [
+      {
+        id: 'premio_cashback_gratificacao',
+        name: 'Prêmio CashBack Gratificação',
+        amount: 1500000, // R$ 15.000
+        type: 'cashback_bonus_prize',
+        category: 'prize',
+        isClaimed: false,
+        description: 'R$ 15.000 — One-time ao fechar equipe com 1.364 usuários.',
+      },
     ],
   },
   {
@@ -91,10 +186,23 @@ const fallbackCategories: GratificationCategory[] = [
     color: 'bg-teal-100 text-teal-600',
     items: [
       { id: '11', name: 'Kit Mimo', amount: 25000, type: 'mimo_kit', isClaimed: false },
-      { id: '12', name: 'Guincho', amount: 35000, type: 'tow_truck', isClaimed: false },
-      { id: '13', name: 'Assistência Residencial', amount: 45000, type: 'home_assistance', isClaimed: false },
-      { id: '14', name: 'Fundo Aposentadoria', amount: 500000, type: 'retirement_fund', isClaimed: false },
-      { id: '15', name: 'Escolha da Moto', amount: 800000, type: 'motorcycle_choice', isClaimed: false },
+      { id: '12', name: 'Vale Refeição', amount: 45000, type: 'food_ticket', isClaimed: false },
+      { id: '13', name: 'Vale Alimentação', amount: 45000, type: 'food_voucher', isClaimed: false },
+      { id: '14', name: 'Guincho', amount: 35000, type: 'tow_truck', isClaimed: false },
+      { id: '15', name: 'Assistência Residencial', amount: 45000, type: 'home_assistance', isClaimed: false },
+      { id: '16', name: 'Fundo Aposentadoria', amount: 500000, type: 'retirement_fund', isClaimed: false },
+      { id: '17', name: 'Escolha da Moto', amount: 800000, type: 'motorcycle_choice', isClaimed: false },
+    ],
+  },
+  {
+    name: 'Prêmios Físicos',
+    icon: Award,
+    color: 'bg-yellow-100 text-yellow-700',
+    items: [
+      { id: '18', name: 'Prêmio Carro', amount: 0, type: 'prize_car', isClaimed: false, description: 'Prêmio físico desbloqueado a cada nível de pontuação. Sistema libera botão "Reivindicar".' },
+      { id: '19', name: 'Prêmio Moto', amount: 0, type: 'prize_motorcycle', isClaimed: false, description: 'Prêmio físico desbloqueado a cada nível de pontuação. Sistema libera botão "Reivindicar".' },
+      { id: '20', name: 'Prêmio Casa', amount: 0, type: 'prize_house', isClaimed: false, description: 'Prêmio físico desbloqueado a cada nível de pontuação. Sistema libera botão "Reivindicar".' },
+      { id: '21', name: 'Prêmio Móveis', amount: 0, type: 'prize_furniture', isClaimed: false, description: 'Prêmio físico desbloqueado a cada nível de pontuação. Sistema libera botão "Reivindicar".' },
     ],
   },
 ]
@@ -108,6 +216,10 @@ function mapApiCategoryToUi(category?: string): { name: string; icon: any; color
     insurance: { name: 'Seguros', icon: Shield, color: 'bg-amber-100 text-amber-600' },
     health: { name: 'Saúde', icon: Stethoscope, color: 'bg-emerald-100 text-emerald-600' },
     benefits: { name: 'Benefícios', icon: Gift, color: 'bg-teal-100 text-teal-600' },
+    vacation: { name: 'Férias', icon: Plane, color: 'bg-teal-100 text-teal-600' },
+    prize: { name: 'Prêmios Especiais', icon: Trophy, color: 'bg-rose-100 text-rose-600' },
+    fuel: { name: 'Auxílios Mensais', icon: Fuel, color: 'bg-amber-100 text-amber-600' },
+    car_wash: { name: 'Auxílios Mensais', icon: Fuel, color: 'bg-amber-100 text-amber-600' },
   }
   return mapping[category || 'benefits'] || mapping.benefits
 }
@@ -136,6 +248,14 @@ export function GratificationsPage() {
   const [claimDialogOpen, setClaimDialogOpen] = useState(false)
   const [selectedGratification, setSelectedGratification] = useState<GratificationItem | null>(null)
   const [isClaiming, setIsClaiming] = useState(false)
+  const [driverGoals, setDriverGoals] = useState<{
+    dailyGoal: number
+    monthlyGoal: number
+    dailyRides: number
+    monthlyRides: number
+    dailyGoalReached: boolean
+    monthlyGoalReached: boolean
+  } | null>(null)
 
   // Fetch gratifications from API
   const fetchGratifications = useCallback(async () => {
@@ -147,10 +267,19 @@ export function GratificationsPage() {
     try {
       setIsLoading(true)
       const data = await gratificationsApi.getList(user.id)
+
+      // Capture driver goal-tracking info (per client spec §6)
+      if (data?.driverGoals) {
+        setDriverGoals(data.driverGoals)
+      }
+
+      // Map the per-user DB rows (available + claimed) into the UI shape.
       const apiGratifications: GratificationItem[] = [
         ...(data.available || []).map((g: any) => ({
           id: g.id,
-          name: g.type || g.name || 'Gratificação',
+          // Prefer a friendly name (from description or type-to-name mapping)
+          // over the raw type slug for catalog display.
+          name: g.name || g.description?.split('—')[0]?.trim() || g.type || 'Gratificação',
           amount: g.amount || 0,
           type: g.type || '',
           category: g.category || 'benefits',
@@ -159,7 +288,7 @@ export function GratificationsPage() {
         })),
         ...(data.claimed || []).map((g: any) => ({
           id: g.id,
-          name: g.type || g.name || 'Gratificação',
+          name: g.name || g.description?.split('—')[0]?.trim() || g.type || 'Gratificação',
           amount: g.amount || 0,
           type: g.type || '',
           category: g.category || 'benefits',
@@ -169,8 +298,27 @@ export function GratificationsPage() {
         })),
       ]
 
-      if (apiGratifications.length > 0) {
-        const grouped = groupByCategories(apiGratifications)
+      // Also include catalog items (always-available gratifications per
+      // client spec §5: fuel voucher, car wash, vacations, driver goals,
+      // cashback prize) — only those not already present as per-user DB rows
+      // (matched by `type`) so we don't double-list.
+      const existingTypes = new Set(apiGratifications.map((g) => g.type))
+      const catalogItems: GratificationItem[] = (data.catalog || [])
+        .filter((c: any) => !existingTypes.has(c.type))
+        .map((c: any, idx: number) => ({
+          id: `catalog_${c.type}_${idx}`,
+          name: c.name || c.type || 'Gratificação',
+          amount: c.amount || 0,
+          type: c.type || '',
+          category: c.category || 'benefits',
+          isClaimed: false,
+          description: c.description,
+        }))
+
+      const merged = [...apiGratifications, ...catalogItems]
+
+      if (merged.length > 0) {
+        const grouped = groupByCategories(merged)
         setCategories(grouped)
         setIsUsingFallback(false)
       } else {
@@ -262,6 +410,66 @@ export function GratificationsPage() {
         <p className="text-sm text-gray-500">Gerencie suas gratificações e benefícios disponíveis</p>
       </div>
 
+      {/* Driver Goals Card (per client spec §6 — motorista/entregador) */}
+      {driverGoals && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0 }}>
+          <Card className="shadow-sm bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border-blue-200 dark:border-blue-800 overflow-hidden">
+            <div className="h-1 bg-gradient-to-r from-blue-400 via-indigo-400 to-blue-400 animate-gradient-shift" />
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400 shrink-0">
+                  <Target className="h-5 w-5" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-blue-800 dark:text-blue-300 text-sm">
+                    Metas Motorista / Entregador
+                  </h4>
+                  <p className="text-[11px] text-blue-700 dark:text-blue-400 mt-0.5">
+                    Ao bater a meta diária, o sistema envia uma notificação push avisando que aquele dia teve a meta batida.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 mt-3">
+                    <div className="bg-white/60 dark:bg-blue-950/40 rounded-md p-3 border border-blue-100 dark:border-blue-900/50">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Meta Diária</p>
+                        {driverGoals.dailyGoalReached && (
+                          <Badge className="bg-emerald-100 text-emerald-700 text-[9px]">Batida hoje</Badge>
+                        )}
+                      </div>
+                      <p className="text-base font-bold text-blue-700 dark:text-blue-300">
+                        {driverGoals.dailyRides}/{driverGoals.dailyGoal} <span className="text-xs font-normal text-muted-foreground">corridas</span>
+                      </p>
+                      <div className="mt-2 h-1.5 bg-blue-100 dark:bg-blue-900/40 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full"
+                          style={{ width: `${Math.min((driverGoals.dailyRides / driverGoals.dailyGoal) * 100, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div className="bg-white/60 dark:bg-blue-950/40 rounded-md p-3 border border-blue-100 dark:border-blue-900/50">
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Meta Mensal</p>
+                        {driverGoals.monthlyGoalReached && (
+                          <Badge className="bg-emerald-100 text-emerald-700 text-[9px]">Batida</Badge>
+                        )}
+                      </div>
+                      <p className="text-base font-bold text-blue-700 dark:text-blue-300">
+                        {driverGoals.monthlyRides}/{driverGoals.monthlyGoal} <span className="text-xs font-normal text-muted-foreground">corridas</span>
+                      </p>
+                      <div className="mt-2 h-1.5 bg-blue-100 dark:bg-blue-900/40 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full"
+                          style={{ width: `${Math.min((driverGoals.monthlyRides / driverGoals.monthlyGoal) * 100, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
       {/* Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0 }}>
@@ -349,22 +557,31 @@ export function GratificationsPage() {
               <div className="divide-y">
                 {category.items.map((item) => (
                   <div key={item.id} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-2 h-2 rounded-full ${item.isClaimed ? 'bg-emerald-500' : 'bg-amber-400'}`} />
-                      <div>
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${item.isClaimed ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+                      <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-gray-900">{item.name}</p>
                         {item.isClaimed && item.claimedAt && (
                           <p className="text-xs text-gray-500">Reivindicado em {formatDate(item.claimedAt)}</p>
                         )}
+                        {!item.isClaimed && item.description && (
+                          <p className="text-[11px] text-gray-500 mt-0.5 leading-snug line-clamp-2">{item.description}</p>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-semibold text-emerald-700">
-                        {formatCurrency(item.amount)}
-                      </span>
+                    <div className="flex items-center gap-3 shrink-0 ml-2">
+                      {item.amount > 0 ? (
+                        <span className="text-sm font-semibold text-emerald-700">
+                          {formatCurrency(item.amount)}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] uppercase tracking-wide text-blue-600 font-semibold">
+                          Meta
+                        </span>
+                      )}
                       {item.isClaimed ? (
                         <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">Reivindicado</Badge>
-                      ) : (
+                      ) : item.amount > 0 ? (
                         <Button
                           size="sm"
                           variant="outline"
@@ -378,7 +595,7 @@ export function GratificationsPage() {
                             'Reivindicar'
                           )}
                         </Button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 ))}

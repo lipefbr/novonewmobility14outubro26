@@ -2,12 +2,22 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
+// Default career pins per client spec (Índice.docx §6).
+// The plan applies to ALL users ("NÃO TEM O PLANO DE CARREIRA É PARA TODOS OS
+// USUÁRIOS EM GERAL"). Each pin is a MONTHLY bonus paid every month as long
+// as the user maintains that graduation.
+//   - PIN SAFIRA    — Categoria 3 — R$ 2.000/mês (minPoints: 100)
+//   - PIN RUBI      — Categoria 2 — R$ 3.000/mês (minPoints: 250)
+//   - PIN ESMERALDA — Categoria 1 — R$ 4.000/mês (minPoints: 500)
+//   - PIN DIAMANTE  — Categoria 4 — R$ 5.000/mês (minPoints: 1000)
+//   - PIN IMPERIAL  — Categoria 5 — R$ 6.000/mês (minPoints: 2500)
+// Note: sortOrder matches the natural progression by minPoints (1..5).
 const DEFAULT_CAREER_PLANS = [
-  { code: 'bronze', name: 'Bronze', description: 'Nível inicial do plano de carreira.', minPoints: 0, bonusCents: 0, color: '#cd7f32', icon: '🥉', sortOrder: 1 },
-  { code: 'prata', name: 'Prata', description: 'Nível intermediário do plano de carreira.', minPoints: 100, bonusCents: 5000, color: '#c0c0c0', icon: '🥈', sortOrder: 2 },
-  { code: 'ouro', name: 'Ouro', description: 'Nível avançado do plano de carreira.', minPoints: 500, bonusCents: 25000, color: '#ffd700', icon: '🥇', sortOrder: 3 },
-  { code: 'diamante', name: 'Diamante', description: 'Nível premium do plano de carreira.', minPoints: 1000, bonusCents: 75000, color: '#b9f2ff', icon: '💎', sortOrder: 4 },
-  { code: 'black', name: 'Black', description: 'Nível máximo do plano de carreira.', minPoints: 5000, bonusCents: 250000, color: '#000000', icon: '👑', sortOrder: 5 },
+  { code: 'safira',    name: 'Safira',    description: 'PIN Safira - Categoria 3 - R$ 2.000/mês ao bater meta mensal', minPoints: 100,  bonusCents: 200000, color: '#7DD3FC', icon: '🔷', sortOrder: 1 },
+  { code: 'rubi',      name: 'Rubi',      description: 'PIN Rubi - Categoria 2 - R$ 3.000/mês ao bater meta mensal',     minPoints: 250,  bonusCents: 300000, color: '#F87171', icon: '❤️', sortOrder: 2 },
+  { code: 'esmeralda', name: 'Esmeralda', description: 'PIN Esmeralda - Categoria 1 - R$ 4.000/mês ao bater meta mensal', minPoints: 500,  bonusCents: 400000, color: '#34D399', icon: '💚', sortOrder: 3 },
+  { code: 'diamante',  name: 'Diamante',  description: 'PIN Diamante - Categoria 4 - R$ 5.000/mês ao bater meta mensal',  minPoints: 1000, bonusCents: 500000, color: '#A78BFA', icon: '💎', sortOrder: 4 },
+  { code: 'imperial',  name: 'Imperial',  description: 'PIN Imperial - Categoria 5 - R$ 6.000/mês ao bater meta mensal',  minPoints: 2500, bonusCents: 600000, color: '#FBBF24', icon: '👑', sortOrder: 5 },
 ]
 
 async function seedDefaultCareerPlansIfEmpty() {

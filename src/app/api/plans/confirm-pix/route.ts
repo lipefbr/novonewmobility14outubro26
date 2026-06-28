@@ -37,8 +37,9 @@ export async function POST(request: Request) {
       paidAt: new Date(),
     }, [invoiceId])
 
-    // Determine plan from invoice type
-    const plan = invoice.type?.replace('plan_', '') || 'blue3'
+    // Determine plan from invoice type. Normalize premium5 → blue5 (DB code).
+    let plan = invoice.type?.replace('plan_', '') || 'blue3'
+    if (plan === 'premium5') plan = 'blue5'
 
     // Apply the plan upgrade
     await db.update('User', '"id" = $1', {
@@ -47,6 +48,9 @@ export async function POST(request: Request) {
       // Set subscription status to active with next due date 30 days from now
     }, [userId])
 
+    // Display name (Premium 5 for the blue5/premium5 tier, Blue 3 otherwise)
+    const planDisplayName = plan === 'blue5' ? 'Premium 5' : plan === 'blue3' ? 'Blue 3' : plan
+
     // Create approved transaction
     await db.insert('Transaction', {
       userId,
@@ -54,7 +58,7 @@ export async function POST(request: Request) {
       amount: invoice.amount,
       status: 'approved',
       category: 'plan_upgrade',
-      description: `Pagamento confirmado - Upgrade para ${plan === 'blue3' ? 'Blue 3' : 'Blue 5'} via PIX`,
+      description: `Pagamento confirmado - Upgrade para ${planDisplayName} via PIX`,
     })
 
     // Update other pending plan_upgrade transactions for this user to approved
@@ -66,8 +70,19 @@ export async function POST(request: Request) {
     for (const tx of pendingTxs) {
       await db.update('Transaction', '"id" = $1', {
         status: 'approved',
-        description: `Pagamento confirmado - Upgrade para ${plan === 'blue3' ? 'Blue 3' : 'Blue 5'} via PIX`,
+        description: `Pagamento confirmado - Upgrade para ${planDisplayName} via PIX`,
       }, [tx.id])
+    }
+
+    // Send notification for the confirmed PIX payment (Blue 3 → Premium 5
+    // unlocks levels 4-5; Blue 3 standalone just activates the plan).
+    if (plan === 'blue5') {
+      await db.insert('Notification', {
+        userId,
+        title: `Upgrade para ${planDisplayName} realizado!`,
+        message: `Seu pagamento PIX foi confirmado e seu plano foi atualizado para ${planDisplayName}. Os níveis 4 e 5 da matriz Entrada foram desbloqueados — agora você pode receber comissões dos níveis 1 a 5.`,
+        type: 'plan_upgrade',
+      })
     }
 
     const updatedUser = await db.findOne('User', '"id" = $1', [userId])
@@ -76,6 +91,7 @@ export async function POST(request: Request) {
       invoice: { ...invoice, status: 'paid', paidAt: new Date() },
       user: updatedUser,
       plan,
+      planAlias: plan === 'blue5' ? 'premium5' : plan,
       paid: true,
     })
   } catch (err) {

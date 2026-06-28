@@ -9,7 +9,8 @@ import { useTranslation } from '@/lib/i18n'
 import { careerApi } from '@/lib/api'
 import {
   Trophy, Star, TrendingUp, Award, Target, Crown,
-  Zap, Shield, Percent, Gift, CheckCircle2, ArrowRight, Sparkles, Lock, Unlock
+  Zap, Shield, Percent, Gift, CheckCircle2, ArrowRight, Sparkles, Lock, Unlock,
+  Car
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
@@ -46,108 +47,97 @@ function cashbackMultiplierFor(sortOrder: number): string {
   return `${(1 + Math.max(sortOrder - 1, 0) * 0.2).toFixed(1)}x`
 }
 
+// Fallback UI list of the 5 client-spec career pins (Índice.docx §6).
+// Used ONLY while the API call is in flight or fails. The real list comes
+// from /api/career (admin-managed CareerPlan table). Each pin is a MONTHLY
+// bonus paid every month as long as the user maintains that graduation:
+//   Safira R$2.000 / Rubi R$3.000 / Esmeralda R$4.000
+//   Diamante R$5.000 / Imperial R$6.000
 const careerLevels: CareerLevel[] = [
   {
-    id: 'bronze',
-    code: 'bronze',
-    name: 'Bronze',
+    id: 'safira',
+    code: 'safira',
+    name: 'Safira',
     icon: Award,
-    iconEmoji: '🥉',
+    iconEmoji: '🔷',
     starsRequired: 1,
-    pointsRequired: 10,
-    color: '#b45309',
-    reward: 50000,
+    pointsRequired: 100,
+    color: '#7DD3FC',
+    reward: 200000, // R$ 2.000/mês
     cashbackMultiplier: '1.0x',
-    achieved: true,
-    benefits: ['CashBack Entrada básico', 'Suporte padrão', 'App Mobilidade'],
-    nextReward: 'CashBack Residual',
-    nextRewardIcon: '📈',
+    achieved: false,
+    benefits: ['PIN Safira - Categoria 3', 'Bônus mensal: R$ 2.000/mês', 'Pago todo mês ao manter a graduação'],
+    nextReward: 'PIN Rubi',
+    nextRewardIcon: '❤️',
     sortOrder: 1,
   },
   {
-    id: 'silver',
-    code: 'prata',
-    name: 'Prata',
-    icon: Award,
-    iconEmoji: '🥈',
+    id: 'rubi',
+    code: 'rubi',
+    name: 'Rubi',
+    icon: Trophy,
+    iconEmoji: '❤️',
     starsRequired: 2,
-    pointsRequired: 20,
-    color: '#6b7280',
-    reward: 150000,
+    pointsRequired: 250,
+    color: '#F87171',
+    reward: 300000, // R$ 3.000/mês
     cashbackMultiplier: '1.2x',
-    achieved: true,
-    benefits: ['CashBack Entrada completo', 'CashBack Residual', 'Voucher mensal R$20'],
-    nextReward: 'CashBack Vendas',
-    nextRewardIcon: '🛒',
+    achieved: false,
+    benefits: ['PIN Rubi - Categoria 2', 'Bônus mensal: R$ 3.000/mês', 'Pago todo mês ao manter a graduação'],
+    nextReward: 'PIN Esmeralda',
+    nextRewardIcon: '💚',
     sortOrder: 2,
   },
   {
-    id: 'gold',
-    code: 'ouro',
-    name: 'Ouro',
-    icon: Trophy,
-    iconEmoji: '🥇',
+    id: 'esmeralda',
+    code: 'esmeralda',
+    name: 'Esmeralda',
+    icon: Crown,
+    iconEmoji: '💚',
     starsRequired: 3,
-    pointsRequired: 30,
-    color: '#eab308',
-    reward: 500000,
+    pointsRequired: 500,
+    color: '#34D399',
+    reward: 400000, // R$ 4.000/mês
     cashbackMultiplier: '1.5x',
-    achieved: true,
-    benefits: ['Tudo do Prata', 'CashBack Vendas', 'Gratificações premium', 'CashBack Farmácia'],
-    nextReward: 'Portal Gamer',
-    nextRewardIcon: '🎮',
+    achieved: false,
+    benefits: ['PIN Esmeralda - Categoria 1', 'Bônus mensal: R$ 4.000/mês', 'Pago todo mês ao manter a graduação'],
+    nextReward: 'PIN Diamante',
+    nextRewardIcon: '💎',
     sortOrder: 3,
   },
   {
-    id: 'sapphire',
-    code: 'safira',
-    name: 'Safira',
-    icon: Crown,
-    iconEmoji: '🔷',
-    starsRequired: 4,
-    pointsRequired: 40,
-    color: '#3b82f6',
-    reward: 1500000,
-    cashbackMultiplier: '2.0x',
-    achieved: false,
-    benefits: ['Tudo do Ouro', 'Portal Gamer', 'Seguro Auto', 'Telemedicina'],
-    nextReward: 'Portal Sport Bet',
-    nextRewardIcon: '⚽',
-    sortOrder: 4,
-  },
-  {
-    id: 'diamond',
+    id: 'diamante',
     code: 'diamante',
     name: 'Diamante',
     icon: Crown,
     iconEmoji: '💎',
-    starsRequired: 5,
-    pointsRequired: 60,
-    color: '#06b6d4',
-    reward: 3000000,
-    cashbackMultiplier: '2.5x',
+    starsRequired: 4,
+    pointsRequired: 1000,
+    color: '#A78BFA',
+    reward: 500000, // R$ 5.000/mês
+    cashbackMultiplier: '2.0x',
     achieved: false,
-    benefits: ['Tudo do Safira', 'Portal Sport Bet', 'Seguro de Vida', 'Plano Odontológico'],
-    nextReward: 'CashBack Máximo',
-    nextRewardIcon: '💎',
-    sortOrder: 5,
+    benefits: ['PIN Diamante - Categoria 4', 'Bônus mensal: R$ 5.000/mês', 'Pago todo mês ao manter a graduação'],
+    nextReward: 'PIN Imperial',
+    nextRewardIcon: '👑',
+    sortOrder: 4,
   },
   {
-    id: 'platinum',
-    code: 'platina',
-    name: 'Platina',
+    id: 'imperial',
+    code: 'imperial',
+    name: 'Imperial',
     icon: Crown,
     iconEmoji: '👑',
-    starsRequired: 6,
-    pointsRequired: 100,
-    color: '#10b981',
-    reward: 5000000,
-    cashbackMultiplier: '3.0x',
+    starsRequired: 5,
+    pointsRequired: 2500,
+    color: '#FBBF24',
+    reward: 600000, // R$ 6.000/mês
+    cashbackMultiplier: '2.5x',
     achieved: false,
-    benefits: ['Tudo do Diamante', 'CashBack máximo', 'Benefícios exclusivos VIP', 'Acesso antecipado'],
+    benefits: ['PIN Imperial - Categoria 5', 'Bônus mensal: R$ 6.000/mês', 'Graduação máxima - Pago todo mês'],
     nextReward: 'Benefícios Exclusivos VIP',
     nextRewardIcon: '👑',
-    sortOrder: 6,
+    sortOrder: 5,
   },
 ]
 
@@ -249,7 +239,11 @@ export function CareerPage() {
   const { t } = useTranslation()
   const { user } = useStore()
   const currentStars = user?.stars ?? 0
-  const currentPoints = user?.careerPoints ?? 0
+  // `currentPoints` is initialized from the user store but kept in local
+  // state so we can sync it with the DB-backed value returned by the API
+  // (the user store may be stale — e.g. after a career-points update on the
+  // backend that hasn't propagated to the store yet).
+  const [currentPoints, setCurrentPoints] = useState<number>(user?.careerPoints ?? 0)
   const personalPoints = user?.personalPoints ?? 0
 
   // careerLevels is kept ONLY as a loading fallback. The real list comes
@@ -264,12 +258,21 @@ export function CareerPage() {
       try {
         const data = await careerApi.getData(user.id)
         if (cancelled || !data) return
-        // Compute `achieved` dynamically from the user's careerPoints vs the
-        // plan's minPoints — never trust a hardcoded flag.
+        // Use the API's `totalPoints` (DB-backed careerPoints) as the source
+        // of truth for achievement — the local user store may be stale. The
+        // API response also includes a per-plan `achieved` flag computed
+        // from the same DB value, so prefer that over a re-computation from
+        // the potentially-stale user-store value.
+        const apiTotalPoints = typeof data.totalPoints === 'number'
+          ? data.totalPoints
+          : currentPoints
         const plans = Array.isArray(data.plans) ? data.plans : []
         if (plans.length > 0) {
           const mapped: CareerLevel[] = plans.map((p: any, idx: number) => {
             const nextPlan = plans[idx + 1] as any | undefined
+            const isAchieved = typeof p.achieved === 'boolean'
+              ? p.achieved
+              : apiTotalPoints >= p.minPoints
             return {
               id: p.id,
               code: p.code,
@@ -281,7 +284,7 @@ export function CareerPage() {
               color: p.color || '#10b981',
               reward: p.bonusCents || 0,
               cashbackMultiplier: cashbackMultiplierFor(p.sortOrder),
-              achieved: currentPoints >= p.minPoints,
+              achieved: isAchieved,
               benefits: Array.isArray(p.benefits) && p.benefits.length > 0
                 ? p.benefits
                 : (p.description ? [p.description] : []),
@@ -291,6 +294,12 @@ export function CareerPage() {
             }
           })
           setLevels(mapped)
+          // Keep the local "currentPoints" used by progress math in sync with
+          // the DB-backed value so progress bars / "Faltam X pontos" math is
+          // correct even when the user store is stale.
+          if (apiTotalPoints !== currentPoints) {
+            setCurrentPoints(apiTotalPoints)
+          }
         }
         if (data.currentRank) setApiCurrentRank(data.currentRank)
       } catch (err) {
@@ -356,6 +365,78 @@ export function CareerPage() {
         <p className="text-sm text-muted-foreground">Acompanhe seu progresso e conquistas na carreira</p>
       </div>
 
+      {/* Client-spec §6 explanation banners */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+        <Card className="shadow-sm bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 border-emerald-200 dark:border-emerald-800 overflow-hidden">
+          <div className="h-1 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400 animate-gradient-shift" />
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400 shrink-0">
+                <Trophy className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <h4 className="font-bold text-emerald-800 dark:text-emerald-300 text-sm">
+                  Plano de Carreira — Para Todos os Usuários
+                </h4>
+                <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1 leading-relaxed">
+                  O plano de carreira é para <span className="font-semibold">TODOS OS USUÁRIOS EM GERAL</span>.
+                  Cada PIN é uma graduação com <span className="font-semibold">bônus mensal pago todos os meses</span>{' '}
+                  ao manter a categoria conquistada. PAGOS TODOS OS MESES AO ATINGIR CADA PINO E A CATEGORIA QUE ELE SE ENCONTRA.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
+                  <div className="bg-white/60 dark:bg-emerald-950/40 rounded-md p-2 text-center border border-emerald-100 dark:border-emerald-900/50">
+                    <p className="text-[10px] text-muted-foreground">Safira · Cat. 3</p>
+                    <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">R$ 2.000/mês</p>
+                  </div>
+                  <div className="bg-white/60 dark:bg-emerald-950/40 rounded-md p-2 text-center border border-emerald-100 dark:border-emerald-900/50">
+                    <p className="text-[10px] text-muted-foreground">Rubi · Cat. 2</p>
+                    <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">R$ 3.000/mês</p>
+                  </div>
+                  <div className="bg-white/60 dark:bg-emerald-950/40 rounded-md p-2 text-center border border-emerald-100 dark:border-emerald-900/50">
+                    <p className="text-[10px] text-muted-foreground">Esmeralda · Cat. 1</p>
+                    <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">R$ 4.000/mês</p>
+                  </div>
+                  <div className="bg-white/60 dark:bg-emerald-950/40 rounded-md p-2 text-center border border-emerald-100 dark:border-emerald-900/50">
+                    <p className="text-[10px] text-muted-foreground">Diamante · Cat. 4</p>
+                    <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">R$ 5.000/mês</p>
+                  </div>
+                  <div className="bg-white/60 dark:bg-emerald-950/40 rounded-md p-2 text-center border border-emerald-100 dark:border-emerald-900/50">
+                    <p className="text-[10px] text-muted-foreground">Imperial · Cat. 5</p>
+                    <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">R$ 6.000/mês</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Driver-specific bonus banner (§6 — motorista/entregador) */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
+        <Card className="shadow-sm bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 border-amber-200 dark:border-amber-800 overflow-hidden">
+          <div className="h-1 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-400 animate-gradient-shift" />
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400 shrink-0">
+                <Car className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <h4 className="font-bold text-amber-800 dark:text-amber-300 text-sm">
+                  Bônus Motorista / Entregador
+                </h4>
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 leading-relaxed">
+                  Motorista ao escolher a categoria que deseja trabalhar ganhará uma{' '}
+                  <span className="font-semibold">Bonificação extra todo mês que bater sua meta mensal</span>{' '}
+                  (18 corridas/dia). A meta mensal é de <span className="font-semibold">384 corridas/mês</span>.
+                  Ao bater a meta diária, o sistema envia uma notificação push avisando que aquele dia teve a meta batida.
+                  A manutenção do bônus é paga só quando atinge a graduação dele, após a conquista.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* Current Rank Card with Rank Badge and Progress Ring */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
@@ -381,7 +462,7 @@ export function CareerPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-1">
-                    {Array.from({ length: 6 }).map((_, i) => (
+                    {Array.from({ length: 5 }).map((_, i) => (
                       <Star
                         key={i}
                         className={`h-4 w-4 transition-all duration-300 ${

@@ -229,6 +229,7 @@ export function RegisterPage() {
           balanceFood: 0,
           balancePharmacy: 0,
           balanceGratification: 0,
+          balancePaymentInvoice: 0,
           balanceFree: 0,
           balancePending: 0,
           careerPoints: 0,

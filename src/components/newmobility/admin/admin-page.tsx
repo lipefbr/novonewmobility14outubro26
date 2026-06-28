@@ -30,7 +30,7 @@ import {
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
-import { ReportsPage } from '@/components/newmobility/reports/reports-page'
+import { AdminReportsPanel } from '@/components/newmobility/admin/admin-reports-panel'
 
 // ---------- Interfaces ----------
 
@@ -3592,20 +3592,9 @@ export function AdminPage() {
           </div>
         </TabsContent>
 
-        {/* Reports Tab — renders the existing ReportsPage component */}
+        {/* Reports Tab — admin-specific platform-wide reports panel (client spec §19) */}
         <TabsContent value="reports" className="mt-4 space-y-4">
-          <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <BarChart3 className="h-4 w-4 text-emerald-600" />
-                <h3 className="text-sm font-semibold text-foreground">Relatórios & Analytics</h3>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Visualização completa de relatórios, analytics e métricas de uso da plataforma.
-              </p>
-            </CardContent>
-          </Card>
-          <ReportsPage />
+          <AdminReportsPanel />
         </TabsContent>
 
         {/* Gratifications Tab — summary of gratification balances across users */}

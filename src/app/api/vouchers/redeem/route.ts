@@ -2,7 +2,10 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
-// Map voucher type to the user balance field that should be credited
+// Map voucher type to the user balance field that should be credited.
+// IMPORTANT (client spec §7): vouchers are "SOMENTE PARA USO - NÃO PODE SER SACADO",
+// meaning they MUST NEVER credit the withdrawable balance (balanceWithdrawal).
+// Only usage-restricted wallets are valid destinations for voucher redemptions.
 function getBalanceField(voucherType: string): string | null {
   switch (voucherType) {
     case 'mobility': return 'balanceMobility'
@@ -10,9 +13,9 @@ function getBalanceField(voucherType: string): string | null {
     case 'pharmacy': return 'balancePharmacy'
     case 'shopping': return 'balanceShopping'
     case 'gratification': return 'balanceGratification'
-    case 'withdrawal':
-    case 'cashback':
-      return 'balanceWithdrawal'
+    case 'paymentInvoice': return 'balancePaymentInvoice'
+    // 'withdrawal' and 'cashback' are intentionally NOT allowed — vouchers cannot
+    // credit the withdrawable wallet.
     default:
       return null
   }
@@ -97,6 +100,7 @@ export async function POST(req: NextRequest) {
       balanceFood: 'Saldo Refeição',
       balancePharmacy: 'Saldo Farmácia',
       balanceGratification: 'Saldo Gratificação',
+      balancePaymentInvoice: 'Saldo Pagamento Fatura',
     }
 
     return success({
@@ -118,6 +122,7 @@ export async function POST(req: NextRequest) {
         balanceFood: updatedUser.balanceFood,
         balancePharmacy: updatedUser.balancePharmacy,
         balanceGratification: updatedUser.balanceGratification,
+        balancePaymentInvoice: updatedUser.balancePaymentInvoice,
       },
     })
   } catch (err) {
