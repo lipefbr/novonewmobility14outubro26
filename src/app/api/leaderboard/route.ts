@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db, prisma } from '@/lib/db'
-import { success, error, centsToReais } from '@/lib/api-utils'
+import { success, error } from '@/lib/api-utils'
 
 export async function GET(req: NextRequest) {
   try {
@@ -39,7 +39,8 @@ export async function GET(req: NextRequest) {
       directReferrals: u._count.referrals,
     }))
 
-    // Compute date range for period filtering
+    // Compute date range for period filtering (kept for future use; ranking
+    // currently uses lifetime referral / career-point totals for privacy).
     const now = new Date()
     let periodStart: Date
     switch (period) {
@@ -52,29 +53,11 @@ export async function GET(req: NextRequest) {
       default: // monthly
         periodStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
     }
+    void periodStart
 
-    // Get transactions for the period for earnings-based ranking
-    const userIds = allUsers.map(u => u.id)
-    const transactions = userIds.length > 0
-      ? await prisma.transaction.findMany({
-          where: {
-            userId: { in: userIds },
-            type: { in: ['cashback_entry', 'cashback_residual', 'cashback_sales', 'gratification', 'bonus'] },
-            status: 'paid',
-            createdAt: { gte: periodStart },
-          },
-          select: { userId: true, amount: true },
-        })
-      : []
-
-    // Calculate earnings per user
-    const earningsMap = new Map<string, number>()
-    for (const tx of transactions) {
-      const current = earningsMap.get(tx.userId) || 0
-      earningsMap.set(tx.userId, current + tx.amount)
-    }
-
-    // Build ranking based on type
+    // Build ranking based on type.
+    // Privacy: the "earnings" tab no longer exposes R$ values across users —
+    // it ranks members by their direct referral count ("indicações") instead.
     let rankedUsers: { id: string; name: string; plan: string; profileImage: string | null; value: number; valueDisplay: string }[]
 
     switch (type) {
@@ -85,7 +68,7 @@ export async function GET(req: NextRequest) {
           plan: u.plan,
           profileImage: u.profileImage,
           value: u.directReferrals,
-          valueDisplay: `${u.directReferrals}`,
+          valueDisplay: `${u.directReferrals} indicações`,
         })).sort((a, b) => b.value - a.value)
         break
 
@@ -100,18 +83,15 @@ export async function GET(req: NextRequest) {
         })).sort((a, b) => b.value - a.value)
         break
 
-      default: // earnings
-        rankedUsers = allUsers.map(u => {
-          const earnings = earningsMap.get(u.id) || 0
-          return {
-            id: u.id,
-            name: u.name,
-            plan: u.plan,
-            profileImage: u.profileImage,
-            value: earnings,
-            valueDisplay: `R$ ${centsToReais(earnings).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-          }
-        }).sort((a, b) => b.value - a.value)
+      default: // earnings → ranked by direct referral count (privacy-safe)
+        rankedUsers = allUsers.map(u => ({
+          id: u.id,
+          name: u.name,
+          plan: u.plan,
+          profileImage: u.profileImage,
+          value: u.directReferrals,
+          valueDisplay: `${u.directReferrals} indicações`,
+        })).sort((a, b) => b.value - a.value)
     }
 
     // Add rank positions
@@ -124,11 +104,11 @@ export async function GET(req: NextRequest) {
     const userRank = ranked.find(u => u.id === userId)
     const userPosition = userRank ? userRank.rank : ranked.length + 1
 
-    // User rank summary for all categories
-    const userEarnings = earningsMap.get(userId) || 0
+    // User rank summary for all categories.
+    // Privacy: no monetary values exposed — "earnings" rank uses referral count.
     const userRefData = allUsers.find(u => u.id === userId)
     const userReferrals = userRefData?.directReferrals || 0
-    const userPoints = userRefData?.careerPoints || 0
+    const userPoints = (userRefData?.careerPoints || 0) + (userRefData?.personalPoints || 0)
 
     return success({
       type,
@@ -137,12 +117,12 @@ export async function GET(req: NextRequest) {
       userRank: {
         position: userPosition,
         earnings: {
-          position: [...rankedUsers].sort((a, b) => b.value - a.value).findIndex(u => u.id === userId) + 1,
-          value: `R$ ${centsToReais(userEarnings).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+          position: allUsers.map(u => ({ id: u.id, count: u.directReferrals })).sort((a, b) => b.count - a.count).findIndex(u => u.id === userId) + 1,
+          value: `${userReferrals} indicações`,
         },
         referrals: {
           position: allUsers.map(u => ({ id: u.id, count: u.directReferrals })).sort((a, b) => b.count - a.count).findIndex(u => u.id === userId) + 1,
-          value: `${userReferrals}`,
+          value: `${userReferrals} indicações`,
         },
         points: {
           position: allUsers.map(u => ({ id: u.id, pts: u.careerPoints + u.personalPoints })).sort((a, b) => b.pts - a.pts).findIndex(u => u.id === userId) + 1,

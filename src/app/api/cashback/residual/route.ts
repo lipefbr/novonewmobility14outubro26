@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { db, prisma } from '@/lib/db'
 import { success, error, getResidualLevels } from '@/lib/api-utils'
 
 export async function GET(request: Request) {
@@ -37,15 +37,40 @@ export async function GET(request: Request) {
     // Read live cashback percentages from SystemConfig (admin-configurable)
     const percentages = await getResidualLevels()
 
+    // Read matrix structural width from the MatrixType table (admin-configurable).
+    // Falls back to 5 (the new default) if the row is missing or the lookup fails.
+    let matrixWidth = 5
+    let matrixDepth = 7
+    try {
+      const mt = await prisma.matrixType.findFirst({
+        where: { matrixKind: 'residual', isActive: true },
+        orderBy: { createdAt: 'asc' },
+      })
+      if (mt) {
+        matrixWidth = mt.width || 5
+        matrixDepth = mt.depth || 7
+      }
+    } catch (mtErr) {
+      console.warn('[Cashback residual] Could not load MatrixType, using defaults:', mtErr)
+    }
+
     const levels = percentages.map((percentage, i) => {
       const level = i + 1
+      const maxUsers = Math.pow(matrixWidth, level)
       return {
         level,
         percentage,
+        maxUsers,
         currentUsers: usersPerLevel[level] || 0,
         earned: earnedPerLevel[level] || 0,
       }
     })
+
+    // Max matrix size for an N-wide, D-deep matrix: (width^(D+1) - 1) / (width - 1)
+    // For 5-wide, 7-deep: (5^8 - 1) / 4 = 97656
+    const maxMatrixSize = matrixWidth > 1
+      ? Math.floor((Math.pow(matrixWidth, matrixDepth + 1) - 1) / (matrixWidth - 1))
+      : matrixDepth + 1
 
     return success({
       matrixPosition: matrixPosition
@@ -59,7 +84,9 @@ export async function GET(request: Request) {
       levels,
       totalEarned,
       totalUsers: Object.values(usersPerLevel).reduce((s, c) => s + c, 0),
-      maxMatrixSize: 21844, // 4^0 + 4^1 + ... + 4^7
+      maxMatrixSize,
+      matrixWidth,
+      matrixDepth,
     })
   } catch (err) {
     console.error('Cashback residual error:', err)

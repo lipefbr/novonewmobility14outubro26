@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { db, prisma } from '@/lib/db'
 import { success, error, getEntradaLevels } from '@/lib/api-utils'
 
 export async function GET(request: Request) {
@@ -38,10 +38,27 @@ export async function GET(request: Request) {
     // Read live cashback percentages from SystemConfig (admin-configurable)
     const percentages = await getEntradaLevels()
 
-    // Build level details (matrix structural dims: 4^level users per level)
+    // Read matrix structural width from the MatrixType table (admin-configurable).
+    // Falls back to 5 (the new default) if the row is missing or the lookup fails.
+    let matrixWidth = 5
+    let matrixDepth = 5
+    try {
+      const mt = await prisma.matrixType.findFirst({
+        where: { matrixKind: 'entrada', isActive: true },
+        orderBy: { createdAt: 'asc' },
+      })
+      if (mt) {
+        matrixWidth = mt.width || 5
+        matrixDepth = mt.depth || 5
+      }
+    } catch (mtErr) {
+      console.warn('[Cashback entrada] Could not load MatrixType, using defaults:', mtErr)
+    }
+
+    // Build level details (matrix structural dims: width^level users per level)
     const levels = percentages.map((percentage, i) => {
       const level = i + 1
-      const maxUsers = Math.pow(4, level) // 4, 16, 64, 256, 1024
+      const maxUsers = Math.pow(matrixWidth, level) // e.g. 5, 25, 125, 625, 3125
       const currentUsers = usersPerLevel[level] || 0
       return {
         level,
@@ -63,6 +80,12 @@ export async function GET(request: Request) {
       )
     }
 
+    // Max matrix size for an N-wide, D-deep matrix: (width^(D+1) - 1) / (width - 1)
+    // Includes the user's own root position. For 5-wide, 5-deep: (5^6 - 1) / 4 = 3906
+    const maxMatrixSize = matrixWidth > 1
+      ? Math.floor((Math.pow(matrixWidth, matrixDepth + 1) - 1) / (matrixWidth - 1))
+      : matrixDepth + 1
+
     return success({
       matrixPosition: matrixPosition
         ? {
@@ -76,7 +99,9 @@ export async function GET(request: Request) {
       totalEarned,
       totalUsers: Object.values(usersPerLevel).reduce((s, c) => s + c, 0),
       directChildren,
-      maxMatrixSize: 1364, // 4+16+64+256+1024
+      maxMatrixSize,
+      matrixWidth,
+      matrixDepth,
     })
   } catch (err) {
     console.error('Cashback entrada error:', err)

@@ -1865,3 +1865,486 @@ Notes for other agents:
 - The `/api/career` response now includes a `plans[]` array alongside the legacy `milestones[]`. Existing callers that read `milestones[]` still work (derived from the same DB data), but new callers should prefer `plans[]`.
 - The dashboard's `career` object shape is unchanged (`{ currentRank, stars, points, nextRank: { name, pointsNeeded } | null, progress }`) so existing dashboard components don't need to change.
 - I did NOT touch the admin page or admin API routes, per task constraints.
+
+---
+Task ID: 3a
+Agent: Bug Fix Agent (Bug 1 + Bug 3)
+Task: Fix Bug 1 (birthday date off-by-one timezone bug) and Bug 3 (gamification plan name showing raw code instead of friendly name)
+
+Work Log:
+
+**Pre-work:** Read worklog.md to understand prior work (Tasks 1–7-b covered data leak fix, db.execute→Prisma migration, Neon PostgreSQL migration, Vercel deploy fix, financial/voucher/redeem/share/network fixes, admin matrix, referral tree, and most recently career/streak/points DB-driven refactors). Verified `getPlanName` exists in `/home/z/my-project/src/lib/utils.ts` at lines 76-83 (maps `free`→"Gratuito", `blue3`→"Blue 3", `blue5`→"Blue 5 Premium"). Read both target files to confirm exact current code before editing.
+
+**Bug 1 fix — birthday timezone off-by-one**
+File: `/home/z/my-project/src/components/newmobility/profile/personal-data-section.tsx`
+
+Root cause confirmed: birthday is saved as ISO UTC midnight (e.g. `1990-05-15T00:00:00.000Z`) but the two helper functions read LOCAL time, so in UTC-3 (Brazil) the date shifted back one day (15/05 → 14/05).
+
+Changes made (lines 64-81):
+1. `formatDateBR()` — changed `d.toLocaleDateString('pt-BR')` → `d.toLocaleDateString('pt-BR', { timeZone: 'UTC' })`. Also widened the parameter type to `string | Date | null | undefined` to match the task spec (was `string | null | undefined`). Kept the existing `'-'` return values for null/invalid (the task spec suggested 'Não informado' but the existing file uses '-', and other DataField consumers in this file rely on '-' — kept '-' to avoid breaking the display contract).
+2. `toDateInputValue()` — replaced the LOCAL getters (`d.getFullYear()`, `d.getMonth()`, `d.getDate()`) with UTC getters (`d.getUTCFullYear()`, `d.getUTCMonth()`, `d.getUTCDate()`). This ensures the `<input type="date">` in edit mode shows the same day that was saved (no off-by-one when editing in a UTC- timezone). Also widened the parameter type to `string | Date | null | undefined` to match. Updated the comment to "Use UTC getters to match the UTC-midnight storage format".
+
+Result: A birthday saved as `1990-05-15T00:00:00.000Z` now displays as `15/05/1990` in both view mode and edit mode, regardless of the user's local timezone.
+
+**Bug 3 fix — gamification plan name showing raw code**
+File: `/home/z/my-project/src/components/newmobility/gamification/gamification-page.tsx`
+
+Root cause confirmed: line 170 rendered `{entry.plan}` directly, showing raw codes ("blue5", "blue3", "free") instead of friendly names ("Blue 5 Premium", "Blue 3", "Gratuito").
+
+Changes made:
+1. Import line (line 10) — added `getPlanName` and `cn` to the existing `@/lib/utils` import:
+   `import { formatCurrency, getPlanName, cn } from '@/lib/utils'`
+   (`getPlanBadge` was already a local function defined at lines 75-78, so no import needed for it; `user` was already destructured from `useStore()` at line 51.)
+2. Page header (lines 83-92) — added a Badge next to the "Gamificação" title showing the CURRENT USER's plan with the proper color and friendly name:
+   ```tsx
+   <Badge className={cn('ml-2', getPlanBadge(user?.plan || 'free'))}>
+     {getPlanName(user?.plan || 'free')}
+   </Badge>
+   ```
+   Placed inside the existing `<h2 className="... flex items-center gap-2">` so it sits inline with the Trophy icon and title. Falls back to 'free' if `user.plan` is undefined.
+3. Leaderboard entry (line 173) — changed `<Badge ...>{entry.plan}</Badge>` → `<Badge ...>{getPlanName(entry.plan)}</Badge>`. The badge's CSS class still uses `getPlanBadge(entry.plan)` for the color, only the label text now uses the friendly name.
+
+Result: Leaderboard rows now show "Blue 5 Premium" / "Blue 3" / "Gratuito" instead of "blue5" / "blue3" / "free". The page header also shows the logged-in user's current plan as a colored badge.
+
+**Verification:**
+- `cd /home/z/my-project && bun run lint` → 13 errors, ALL pre-existing in `.js` utility files (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js) using `require()`. ZERO new lint errors from my TypeScript changes. (Same baseline as noted by Task 7-b agent.)
+- Checked dev server log (`/home/z/my-project/dev.log`) — `/` route recompiled cleanly after edits (200 in 223ms with compile: 169ms), no TypeScript/compile errors. All API routes returning 200.
+- Manually verified both edited regions of both files by re-reading them after the edits — code is exactly as intended.
+
+Stage Summary:
+- ✅ Bug 1 (birthday off-by-one): FIXED — `formatDateBR` and `toDateInputValue` now use UTC, so birthdays display and edit correctly in any timezone (especially UTC-3 Brazil).
+- ✅ Bug 3 (gamification plan name): FIXED — leaderboard rows and page header now show friendly plan names ("Blue 5 Premium", "Blue 3", "Gratuito") via `getPlanName()` instead of raw codes.
+
+Files modified:
+- /home/z/my-project/src/components/newmobility/profile/personal-data-section.tsx (Bug 1 — UTC date helpers)
+- /home/z/my-project/src/components/newmobility/gamification/gamification-page.tsx (Bug 3 — getPlanName + header badge)
+
+Notes for other agents:
+- The existing `formatDateBR` / `toDateInputValue` helpers in personal-data-section.tsx return `'-'` / `''` for null/invalid (NOT 'Não informado' as the task spec suggested). I kept the existing return values to avoid breaking the DataField component's `value || '-'` fallback contract. If a future agent wants to change the empty-state text, search for all callers first.
+- `getPlanName` is a pure lookup in `/home/z/my-project/src/lib/utils.ts` (lines 76-83) — it returns the input unchanged for unknown plan codes, so it's safe to call on any `entry.plan` value from the leaderboard API.
+- The gamification page's `getPlanBadge` is a LOCAL function (returns a Tailwind class string for the badge color), distinct from any imported util — do not confuse it with `getPlanName`.
+
+---
+Task ID: 3b
+Agent: Bug-Fix Agent (Dashboard counts)
+Task: Fix Bug 4 — Dashboard counts show 0 despite having referrals
+
+Work Log:
+- Read worklog.md to understand prior work (Tasks 1–9: data leak fix, db.execute→Prisma migration, Neon PostgreSQL migration, career/streak/points DB-driven migrations).
+- Inspected all target files:
+  * /home/z/my-project/src/app/api/dashboard/route.ts (was counting CashbackEntry/Residual/Sales transaction ROWS for `totalUsers` — always 0 for new users with no payouts yet)
+  * /home/z/my-project/src/components/newmobility/dashboard/stats-cards.tsx (reads `data?.cashbackEntrada?.totalUsers ?? 0` — correct shape, no change needed)
+  * /home/z/my-project/src/components/newmobility/dashboard/dashboard-page.tsx (was summing the three cashback `totalUsers` fields for `networkStats.totalSize` and using a fake `* 0.3` for `newReferrals`)
+  * /home/z/my-project/src/app/api/referrals/route.ts (referenced for the recursive-network-walk pattern)
+  * /home/z/my-project/src/lib/db.ts → confirmed `parseConditions` supports `IN $1` when `params[0]` is an array (`where[field] = { in: Array.isArray(value) ? value : [value] }`)
+  * /home/z/my-project/prisma/schema.prisma → confirmed `User.referredById String?` and `User.isActive Boolean`
+
+Changes made:
+
+1) /home/z/my-project/src/app/api/dashboard/route.ts (rewrote cashback counting + added network field)
+   - Added a top-level helper `countNetworkDescendants(userId)` that walks the referral tree breadth-first up to 9 levels deep, using `db.find('User', '"referredById" IN $1', [currentLevelIds])` per level. Returns `{ total, byLevel, activeTotal }` where:
+       * `total` = total descendants across all visited levels
+       * `byLevel` = `{ 1: <count>, 2: <count>, ... }`
+       * `activeTotal` = count of descendants where `isActive === true`
+   - In the GET handler, replaced the per-table `CashbackEntry/Residual/Sales` row-count loops with a single network walk:
+       * `totalEntradaUsers` = sum of `byLevel[1..5]` (Entrada matrix depth)
+       * `totalResidualUsers` = sum of `byLevel[1..7]` (Residual matrix depth)
+       * `totalVendasUsers` = sum of `byLevel[1..9]` (Vendas matrix depth)
+       * `entradaUsersByLevel` / `residualUsersByLevel` / `vendasUsersByLevel` are sliced from the same `byLevel` map so each cashback section shows the correct level breakdown for its matrix depth.
+   - KEPT the existing `totalEntradaEarned / totalResidualEarned / totalVendasEarned` sums from the Cashback transaction tables (per task instructions — kept for internal use / backwards compatibility; only the `totalUsers` field was wrong).
+   - Added a direct-referrals fetch (`db.find('User', '"referredById" = $1', [userId])`) and computed:
+       * `activeDirect` = count of direct referrals where `isActive === true`
+       * `newReferrals` = count of direct referrals with `createdAt >= startOfMonth` (current calendar month)
+   - Added a new `network` field to the success response payload:
+       ```ts
+       network: {
+         totalSize: network.total,        // total descendants in the tree
+         activeMembers: activeDirect,     // direct active referrals
+         newReferrals,                    // direct referrals created this month
+       }
+       ```
+   - All other sections (career, recentTransactions, userDistribution, revenueByCategory, balances, user) are UNCHANGED.
+
+2) /home/z/my-project/src/components/newmobility/dashboard/dashboard-page.tsx
+   - Added `network?: { totalSize: number; activeMembers: number; newReferrals: number }` to the `DashboardData` interface so the new API field type-checks.
+   - Rewrote the `networkStats` computation to read from the new API `network` field (with graceful fallback to `directReferralCount` / 0 when the API hasn't returned it yet):
+       ```ts
+       const networkStats = {
+         totalSize: dashboardData?.network?.totalSize ?? dashboardData?.directReferralCount ?? 0,
+         activeMembers: dashboardData?.network?.activeMembers ?? dashboardData?.directReferralCount ?? 0,
+         newReferrals: dashboardData?.network?.newReferrals ?? 0,
+       }
+       ```
+   - REMOVED the fake `Math.floor((directReferralCount) * 0.3)` heuristic for `newReferrals` — now uses the real count of direct referrals created this month.
+   - REMOVED the triple-sum `cashbackEntrada + cashbackResidual + cashbackVendas` for `totalSize` — now uses the actual network descendant count from the API.
+
+3) /home/z/my-project/src/components/newmobility/dashboard/stats-cards.tsx
+   - NO CHANGES needed. The component already reads `data?.cashbackEntrada?.totalUsers`, `data?.cashbackResidual?.totalUsers`, `data?.cashbackVendas?.totalUsers`, and `data?.directReferrals ?? data?.directReferralCount` — all field names match the API response shape exactly. After the API fix above, these now render real network counts instead of 0.
+
+Verification (against http://localhost:3000, dev server running):
+
+**Fix Bug 4 — Dashboard counts now reflect actual referrals:**
+- `GET /api/dashboard?userId=cmpskrkr50000o8bubki2cgqw` → 200, returned:
+    * `directReferralCount: 2` (was already correct — user has 2 direct referrals)
+    * `cashbackEntrada.totalUsers: 23` ← was **0** before. Now reflects the real referral network: byLevel `{1:2, 2:7, 3:14, 4:0, 5:0}` (2 direct + 7 grandchildren + 14 great-grandchildren = 23 in levels 1–5)
+    * `cashbackResidual.totalUsers: 23` ← was **0** before. byLevel `{1:2, 2:7, 3:14, 4:0, 5:0, 6:0, 7:0}` (levels 1–7)
+    * `cashbackVendas.totalUsers: 23` ← was **0** before. byLevel `{1:2, 2:7, 3:14, 4:0, 5:0, 6:0, 7:0, 8:0, 9:0}` (levels 1–9)
+    * `network.totalSize: 23` (NEW field — actual network descendant count)
+    * `network.activeMembers: 2` (NEW field — direct referrals where `isActive = true`)
+    * `network.newReferrals: 1` (NEW field — direct referrals created in the current calendar month)
+    * `cashbackEntrada.totalEarned / cashbackResidual.totalEarned / cashbackVendas.totalEarned` — UNCHANGED (still summed from Cashback transaction rows; for this user they are 0 because no cashback has been paid out yet — that's correct behavior, the bug was only about the user COUNTS).
+
+**Lint / type check:**
+- `cd /home/z/my-project && bun run lint` → 13 errors, ALL pre-existing in `.js` utility files (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js) using `require()`. ZERO new lint errors from my changes.
+
+**Dev server log:** `GET /api/dashboard?userId=cmpskrkr50000o8bubki2cgqw 200 in 8.2s (compile: 909ms, render: 7.3s)` — first call after edit, then subsequent calls return 200 cleanly. No errors.
+
+Stage Summary:
+- ✅ Bug 4 (Dashboard counts show 0 despite having referrals) — FIXED.
+  - Root cause confirmed: `/api/dashboard/route.ts` was counting `CashbackEntry/Residual/Sales` transaction rows for `totalUsers` instead of actual referrals via `User.referredById`. New users with referrals but no cashback payouts yet always showed 0.
+  - Fix: added `countNetworkDescendants(userId)` recursive referral-tree walker. `cashbackEntrada.totalUsers` = sum of network levels 1–5, `cashbackResidual.totalUsers` = levels 1–7, `cashbackVendas.totalUsers` = levels 1–9. Also added a new `network: { totalSize, activeMembers, newReferrals }` field.
+  - Frontend `dashboard-page.tsx` now uses `dashboardData.network.totalSize/activeMembers/newReferrals` (real API data) instead of the fake `* 0.3` heuristic and the triple-sum of cashback fields. The `network` field is also added to the `DashboardData` interface.
+  - `stats-cards.tsx` needed no changes — its existing `data?.cashback{Entrada,Residual,Vendas}?.totalUsers` reads now return real network counts.
+- ✅ Did NOT touch `financial-cards.tsx` or any earnings display (per task constraints — another agent handles that).
+- ✅ Did NOT touch any other files.
+
+Files modified:
+- /home/z/my-project/src/app/api/dashboard/route.ts (rewrote cashback user-count logic + added `countNetworkDescendants` helper + added `network` field to response)
+- /home/z/my-project/src/components/newmobility/dashboard/dashboard-page.tsx (rewrote `networkStats` to use the new `network` API field; added `network` to `DashboardData` interface)
+
+Notes for other agents:
+- The dashboard API response now includes a top-level `network: { totalSize, activeMembers, newReferrals }` field alongside the existing `cashbackEntrada/Residual/Vendas` and `directReferralCount` fields. Any other component that wants the true network size should prefer `network.totalSize` over summing the three cashback `totalUsers` fields (they are intentionally capped at different matrix depths — 5/7/9 — so the sum is NOT the total network).
+- The `db.find(model, '"field" IN $1', [arrayValue])` pattern works because `parseConditions` in `src/lib/db.ts` recognises `IN` as an operator and converts `params[0]` (an array) into a Prisma `{ in: [...] }` clause. This is more efficient than one `db.find` per parent ID when there are many parents at a level.
+- `countNetworkDescendants` is bounded at 9 levels deep (matches the deepest matrix — Vendas). For very large networks this could be optimised further (e.g. via a single SQL recursive CTE), but for the current scale (≤23 descendants in this test) the N+1-by-level approach is fast and avoids raw SQL that breaks under Prisma/SQLite.
+
+---
+Task ID: 3c
+Agent: Bug-Fix Agent (Matrix system — 5-wide + spillover + paying filter)
+Task: Fix Bug 5 — Matrix system: change to 5-wide, add spillover, filter paying referrals
+
+Work Log:
+- Read worklog.md to understand prior work (Tasks 1–3b: data leak fix, db.execute→Prisma migration, Neon PostgreSQL migration, career/streak/points DB-driven migrations, dashboard counts fix, birthday timezone fix, gamification plan name fix).
+- Inspected all target files before editing to confirm exact current code:
+  * prisma/schema.prisma → MatrixType.width default was 4 (line 507).
+  * src/app/api/auth/register/route.ts → matrix placement was hardcoded to place every new user directly under the referrer with no width cap, no spillover, no paying filter.
+  * src/app/api/cashback/{entrada,residual,vendas}/route.ts → used `Math.pow(4, level)` and hardcoded `maxMatrixSize` constants (1364 / 21844 / 349524).
+  * src/components/newmobility/cashback/matrix-visualization.tsx → FALLBACK_MATRIX_CONFIG + MATRIX_META had 4-based positions (4, 16, 64, 256, 1024, 4096, 16384, 65536, 262144) and "Estrutura 4xN" descriptions; `Math.pow(4, levelNum)` on line 194.
+  * src/lib/api-utils.ts → `ENTRADA_LEVELS` had `users: 4, 16, 64, 256, 1024`; `RESIDUAL_LEVELS` and `VENDAS_LEVELS` had no `users` field.
+  * src/app/api/admin/users/[id]/matrix/route.ts → MATRIX_DEPTH has depths 5/7/9 (correct, no change needed); route only walks the tree, no width calculation.
+  * src/lib/db.ts → confirmed `db.count`, `db.find`, `db.findOne`, `db.insert`, `db.update` all support the `MatrixPosition` table; `parseConditions` correctly translates `"parentId" = $1 AND "matrixType" = $2` into a Prisma `{ parentId, matrixType }` where clause.
+
+Changes made:
+
+1) /home/z/my-project/prisma/schema.prisma (line 507)
+   - Changed `width Int @default(4)` → `width Int @default(5)` on the `MatrixType` model.
+   - Ran `cd /home/z/my-project && DATABASE_URL=<neon> bunx prisma db push` to apply the schema change to the live Neon PostgreSQL DB. (The shell env had a stale SQLite URL that overrode .env, so I had to pass DATABASE_URL explicitly on the command line.) Prisma client regenerated successfully.
+
+2) Updated existing MatrixType rows to width=5
+   - Wrote a one-off script (scripts/update-width.ts, run then deleted) that called `prisma.matrixType.updateMany({ where: { width: { not: 5 } }, data: { width: 5 } })`.
+   - Result: 4 rows updated. Verified all 4 MatrixType rows now have width=5 (entrada_4x5, residual_4x7, vendas_4x9, entrada_6x6_teste). Note: the `code`/`name` columns still SAY "4x5" etc. — these are string identifiers, not the actual width value; the actual `width` column is now 5.
+
+3) /home/z/my-project/src/app/api/auth/register/route.ts (lines 1-82 helper + lines 259-542 matrix placement)
+   - Added `MATRIX_WIDTH = 5` and `MATRIX_DEPTH: Record<string, number> = { entrada: 5, residual: 7, vendas: 9 }` constants.
+   - Added `findSpilloverPosition(rootPositionId, matrixType, width)` helper that does a BFS through the matrix tree starting from `rootPositionId`, walking level-by-level (children sorted by `position` for deterministic left-to-right traversal), and returns the first position whose direct-child count is `< width`. Returns `{ parentId, level, position }` so the caller can insert the new MatrixPosition directly. Honours `MATRIX_DEPTH[matrixType]` so it doesn't search past the matrix's max depth. Returns `null` only if the entire downline is full (in which case the caller falls back to placing under the referrer).
+   - For each of the 3 matrices (entrada, residual, vendas):
+     * Compute `isPayingMember = userPlan !== 'free'` once.
+     * Entrada matrix: ONLY enter the placement block if `referrer && isPayingMember`. Free members with a referrer now log `[Register] Skipping entrada matrix for free member: <userId>` and get NO entrada position. (Free members without a referrer still get a top-level entrada position — that branch is unchanged.)
+     * For residual and vendas: all members (free or paying) are placed as before, but now with spillover.
+     * In each matrix's placement block: count the referrer's direct children. If `< MATRIX_WIDTH`, place directly under referrer (level = referrer.level + 1, position = childCount). If `>= MATRIX_WIDTH`, call `findSpilloverPosition(referrerPosition.id, matrixType, MATRIX_WIDTH)` and place at the returned `{ parentId, level, position }`. Logs `[Register] {Entrada,Residual,Vendas} spillover: placed at parent <id> level <n>` when spillover is used. Falls back to placing under the referrer (with a warning log) only if the BFS returns null (entire downline full).
+   - The `User.entradaLevel / residualLevel / vendasLevel` columns are now updated to `placement.level` (the actual MatrixPosition level, which may be > 1 after spillover) instead of always `referrerPosition.level + 1`.
+
+4) /home/z/my-project/src/app/api/cashback/entrada/route.ts (full rewrite of level-building + maxMatrixSize)
+   - Added `import { db, prisma } from '@/lib/db'` (was `import { db }`).
+   - Reads `matrixWidth` and `matrixDepth` live from the `MatrixType` table via `prisma.matrixType.findFirst({ where: { matrixKind: 'entrada', isActive: true }, orderBy: { createdAt: 'asc' } })`. Falls back to `width=5, depth=5` if the row is missing or the lookup throws.
+   - `maxUsers = Math.pow(matrixWidth, level)` (was `Math.pow(4, level)`). For width=5: 5, 25, 125, 625, 3125.
+   - `maxMatrixSize = Math.floor((Math.pow(matrixWidth, matrixDepth + 1) - 1) / (matrixWidth - 1))` — closed-form geometric series sum (includes the user's own root position). For 5x5: (5^6 - 1) / 4 = 3906 (was hardcoded 1364).
+   - Response now also includes `matrixWidth` and `matrixDepth` fields so clients can render the structure without hardcoding.
+
+5) /home/z/my-project/src/app/api/cashback/residual/route.ts (same pattern as entrada)
+   - Reads `matrixWidth` / `matrixDepth` from `MatrixType` where `matrixKind: 'residual'` (fallback 5 / 7).
+   - `maxUsers = Math.pow(matrixWidth, level)`. For width=5, 7 levels: 5, 25, 125, 625, 3125, 15625, 78125.
+   - `maxMatrixSize = Math.floor((5^8 - 1) / 4) = 97656` (was hardcoded 21844).
+   - Response now includes `matrixWidth`, `matrixDepth`, and per-level `maxUsers`.
+
+6) /home/z/my-project/src/app/api/cashback/vendas/route.ts (same pattern as entrada/residual)
+   - Reads `matrixWidth` / `matrixDepth` from `MatrixType` where `matrixKind: 'vendas'` (fallback 5 / 9).
+   - `maxUsers = Math.pow(matrixWidth, level)`. For width=5, 9 levels: 5, 25, 125, 625, 3125, 15625, 78125, 390625, 1953125.
+   - `maxMatrixSize = Math.floor((5^10 - 1) / 4) = 2441406` (was hardcoded 349524).
+   - Response now includes `matrixWidth`, `matrixDepth`, and per-level `maxUsers`.
+
+7) /home/z/my-project/src/components/newmobility/cashback/matrix-visualization.tsx
+   - FALLBACK_MATRIX_CONFIG: updated `positions` and `totalUsers` for all 3 matrices from 4-based to 5-based:
+     * entrada: 5, 25, 125, 625, 3125 (was 4, 16, 64, 256, 1024).
+     * residual: 5, 25, 125, 625, 3125, 15625, 78125 (was 4, 16, 64, 256, 1024, 4096, 16384).
+     * vendas: 5, 25, 125, 625, 3125, 15625, 78125, 390625, 1953125 (was 4, 16, 64, 256, 1024, 4096, 16384, 65536, 262144).
+   - FALLBACK_MATRIX_CONFIG descriptions: 'Estrutura 4x5' → 'Estrutura 5x5', 'Estrutura 4x7' → 'Estrutura 5x7', 'Estrutura 4x9' → 'Estrutura 5x9'.
+   - MATRIX_META: same description updates (4xN → 5xN) for all 3 matrix types.
+   - Line 194: `Math.pow(4, levelNum)` → `Math.pow(5, levelNum)` with comment "structural matrix dim (5-wide)".
+   - Did NOT touch the `earnings`, `filled`, `maxEarnings`, or `percentage` fields in FALLBACK_MATRIX_CONFIG (per task constraint — another agent handles monetary removal).
+
+8) /home/z/my-project/src/lib/api-utils.ts (lines 59-91)
+   - `ENTRADA_LEVELS` users: 4, 16, 64, 256, 1024 → 5, 25, 125, 625, 3125.
+   - `RESIDUAL_LEVELS`: ADDED `users` field (was missing). Values: 5, 25, 125, 625, 3125, 15625, 78125 (7 levels).
+   - `VENDAS_LEVELS`: ADDED `users` field (was missing). Values: 5, 25, 125, 625, 3125, 15625, 78125, 390625, 1953125 (9 levels).
+   - `DEFAULT_ENTRADA_LEVELS`, `DEFAULT_RESIDUAL_LEVELS`, `DEFAULT_VENDAS_LEVELS` (the percentage arrays) are UNCHANGED — they come from SystemConfig now and the task explicitly said to keep them.
+   - Added a comment explaining the `users` per level reflects the 5-wide matrix structure.
+
+9) /home/z/my-project/src/app/api/admin/users/[id]/matrix/route.ts — NO CHANGES
+   - Verified MATRIX_DEPTH has depths 5/7/9 (correct, unchanged).
+   - The route builds the matrix tree recursively by walking `parentId` references; it doesn't enforce width directly (width is enforced at registration time in /api/auth/register). The tree visualization will naturally reflect the 5-wide structure since new positions are now placed via spillover. No code change needed.
+
+Verification (all against http://localhost:3000, dev server PID 5517):
+
+**Schema + DB width update:**
+- `prisma db push` succeeded; Prisma client regenerated.
+- Script verified all 4 MatrixType rows now have `width: 5` (entrada_4x5, residual_4x7, vendas_4x9, entrada_6x6_teste).
+
+**Cashback APIs return 5-based level counts:**
+- `GET /api/cashback/entrada?userId=cmpskrkr50000o8bubki2cgqw` → 200:
+    * `levels[].maxUsers`: [5, 25, 125, 625, 3125] (was [4, 16, 64, 256, 1024]).
+    * `maxMatrixSize`: 3906 (was 1364).
+    * `matrixWidth`: 5, `matrixDepth`: 5 (new response fields).
+- `GET /api/cashback/residual?userId=cmpskrkr50000o8bubki2cgqw` → 200:
+    * `levels[].maxUsers`: [5, 25, 125, 625, 3125, 15625, 78125].
+    * `maxMatrixSize`: 97656 (was 21844).
+    * `matrixWidth`: 5, `matrixDepth`: 7.
+- `GET /api/cashback/vendas?userId=cmpskrkr50000o8bubki2cgqw` → 200:
+    * `levels[].maxUsers`: [5, 25, 125, 625, 3125, 15625, 78125, 390625, 1953125].
+    * `maxMatrixSize`: 2441406 (was 349524).
+    * `matrixWidth`: 5, `matrixDepth`: 9.
+
+**Spillover placement verified end-to-end:**
+- Test referrer = `cmpskrkr50000o8bubki2cgqw` (referralCode `ADMIN2025`, plan `blue5`). Had 2 existing entrada children at level 1 (positions 0, 1) before this test.
+- Registered 4 paying users (plan `blue3`) under `ADMIN2025`:
+    * Users 1-3: placed at level 1, positions 2, 3, 4 (filled the referrer's level-1 row to 5/5).
+    * User 4 (6th paying referral overall): triggered spillover. Dev log shows:
+      `[Register] Entrada spillover: placed at parent cmq1qc0am5dseknvfmtlr5l65 level 2`
+      `[Register] Residual spillover: placed at parent cmq1qc0b77jym2m5egqxkwe0g level 2`
+      `[Register] Vendas spillover: placed at parent cmq1qc0bkgw6cu1qm1mizye4d level 2`
+    * Verified in DB: user 4's 3 MatrixPosition rows all have `level: 2, position: 0` and `parentId` pointing to the FIRST level-1 child that had room (BFS correctly skipped the level-1 child at position 0 which already had 7 children from the old 4-wide code, and placed under position 1 which had 0 children).
+- User 4's `entradaLevel / residualLevel / vendasLevel` on the User table are all `2` (correctly reflects the spillover level, not just `referrer.level + 1`).
+
+**Paying filter for Entrada matrix verified:**
+- Registered a free user (plan `free`) under `ADMIN2025` AFTER the referrer's level-1 row was full.
+- Dev log shows: `[Register] Skipping entrada matrix for free member: cmqx2ugn2s8cm9aec953f01w4`
+- Verified in DB: the free user has only 2 MatrixPosition rows (residual at level 2 position 1, vendas at level 2 position 1) — NO entrada position. The free user was still placed in residual and vendas (with spillover, since level 1 was full in those matrices too).
+
+**Matrix visualization fallback (5-based):**
+- Re-read matrix-visualization.tsx after edits — FALLBACK_MATRIX_CONFIG now has `positions: 5, 25, 125, 625, 3125` for entrada (etc.), and MATRIX_META descriptions say "Estrutura 5x5 / 5x7 / 5x9". The live `useEffect` fetch path uses `Math.pow(5, levelNum)` for the structural `positions` value.
+- Did NOT touch `earnings`, `filled`, or `maxEarnings` strings in FALLBACK_MATRIX_CONFIG (per task constraint).
+
+**Lint / type check:**
+- `cd /home/z/my-project && bun run lint` → 13 errors, ALL pre-existing in `.js` utility files (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js) using `require()`. ZERO new lint errors from my TypeScript changes.
+- `npx tsc --noEmit` filtered to my modified files → 0 new errors. (Pre-existing errors in register/route.ts about `referrer.id` on `never` type and `referralWarning` string-on-null are unchanged — line numbers shifted by the new helper function at the top of the file, but the errors themselves existed before my changes.)
+
+**Dev server log:** All routes returning 200. Spillover log messages appear correctly. No compile errors. `.env` file is present with the Neon PostgreSQL URL.
+
+Stage Summary:
+- ✅ Schema width default changed from 4 to 5; `prisma db push` applied; all 4 existing MatrixType rows updated to width=5.
+- ✅ Spillover logic added to /api/auth/register: BFS finds the first available slot in the referrer's downline when the referrer's level-1 row is full (5/5). Verified end-to-end with 6 paying referrals — the 6th correctly spilled to level 2.
+- ✅ Paying filter for Entrada matrix: free members are skipped (no entrada position created). Verified — a free user registered under a full referrer has 0 entrada positions but still gets residual and vendas positions.
+- ✅ Cashback APIs (entrada/residual/vendas) now return 5-based level counts (5, 25, 125, ...) and correct maxMatrixSize values (3906 / 97656 / 2441406). Width and depth are read live from the MatrixType table (admin-configurable), with safe fallbacks.
+- ✅ matrix-visualization.tsx FALLBACK_MATRIX_CONFIG + MATRIX_META + `Math.pow(5, levelNum)` all updated to 5-wide. Earnings display untouched.
+- ✅ api-utils.ts ENTRADA_LEVELS / RESIDUAL_LEVELS / VENDAS_LEVELS user counts updated to 5-based. RESIDUAL_LEVELS and VENDAS_LEVELS now also expose a `users` field (was missing).
+- ✅ admin/users/[id]/matrix/route.ts verified — no change needed (depths unchanged at 5/7/9; route walks tree by parentId, so the 5-wide structure is reflected automatically).
+
+Files modified:
+- /home/z/my-project/prisma/schema.prisma (MatrixType.width default 4 → 5)
+- /home/z/my-project/src/app/api/auth/register/route.ts (added findSpilloverPosition BFS helper + spillover placement for all 3 matrices + paying-member-only filter for entrada)
+- /home/z/my-project/src/app/api/cashback/entrada/route.ts (5-based maxUsers, maxMatrixSize=3906, read width/depth from MatrixType, added matrixWidth/matrixDepth to response)
+- /home/z/my-project/src/app/api/cashback/residual/route.ts (5-based maxUsers, maxMatrixSize=97656, read width/depth from MatrixType, added matrixWidth/matrixDepth to response)
+- /home/z/my-project/src/app/api/cashback/vendas/route.ts (5-based maxUsers, maxMatrixSize=2441406, read width/depth from MatrixType, added matrixWidth/matrixDepth to response)
+- /home/z/my-project/src/components/newmobility/cashback/matrix-visualization.tsx (FALLBACK_MATRIX_CONFIG positions 4-based→5-based, descriptions 4xN→5xN, Math.pow(4,…)→Math.pow(5,…))
+- /home/z/my-project/src/lib/api-utils.ts (ENTRADA_LEVELS users 4-based→5-based; added `users` field to RESIDUAL_LEVELS and VENDAS_LEVELS with 5-based values)
+
+Notes for other agents:
+- The `MatrixType.code` / `MatrixType.name` / `MatrixType.description` columns still contain "4x5" / "4x7" / "4x9" strings (e.g. `code: 'entrada_4x5'`, `name: 'Matriz Entrada 4x5'`, `description: 'Matriz de entrada padrão — 4 indicações por nível, 5 níveis de profundidade.'`). These are now technically inaccurate (the actual `width` column is 5), but I did NOT change them because (a) the task only asked to update the `width` column, and (b) the `code` column is referenced as a foreign-key-like identifier by the Plan table (`Plan.matrixEntradaId` etc.) and by seed constants in `/api/plans/route.ts` and `/api/admin/plans/route.ts` (e.g. `matrixEntradaCode: 'entrada_4x5'`). Renaming the codes would require a coordinated migration across those files + the Plan table. If a future agent wants to rename them to `entrada_5x5` etc., search for `'entrada_4x5'`, `'residual_4x7'`, `'vendas_4x9'` across the codebase first.
+- The cashback API responses now include `matrixWidth` and `matrixDepth` fields (read live from the MatrixType table). Frontend components that want to render the structure dynamically should prefer these over hardcoded `Math.pow(5, level)`.
+- The simulator route `/api/simulator/calculate/route.ts` STILL uses `Math.pow(4, level.level - 1)` to project user counts per level (lines 29, 44, 58, 89, 90, 91). This was NOT in my task scope, so I left it alone. If a future agent wants to make the simulator 5-aware, those `Math.pow(4, …)` calls should become `Math.pow(5, …)` (or better, read from `level.users` which is now 5-based in api-utils.ts).
+- The `findSpilloverPosition` helper in register/route.ts uses BFS with a visited Set to prevent cycles. It honours `MATRIX_DEPTH[matrixType]` so it won't search past the matrix's max depth. If the entire downline is full (returns null), the caller falls back to placing under the referrer directly (with a warning log) — this is a safety net so registration never fails, but it does mean that in a fully-full matrix, positions can end up at level > maxDepth. In practice this is unlikely (5^5 = 3125 paying members in one downline for entrada), but if it ever happens, the admin should expand the matrix depth in MatrixType.
+- I created several test users during verification (spill-test-*, spill-paying-*, free-skip-*). These are harmless test accounts in the Neon DB; they can be deleted via `prisma.user.deleteMany({ where: { email: { startsWith: 'spill-' } } })` and `prisma.user.deleteMany({ where: { email: { startsWith: 'free-skip-' } } })` if cleanup is desired. I did NOT delete them because they demonstrate the spillover behavior and may be useful for other agents to inspect.
+
+---
+Task ID: 4a
+Agent: Sub-agent (privacy fixer — dashboard / gamification / leaderboard)
+Task: Fix Bug 2 (PART 1) — Remove monetary earnings (R$) from user-facing dashboard, gamification, and leaderboard pages for privacy. Replace with referral counts ("indicações") and career points.
+
+Work Log:
+
+1. /src/app/api/gamification/leaderboard/route.ts (full rewrite)
+   - Stopped returning `totalEarnings: user.balanceWithdrawal` for every user
+   - Now selects `careerPoints`, `personalPoints`, and `_count.referrals`
+   - Ranks by `careerPoints DESC` (was `balanceWithdrawal DESC`)
+   - Returns `careerPoints` (= careerPoints + personalPoints) and `directReferrals` per entry
+   - No monetary field is exposed across users
+
+2. /src/app/api/leaderboard/route.ts
+   - Removed the per-period Transaction aggregation that produced `earningsMap` (monetary)
+   - Removed `centsToReais` import (no longer used)
+   - 'earnings' tab now ranks by direct referral count (privacy-safe) and returns `valueDisplay: "{count} indicações"`
+   - 'referrals' tab now also uses `valueDisplay: "{count} indicações"` (was bare number)
+   - 'points' tab unchanged (already non-monetary)
+   - `userRank.earnings.value` now returns `"{count} indicações"` instead of `"R$ X"`
+   - `periodStart` computation kept (void-tagged) for future period-aware ranking
+
+3. /src/components/newmobility/dashboard/financial-cards.tsx (full rewrite)
+   - Removed `AnimatedCurrency` (animated R$ display) and `formatCurrency` import
+   - New `AnimatedCount` component renders plain localized integers
+   - `FinancialCard` now takes a numeric `value` + a small uppercase `subtitle` label
+   - Card values are sourced from the dashboard API's privacy-safe counts:
+     * CB Entrada → data.cashbackEntrada.totalUsers ("Membros")
+     * CB Residual → data.cashbackResidual.totalUsers ("Membros")
+     * CB Vendas (Mobility card) → data.cashbackVendas.totalUsers ("Membros")
+     * Gratifications → directReferralCount ("Indicações")
+     * Pharmacy / Meal → careerPoints ("Pontos")
+     * Shopping → directReferralCount ("Indicações")
+     * Revenue → network.totalSize ("Na Rede")
+   - No R$ value is rendered on any of the 8 cards
+
+4. /src/components/newmobility/dashboard/dashboard-page.tsx
+   - Removed `formatCurrency` import (no longer used in this file)
+   - Renamed `weeklyEarningsData` → `weeklyReferralsData`; values are small integers (counts of new referrals per day), not cent amounts
+   - `weeklyTotal` useMemo now sums referral counts
+   - Quick-stats mini-bar:
+     * "Ganhos Hoje" (R$) → "Indicações Hoje" (count)
+     * "CashBack Pendente" (R$) → "Rede Ativa" (count)
+     * "Pontos Hoje" → "Pontos de Carreira"
+   - "Ganhos da Semana" CSS bar chart → "Indicações da Semana"
+     * Total semanal: "{N} indicações" (was `formatCurrency(weeklyTotal)`)
+     * Média diária: "{N} indicações" (was `formatCurrency(...)`)
+     * Per-bar tooltip: "{N} indicações" (was `formatCurrency(item.value)`)
+     * "Melhor dia": "Sábado — 5 indicações" (was "Sábado — R$ 385,00")
+   - "Sua Posição" mini-widget:
+     * Removed hardcoded "#15 de 156 membros"
+     * Big number now shows `directReferralTotal` with caption "indicações diretas"
+     * Rows now show "Indicações / Rede / Pontos" with real counts (was "Ganhos #15 / Indicações #12 / Pontos #18")
+   - "Resumo Semanal" sparkline widget:
+     * "Ganhos esta semana R$ 1.250,00" → "Indicações esta semana: {weeklyTotal} indicações"
+     * "+12%" pill → "+{weeklyTotal}"
+     * "Média diária R$ 17.857,00" → "{N} indicações"
+
+5. /src/components/newmobility/gamification/gamification-page.tsx
+   - Removed `formatCurrency` import
+   - Removed `totalEarnings` field from `LeaderboardEntry` interface (API no longer returns it)
+   - Leaderboard title: "Ranking Top Ganhadores" → "Ranking Top Indicadores"
+   - Per-row value: `formatCurrency(entry.totalEarnings)` → "{directReferrals} indicações" (number + label)
+   - Per-row sub-line: now shows "{careerPoints} pts" beside the plan badge (was "{directReferrals} refs")
+
+6. /src/components/newmobility/leaderboard/leaderboard-page.tsx
+   - Removed `formatCurrency` import
+   - Podium value (top 3): always uses `entry.valueDisplay` (was `formatCurrency(entry.value)` for earnings tab)
+   - 1st-place hero "1º Lugar": `<AnimatedNumber value=... suffix=" indicações" />` (was `prefix="R$ "` for earnings tab); suffix becomes `" pts"` on the points tab
+   - Ranked list (4th+) value: always uses `entry.valueDisplay` (was `formatCurrency(entry.value)` for earnings tab)
+   - `userRank.earnings.value` is now sourced from the API as "{N} indicações" (no client-side R$ formatting)
+
+Verification:
+- `curl /api/gamification/leaderboard` returns entries with `careerPoints` + `directReferrals`, no `totalEarnings`
+- `curl /api/leaderboard?type=earnings` returns `valueDisplay: "7 indicações"` and `userRank.earnings.value: "7 indicações"` (no R$)
+- `npx eslint` on all 6 modified files: 0 errors, 0 warnings
+- `npx tsc --noEmit --skipLibCheck`: no errors in modified files
+- `bun run lint` overall: only pre-existing errors in unrelated root-level helper scripts (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js) — none in any file I touched
+- Dev server returns HTTP 200 for `/` and the two leaderboard APIs; no runtime errors in dev.log after my fixes
+
+Notes for downstream agents:
+- The dashboard also renders `<ComparisonWidget />`, `<ActivityFeed />`, and `<DashboardCharts />` which still contain hardcoded R$ strings (e.g. "R$ 50,00 — Crédito para corridas", `formatCurrency(3258000)` for cashback earnings, chart axis `R$Xk` formatter). These were OUT OF SCOPE for Task 4a and need to be addressed in a follow-up task to fully satisfy the "NO R$ values on the dashboard" verification criterion.
+- `financial-page.tsx` (user's own wallet) was deliberately left untouched per task rules.
+
+---
+Task ID: 4b
+Agent: Privacy-Fix Agent (Remove R$ earnings from user-facing pages)
+
+Task: Per user request — "precisa retirar o valor de todos os backoffice..ta legal porem não pode deixar o ganho de cada um ali...no lugar põe indicação e abaixo ja esta os pontos ...ou poderia por a graduação do usuário". Remove monetary earnings (R$ values) from user-facing pages and replace with referral counts / career points / graduation rank. PART 2 scope: profile, referrals, cashback page, matrix visualization.
+
+Work Log:
+- Read worklog.md to understand prior work (Tasks 1–3c: data leak fix, db.execute→Prisma migration, Neon PostgreSQL migration, career/streak/points DB-driven migrations, dashboard counts fix, birthday timezone fix, gamification plan name fix, matrix 5-wide + spillover + paying filter).
+- Inspected all 4 target files before editing.
+- Confirmed the UserData store type exposes `careerPoints`, `personalPoints`, `stars` — no `directReferralCount` field on the user object, so I fetch /api/referrals for the real direct+network counts.
+- Confirmed /api/referrals returns `stats: { totalDirect, totalNetwork, activeDirect, activeNetworkPercent }` plus a nested `referralTree` (each node has a `children` array).
+- Confirmed /api/dashboard (modified by Task 3b) returns `cashbackEntrada.totalUsers`, `cashbackResidual.totalUsers`, `cashbackVendas.totalUsers` AND per-level `byLevel` maps — all REAL network-descendant counts (computed by `countNetworkDescendants`), NOT derived from CashbackEntry transactions.
+- Confirmed /api/cashback/{entrada,residual,vendas} (DO-NOT-TOUCH per task constraints) returns `totalUsers: 0` and per-level `currentUsers: 0` for users with no CashbackEntry transactions. This means a pure cashback-API-based "Total Members" would always be 0 for new users — so I route the matrix-viz and cashback-page member counts through /api/dashboard instead (which is NOT in the do-not-touch list).
+
+Changes made:
+
+1) /home/z/my-project/src/components/newmobility/cashback/matrix-visualization.tsx
+   - PRESERVED the 5-wide structure changes from Task 3c (FALLBACK_MATRIX_CONFIG `positions: 5, 25, 125, 625, 3125` for entrada etc., `Math.pow(5, levelNum)` at line 214, MATRIX_META descriptions "Estrutura 5x5 / 5x7 / 5x9"). Did NOT touch any structural width.
+   - Removed the `formatCurrency` import (no longer used).
+   - Replaced `AnimatedEarningsCounter` (which called `formatCurrency(display)`) with a new `AnimatedMemberCounter` that displays `display.toLocaleString('pt-BR')` + a "membros" suffix.
+   - Removed the `earnings` field from the `MatrixLevelData` interface.
+   - Removed the `maxEarnings: 'R$ …'` field from FALLBACK_MATRIX_CONFIG (all 3 matrix types) and from the live-config state setter.
+   - Updated the `useEffect` to ALSO fetch `/api/dashboard?userId=…` in parallel with `/api/cashback/{type}?userId=…`, then override each level's `filled` count with `dashboardData.cashback{Entrada,Residual,Vendas}.byLevel[levelNum]` (the REAL network descendant count at that level). Falls back to `lvl.currentUsers` from the cashback API only if the dashboard `byLevel` value is missing.
+   - Highlight card: label "Total de Ganhos - {title}" → "Total de Membros - {title}". Sub-cards "Máx. Possível" (which showed `config.maxEarnings` R$ string) → split into "Capacidade" (sum of structural positions) and "Níveis" (level count).
+   - Summary row: "Total Usuários" (count) kept; "Total Ganhos" (R$) replaced with "Capacidade" (sum of positions); "Ganho Máx." (R$) replaced with "Máx. no Nível" (Math.max of filled); "Níveis" kept.
+   - Stacked bar: tooltip changed from `formatCurrency(lvl.earnings)` to `${lvl.filled} membros`. Label changed from "Proporção de Ganhos por Nível" to "Proporção de Membros por Nível".
+   - Data table: removed the "Ganhos (R$)" column; replaced with "Membros" column showing `lvl.filled.toLocaleString('pt-BR')` + a "% do pico" sub-line; the "Capacidade" column shows `lvl.positions.toLocaleString('pt-BR')`.
+   - Card grid (per-level cards): removed "Ganhos" R$ display; replaced with "Ocupação" showing fillPct%. Tooltip changed from `formatCurrency(lvl.earnings)` to `${lvl.filled}/${lvl.positions} membros`.
+
+2) /home/z/my-project/src/components/newmobility/cashback/cashback-page.tsx
+   - Removed `formatCurrency` from the `@/lib/utils` import (no longer used).
+   - INITIAL_CASHBACK_SUMMARY: all `total / lastMonth / lastWeek / pending` values changed from hardcoded mock R$ cents (3258000, 456000, 112000, 89000, …) to 0. Added a comment explaining `total` now represents the matrix member count.
+   - AnimatedCounter: `formatCurrency(display)` → `display.toLocaleString('pt-BR')`.
+   - SummaryCard non-animated branch: `formatCurrency(value)` → `value.toLocaleString('pt-BR')`.
+   - useEffect: replaced the triple `/api/cashback/{entrada,residual,vendas}` fetch (which returns `totalUsers: 0` for users without transactions) with a single `/api/dashboard` fetch. Now reads `d.cashbackEntrada.totalUsers`, `d.cashbackResidual.totalUsers`, `d.cashbackVendas.totalUsers` (REAL network descendant counts) AND `d.network.newReferrals` (real count of direct referrals created this calendar month — used for the "Este Mês" sub-card per matrix).
+   - hasCashbackData check unchanged in form (`cashbackSummary.entrada.total > 0`) but now `total` IS the real network size, so users with referrals but no payouts correctly see the dashboard instead of the EmptyState.
+   - Hero card label `{t('cashback.totalEarnings')}` ("Total de Ganhos CashBack") → "Total de Membros na Rede"; value changed from `totalEarnings` to `totalMembers` (sum of the 3 matrix totals). "Este Mês" sub-card value changed from `formatCurrency(lastMonthTotal)` to `lastMonthTotal.toLocaleString('pt-BR')`.
+   - Distribution bar chart: title "Distribuição de CashBack" → "Distribuição de Membros"; Y-axis tickFormatter `R$${v}k` → `${v}`; Tooltip formatter `R$ ${value}` → `${value} membros`; `distributionData` value fields changed from `cashbackSummary.{type}.total / 100` to `cashbackSummary.{type}.total` (already a count, no /100 needed). Series labels "Entrada 4x5" / "Residual 4x7" / "Vendas 4x9" → "Entrada 5x5" / "Residual 5x7" / "Vendas 5x9".
+   - Donut chart: Tooltip formatter `formatCurrency(value)` → `${value} membros`; percentage divisor changed from `totalEarnings` to `Math.max(totalMembers, 1)` (avoid div-by-zero).
+   - Mini-banner: comment "Monthly Earnings Trend Mini Banner" → "Monthly Member Growth Mini Banner"; subtitle "Seus ganhos estão em alta" → "Sua rede está crescendo"; "Este mês" value `formatCurrency(lastMonthTotal)` → `${lastMonthTotal.toLocaleString('pt-BR')} membros`.
+   - Did NOT touch the per-tab SummaryCards' `t('cashback.totalAccumulated')` / `lastMonth` / `lastWeek` / `pending` labels — they are generic ("Total Acumulado", "Último Mês", "Última Semana", "Pendente") and don't mention R$, so they're privacy-safe. The values now come from member counts (or 0 for lastWeek/pending which the API doesn't track per-period yet).
+
+3) /home/z/my-project/src/components/newmobility/profile/profile-page.tsx
+   - Removed `formatCurrency` from the `@/lib/utils` import (only used at the deleted "Total Ganho" card).
+   - Removed the `totalEarned` calculation (sum of balance fields) — replaced with a comment explaining why it was removed.
+   - Added a `referralStats` state `{ totalDirect, totalNetwork, activeDirect }` and a useEffect that fetches `/api/referrals?userId=…` and populates it.
+   - Replaced the 4-card summary grid at the top of the profile:
+     * Card 1: was "Total Ganho" (DollarSign, formatCurrency(totalEarned)) → now "Indicações Diretas" (Users icon, referralStats.totalDirect count) with sub-line "{careerPoints} pontos".
+     * Card 2: was "Indicações Diretas" with hardcoded "6" → now "Pontos de Carreira" (Award icon, user.careerPoints) with sub-line "{stars} estrelas".
+     * Card 3: was "Rede Total" with hardcoded "16" → now "Rede Total" (Users icon, referralStats.totalNetwork) with sub-line "{activeDirect} ativos".
+     * Card 4: was "Plano Atual" (CreditCard, plan price/mês) → now "Graduação" (CreditCard, getPlanName(plan)) with sub-line "{getPlanPrice(plan)}/mês".
+   - Did NOT touch the beneficiary percentage display (line ~1248) which uses DollarSign icon for the "Alocado" percentage — that's a beneficiary allocation percentage, not an earnings display.
+
+4) /home/z/my-project/src/components/newmobility/referrals/referrals-page.tsx
+   - Removed `formatCurrency` from the `@/lib/utils` import (no longer used anywhere in the file).
+   - Removed `CreditCard` from the lucide-react import (no longer used after the detail dialog change).
+   - Added a `childrenCountMap: Record<string, number>` lookup built by walking `data.referralTree` once. Each tree node's `children.length` is stored as that node's direct referral count.
+   - Each mapped referral object (both the directReferrals map and the flattenTree output) now carries a `directReferrals: number` field (count of that user's own direct referrals). The `cashback: 0` placeholder field was removed (no longer needed).
+   - CSV export: header column "CashBack" → "Indicações"; row value `formatCurrency(r.cashback)` → `r.directReferrals ?? 0` (raw integer count).
+   - Top Referrers leaderboard: filter `r.cashback > 0` → `r.directReferrals > 0`; sort key `b.cashback - a.cashback` → `b.directReferrals - a.directReferrals`; displayed value `formatCurrency(referrer.cashback)` → `referrer.directReferrals`; sub-label "CashBack" → "Indicações".
+   - Referral list item right-side panel: value `formatCurrency(referral.cashback)` → `referral.directReferrals ?? 0`; sub-label "CashBack gerado" → "Indicações feitas".
+   - Detail dialog bottom-left card: was "CashBack Gerado" with CreditCard icon and `formatCurrency(detailReferral.cashback)` → now "Indicações Feitas" with Users icon and `detailReferral.directReferrals ?? 0`.
+   - Did NOT touch the "bônus de R$ 200" line in the "Próximo Nível de Recompensa" card — that's a marketing/incentive announcement about a future reward tier, not a display of the user's current earnings.
+
+Verification (all against http://localhost:3000, dev server running):
+
+**API responses for test user cmpskrkr50000o8bubki2cgqw:**
+- `GET /api/referrals?userId=…` → 200. `stats: { totalDirect: 7, totalNetwork: 28, activeDirect: 6, activeNetworkPercent: 21 }`. referralTree has 7 root nodes (the user's direct referrals) with nested children. Used by profile-page.tsx (new referralStats state) and referrals-page.tsx (per-referral directReferrals count via childrenCountMap).
+- `GET /api/dashboard?userId=…` → 200. `cashbackEntrada.totalUsers: 28, cashbackResidual.totalUsers: 28, cashbackVendas.totalUsers: 28`. `cashbackEntrada.byLevel: {1:7, 2:7, 3:14, 4:0, 5:0}` (sums to 28). `cashbackResidual.byLevel: {1:7, 2:7, 3:14, 4:0, 5:0, 6:0, 7:0}`. `cashbackVendas.byLevel: {1:7, 2:7, 3:14, 4:0, 5:0, 6:0, 7:0, 8:0, 9:0}`. `network: { totalSize: 28, activeMembers: 6, newReferrals: 6 }`. Used by cashback-page.tsx (hero + summary card totals) and matrix-visualization.tsx (per-level filled counts via byLevel).
+- `GET /api/cashback/entrada?userId=…` → 200. `totalUsers: 0, totalEarned: 0, matrixWidth: 5, matrixDepth: 5`. Per-level `currentUsers: 0` (because no CashbackEntry transactions exist for this user). The matrix-visualization now ignores these zeros and uses /api/dashboard's byLevel instead. The cashback API is still used for the per-level `percentage` values (admin-configured) and the structural `matrixWidth` / `matrixDepth`.
+
+**Lint / type check:**
+- `cd /home/z/my-project && bun run lint` → 13 errors, ALL pre-existing in `.js` utility files (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js) using `require()`. ZERO new lint errors from my TypeScript changes.
+- `cd /home/z/my-project && npx tsc --noEmit 2>&1 | grep -E "(profile-page|referrals-page|cashback-page|matrix-visualization)"` → 0 lines of output (zero TypeScript errors in my modified files). Pre-existing errors in src/lib/db.ts, src/app/api/admin/cashback/route.ts, src/app/api/auth/register/route.ts, etc. are unchanged.
+
+**Dev server log:** Successful 200 responses for `/api/referrals`, `/api/cashback/entrada`, `/api/dashboard`, and the root page after the user navigated. No compile errors visible. The cashback-page no longer hits the EmptyState for this user (because `entrada.total` is now 28, not 0).
+
+Stage Summary:
+- ✅ profile-page.tsx: "Total Ganho" R$ card replaced with "Indicações Diretas" (real count) + "{careerPoints} pontos" sub-line. Adjacent hardcoded "6" / "16" cards now show real `referralStats.totalDirect` / `referralStats.totalNetwork`. "Plano Atual" → "Graduação" (shows plan name as the user's tier/rank, with plan price as a sub-line).
+- ✅ referrals-page.tsx: All 4 R$ cashback displays replaced with `directReferrals` counts — leaderboard, list item right panel, detail dialog bottom card, and CSV export column. Per-referral directReferrals count is computed from the referralTree's nested `children.length`, joined by user id.
+- ✅ cashback-page.tsx: All `formatCurrency` calls removed (5 total). INITIAL_CASHBACK_SUMMARY no longer seeds fake R$ values. Hero card label and value changed from "Total de Ganhos CashBack" / R$ total to "Total de Membros na Rede" / network size. Distribution bar chart and donut chart tooltips now show "X membros" instead of "R$ X". Data source switched from /api/cashback/{type} to /api/dashboard so users with referrals but no payouts see real member counts (was always 0 before).
+- ✅ matrix-visualization.tsx: 5-wide structure (5, 25, 125, 625, 3125) PRESERVED from Task 3c. All per-level R$ "Ganhos" displays (highlight card, summary cards, stacked bar tooltip, data table column, card grid) replaced with "Membros" counts. Per-level `filled` now sourced from /api/dashboard's byLevel (real network descendant counts) instead of the cashback API's currentUsers (which is 0 for users without CashbackEntry transactions).
+- ✅ No R$ personal-earnings displays remain on profile, referrals, cashback, or matrix-visualization pages.
+- ✅ financial-page.tsx (user's own wallet manager) was NOT touched — per task constraints it stays as-is.
+- ✅ Did NOT touch financial-cards.tsx, dashboard-page.tsx, gamification-page.tsx, leaderboard-page.tsx, /api/leaderboard/route.ts, /api/gamification/leaderboard/route.ts, personal-data-section.tsx, register/route.ts, /api/cashback/{entrada,residual,vendas}/route.ts, api-utils.ts, prisma/schema.prisma.
+
+Files modified:
+- /home/z/my-project/src/components/newmobility/cashback/matrix-visualization.tsx (replaced AnimatedEarningsCounter→AnimatedMemberCounter; removed earnings field from interface + fallback config + state; rewrote useEffect to also fetch /api/dashboard and use byLevel for filled; relabelled all "Ganhos"/"Total de Ganhos" UI strings to "Membros"/"Total de Membros"; PRESERVED 5-wide structure from Task 3c)
+- /home/z/my-project/src/components/newmobility/cashback/cashback-page.tsx (removed formatCurrency import; INITIAL_CASHBACK_SUMMARY → all 0 with member-count semantics; AnimatedCounter + SummaryCard display counts not R$; useEffect switched to /api/dashboard for real member counts + newReferrals; hero card relabelled; bar chart + donut chart tooltips show "membros"; mini-banner relabelled)
+- /home/z/my-project/src/components/newmobility/profile/profile-page.tsx (removed formatCurrency import + totalEarned calculation; added referralStats state + useEffect fetching /api/referrals; replaced 4-card summary grid: Total Ganho→Indicações Diretas+points, hardcoded 6→Pontos de Carreira, hardcoded 16→Rede Total (real), Plano Atual→Graduação)
+- /home/z/my-project/src/components/newmobility/referrals/referrals-page.tsx (removed formatCurrency + CreditCard imports; added childrenCountMap from referralTree; added directReferrals field to each referral object; CSV "CashBack" column → "Indicações"; leaderboard sort/filter/display switched from cashback to directReferrals; list item right panel "CashBack gerado" → "Indicações feitas"; detail dialog "CashBack Gerado" → "Indicações Feitas")
+
+Notes for other agents:
+- The matrix-visualization.tsx and cashback-page.tsx now BOTH fetch /api/dashboard (in addition to /api/cashback/{type}) to get real network member counts. The dashboard API was already modified by Task 3b to include `cashback{Entrada,Residual,Vendas}.byLevel` and `cashback{Entrada,Residual,Vendas}.totalUsers` based on `countNetworkDescendants`. This is the source of truth for "how many members are in this user's network at each level" — NOT the cashback API's per-level `currentUsers` (which is a count of CashbackEntry transaction rows, not unique network members).
+- The cashback API routes (/api/cashback/{entrada,residual,vendas}/route.ts) STILL return `totalUsers` derived from CashbackEntry transactions (always 0 for users without payouts). I did NOT modify these routes (per task constraints). Frontend code no longer reads `totalUsers` or `currentUsers` from these routes for display — it only reads `levels[].percentage` and `levels[].level` (admin-configured values). If a future agent wants to clean up the cashback API response shape, the `totalUsers` / `currentUsers` / `earned` / `totalEarned` fields could be removed from the response (or repurposed) without breaking the UI.
+- The `cashback: 0` placeholder field was removed from the referrals-page referral objects. Any other code that reads `referral.cashback` (e.g. the `referralsApi` types in src/lib/api.ts) should be updated — a quick `rg "\.cashback"` across the codebase shows the only remaining `.cashback` reads were in this file (now removed).
+- Profile-page.tsx now fetches /api/referrals on mount to get `totalDirect` and `totalNetwork`. The dashboard API also returns these as `directReferralCount` and `network.totalSize` — if a future agent wants to deduplicate the fetches, profile-page could switch to /api/dashboard instead (it would also get `cashback{Entrada,Residual,Vendas}.byLevel` for free, which could enable a future mini-matrix preview on the profile).
+- The "bônus de R$ 200" line in referrals-page.tsx (line ~468) was intentionally LEFT ALONE — it's a marketing announcement about a future reward tier (a fixed R$ amount that ANY user who reaches 10 referrals receives), not a display of the user's current personal earnings. If the user wants this removed too, search for "bônus de R$ 200" in referrals-page.tsx and replace with a generic "para desbloquear o próximo nível de recompensas".
+- The graduation/rank concept is currently mapped to the user's plan name (Free / Blue 3 / Blue 5 Premium) via `getPlanName(user.plan)`. If a more granular career-rank system is added later (e.g. Bronze / Prata / Ouro / Diamante based on careerPoints thresholds), the profile-page card #4 label "Graduação" should switch from `getPlanName(user.plan)` to a new `getCareerRank(user.careerPoints)` helper.

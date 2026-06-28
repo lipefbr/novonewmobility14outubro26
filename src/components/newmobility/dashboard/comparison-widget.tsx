@@ -2,7 +2,7 @@
 
 import { Card, CardContent } from '@/components/ui/card'
 import { useTranslation } from '@/lib/i18n'
-import { formatCurrency } from '@/lib/utils'
+// formatCurrency removed for privacy — no monetary values on dashboard
 import { TrendingUp, TrendingDown, Minus, DollarSign, Users, Star, ArrowUpRight } from 'lucide-react'
 import { motion } from 'framer-motion'
 
@@ -18,10 +18,10 @@ interface ComparisonData {
 const comparisonData: ComparisonData[] = [
   {
     labelKey: 'comparison.cashbackEarnings',
-    currentValue: 3258000,
-    previousValue: 2890000,
-    format: 'currency',
-    icon: DollarSign,
+    currentValue: 28,
+    previousValue: 22,
+    format: 'number',
+    icon: Users,
     sparklineData: [18, 22, 19, 25, 28, 24, 30, 32],
   },
   {
@@ -42,9 +42,9 @@ const comparisonData: ComparisonData[] = [
   },
   {
     labelKey: 'comparison.withdrawals',
-    currentValue: 350000,
-    previousValue: 500000,
-    format: 'currency',
+    currentValue: 12,
+    previousValue: 8,
+    format: 'number',
     icon: ArrowUpRight,
     sparklineData: [50, 45, 42, 48, 40, 38, 35, 35],
   },
@@ -91,7 +91,6 @@ export function ComparisonWidget() {
 
   const formatValue = (value: number, format: string) => {
     switch (format) {
-      case 'currency': return formatCurrency(value)
       case 'percent': return `${value}%`
       default: return value.toString()
     }

@@ -9,6 +9,78 @@ function generateId(): string {
   return `c${timestamp}${random}${random2}`
 }
 
+// Matrix structural width — first 5 paying referrals go to level 1 (direct table).
+// When level 1 is full (5/5), overflow is placed via BFS in the downline.
+const MATRIX_WIDTH = 5
+
+// Default depth per matrix type (matches MatrixType.depth in the DB).
+const MATRIX_DEPTH: Record<string, number> = {
+  entrada: 5,
+  residual: 7,
+  vendas: 9,
+}
+
+/**
+ * Find the next available parent position in a matrix tree using BFS.
+ * Walks the downline of `rootPositionId` and returns the first position
+ * whose direct child count is < width. Returns null if the entire
+ * downline (up to MATRIX_DEPTH) is full.
+ *
+ * BFS guarantees left-to-right, top-to-bottom "spillover" placement,
+ * so referrals fill the referrer's level-1 row first, then overflow to
+ * level 2 under the first level-1 child, etc.
+ */
+async function findSpilloverPosition(
+  rootPositionId: string,
+  matrixType: string,
+  width: number
+): Promise<{ parentId: string; level: number; position: number } | null> {
+  const maxDepth = MATRIX_DEPTH[matrixType] ?? 5
+  const queue: Array<{ id: string; level: number }> = [{ id: rootPositionId, level: 0 }]
+  const visited = new Set<string>()
+
+  while (queue.length > 0) {
+    const current = queue.shift()!
+    if (visited.has(current.id)) continue
+    visited.add(current.id)
+
+    // Stop searching past the max depth — positions beyond this level
+    // can't legally host children in the matrix.
+    if (current.level >= maxDepth) continue
+
+    // Count this position's direct children in the matrix.
+    const childCount = await db.count(
+      'MatrixPosition',
+      '"parentId" = $1 AND "matrixType" = $2',
+      [current.id, matrixType]
+    )
+
+    if (childCount < width) {
+      // This position has room — place the new user here.
+      return {
+        parentId: current.id,
+        level: current.level + 1,
+        position: childCount,
+      }
+    }
+
+    // No room at this position — enqueue its children to continue BFS.
+    const children = await db.find(
+      'MatrixPosition',
+      '"parentId" = $1 AND "matrixType" = $2',
+      [current.id, matrixType]
+    ) as any[]
+
+    // Sort children by position for deterministic left-to-right traversal.
+    children.sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+    for (const child of children) {
+      queue.push({ id: child.id, level: current.level + 1 })
+    }
+  }
+
+  return null
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -185,10 +257,21 @@ export async function POST(request: Request) {
     }
 
     // --- Create matrix positions (OPTIONAL - failures should NOT block registration) ---
+    //
+    // Spillover rules (per product spec):
+    //   • Each matrix is 5-wide (width = 5) with depths 5/7/9 for entrada/residual/vendas.
+    //   • The first 5 referrals of a referrer go directly under the referrer (level 1).
+    //   • Once the referrer's level-1 row is full (5/5), subsequent referrals are placed
+    //     via BFS in the referrer's downline (spillover): leftmost available slot under
+    //     the referrer's level-1 children, then their children, etc.
+    //   • The Entrada matrix is for PAYING members only — free users are skipped
+    //     (they still get placed in the residual and vendas matrices).
 
-    // Entrada matrix
+    const isPayingMember = userPlan !== 'free'
+
+    // Entrada matrix (PAYING MEMBERS ONLY)
     try {
-      if (referrer) {
+      if (referrer && isPayingMember) {
         console.log('[Register] Creating entrada matrix position for user:', userId)
         const referrerPosition = await db.findOne(
           'MatrixPosition',
@@ -203,23 +286,49 @@ export async function POST(request: Request) {
             [referrerPosition.id, 'entrada']
           )
 
-          const newLevel = referrerPosition.level + 1
-          const newPosition = existingPositions
+          let placement: { parentId: string; level: number; position: number }
+          if (existingPositions < MATRIX_WIDTH) {
+            // Referrer has room — place directly under referrer.
+            placement = {
+              parentId: referrerPosition.id,
+              level: referrerPosition.level + 1,
+              position: existingPositions,
+            }
+          } else {
+            // Referrer's level-1 row is full — spillover via BFS.
+            const spillover = await findSpilloverPosition(
+              referrerPosition.id,
+              'entrada',
+              MATRIX_WIDTH
+            )
+            if (spillover) {
+              placement = spillover
+              console.log('[Register] Entrada spillover: placed at parent', placement.parentId, 'level', placement.level)
+            } else {
+              // Entire downline is full — fall back to placing under referrer.
+              placement = {
+                parentId: referrerPosition.id,
+                level: referrerPosition.level + 1,
+                position: existingPositions,
+              }
+              console.warn('[Register] Entrada matrix full — placing under referrer as fallback')
+            }
+          }
 
           await db.insert('MatrixPosition', {
             id: generateId(),
             userId: user.id,
             matrixType: 'entrada',
-            parentId: referrerPosition.id,
-            level: newLevel,
-            position: newPosition,
+            parentId: placement.parentId,
+            level: placement.level,
+            position: placement.position,
             isFilled: true,
             createdAt: new Date().toISOString(),
           })
 
           // Update user entrada level (optional - don't fail if column doesn't exist)
           try {
-            await db.update('User', '"id" = $1', { entradaLevel: newLevel }, [user.id])
+            await db.update('User', '"id" = $1', { entradaLevel: placement.level }, [user.id])
           } catch (updateErr) {
             console.warn('[Register] Warning: Could not update entradaLevel:', updateErr)
           }
@@ -235,7 +344,7 @@ export async function POST(request: Request) {
             createdAt: new Date().toISOString(),
           })
         }
-      } else {
+      } else if (!referrer) {
         // No referrer - top-level position
         await db.insert('MatrixPosition', {
           id: generateId(),
@@ -246,14 +355,17 @@ export async function POST(request: Request) {
           isFilled: true,
           createdAt: new Date().toISOString(),
         })
+      } else {
+        // Free member with a referrer — skip entrada matrix entirely.
+        console.log('[Register] Skipping entrada matrix for free member:', userId)
       }
-      console.log('[Register] Entrada matrix position created')
+      console.log('[Register] Entrada matrix position handled')
     } catch (matrixErr) {
       console.error('[Register] NON-CRITICAL: Error creating entrada matrix position:', matrixErr)
       // Continue - matrix position is optional
     }
 
-    // Residual matrix
+    // Residual matrix (all members)
     try {
       if (referrer) {
         console.log('[Register] Creating residual matrix position for user:', userId)
@@ -270,21 +382,45 @@ export async function POST(request: Request) {
             [referrerResidual.id, 'residual']
           )
 
-          const residualLevel = referrerResidual.level + 1
+          let residualPlacement: { parentId: string; level: number; position: number }
+          if (existingResidualPositions < MATRIX_WIDTH) {
+            residualPlacement = {
+              parentId: referrerResidual.id,
+              level: referrerResidual.level + 1,
+              position: existingResidualPositions,
+            }
+          } else {
+            const spillover = await findSpilloverPosition(
+              referrerResidual.id,
+              'residual',
+              MATRIX_WIDTH
+            )
+            if (spillover) {
+              residualPlacement = spillover
+              console.log('[Register] Residual spillover: placed at parent', residualPlacement.parentId, 'level', residualPlacement.level)
+            } else {
+              residualPlacement = {
+                parentId: referrerResidual.id,
+                level: referrerResidual.level + 1,
+                position: existingResidualPositions,
+              }
+              console.warn('[Register] Residual matrix full — placing under referrer as fallback')
+            }
+          }
 
           await db.insert('MatrixPosition', {
             id: generateId(),
             userId: user.id,
             matrixType: 'residual',
-            parentId: referrerResidual.id,
-            level: residualLevel,
-            position: existingResidualPositions,
+            parentId: residualPlacement.parentId,
+            level: residualPlacement.level,
+            position: residualPlacement.position,
             isFilled: true,
             createdAt: new Date().toISOString(),
           })
 
           try {
-            await db.update('User', '"id" = $1', { residualLevel }, [user.id])
+            await db.update('User', '"id" = $1', { residualLevel: residualPlacement.level }, [user.id])
           } catch (updateErr) {
             console.warn('[Register] Warning: Could not update residualLevel:', updateErr)
           }
@@ -317,7 +453,7 @@ export async function POST(request: Request) {
       // Continue - matrix position is optional
     }
 
-    // Vendas matrix
+    // Vendas matrix (all members)
     try {
       if (referrer) {
         console.log('[Register] Creating vendas matrix position for user:', userId)
@@ -334,21 +470,45 @@ export async function POST(request: Request) {
             [referrerVendas.id, 'vendas']
           )
 
-          const vendasLevel = referrerVendas.level + 1
+          let vendasPlacement: { parentId: string; level: number; position: number }
+          if (existingVendasPositions < MATRIX_WIDTH) {
+            vendasPlacement = {
+              parentId: referrerVendas.id,
+              level: referrerVendas.level + 1,
+              position: existingVendasPositions,
+            }
+          } else {
+            const spillover = await findSpilloverPosition(
+              referrerVendas.id,
+              'vendas',
+              MATRIX_WIDTH
+            )
+            if (spillover) {
+              vendasPlacement = spillover
+              console.log('[Register] Vendas spillover: placed at parent', vendasPlacement.parentId, 'level', vendasPlacement.level)
+            } else {
+              vendasPlacement = {
+                parentId: referrerVendas.id,
+                level: referrerVendas.level + 1,
+                position: existingVendasPositions,
+              }
+              console.warn('[Register] Vendas matrix full — placing under referrer as fallback')
+            }
+          }
 
           await db.insert('MatrixPosition', {
             id: generateId(),
             userId: user.id,
             matrixType: 'vendas',
-            parentId: referrerVendas.id,
-            level: vendasLevel,
-            position: existingVendasPositions,
+            parentId: vendasPlacement.parentId,
+            level: vendasPlacement.level,
+            position: vendasPlacement.position,
             isFilled: true,
             createdAt: new Date().toISOString(),
           })
 
           try {
-            await db.update('User', '"id" = $1', { vendasLevel }, [user.id])
+            await db.update('User', '"id" = $1', { vendasLevel: vendasPlacement.level }, [user.id])
           } catch (updateErr) {
             console.warn('[Register] Warning: Could not update vendasLevel:', updateErr)
           }

@@ -1,9 +1,7 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { Card, CardContent } from '@/components/ui/card'
-import { formatCurrency } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
 import {
   DollarSign,
@@ -21,34 +19,13 @@ interface FinancialCardsProps {
   data: any | null
 }
 
-function AnimatedCurrency({ value, className }: { value: number; className?: string }) {
-  const [display, setDisplay] = useState(0)
-  const hasAnimated = useRef(false)
-
-  useEffect(() => {
-    if (hasAnimated.current) return
-    hasAnimated.current = true
-
-    const duration = 1800
-    const steps = 60
-    const increment = value / steps
-    let current = 0
-    const timer = setInterval(() => {
-      current += increment
-      if (current >= value) {
-        setDisplay(value)
-        clearInterval(timer)
-      } else {
-        setDisplay(Math.floor(current))
-      }
-    }, duration / steps)
-
-    return () => clearInterval(timer)
-  }, [value])
-
+// Plain (non-monetary) number display. Counts are animated for a lively feel,
+// but no R$ currency formatting is ever shown to the user here.
+function AnimatedCount({ value, className }: { value: number; className?: string }) {
+  const display = Number.isFinite(value) ? value : 0
   return (
     <span className={className || 'text-lg md:text-xl font-bold text-white'}>
-      {formatCurrency(display)}
+      {display.toLocaleString('pt-BR')}
     </span>
   )
 }
@@ -63,9 +40,18 @@ function ChangeIndicator({ value }: { value: number }) {
   )
 }
 
-function FinancialCard({ title, valueInCents, icon: Icon, gradient, delay = 0, change }: {
+function FinancialCard({
+  title,
+  value,
+  subtitle,
+  icon: Icon,
+  gradient,
+  delay = 0,
+  change,
+}: {
   title: string
-  valueInCents: number
+  value: number
+  subtitle: string
   icon: React.ElementType
   gradient: string
   delay?: number
@@ -100,7 +86,10 @@ function FinancialCard({ title, valueInCents, icon: Icon, gradient, delay = 0, c
                   </div>
                 </div>
               </div>
-              <AnimatedCurrency value={valueInCents} className="text-xl md:text-2xl font-bold text-white" />
+              <AnimatedCount value={value} className="text-xl md:text-2xl font-bold text-white" />
+              <p className="text-[10px] text-white/70 font-medium mt-0.5 uppercase tracking-wide">
+                {subtitle}
+              </p>
             </div>
           </div>
         </CardContent>
@@ -111,60 +100,78 @@ function FinancialCard({ title, valueInCents, icon: Icon, gradient, delay = 0, c
 
 export function FinancialCards({ data }: FinancialCardsProps) {
   const { t } = useTranslation()
-  const b = data?.balances
+
+  // Privacy-safe values: every card shows a count, never a R$ amount.
+  // The dashboard API exposes member-counts per cashback line and overall
+  // referral / career-point totals.
+  const cashbackEntradaUsers = data?.cashbackEntrada?.totalUsers ?? 0
+  const cashbackResidualUsers = data?.cashbackResidual?.totalUsers ?? 0
+  const cashbackVendasUsers = data?.cashbackVendas?.totalUsers ?? 0
+  const directReferrals = data?.directReferralCount ?? data?.directReferrals ?? 0
+  const careerPoints = data?.career?.points ?? data?.user?.careerPoints ?? 0
+  const networkSize = data?.network?.totalSize ?? directReferrals
+
   const cards = [
     {
       title: t('dashboard.financial.cbEntrada'),
-      valueInCents: b?.cashbackEntrada ?? b?.withdrawal ?? 0,
+      value: cashbackEntradaUsers,
+      subtitle: 'Membros',
       icon: DollarSign,
       gradient: 'from-emerald-500 to-emerald-600',
       change: 5,
     },
     {
       title: t('dashboard.financial.cbResidual'),
-      valueInCents: b?.cashbackResidual ?? 0,
+      value: cashbackResidualUsers,
+      subtitle: 'Membros',
       icon: TrendingUp,
       gradient: 'from-teal-500 to-teal-600',
       change: 3,
     },
     {
       title: t('dashboard.financial.gratifications'),
-      valueInCents: b?.gratifications ?? b?.gratification ?? 0,
+      value: directReferrals,
+      subtitle: 'Indicações',
       icon: Gift,
       gradient: 'from-amber-500 to-amber-600',
       change: 12,
     },
     {
       title: t('dashboard.financial.mobility'),
-      valueInCents: b?.balanceMobility ?? b?.mobility ?? 0,
+      value: cashbackVendasUsers,
+      subtitle: 'Membros',
       icon: Car,
       gradient: 'from-blue-500 to-blue-600',
       change: -2,
     },
     {
       title: t('dashboard.financial.pharmacy'),
-      valueInCents: b?.balancePharmacy ?? b?.pharmacy ?? 0,
+      value: careerPoints,
+      subtitle: 'Pontos',
       icon: Pill,
       gradient: 'from-rose-500 to-rose-600',
       change: 8,
     },
     {
       title: t('dashboard.financial.meal'),
-      valueInCents: b?.balanceFood ?? b?.food ?? 0,
+      value: careerPoints,
+      subtitle: 'Pontos',
       icon: UtensilsCrossed,
       gradient: 'from-orange-500 to-orange-600',
       change: 6,
     },
     {
       title: t('dashboard.financial.shopping'),
-      valueInCents: b?.balanceShopping ?? b?.shopping ?? 0,
+      value: directReferrals,
+      subtitle: 'Indicações',
       icon: ShoppingBag,
       gradient: 'from-purple-500 to-purple-600',
       change: 15,
     },
     {
       title: t('dashboard.financial.revenue'),
-      valueInCents: b?.totalRevenue ?? 0,
+      value: networkSize,
+      subtitle: 'Na Rede',
       icon: BarChart3,
       gradient: 'from-emerald-700 to-emerald-900',
       change: 9,

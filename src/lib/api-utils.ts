@@ -56,34 +56,38 @@ export const DEFAULT_VENDAS_LEVELS: number[] = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.
 // Backward-compat structured exports (kept so other files that still import the
 // old constants — e.g. /api/simulator/calculate/route.ts — don't break).
 // New code should prefer the async helpers below.
+//
+// The `users` per level reflects the 5-wide matrix structure (5^level).
+// Percentages come from DEFAULT_*_LEVELS above and may be overridden at runtime
+// by SystemConfig (admin-configurable).
 export const ENTRADA_LEVELS = [
-  { level: 1, percentage: DEFAULT_ENTRADA_LEVELS[0], users: 4 },
-  { level: 2, percentage: DEFAULT_ENTRADA_LEVELS[1], users: 16 },
-  { level: 3, percentage: DEFAULT_ENTRADA_LEVELS[2], users: 64 },
-  { level: 4, percentage: DEFAULT_ENTRADA_LEVELS[3], users: 256 },
-  { level: 5, percentage: DEFAULT_ENTRADA_LEVELS[4], users: 1024 },
+  { level: 1, percentage: DEFAULT_ENTRADA_LEVELS[0], users: 5 },
+  { level: 2, percentage: DEFAULT_ENTRADA_LEVELS[1], users: 25 },
+  { level: 3, percentage: DEFAULT_ENTRADA_LEVELS[2], users: 125 },
+  { level: 4, percentage: DEFAULT_ENTRADA_LEVELS[3], users: 625 },
+  { level: 5, percentage: DEFAULT_ENTRADA_LEVELS[4], users: 3125 },
 ]
 
 export const RESIDUAL_LEVELS = [
-  { level: 1, percentage: DEFAULT_RESIDUAL_LEVELS[0] },
-  { level: 2, percentage: DEFAULT_RESIDUAL_LEVELS[1] },
-  { level: 3, percentage: DEFAULT_RESIDUAL_LEVELS[2] },
-  { level: 4, percentage: DEFAULT_RESIDUAL_LEVELS[3] },
-  { level: 5, percentage: DEFAULT_RESIDUAL_LEVELS[4] },
-  { level: 6, percentage: DEFAULT_RESIDUAL_LEVELS[5] },
-  { level: 7, percentage: DEFAULT_RESIDUAL_LEVELS[6] },
+  { level: 1, percentage: DEFAULT_RESIDUAL_LEVELS[0], users: 5 },
+  { level: 2, percentage: DEFAULT_RESIDUAL_LEVELS[1], users: 25 },
+  { level: 3, percentage: DEFAULT_RESIDUAL_LEVELS[2], users: 125 },
+  { level: 4, percentage: DEFAULT_RESIDUAL_LEVELS[3], users: 625 },
+  { level: 5, percentage: DEFAULT_RESIDUAL_LEVELS[4], users: 3125 },
+  { level: 6, percentage: DEFAULT_RESIDUAL_LEVELS[5], users: 15625 },
+  { level: 7, percentage: DEFAULT_RESIDUAL_LEVELS[6], users: 78125 },
 ]
 
 export const VENDAS_LEVELS = [
-  { level: 1, percentage: DEFAULT_VENDAS_LEVELS[0], category: 'mobility' },
-  { level: 2, percentage: DEFAULT_VENDAS_LEVELS[1], category: 'mobility' },
-  { level: 3, percentage: DEFAULT_VENDAS_LEVELS[2], category: 'mobility' },
-  { level: 4, percentage: DEFAULT_VENDAS_LEVELS[3], category: 'mobility' },
-  { level: 5, percentage: DEFAULT_VENDAS_LEVELS[4], category: 'mobility' },
-  { level: 6, percentage: DEFAULT_VENDAS_LEVELS[5], category: 'mobility' },
-  { level: 7, percentage: DEFAULT_VENDAS_LEVELS[6], category: 'mobility' },
-  { level: 8, percentage: DEFAULT_VENDAS_LEVELS[7], category: 'mobility' },
-  { level: 9, percentage: DEFAULT_VENDAS_LEVELS[8], category: 'mobility' },
+  { level: 1, percentage: DEFAULT_VENDAS_LEVELS[0], category: 'mobility', users: 5 },
+  { level: 2, percentage: DEFAULT_VENDAS_LEVELS[1], category: 'mobility', users: 25 },
+  { level: 3, percentage: DEFAULT_VENDAS_LEVELS[2], category: 'mobility', users: 125 },
+  { level: 4, percentage: DEFAULT_VENDAS_LEVELS[3], category: 'mobility', users: 625 },
+  { level: 5, percentage: DEFAULT_VENDAS_LEVELS[4], category: 'mobility', users: 3125 },
+  { level: 6, percentage: DEFAULT_VENDAS_LEVELS[5], category: 'mobility', users: 15625 },
+  { level: 7, percentage: DEFAULT_VENDAS_LEVELS[6], category: 'mobility', users: 78125 },
+  { level: 8, percentage: DEFAULT_VENDAS_LEVELS[7], category: 'mobility', users: 390625 },
+  { level: 9, percentage: DEFAULT_VENDAS_LEVELS[8], category: 'mobility', users: 1953125 },
 ]
 
 /**

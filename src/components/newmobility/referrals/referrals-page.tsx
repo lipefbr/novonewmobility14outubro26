@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { formatCurrency, formatDate, getStatusLabel, getStatusVariant, getPlanName } from '@/lib/utils'
+import { formatDate, getStatusLabel, getStatusVariant, getPlanName } from '@/lib/utils'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { referralsApi } from '@/lib/api'
@@ -17,7 +17,7 @@ import { ShareOptions } from './share-options'
 import { NetworkModal } from './network-modal'
 import {
   Users, UserPlus, UserCheck, TrendingUp, Search, Link2, Copy, Check as CheckIcon,
-  Share2, Eye, ChevronDown, ChevronUp, Calendar, CreditCard, Award, ArrowUpRight,
+  Share2, Eye, ChevronDown, ChevronUp, Calendar, Award, ArrowUpRight,
   ArrowRight, MessageCircle, Target, Medal, Maximize2, Activity, Download, Filter,
   FileSpreadsheet, Heart, HeartOff,
 } from 'lucide-react'
@@ -79,6 +79,22 @@ export function ReferralsPage() {
         if (cancelled) return
 
         if (data?.directReferrals) {
+          // Build a lookup of `userId -> directReferralsCount` from the
+          // nested referralTree (each tree node has a `children` array
+          // whose length is the number of people THAT user referred).
+          // This powers the per-referral "Indicações" column replacing
+          // the previous R$ cashback display (privacy: task 4b).
+          const childrenCountMap: Record<string, number> = {}
+          function collectCounts(nodes: any[]) {
+            for (const node of nodes) {
+              childrenCountMap[node.id] = node.children?.length ?? 0
+              if (node.children && node.children.length > 0) {
+                collectCounts(node.children)
+              }
+            }
+          }
+          if (data.referralTree) collectCounts(data.referralTree)
+
           const mapped = data.directReferrals.map((r: any, idx: number) => ({
             id: r.id,
             name: r.name,
@@ -86,7 +102,7 @@ export function ReferralsPage() {
             status: r.isActive ? 'active' : 'inactive',
             plan: r.plan || 'free',
             level: 1,
-            cashback: 0,
+            directReferrals: childrenCountMap[r.id] ?? 0,
             email: r.email || '',
           }))
           // The referralTree returned by /api/referrals has the same root
@@ -104,7 +120,7 @@ export function ReferralsPage() {
                   status: node.isActive ? 'active' : 'inactive',
                   plan: node.plan || 'free',
                   level,
-                  cashback: 0,
+                  directReferrals: node.children?.length ?? 0,
                   email: node.email || '',
                 })
                 if (node.children && node.children.length > 0) {
@@ -196,9 +212,11 @@ export function ReferralsPage() {
   }
 
   const handleExportCSV = () => {
-    const headers = 'Nome,Email,Plano,Status,Nível,CashBack,Data\n'
+    // CSV column "Indicações" replaces the previous "CashBack" column
+    // (privacy: task 4b — no personal R$ earnings on user-facing pages).
+    const headers = 'Nome,Email,Plano,Status,Nível,Indicações,Data\n'
     const rows = referrals.map(r =>
-      `"${r.name}","${r.email}","${r.plan}","${r.status}",${r.level},"${formatCurrency(r.cashback)}","${r.date}"`
+      `"${r.name}","${r.email}","${r.plan}","${r.status}",${r.level},${r.directReferrals ?? 0},"${r.date}"`
     ).join('\n')
     const blob = new Blob([headers + rows], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
@@ -401,8 +419,9 @@ export function ReferralsPage() {
               <div className="space-y-3">
                 {referrals.length > 0 ? (
                   referrals
-                    .filter(r => r.cashback > 0)
-                    .sort((a, b) => b.cashback - a.cashback)
+                    .slice()
+                    .sort((a, b) => (b.directReferrals ?? 0) - (a.directReferrals ?? 0))
+                    .filter(r => (r.directReferrals ?? 0) > 0)
                     .slice(0, 3)
                     .map((referrer, idx) => {
                       const rank = idx + 1
@@ -416,8 +435,8 @@ export function ReferralsPage() {
                             <p className="text-xs text-muted-foreground">Nível {referrer.level}</p>
                           </div>
                           <div className="text-right">
-                            <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(referrer.cashback)}</p>
-                            <p className="text-[10px] text-muted-foreground">CashBack</p>
+                            <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{referrer.directReferrals ?? 0}</p>
+                            <p className="text-[10px] text-muted-foreground">Indicações</p>
                           </div>
                         </div>
                       )
@@ -711,8 +730,8 @@ export function ReferralsPage() {
                 </div>
                 <div className="text-right shrink-0 flex items-center gap-2">
                   <div>
-                    <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">{formatCurrency(referral.cashback)}</p>
-                    <p className="text-[10px] text-muted-foreground">CashBack gerado</p>
+                    <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">{referral.directReferrals ?? 0}</p>
+                    <p className="text-[10px] text-muted-foreground">Indicações feitas</p>
                   </div>
                   <Button
                     variant="ghost"
@@ -784,10 +803,10 @@ export function ReferralsPage() {
                 </div>
                 <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-lg p-3 border border-emerald-100 dark:border-emerald-900/50">
                   <div className="flex items-center gap-2 mb-1">
-                    <CreditCard className="h-3.5 w-3.5 text-emerald-500" />
-                    <span className="text-xs text-emerald-600 dark:text-emerald-400">CashBack Gerado</span>
+                    <Users className="h-3.5 w-3.5 text-emerald-500" />
+                    <span className="text-xs text-emerald-600 dark:text-emerald-400">Indicações Feitas</span>
                   </div>
-                  <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">{formatCurrency(detailReferral.cashback)}</p>
+                  <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">{detailReferral.directReferrals ?? 0}</p>
                 </div>
                 <div className="bg-muted/50 rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-1">

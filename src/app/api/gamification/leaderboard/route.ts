@@ -6,8 +6,9 @@ export async function GET(req: NextRequest) {
   try {
     const period = req.nextUrl.searchParams.get('period') || '30d'
 
-    // Get top earners with referral count via Prisma _count
-    const topEarnersRaw = await prisma.user.findMany({
+    // Privacy-aware leaderboard: rank by referral count and career points
+    // (no monetary values are exposed across users).
+    const topUsersRaw = await prisma.user.findMany({
       where: { isActive: true },
       select: {
         id: true,
@@ -15,20 +16,19 @@ export async function GET(req: NextRequest) {
         plan: true,
         profileImage: true,
         careerPoints: true,
-        balanceWithdrawal: true,
+        personalPoints: true,
         _count: { select: { referrals: true } },
       },
-      orderBy: { balanceWithdrawal: 'desc' },
+      orderBy: { careerPoints: 'desc' },
       take: 20,
     })
 
-    const leaderboard = topEarnersRaw.map((user, index) => ({
+    const leaderboard = topUsersRaw.map((user, index) => ({
       rank: index + 1,
       id: user.id,
       name: user.name,
       plan: user.plan,
-      careerPoints: user.careerPoints,
-      totalEarnings: user.balanceWithdrawal,
+      careerPoints: user.careerPoints + user.personalPoints,
       directReferrals: user._count.referrals,
       badge: index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : null,
     }))

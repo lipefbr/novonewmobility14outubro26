@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
-import { formatCurrency } from '@/lib/utils'
+import { getPlanName, cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
 import {
   Flame, Trophy, Medal, Target, Star, Zap, Calendar,
@@ -28,7 +28,6 @@ interface LeaderboardEntry {
   name: string
   plan: string
   careerPoints: number
-  totalEarnings: number
   directReferrals: number
   badge: string | null
 }
@@ -84,6 +83,9 @@ export function GamificationPage() {
         <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
           <Trophy className="h-5 w-5 text-emerald-600" />
           Gamificação
+          <Badge className={cn('ml-2', getPlanBadge(user?.plan || 'free'))}>
+            {getPlanName(user?.plan || 'free')}
+          </Badge>
         </h2>
         <p className="text-sm text-muted-foreground">Acompanhe seu progresso, desafios e conquistas</p>
       </div>
@@ -149,7 +151,7 @@ export function GamificationPage() {
           <CardHeader>
             <CardTitle className="text-sm flex items-center gap-2">
               <Crown className="h-4 w-4 text-amber-600" />
-              Ranking Top Ganhadores
+              Ranking Top Indicadores
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -167,13 +169,13 @@ export function GamificationPage() {
                       {entry.id === user?.id && <Badge className="bg-emerald-600 text-white text-[9px]">Você</Badge>}
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge className={getPlanBadge(entry.plan)}>{entry.plan}</Badge>
-                      <span className="text-[10px] text-muted-foreground">{entry.directReferrals} refs</span>
+                      <Badge className={getPlanBadge(entry.plan)}>{getPlanName(entry.plan)}</Badge>
+                      <span className="text-[10px] text-muted-foreground">{entry.careerPoints} pts</span>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-bold text-foreground">{formatCurrency(entry.totalEarnings)}</p>
-                    <p className="text-[10px] text-muted-foreground">{entry.careerPoints} pts</p>
+                    <p className="text-sm font-bold text-foreground">{entry.directReferrals || 0}</p>
+                    <p className="text-[10px] text-muted-foreground">indicações</p>
                   </div>
                 </div>
               ))}

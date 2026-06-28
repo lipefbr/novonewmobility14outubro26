@@ -61,21 +61,22 @@ function formatZipCode(value: string): string {
   return `${digits.slice(0, 5)}-${digits.slice(5)}`
 }
 
-function formatDateBR(iso: string | null | undefined): string {
+function formatDateBR(iso: string | Date | null | undefined): string {
   if (!iso) return '-'
   const d = new Date(iso)
   if (isNaN(d.getTime())) return '-'
-  return d.toLocaleDateString('pt-BR')
+  // Use UTC to avoid timezone off-by-one (birthday stored as UTC midnight)
+  return d.toLocaleDateString('pt-BR', { timeZone: 'UTC' })
 }
 
-function toDateInputValue(iso: string | null | undefined): string {
+function toDateInputValue(iso: string | Date | null | undefined): string {
   if (!iso) return ''
   const d = new Date(iso)
   if (isNaN(d.getTime())) return ''
-  // Use local date to avoid timezone shift
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
+  // Use UTC getters to match the UTC-midnight storage format
+  const year = d.getUTCFullYear()
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(d.getUTCDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
 

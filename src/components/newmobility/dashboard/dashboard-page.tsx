@@ -3,7 +3,7 @@
 import { useStore, type UserData } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { dashboardApi, ApiError } from '@/lib/api'
-import { formatCurrency, timeSince, formatDate, getPlanName, cn } from '@/lib/utils'
+import { timeSince, formatDate, getPlanName, cn } from '@/lib/utils'
 import { StatsCards } from './stats-cards'
 import { FinancialCards } from './financial-cards'
 import { DashboardCharts } from './charts'
@@ -65,6 +65,7 @@ interface DashboardData {
   cashbackEntrada: { totalUsers: number; totalEarned: number }
   cashbackResidual: { totalUsers: number; totalEarned: number }
   cashbackVendas: { totalUsers: number; totalEarned: number }
+  network?: { totalSize: number; activeMembers: number; newReferrals: number }
   balances: any
   recentTransactions: any[]
   career: any
@@ -103,15 +104,16 @@ const planProgressData: Record<string, { current: string; next: string; progress
   blue5: { current: 'Blue 5 Premium', next: 'Blue 5 Elite', progress: 78, pointsNeeded: 8, benefits: ['CashBack Completo', 'Gratificações semanais', 'Saques ilimitados', 'App Motorista grátis'] },
 }
 
-// Weekly earnings data for CSS bar chart
-const weeklyEarningsData = [
-  { day: 'Seg', value: 18500, percentage: 42 },
-  { day: 'Ter', value: 24300, percentage: 55 },
-  { day: 'Qua', value: 15800, percentage: 36 },
-  { day: 'Qui', value: 31200, percentage: 71 },
-  { day: 'Sex', value: 28700, percentage: 65 },
-  { day: 'Sáb', value: 38500, percentage: 88 },
-  { day: 'Dom', value: 22100, percentage: 50 },
+// Weekly referral-growth data for CSS bar chart.
+// Privacy-safe: every value is a count of new referrals, never a R$ amount.
+const weeklyReferralsData = [
+  { day: 'Seg', value: 2, percentage: 42 },
+  { day: 'Ter', value: 3, percentage: 55 },
+  { day: 'Qua', value: 1, percentage: 36 },
+  { day: 'Qui', value: 4, percentage: 71 },
+  { day: 'Sex', value: 3, percentage: 65 },
+  { day: 'Sáb', value: 5, percentage: 88 },
+  { day: 'Dom', value: 2, percentage: 50 },
 ]
 
 export function DashboardPage() {
@@ -216,19 +218,20 @@ export function DashboardPage() {
   }
 
   const networkStats = {
-    totalSize: (dashboardData?.cashbackEntrada?.totalUsers ?? 0)
-      + (dashboardData?.cashbackResidual?.totalUsers ?? 0)
-      + (dashboardData?.cashbackVendas?.totalUsers ?? 0),
-    activeMembers: dashboardData?.directReferralCount ?? dashboardData?.directReferrals ?? 0,
-    newReferrals: Math.max(0, Math.floor((dashboardData?.directReferralCount ?? dashboardData?.directReferrals ?? 0) * 0.3)),
+    totalSize: dashboardData?.network?.totalSize ?? dashboardData?.directReferralCount ?? 0,
+    activeMembers: dashboardData?.network?.activeMembers ?? dashboardData?.directReferralCount ?? 0,
+    newReferrals: dashboardData?.network?.newReferrals ?? 0,
   }
 
-  // Quick stats for mini-bar - use API data with 0 as fallback for new users
+  // Quick stats for mini-bar — privacy-safe (no R$ values).
+  // Primary stat is now referral count, with points shown underneath.
+  const directReferralTotal = dashboardData?.directReferralCount ?? dashboardData?.directReferrals ?? 0
+  const careerPointsTotal = dashboardData?.career?.points ?? user?.careerPoints ?? 0
   const quickStats = [
-    { label: 'Ganhos Hoje', value: formatCurrency(dashboardData?.balances?.withdrawal ?? user?.balanceFree ?? 0), rawValue: dashboardData?.balances?.withdrawal ?? user?.balanceFree ?? 0, icon: DollarSign, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+    { label: 'Indicações Hoje', value: String(directReferralTotal), rawValue: directReferralTotal, icon: UserPlus, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
     { label: 'Novos Indicados', value: String(dashboardData?.directReferralCount ?? 0), rawValue: dashboardData?.directReferralCount ?? 0, icon: UserPlus, color: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-50 dark:bg-teal-950/30' },
-    { label: 'CashBack Pendente', value: formatCurrency(user?.balancePending ?? 0), rawValue: user?.balancePending ?? 0, icon: Clock, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/30' },
-    { label: 'Pontos Hoje', value: `+${dashboardData?.career?.points ?? user?.careerPoints ?? 0}`, rawValue: dashboardData?.career?.points ?? user?.careerPoints ?? 0, icon: Star, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+    { label: 'Rede Ativa', value: String(networkStats.activeMembers), rawValue: networkStats.activeMembers, icon: Users, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/30' },
+    { label: 'Pontos de Carreira', value: `+${careerPointsTotal}`, rawValue: careerPointsTotal, icon: Star, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
   ]
 
   // Greeting
@@ -239,8 +242,11 @@ export function DashboardPage() {
   const currentPlan = user?.plan || 'free'
   const planInfo = planProgressData[currentPlan] || planProgressData.free
 
-  // Weekly total earnings
-  const weeklyTotal = useMemo(() => weeklyEarningsData.reduce((sum, d) => sum + d.value, 0), [])
+  // Total referrals this week (count, not currency)
+  const weeklyTotal = useMemo(
+    () => weeklyReferralsData.reduce((sum, d) => sum + d.value, 0),
+    [],
+  )
 
   if (loading) {
     return <DashboardSkeleton />
@@ -422,7 +428,7 @@ export function DashboardPage() {
 
       {/* ===== WEEKLY EARNINGS MINI CHART + PLAN UPGRADE PROGRESS ===== */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        {/* Weekly Earnings CSS Bar Chart */}
+        {/* Weekly Referrals CSS Bar Chart */}
         <motion.div
           initial={{ opacity: 0, x: -15 }}
           animate={{ opacity: 1, x: 0 }}
@@ -433,11 +439,11 @@ export function DashboardPage() {
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
                   <BarChart3 className="h-5 w-5 text-emerald-600" />
-                  Ganhos da Semana
+                  Indicações da Semana
                 </CardTitle>
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 rounded-full">
                   <TrendingUp className="h-3 w-3" />
-                  +12%
+                  +{weeklyTotal}
                 </div>
               </div>
             </CardHeader>
@@ -445,16 +451,16 @@ export function DashboardPage() {
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <p className="text-xs text-muted-foreground font-medium">Total semanal</p>
-                  <p className="text-2xl font-bold text-foreground">{formatCurrency(weeklyTotal)}</p>
+                  <p className="text-2xl font-bold text-foreground">{weeklyTotal} indicações</p>
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-muted-foreground font-medium">Média diária</p>
-                  <p className="text-sm font-bold text-emerald-600">{formatCurrency(Math.round(weeklyTotal / 7))}</p>
+                  <p className="text-sm font-bold text-emerald-600">{(weeklyTotal / 7).toFixed(1)} indicações</p>
                 </div>
               </div>
               {/* CSS Bar Chart */}
               <div className="flex items-end justify-between gap-1.5 h-32 mb-2">
-                {weeklyEarningsData.map((item, i) => (
+                {weeklyReferralsData.map((item, i) => (
                   <div key={item.day} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
                     <motion.div
                       initial={{ height: 0 }}
@@ -463,20 +469,20 @@ export function DashboardPage() {
                       className="w-full rounded-t-md bg-gradient-to-t from-emerald-600 to-emerald-400 hover:from-emerald-500 hover:to-emerald-300 transition-colors duration-200 cursor-pointer relative group min-h-[4px]"
                     >
                       <div className="absolute -top-7 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-foreground text-background text-[9px] font-bold px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap z-10">
-                        {formatCurrency(item.value)}
+                        {item.value} indicações
                       </div>
                     </motion.div>
                   </div>
                 ))}
               </div>
               <div className="flex justify-between text-[10px] text-muted-foreground font-medium">
-                {weeklyEarningsData.map((item) => (
+                {weeklyReferralsData.map((item) => (
                   <span key={item.day} className="flex-1 text-center">{item.day}</span>
                 ))}
               </div>
               <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Melhor dia</span>
-                <span className="font-semibold text-emerald-600">Sábado — {formatCurrency(38500)}</span>
+                <span className="font-semibold text-emerald-600">Sábado — 5 indicações</span>
               </div>
             </CardContent>
           </Card>
@@ -915,22 +921,22 @@ export function DashboardPage() {
                     transition={{ delay: 0.3, duration: 0.5, ease: 'easeOut' }}
                     className="text-3xl font-bold text-white"
                   >
-                    #15
+                    {directReferralTotal}
                   </motion.p>
-                  <p className="text-xs text-gray-400 mt-1">de 156 membros</p>
+                  <p className="text-xs text-gray-400 mt-1">indicações diretas</p>
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-400">Ganhos</span>
-                    <span className="text-emerald-400 font-medium">#15</span>
+                    <span className="text-gray-400">Indicações</span>
+                    <span className="text-teal-400 font-medium">{directReferralTotal}</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-gray-400">Indicações</span>
-                    <span className="text-teal-400 font-medium">#12</span>
+                    <span className="text-gray-400">Rede</span>
+                    <span className="text-emerald-400 font-medium">{networkStats.totalSize}</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-gray-400">Pontos</span>
-                    <span className="text-amber-400 font-medium">#18</span>
+                    <span className="text-amber-400 font-medium">{careerPointsTotal}</span>
                   </div>
                 </div>
                 <Button
@@ -962,12 +968,12 @@ export function DashboardPage() {
               <CardContent>
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <p className="text-xs text-muted-foreground">Ganhos esta semana</p>
-                    <p className="text-xl font-bold text-foreground">{formatCurrency(125000)}</p>
+                    <p className="text-xs text-muted-foreground">Indicações esta semana</p>
+                    <p className="text-xl font-bold text-foreground">{weeklyTotal} indicações</p>
                   </div>
                   <div className="flex items-center gap-1 text-xs font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-1 rounded-full">
                     <TrendingUp className="h-3 w-3" />
-                    +12%
+                    +{weeklyTotal}
                   </div>
                 </div>
                 {/* SVG Sparkline */}
@@ -1027,7 +1033,7 @@ export function DashboardPage() {
                 </div>
                 <div className="mt-2 pt-2 border-t border-border flex items-center justify-between text-[10px]">
                   <span className="text-muted-foreground">Média diária</span>
-                  <span className="font-semibold text-foreground">{formatCurrency(17857)}</span>
+                  <span className="font-semibold text-foreground">{(weeklyTotal / 7).toFixed(1)} indicações</span>
                 </div>
               </CardContent>
             </Card>

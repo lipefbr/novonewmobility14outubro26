@@ -504,7 +504,7 @@ model MatrixType {
   code                                   String               @unique
   name                                   String
   matrixKind                             String
-  width                                  Int                  @default(4)
+  width                                  Int                  @default(5)
   depth                                  Int                  @default(5)
   description                            String?
   color                                  String?

@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
-import { formatCurrency, cn, getPlanName } from '@/lib/utils'
+import { cn, getPlanName } from '@/lib/utils'
 import { leaderboardApi } from '@/lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -163,7 +163,7 @@ function PodiumDisplay({ top3, activeTab }: { top3: LeaderboardUser[]; activeTab
               'text-xs font-bold mb-2',
               isFirst ? 'text-amber-600 dark:text-amber-400' : 'text-foreground',
             )}>
-              {activeTab === 'earnings' ? formatCurrency(entry.value) : entry.valueDisplay}
+              {entry.valueDisplay}
             </div>
 
             {/* Progress bar */}
@@ -275,7 +275,10 @@ export function LeaderboardPage() {
                       <span className="text-xs text-amber-100">1º Lugar</span>
                       <p className="text-sm font-bold">
                         {top10[0]
-                          ? <AnimatedNumber value={top10[0].value} prefix={activeTab === 'earnings' ? 'R$ ' : ''} />
+                          ? <AnimatedNumber
+                              value={top10[0].value}
+                              suffix={activeTab === 'points' ? ' pts' : ' indicações'}
+                            />
                           : <span className="text-amber-100">—</span>}
                       </p>
                     </div>
@@ -490,7 +493,7 @@ export function LeaderboardPage() {
                                     'text-sm font-bold',
                                     entry.rank <= 3 ? 'text-amber-600 dark:text-amber-400' : 'text-foreground',
                                   )}>
-                                    {activeTab === 'earnings' ? formatCurrency(entry.value) : entry.valueDisplay}
+                                    {entry.valueDisplay}
                                   </p>
                                 </div>
                               </div>

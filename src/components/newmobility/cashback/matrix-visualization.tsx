@@ -8,12 +8,15 @@ import {
 } from '@/components/ui/table'
 import { Progress } from '@/components/ui/progress'
 import { motion } from 'framer-motion'
-import { formatCurrency, cn } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import { useStore } from '@/lib/store'
-import { Users, DollarSign, TrendingUp, Layers, Sparkles } from 'lucide-react'
+import { Users, Layers, TrendingUp, Sparkles } from 'lucide-react'
 
-// Animated counter component for total earnings highlight
-function AnimatedEarningsCounter({ value }: { value: number }) {
+// Animated counter component for total members highlight.
+// Replaces the previous `AnimatedEarningsCounter` which displayed a
+// monetary (R$) total — privacy requirement: no personal earnings on
+// user-facing pages.
+function AnimatedMemberCounter({ value }: { value: number }) {
   const [display, setDisplay] = useState(0)
   const hasAnimated = useRef(false)
 
@@ -38,7 +41,8 @@ function AnimatedEarningsCounter({ value }: { value: number }) {
 
   return (
     <span className="font-bold tabular-nums text-2xl md:text-3xl text-white">
-      {formatCurrency(display)}
+      {display.toLocaleString('pt-BR')}
+      <span className="text-sm font-medium text-emerald-100 ml-1.5">membros</span>
     </span>
   )
 }
@@ -69,7 +73,6 @@ interface MatrixLevelData {
   percentage: string
   totalUsers: number
   filled: number
-  earnings: number
 }
 
 interface MatrixVisualizationProps {
@@ -80,61 +83,59 @@ interface MatrixVisualizationProps {
 // and as a safety net if the fetch fails. Percentages mirror the DEFAULT_*
 // constants in api-utils.ts so admin-unconfigured installs still see
 // sensible numbers.
+// NOTE: `earnings` and `maxEarnings` were removed (privacy: no R$ on
+// user-facing pages). Per-level "members" counts come from `filled`.
 const FALLBACK_MATRIX_CONFIG: Record<string, {
   levels: MatrixLevelData[]
   title: string
   description: string
-  maxEarnings: string
 }> = {
   entrada: {
     levels: [
-      { level: 1, positions: 4, percentage: '5%', totalUsers: 4, filled: 4, earnings: 65000 },
-      { level: 2, positions: 16, percentage: '10%', totalUsers: 16, filled: 12, earnings: 195000 },
-      { level: 3, positions: 64, percentage: '10%', totalUsers: 64, filled: 32, earnings: 520000 },
-      { level: 4, positions: 256, percentage: '5%', totalUsers: 256, filled: 80, earnings: 650000 },
-      { level: 5, positions: 1024, percentage: '5%', totalUsers: 1024, filled: 200, earnings: 1828000 },
+      { level: 1, positions: 5, percentage: '5%', totalUsers: 5, filled: 4 },
+      { level: 2, positions: 25, percentage: '10%', totalUsers: 25, filled: 12 },
+      { level: 3, positions: 125, percentage: '10%', totalUsers: 125, filled: 32 },
+      { level: 4, positions: 625, percentage: '5%', totalUsers: 625, filled: 80 },
+      { level: 5, positions: 3125, percentage: '5%', totalUsers: 3125, filled: 200 },
     ],
     title: 'Matriz CashBack Entrada',
-    description: 'Estrutura 4x5 com 5 níveis de profundidade',
-    maxEarnings: 'R$ 32.580,00',
+    description: 'Estrutura 5x5 com 5 níveis de profundidade',
   },
   residual: {
     levels: [
-      { level: 1, positions: 4, percentage: '5%', totalUsers: 4, filled: 4, earnings: 45000 },
-      { level: 2, positions: 16, percentage: '5.5%', totalUsers: 16, filled: 12, earnings: 98000 },
-      { level: 3, positions: 64, percentage: '6%', totalUsers: 64, filled: 30, earnings: 215000 },
-      { level: 4, positions: 256, percentage: '6.5%', totalUsers: 256, filled: 60, earnings: 468000 },
-      { level: 5, positions: 1024, percentage: '7%', totalUsers: 1024, filled: 100, earnings: 320000 },
-      { level: 6, positions: 4096, percentage: '7.5%', totalUsers: 4096, filled: 200, earnings: 390000 },
-      { level: 7, positions: 16384, percentage: '8%', totalUsers: 16384, filled: 400, earnings: 288000 },
+      { level: 1, positions: 5, percentage: '5%', totalUsers: 5, filled: 4 },
+      { level: 2, positions: 25, percentage: '5.5%', totalUsers: 25, filled: 12 },
+      { level: 3, positions: 125, percentage: '6%', totalUsers: 125, filled: 30 },
+      { level: 4, positions: 625, percentage: '6.5%', totalUsers: 625, filled: 60 },
+      { level: 5, positions: 3125, percentage: '7%', totalUsers: 3125, filled: 100 },
+      { level: 6, positions: 15625, percentage: '7.5%', totalUsers: 15625, filled: 200 },
+      { level: 7, positions: 78125, percentage: '8%', totalUsers: 78125, filled: 400 },
     ],
     title: 'Matriz CashBack Residual',
-    description: 'Estrutura 4x7 com 7 níveis de profundidade',
-    maxEarnings: 'R$ 18.240,00',
+    description: 'Estrutura 5x7 com 7 níveis de profundidade',
   },
   vendas: {
     levels: [
-      { level: 1, positions: 4, percentage: '0.10%', totalUsers: 4, filled: 4, earnings: 12000 },
-      { level: 2, positions: 16, percentage: '0.10%', totalUsers: 16, filled: 14, earnings: 48000 },
-      { level: 3, positions: 64, percentage: '0.10%', totalUsers: 64, filled: 40, earnings: 192000 },
-      { level: 4, positions: 256, percentage: '0.10%', totalUsers: 256, filled: 100, earnings: 640000 },
-      { level: 5, positions: 1024, percentage: '0.10%', totalUsers: 1024, filled: 250, earnings: 1600000 },
-      { level: 6, positions: 4096, percentage: '0.10%', totalUsers: 4096, filled: 600, earnings: 2560000 },
-      { level: 7, positions: 16384, percentage: '0.10%', totalUsers: 16384, filled: 1200, earnings: 2560000 },
-      { level: 8, positions: 65536, percentage: '0.10%', totalUsers: 65536, filled: 3000, earnings: 1200000 },
-      { level: 9, positions: 262144, percentage: '0.20%', totalUsers: 262144, filled: 8000, earnings: 2378000 },
+      { level: 1, positions: 5, percentage: '0.10%', totalUsers: 5, filled: 4 },
+      { level: 2, positions: 25, percentage: '0.10%', totalUsers: 25, filled: 14 },
+      { level: 3, positions: 125, percentage: '0.10%', totalUsers: 125, filled: 40 },
+      { level: 4, positions: 625, percentage: '0.10%', totalUsers: 625, filled: 100 },
+      { level: 5, positions: 3125, percentage: '0.10%', totalUsers: 3125, filled: 250 },
+      { level: 6, positions: 15625, percentage: '0.10%', totalUsers: 15625, filled: 600 },
+      { level: 7, positions: 78125, percentage: '0.10%', totalUsers: 78125, filled: 1200 },
+      { level: 8, positions: 390625, percentage: '0.10%', totalUsers: 390625, filled: 3000 },
+      { level: 9, positions: 1953125, percentage: '0.20%', totalUsers: 1953125, filled: 8000 },
     ],
     title: 'Matriz CashBack Vendas',
-    description: 'Estrutura 4x9 com 9 níveis de profundidade',
-    maxEarnings: 'R$ 106.025,00',
+    description: 'Estrutura 5x9 com 9 níveis de profundidade',
   },
 }
 
 // Titles/descriptions are static (they describe the matrix structure, not config)
 const MATRIX_META: Record<string, { title: string; description: string }> = {
-  entrada: { title: 'Matriz CashBack Entrada', description: 'Estrutura 4x5 com 5 níveis de profundidade' },
-  residual: { title: 'Matriz CashBack Residual', description: 'Estrutura 4x7 com 7 níveis de profundidade' },
-  vendas: { title: 'Matriz CashBack Vendas', description: 'Estrutura 4x9 com 9 níveis de profundidade' },
+  entrada: { title: 'Matriz CashBack Entrada', description: 'Estrutura 5x5 com 5 níveis de profundidade' },
+  residual: { title: 'Matriz CashBack Residual', description: 'Estrutura 5x7 com 7 níveis de profundidade' },
+  vendas: { title: 'Matriz CashBack Vendas', description: 'Estrutura 5x9 com 9 níveis de profundidade' },
 }
 
 // Format a numeric percentage like 5 -> "5%", 5.5 -> "5.5%", 0.1 -> "0.10%", 0.2 -> "0.20%"
@@ -176,50 +177,67 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
   const { user } = useStore()
   const [config, setConfig] = useState(FALLBACK_MATRIX_CONFIG[type])
 
-  // Fetch the live cashback levels (admin-configured percentages + real
-  // earned-per-level) from the cashback API for this matrix type.
+  // Fetch live cashback levels (admin-configured percentages) from the
+  // cashback API, AND fetch the real per-level network member counts
+  // from /api/dashboard (whose `byLevel` is computed from the actual
+  // referral tree by `countNetworkDescendants`). The cashback API's
+  // per-level `currentUsers` is derived from CashbackEntry
+  // transactions (0 for users who haven't received payouts yet) —
+  // not useful for a per-level "members" display, so we override it
+  // with the dashboard's `byLevel` data.
   // Falls back to FALLBACK_MATRIX_CONFIG on any error.
   useEffect(() => {
     if (!user?.id) return
     let cancelled = false
 
-    fetch(`/api/cashback/${type}?userId=${user.id}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (cancelled || !data || !Array.isArray(data.levels)) return
+    Promise.all([
+      fetch(`/api/cashback/${type}?userId=${user.id}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+      fetch(`/api/dashboard?userId=${user.id}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+    ]).then(([cashbackData, dashboardData]) => {
+      if (cancelled || !cashbackData || !Array.isArray(cashbackData.levels)) return
 
-        const meta = MATRIX_META[type] ?? { title: type, description: '' }
-        const levels: MatrixLevelData[] = data.levels.map((lvl: any, i: number) => {
-          const levelNum = lvl.level ?? i + 1
-          const positions = Math.pow(4, levelNum) // structural matrix dim
-          const filled = typeof lvl.currentUsers === 'number' ? lvl.currentUsers : 0
-          const earnings = typeof lvl.earned === 'number' ? lvl.earned : 0
-          const percentageStr = formatPercentage(
-            typeof lvl.percentage === 'number' ? lvl.percentage : 0
-          )
-          return {
-            level: levelNum,
-            positions,
-            percentage: percentageStr,
-            totalUsers: positions,
-            filled,
-            earnings,
-          }
-        })
+      // The dashboard's per-matrix byLevel map has the REAL network
+      // descendant count at each level (1-indexed).
+      const byLevelKey =
+        type === 'entrada' ? 'cashbackEntrada' :
+        type === 'residual' ? 'cashbackResidual' :
+        'cashbackVendas'
+      const byLevel: Record<string, number> = dashboardData?.[byLevelKey]?.byLevel ?? {}
 
-        const totalEarned =
-          typeof data.totalEarned === 'number'
-            ? data.totalEarned
-            : levels.reduce((s, l) => s + l.earnings, 0)
-
-        setConfig({
-          levels,
-          title: meta.title,
-          description: meta.description,
-          maxEarnings: formatCurrency(totalEarned),
-        })
+      const meta = MATRIX_META[type] ?? { title: type, description: '' }
+      const levels: MatrixLevelData[] = cashbackData.levels.map((lvl: any, i: number) => {
+        const levelNum = lvl.level ?? i + 1
+        const positions = Math.pow(5, levelNum) // structural matrix dim (5-wide)
+        // Prefer the dashboard's byLevel count (real network size at
+        // this level); fall back to the cashback API's currentUsers
+        // (count of CashbackEntry transactions at this level) if the
+        // dashboard data isn't available.
+        const filled =
+          typeof byLevel[String(levelNum)] === 'number'
+            ? byLevel[String(levelNum)]
+            : (typeof lvl.currentUsers === 'number' ? lvl.currentUsers : 0)
+        const percentageStr = formatPercentage(
+          typeof lvl.percentage === 'number' ? lvl.percentage : 0
+        )
+        return {
+          level: levelNum,
+          positions,
+          percentage: percentageStr,
+          totalUsers: positions,
+          filled,
+        }
       })
-      .catch((err) => console.error(`Failed to load ${type} matrix:`, err))
+
+      setConfig({
+        levels,
+        title: meta.title,
+        description: meta.description,
+      })
+    })
 
     return () => {
       cancelled = true
@@ -227,12 +245,12 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
   }, [type, user?.id])
 
   const totalUsers = config.levels.reduce((sum, l) => sum + l.filled, 0)
-  const totalEarnings = config.levels.reduce((sum, l) => sum + l.earnings, 0)
-  const maxEarnings = Math.max(...config.levels.map(l => l.earnings))
+  const totalCapacity = config.levels.reduce((sum, l) => sum + l.positions, 0)
+  const maxMembers = Math.max(...config.levels.map(l => l.filled), 0)
 
   return (
     <div className="space-y-5">
-      {/* Total Earnings Highlight Card */}
+      {/* Total Members Highlight Card */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -248,18 +266,18 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <Sparkles className="h-4 w-4 text-emerald-200" />
-                <p className="text-sm text-emerald-100 font-medium">Total de Ganhos - {config.title}</p>
+                <p className="text-sm text-emerald-100 font-medium">Total de Membros - {config.title}</p>
               </div>
-              <AnimatedEarningsCounter value={totalEarnings} />
+              <AnimatedMemberCounter value={totalUsers} />
             </div>
             <div className="flex items-center gap-3">
               <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center border border-white/10">
-                <p className="text-[10px] text-emerald-200 uppercase tracking-wide">Usuários</p>
-                <p className="text-lg font-bold text-white">{totalUsers.toLocaleString('pt-BR')}</p>
+                <p className="text-[10px] text-emerald-200 uppercase tracking-wide">Capacidade</p>
+                <p className="text-lg font-bold text-white">{totalCapacity.toLocaleString('pt-BR')}</p>
               </div>
               <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center border border-white/10">
-                <p className="text-[10px] text-emerald-200 uppercase tracking-wide">Máx. Possível</p>
-                <p className="text-sm font-bold text-white">{config.maxEarnings}</p>
+                <p className="text-[10px] text-emerald-200 uppercase tracking-wide">Níveis</p>
+                <p className="text-sm font-bold text-white">{config.levels.length}</p>
               </div>
             </div>
           </CardContent>
@@ -275,7 +293,7 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
                 <Users className="h-4 w-4" />
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Total Usuários</p>
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Total Membros</p>
                 <p className="text-sm font-bold text-foreground">{totalUsers.toLocaleString('pt-BR')}</p>
               </div>
             </CardContent>
@@ -285,11 +303,11 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
           <Card className="bg-card shadow-sm">
             <CardContent className="p-3 flex items-center gap-2.5">
               <div className="p-1.5 rounded-md bg-teal-100 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400">
-                <DollarSign className="h-4 w-4" />
+                <Layers className="h-4 w-4" />
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Total Ganhos</p>
-                <p className="text-sm font-bold text-foreground">{formatCurrency(totalEarnings)}</p>
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Capacidade</p>
+                <p className="text-sm font-bold text-foreground">{totalCapacity.toLocaleString('pt-BR')}</p>
               </div>
             </CardContent>
           </Card>
@@ -301,8 +319,8 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
                 <TrendingUp className="h-4 w-4" />
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Ganho Máx.</p>
-                <p className="text-sm font-bold text-foreground">{config.maxEarnings}</p>
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Máx. no Nível</p>
+                <p className="text-sm font-bold text-foreground">{maxMembers.toLocaleString('pt-BR')}</p>
               </div>
             </CardContent>
           </Card>
@@ -322,7 +340,7 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
         </motion.div>
       </div>
 
-      {/* Horizontal stacked bar with background pattern */}
+      {/* Horizontal stacked bar with background pattern — now shows member distribution by level */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
         <Card className="bg-card shadow-sm overflow-hidden relative">
           {/* Subtle grid background pattern */}
@@ -331,10 +349,10 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
             backgroundSize: '24px 24px',
           }} />
           <CardContent className="p-4 relative">
-            <p className="text-xs font-medium text-muted-foreground mb-2">Proporção de Ganhos por Nível</p>
+            <p className="text-xs font-medium text-muted-foreground mb-2">Proporção de Membros por Nível</p>
             <div className="flex h-5 rounded-full overflow-hidden gap-0.5">
               {config.levels.map((lvl, i) => {
-                const widthPct = totalEarnings > 0 ? (lvl.earnings / totalEarnings) * 100 : 0
+                const widthPct = totalUsers > 0 ? (lvl.filled / totalUsers) * 100 : 0
                 return (
                   <motion.div
                     key={lvl.level}
@@ -342,7 +360,7 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
                     animate={{ width: `${Math.max(widthPct, 0.5)}%` }}
                     transition={{ delay: 0.3 + i * 0.05, duration: 0.4, ease: 'easeOut' }}
                     className={cn('rounded-sm bg-gradient-to-r', levelGradientColors[i % levelGradientColors.length])}
-                    title={`Nível ${lvl.level}: ${formatCurrency(lvl.earnings)}`}
+                    title={`Nível ${lvl.level}: ${lvl.filled} membros`}
                   />
                 )
               })}
@@ -367,16 +385,16 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-16">Nível</TableHead>
-                  <TableHead className="text-right">Usuários</TableHead>
+                  <TableHead className="text-right">Membros</TableHead>
                   <TableHead className="text-right hidden sm:table-cell">%</TableHead>
-                  <TableHead className="text-right">Ganhos (R$)</TableHead>
+                  <TableHead className="text-right">Capacidade</TableHead>
                   <TableHead className="w-32 hidden md:table-cell">Progresso</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {config.levels.map((lvl, i) => {
                   const fillPct = Math.round((lvl.filled / lvl.positions) * 100)
-                  const earningsPct = maxEarnings > 0 ? Math.round((lvl.earnings / maxEarnings) * 100) : 0
+                  const membersPct = maxMembers > 0 ? Math.round((lvl.filled / maxMembers) * 100) : 0
                   return (
                     <TableRow key={lvl.level}>
                       <TableCell>
@@ -384,15 +402,15 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
                           N{lvl.level}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right font-medium text-foreground">
-                        <span className="text-foreground">{lvl.filled}</span>
-                        <span className="text-muted-foreground">/{lvl.positions}</span>
+                      <TableCell className="text-right font-bold text-emerald-600 dark:text-emerald-400">
+                        {lvl.filled.toLocaleString('pt-BR')}
+                        <span className="block text-[10px] font-normal text-muted-foreground">{membersPct}% do pico</span>
                       </TableCell>
                       <TableCell className="text-right hidden sm:table-cell text-muted-foreground">
                         {lvl.percentage}
                       </TableCell>
-                      <TableCell className="text-right font-bold text-emerald-600 dark:text-emerald-400">
-                        {formatCurrency(lvl.earnings)}
+                      <TableCell className="text-right font-medium text-foreground">
+                        {lvl.positions.toLocaleString('pt-BR')}
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
                         <div className="flex items-center gap-2">
@@ -428,7 +446,7 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 transition={{ delay: 0.35 + i * 0.05, type: 'spring', stiffness: 200 }}
               >
-                <LevelTooltip content={`Nível ${lvl.level}: ${lvl.filled}/${lvl.positions} usuários · ${lvl.percentage} · ${formatCurrency(lvl.earnings)}`}>
+                <LevelTooltip content={`Nível ${lvl.level}: ${lvl.filled}/${lvl.positions} membros · ${lvl.percentage}`}>
                   <Card className="shadow-sm bg-card hover:shadow-lg hover:-translate-y-1 transition-all duration-200 cursor-pointer">
                     <CardContent className="p-3">
                       <div className="flex items-center justify-between mb-2">
@@ -439,15 +457,15 @@ export function MatrixVisualization({ type }: MatrixVisualizationProps) {
                       </div>
                       <div className="space-y-1.5">
                         <div>
-                          <p className="text-[10px] text-muted-foreground">Usuários</p>
+                          <p className="text-[10px] text-muted-foreground">Membros</p>
                           <p className="text-sm font-bold text-foreground">
-                            {lvl.filled}<span className="text-muted-foreground font-normal">/{lvl.positions}</span>
+                            {lvl.filled.toLocaleString('pt-BR')}<span className="text-muted-foreground font-normal">/{lvl.positions.toLocaleString('pt-BR')}</span>
                           </p>
                         </div>
                         <div>
-                          <p className="text-[10px] text-muted-foreground">Ganhos</p>
+                          <p className="text-[10px] text-muted-foreground">Ocupação</p>
                           <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                            {formatCurrency(lvl.earnings)}
+                            {fillPct}%
                           </p>
                         </div>
                         {/* Gradient progress bar */}

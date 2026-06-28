@@ -23,7 +23,7 @@ import {
   Package,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { cn, formatCurrency, timeSince } from '@/lib/utils'
+import { cn, timeSince } from '@/lib/utils'
 
 interface ActivityItem {
   id: string
@@ -148,16 +148,16 @@ export function ActivityFeed() {
                       <p className="text-[10px] text-muted-foreground shrink-0">{timeSince(activity.time)}</p>
                     </div>
                   </div>
-                  {activity.amount !== undefined && (
+                  {activity.amount !== undefined && activity.amount > 0 && (
                     <motion.span
                       initial={{ scale: 0.8 }}
                       animate={{ scale: 1 }}
                       className={cn(
                         'text-sm font-bold shrink-0',
-                        activity.amount > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'
+                        'text-emerald-600 dark:text-emerald-400'
                       )}
                     >
-                      {activity.amount > 0 ? '+' : ''}{formatCurrency(Math.abs(activity.amount))}
+                      +{Math.abs(activity.amount)} pts
                     </motion.span>
                   )}
                 </motion.div>

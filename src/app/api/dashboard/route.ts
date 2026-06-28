@@ -1,6 +1,36 @@
 import { db, prisma } from '@/lib/db'
 import { success, error, formatTimeSince } from '@/lib/api-utils'
 
+// Count all descendants in the referral tree (recursive, up to 9 levels deep).
+// Returns the total number of descendants, a per-level breakdown, and the
+// count of descendants that are currently active.
+async function countNetworkDescendants(userId: string): Promise<{
+  total: number
+  byLevel: Record<number, number>
+  activeTotal: number
+}> {
+  const byLevel: Record<number, number> = {}
+  let total = 0
+  let activeTotal = 0
+  let currentLevel: string[] = [userId]
+
+  for (let level = 1; level <= 9; level++) {
+    if (currentLevel.length === 0) break
+    const children = await db.find(
+      'User',
+      '"referredById" IN $1',
+      [currentLevel]
+    ) as any[]
+    if (children.length === 0) break
+    byLevel[level] = children.length
+    total += children.length
+    activeTotal += children.filter((c) => c.isActive === true).length
+    currentLevel = children.map((c) => c.id)
+  }
+
+  return { total, byLevel, activeTotal }
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -22,35 +52,50 @@ export async function GET(request: Request) {
     // Direct referral count
     const directReferralCount = await db.count('User', '"referredById" = $1', [userId])
 
-    // Cashback entrada stats
+    // Direct referrals (used for active-direct and new-this-month counts)
+    const directReferrals = await db.find('User', '"referredById" = $1', [userId]) as any[]
+    const activeDirect = directReferrals.filter((r) => r.isActive === true).length
+
+    // New referrals created in the current calendar month
+    const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+    const newReferrals = directReferrals.filter(
+      (r) => new Date(r.createdAt) >= startOfMonth
+    ).length
+
+    // Walk the entire referral network (up to 9 levels deep) and count
+    // descendants by level. This drives the Cashback matrix user counts
+    // (Entrada = 5 levels, Residual = 7 levels, Vendas = 9 levels) and the
+    // Visão Rede / Membros Ativos widgets.
+    const network = await countNetworkDescendants(userId)
+
+    const entradaLevels = [1, 2, 3, 4, 5]
+    const residualLevels = [1, 2, 3, 4, 5, 6, 7]
+    const vendasLevels = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+    const sumByLevels = (levels: number[]) =>
+      levels.reduce((sum, lvl) => sum + (network.byLevel[lvl] || 0), 0)
+    const pickByLevels = (levels: number[]): Record<number, number> => {
+      const out: Record<number, number> = {}
+      for (const lvl of levels) out[lvl] = network.byLevel[lvl] || 0
+      return out
+    }
+
+    const totalEntradaUsers = sumByLevels(entradaLevels)
+    const totalResidualUsers = sumByLevels(residualLevels)
+    const totalVendasUsers = sumByLevels(vendasLevels)
+    const entradaUsersByLevel = pickByLevels(entradaLevels)
+    const residualUsersByLevel = pickByLevels(residualLevels)
+    const vendasUsersByLevel = pickByLevels(vendasLevels)
+
+    // Cashback earned (kept for internal use / backwards compatibility)
     const entradaRecords = await db.find('CashbackEntry', '"userId" = $1', [userId])
     const totalEntradaEarned = entradaRecords.reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0)
-    const entradaUsersByLevel: Record<number, number> = {}
-    let totalEntradaUsers = 0
-    for (const e of entradaRecords) {
-      entradaUsersByLevel[e.level] = (entradaUsersByLevel[e.level] || 0) + 1
-      totalEntradaUsers++
-    }
 
-    // Cashback residual stats
     const residualRecords = await db.find('CashbackResidual', '"userId" = $1', [userId])
     const totalResidualEarned = residualRecords.reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0)
-    const residualUsersByLevel: Record<number, number> = {}
-    let totalResidualUsers = 0
-    for (const e of residualRecords) {
-      residualUsersByLevel[e.level] = (residualUsersByLevel[e.level] || 0) + 1
-      totalResidualUsers++
-    }
 
-    // Cashback vendas stats
     const vendasRecords = await db.find('CashbackSales', '"userId" = $1', [userId])
     const totalVendasEarned = vendasRecords.reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0)
-    const vendasUsersByLevel: Record<number, number> = {}
-    let totalVendasUsers = 0
-    for (const e of vendasRecords) {
-      vendasUsersByLevel[e.level] = (vendasUsersByLevel[e.level] || 0) + 1
-      totalVendasUsers++
-    }
 
     // Recent transactions
     const recentTransactions = await db.find(
@@ -129,6 +174,11 @@ export async function GET(request: Request) {
         totalUsers: totalVendasUsers,
         totalEarned: totalVendasEarned,
         byLevel: vendasUsersByLevel,
+      },
+      network: {
+        totalSize: network.total,
+        activeMembers: activeDirect,
+        newReferrals,
       },
       balances: {
         withdrawal: user.balanceWithdrawal || 0,

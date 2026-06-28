@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useStore } from '@/lib/store'
-import { formatCurrency, getPlanName, getPlanPrice, timeSince, formatDate } from '@/lib/utils'
+import { getPlanName, getPlanPrice, timeSince, formatDate } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
 import {
   User, Building2, Lock, Save, Camera, Shield, Calendar,
@@ -384,6 +384,34 @@ export function ProfilePage() {
   const [beneficiaryForm, setBeneficiaryForm] = useState({ name: '', cpf: '', relationship: 'spouse', percentage: 0, age: 0 })
   const [beneficiarySaving, setBeneficiarySaving] = useState(false)
 
+  // Referral network stats (direct count + total network size).
+  // Used to replace the previous "Total Ganho" (R$) card with a
+  // privacy-friendly "Indicações Diretas" count — see task 4b.
+  const [referralStats, setReferralStats] = useState<{
+    totalDirect: number
+    totalNetwork: number
+    activeDirect: number
+  }>({ totalDirect: 0, totalNetwork: 0, activeDirect: 0 })
+
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelled = false
+    fetch(`/api/referrals?userId=${user.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.stats) return
+        setReferralStats({
+          totalDirect: data.stats.totalDirect ?? 0,
+          totalNetwork: data.stats.totalNetwork ?? 0,
+          activeDirect: data.stats.activeDirect ?? 0,
+        })
+      })
+      .catch((err) => console.error('Failed to fetch referral stats:', err))
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
+
   const totalBeneficiaryPercentage = beneficiaries.reduce((sum, b) => sum + b.percentage, 0)
   const remainingBeneficiaryPercentage = 100 - totalBeneficiaryPercentage
 
@@ -723,9 +751,10 @@ export function ProfilePage() {
 
   const memberSince = user?.createdAt ? timeSince(user.createdAt) : '0 dias'
   const memberSinceDate = user?.createdAt ? formatDate(user.createdAt) : ''
-  const totalEarned = (user?.balanceWithdrawal || 0) + (user?.balanceMobility || 0) +
-    (user?.balanceShopping || 0) + (user?.balanceFood || 0) + (user?.balancePharmacy || 0) +
-    (user?.balanceGratification || 0)
+  // Privacy: the previous `totalEarned` (sum of all balance fields)
+  // was a personal-earnings aggregate and has been removed from the
+  // user-facing profile per task 4b. The profile summary cards now
+  // show referral counts and career points instead.
 
   // Verification status
   const verificationItems = [
@@ -920,24 +949,28 @@ export function ProfilePage() {
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="bg-emerald-50 dark:bg-emerald-950/30 rounded-lg p-3 text-center border border-emerald-100 dark:border-emerald-900/50">
-                <DollarSign className="h-4 w-4 text-emerald-600 mx-auto mb-1" />
-                <p className="text-sm font-bold text-foreground">{formatCurrency(totalEarned)}</p>
-                <p className="text-[10px] text-muted-foreground">Total Ganho</p>
+                <Users className="h-4 w-4 text-emerald-600 mx-auto mb-1" />
+                <p className="text-sm font-bold text-foreground">{referralStats.totalDirect}</p>
+                <p className="text-[10px] text-muted-foreground">Indicações Diretas</p>
+                <p className="text-[9px] text-emerald-600 dark:text-emerald-400 mt-0.5">{user?.careerPoints ?? 0} pontos</p>
               </div>
               <div className="bg-teal-50 dark:bg-teal-950/30 rounded-lg p-3 text-center border border-teal-100 dark:border-teal-900/50">
-                <Users className="h-4 w-4 text-teal-600 mx-auto mb-1" />
-                <p className="text-sm font-bold text-foreground">6</p>
-                <p className="text-[10px] text-muted-foreground">Indicações Diretas</p>
+                <Award className="h-4 w-4 text-teal-600 mx-auto mb-1" />
+                <p className="text-sm font-bold text-foreground">{user?.careerPoints ?? 0}</p>
+                <p className="text-[10px] text-muted-foreground">Pontos de Carreira</p>
+                <p className="text-[9px] text-teal-600 dark:text-teal-400 mt-0.5">{user?.stars ?? 0} estrelas</p>
               </div>
               <div className="bg-amber-50 dark:bg-amber-950/30 rounded-lg p-3 text-center border border-amber-100 dark:border-amber-900/50">
-                <Award className="h-4 w-4 text-amber-600 mx-auto mb-1" />
-                <p className="text-sm font-bold text-foreground">16</p>
+                <Users className="h-4 w-4 text-amber-600 mx-auto mb-1" />
+                <p className="text-sm font-bold text-foreground">{referralStats.totalNetwork}</p>
                 <p className="text-[10px] text-muted-foreground">Rede Total</p>
+                <p className="text-[9px] text-amber-600 dark:text-amber-400 mt-0.5">{referralStats.activeDirect} ativos</p>
               </div>
               <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 text-center border border-blue-100 dark:border-blue-900/50">
                 <CreditCard className="h-4 w-4 text-blue-600 mx-auto mb-1" />
-                <p className="text-sm font-bold text-foreground">{getPlanPrice(user?.plan || 'free')}/mês</p>
-                <p className="text-[10px] text-muted-foreground">Plano Atual</p>
+                <p className="text-sm font-bold text-foreground">{getPlanName(user?.plan || 'free')}</p>
+                <p className="text-[10px] text-muted-foreground">Graduação</p>
+                <p className="text-[9px] text-blue-600 dark:text-blue-400 mt-0.5">{getPlanPrice(user?.plan || 'free')}/mês</p>
               </div>
             </div>
 
