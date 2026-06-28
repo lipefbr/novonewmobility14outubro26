@@ -1,6 +1,6 @@
 'use client'
 
-import { useStore } from '@/lib/store'
+import { useStore, type UserData } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { dashboardApi, ApiError } from '@/lib/api'
 import { formatCurrency, timeSince, formatDate, getPlanName, cn } from '@/lib/utils'
@@ -115,7 +115,7 @@ const weeklyEarningsData = [
 ]
 
 export function DashboardPage() {
-  const { user, logout, setActivePage } = useStore()
+  const { user, logout, setActivePage, updateUser } = useStore()
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
@@ -145,6 +145,40 @@ export function DashboardPage() {
     try {
       const data = await dashboardApi.getData(user!.id)
       setDashboardData(data)
+
+      // Sync the Zustand store with the fresh data from the API so that
+      // admin edits (careerPoints, balances, plan, stars, etc.) are
+      // reflected immediately on the dashboard without requiring re-login.
+      // Only update fields that are actually returned by the dashboard API.
+      const updates: Partial<UserData> = {}
+
+      if (data?.user) {
+        const u = data.user
+        if (typeof u.plan === 'string') updates.plan = u.plan
+        if (typeof u.stars === 'number') updates.stars = u.stars
+        if (typeof u.isDriver === 'boolean') updates.isDriver = u.isDriver
+        if (typeof u.isActive === 'boolean') updates.isActive = u.isActive
+        if (typeof u.language === 'string') updates.language = u.language
+        if (u.profileImage !== undefined) updates.profileImage = u.profileImage
+      }
+
+      if (data?.balances) {
+        const b = data.balances
+        if (typeof b.withdrawal === 'number') updates.balanceWithdrawal = b.withdrawal
+        if (typeof b.mobility === 'number') updates.balanceMobility = b.mobility
+        if (typeof b.shopping === 'number') updates.balanceShopping = b.shopping
+        if (typeof b.food === 'number') updates.balanceFood = b.food
+        if (typeof b.pharmacy === 'number') updates.balancePharmacy = b.pharmacy
+        if (typeof b.gratification === 'number') updates.balanceGratification = b.gratification
+      }
+
+      if (data?.career && typeof data.career.points === 'number') {
+        updates.careerPoints = data.career.points
+      }
+
+      if (Object.keys(updates).length > 0) {
+        updateUser(updates)
+      }
     } catch (err: any) {
       if (err instanceof ApiError && err.status === 404) {
         logout()

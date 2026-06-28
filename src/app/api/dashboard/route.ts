@@ -1,5 +1,5 @@
-import { db } from '@/lib/db'
-import { success, error, formatTimeSince, getCareerRank, getNextRank } from '@/lib/api-utils'
+import { db, prisma } from '@/lib/db'
+import { success, error, formatTimeSince } from '@/lib/api-utils'
 
 export async function GET(request: Request) {
   try {
@@ -60,9 +60,25 @@ export async function GET(request: Request) {
       'ORDER BY "createdAt" DESC LIMIT 10'
     )
 
-    // Career info
-    const currentRank = getCareerRank(user.careerPoints)
-    const nextRank = getNextRank(user.careerPoints)
+    // Career info — read from the admin-managed CareerPlan table so admin
+    // edits propagate to the dashboard too. Mirrors the logic in
+    // /api/career/route.ts.
+    const careerPoints = Number(user.careerPoints || 0)
+    const careerPlans = await prisma.careerPlan.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    })
+    let currentCareerPlan: typeof careerPlans[number] | null = null
+    for (const p of careerPlans) {
+      if (careerPoints >= p.minPoints) currentCareerPlan = p
+    }
+    const hasAchievedAnyCareer = currentCareerPlan !== null
+    const nextCareerPlan = hasAchievedAnyCareer
+      ? (careerPlans.find((p) => careerPoints < p.minPoints) || null)
+      : (careerPlans[0] || null)
+    const careerProgress = nextCareerPlan
+      ? Math.min(((careerPoints / nextCareerPlan.minPoints) * 100), 100)
+      : 100
 
     // User distribution for chart (by plan)
     const allUsers = await db.find('User', '', [])
@@ -124,11 +140,13 @@ export async function GET(request: Request) {
       },
       recentTransactions,
       career: {
-        currentRank: currentRank.name,
-        stars: currentRank.stars,
-        points: user.careerPoints || 0,
-        nextRank: nextRank ? { name: nextRank.name, pointsNeeded: nextRank.minPoints - (user.careerPoints || 0) } : null,
-        progress: nextRank ? ((user.careerPoints || 0) / nextRank.minPoints) * 100 : 100,
+        currentRank: currentCareerPlan?.name ?? 'Associado',
+        stars: currentCareerPlan?.sortOrder ?? 0,
+        points: careerPoints,
+        nextRank: nextCareerPlan
+          ? { name: nextCareerPlan.name, pointsNeeded: Math.max(nextCareerPlan.minPoints - careerPoints, 0) }
+          : null,
+        progress: careerProgress,
       },
       userDistribution: usersByPlan,
       revenueByCategory,

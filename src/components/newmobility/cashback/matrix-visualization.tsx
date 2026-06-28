@@ -9,6 +9,7 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { motion } from 'framer-motion'
 import { formatCurrency, cn } from '@/lib/utils'
+import { useStore } from '@/lib/store'
 import { Users, DollarSign, TrendingUp, Layers, Sparkles } from 'lucide-react'
 
 // Animated counter component for total earnings highlight
@@ -75,7 +76,11 @@ interface MatrixVisualizationProps {
   type: 'entrada' | 'residual' | 'vendas'
 }
 
-const matrixConfig: Record<string, {
+// Fallback config used as the initial loading state (before the API responds)
+// and as a safety net if the fetch fails. Percentages mirror the DEFAULT_*
+// constants in api-utils.ts so admin-unconfigured installs still see
+// sensible numbers.
+const FALLBACK_MATRIX_CONFIG: Record<string, {
   levels: MatrixLevelData[]
   title: string
   description: string
@@ -125,6 +130,24 @@ const matrixConfig: Record<string, {
   },
 }
 
+// Titles/descriptions are static (they describe the matrix structure, not config)
+const MATRIX_META: Record<string, { title: string; description: string }> = {
+  entrada: { title: 'Matriz CashBack Entrada', description: 'Estrutura 4x5 com 5 níveis de profundidade' },
+  residual: { title: 'Matriz CashBack Residual', description: 'Estrutura 4x7 com 7 níveis de profundidade' },
+  vendas: { title: 'Matriz CashBack Vendas', description: 'Estrutura 4x9 com 9 níveis de profundidade' },
+}
+
+// Format a numeric percentage like 5 -> "5%", 5.5 -> "5.5%", 0.1 -> "0.10%", 0.2 -> "0.20%"
+function formatPercentage(value: number): string {
+  if (value < 1) {
+    // Pad to 2 decimal places for sub-1% values (matches original "0.10%" / "0.20%" style)
+    return `${value.toFixed(2)}%`
+  }
+  // Whole or decimal percentages: trim trailing zeros (10 -> "10%", 5.5 -> "5.5%")
+  const trimmed = `${value}`.replace(/\.0+$/, '')
+  return `${trimmed}%`
+}
+
 const levelColors = [
   'bg-emerald-500',
   'bg-teal-500',
@@ -150,7 +173,59 @@ const levelGradientColors = [
 ]
 
 export function MatrixVisualization({ type }: MatrixVisualizationProps) {
-  const config = matrixConfig[type]
+  const { user } = useStore()
+  const [config, setConfig] = useState(FALLBACK_MATRIX_CONFIG[type])
+
+  // Fetch the live cashback levels (admin-configured percentages + real
+  // earned-per-level) from the cashback API for this matrix type.
+  // Falls back to FALLBACK_MATRIX_CONFIG on any error.
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelled = false
+
+    fetch(`/api/cashback/${type}?userId=${user.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data || !Array.isArray(data.levels)) return
+
+        const meta = MATRIX_META[type] ?? { title: type, description: '' }
+        const levels: MatrixLevelData[] = data.levels.map((lvl: any, i: number) => {
+          const levelNum = lvl.level ?? i + 1
+          const positions = Math.pow(4, levelNum) // structural matrix dim
+          const filled = typeof lvl.currentUsers === 'number' ? lvl.currentUsers : 0
+          const earnings = typeof lvl.earned === 'number' ? lvl.earned : 0
+          const percentageStr = formatPercentage(
+            typeof lvl.percentage === 'number' ? lvl.percentage : 0
+          )
+          return {
+            level: levelNum,
+            positions,
+            percentage: percentageStr,
+            totalUsers: positions,
+            filled,
+            earnings,
+          }
+        })
+
+        const totalEarned =
+          typeof data.totalEarned === 'number'
+            ? data.totalEarned
+            : levels.reduce((s, l) => s + l.earnings, 0)
+
+        setConfig({
+          levels,
+          title: meta.title,
+          description: meta.description,
+          maxEarnings: formatCurrency(totalEarned),
+        })
+      })
+      .catch((err) => console.error(`Failed to load ${type} matrix:`, err))
+
+    return () => {
+      cancelled = true
+    }
+  }, [type, user?.id])
+
   const totalUsers = config.levels.reduce((sum, l) => sum + l.filled, 0)
   const totalEarnings = config.levels.reduce((sum, l) => sum + l.earnings, 0)
   const maxEarnings = Math.max(...config.levels.map(l => l.earnings))

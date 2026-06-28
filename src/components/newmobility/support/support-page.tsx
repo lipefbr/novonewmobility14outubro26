@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,74 +15,13 @@ import {
   Headphones, Plus, MessageCircle, Clock, CheckCircle2, AlertCircle,
   Send, Filter, Mail, Phone, MessageSquare, HelpCircle, Zap, CreditCard,
   Smartphone, ShoppingBag, ChevronRight, Sparkles, Search, Star, ThumbsUp,
-  ChevronDown, Smile, Meh, Frown
+  ChevronDown, Smile, Meh, Frown, Loader2
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
 import { EmptyState } from '../ui/empty-states'
-
-const mockTickets = [
-  {
-    id: '1',
-    subject: 'Problema com saque',
-    category: 'financial',
-    status: 'open',
-    priority: 'high',
-    responseTime: '~2h',
-    satisfaction: null,
-    messages: [
-      { id: '1', message: 'Não consigo solicitar saque há 3 dias. O botão está desabilitado.', isAdmin: false, date: '2025-01-15T10:00:00Z' },
-      { id: '2', message: 'Olá! Vamos verificar seu caso. Pode nos informar o valor que tentou sacar?', isAdmin: true, date: '2025-01-15T11:30:00Z' },
-    ],
-    createdAt: '2025-01-15',
-    updatedAt: '2025-01-15T11:30:00Z',
-  },
-  {
-    id: '2',
-    subject: 'App não funciona no Android',
-    category: 'technical',
-    status: 'in_progress',
-    priority: 'normal',
-    responseTime: '~4h',
-    satisfaction: null,
-    messages: [
-      { id: '3', message: 'O app fecha sozinho quando tento abrir o mapa.', isAdmin: false, date: '2025-01-13T09:00:00Z' },
-      { id: '4', message: 'Nossa equipe técnica está investigando. Qual modelo do seu celular?', isAdmin: true, date: '2025-01-13T14:00:00Z' },
-      { id: '5', message: 'Samsung Galaxy A54, Android 14.', isAdmin: false, date: '2025-01-13T15:00:00Z' },
-    ],
-    createdAt: '2025-01-13',
-    updatedAt: '2025-01-13T15:00:00Z',
-  },
-  {
-    id: '3',
-    subject: 'Dúvida sobre CashBack Residual',
-    category: 'support',
-    status: 'resolved',
-    priority: 'normal',
-    responseTime: '~1h',
-    satisfaction: 'happy',
-    messages: [
-      { id: '6', message: 'Como funciona o CashBack Residual?', isAdmin: false, date: '2025-01-10T08:00:00Z' },
-      { id: '7', message: 'O CashBack Residual é gerado a partir das atividades da sua rede. Cada nível tem uma porcentagem diferente.', isAdmin: true, date: '2025-01-10T10:00:00Z' },
-    ],
-    createdAt: '2025-01-10',
-    updatedAt: '2025-01-10T10:00:00Z',
-  },
-  {
-    id: '4',
-    subject: 'Voucher não aplicado',
-    category: 'shopping',
-    status: 'closed',
-    priority: 'low',
-    responseTime: '~6h',
-    satisfaction: 'neutral',
-    messages: [
-      { id: '8', message: 'Tentei usar um voucher mas não foi aplicado o desconto.', isAdmin: false, date: '2025-01-08T12:00:00Z' },
-    ],
-    createdAt: '2025-01-08',
-    updatedAt: '2025-01-08T12:00:00Z',
-  },
-]
+import { useStore } from '@/lib/store'
+import { supportApi, ApiError } from '@/lib/api'
 
 const categoryLabels: Record<string, string> = {
   support: 'Suporte',
@@ -129,34 +68,10 @@ const statusBadgeConfig: Record<string, { label: string; bg: string; text: strin
   closed: { label: 'Fechado', bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-600 dark:text-gray-400', dot: 'bg-gray-400' },
 }
 
-const faqItems = [
-  {
-    question: 'Como funciona o CashBack Entrada 4x5?',
-    answer: 'O CashBack Entrada 4x5 é calculado sobre as atividades dos seus 5 primeiros níveis de indicações. Cada nível gera uma porcentagem diferente de CashBack, variando conforme seu plano.',
-    category: 'cashback',
-  },
-  {
-    question: 'Como solicitar um saque?',
-    answer: 'Acesse a seção Financeiro, clique em "Solicitar Saque" e informe o valor desejado. O valor mínimo para saque é R$ 50,00. O saque é processado em até 5 dias úteis na sua conta bancária cadastrada.',
-    category: 'financial',
-  },
-  {
-    question: 'Qual a diferença entre os planos Blue 3 e Blue 5?',
-    answer: 'O plano Blue 3 oferece CashBack Entrada e Residual com benefícios básicos. O Blue 5 Premium inclui CashBack Vendas (9 níveis), Portal Gamer, Sport Bet, seguros, telemedicina e muito mais.',
-    category: 'plans',
-  },
-  {
-    question: 'Como usar meus vouchers?',
-    answer: 'Na seção Voucher, copie o código do voucher ativo e use-o no app ou no parceiro correspondente. Vouchers de mobilidade são usados no app de corridas, vouchers de farmácia nas redes credenciadas.',
-    category: 'vouchers',
-  },
-  {
-    question: 'Como acompanhar meu progresso na carreira?',
-    answer: 'Acesse "Plano de Carreira" para ver sua patente atual, pontos acumulados e o que falta para o próximo nível. Você ganha pontos através de indicações, uso do app e pagamentos em dia.',
-    category: 'career',
-  },
-]
-
+// Hardcoded fallback FAQ categories shown as filter chips. These map the most
+// common categories used by admins; categories actually returned by the API
+// are added dynamically so admin-defined categories appear even if not listed
+// here.
 const faqCategories = [
   { key: 'all', label: 'Todas' },
   { key: 'cashback', label: 'CashBack' },
@@ -214,8 +129,37 @@ function SatisfactionRating({ ticketId }: { ticketId: string }) {
   )
 }
 
+type FaqItem = {
+  id: string
+  question: string
+  answer: string
+  category: string
+}
+
+type TicketMessage = {
+  id: string
+  message: string
+  isAdmin: boolean
+  createdAt: string
+  date?: string
+}
+
+type Ticket = {
+  id: string
+  subject: string
+  category: string
+  status: string
+  priority: string
+  responseTime?: string
+  satisfaction?: string | null
+  messages: TicketMessage[]
+  createdAt: string
+  updatedAt: string
+}
+
 export function SupportPage() {
   const { toast } = useToast()
+  const { user } = useStore()
   const [selectedTicket, setSelectedTicket] = useState<string | null>(null)
   const [newTicketOpen, setNewTicketOpen] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
@@ -229,12 +173,164 @@ export function SupportPage() {
     message: '',
   })
 
-  const filtered = mockTickets.filter((t) => {
+  // Real data state — replaces the old mockTickets / faqItems constants.
+  const [tickets, setTickets] = useState<Ticket[]>([])
+  const [ticketsLoading, setTicketsLoading] = useState(true)
+  const [ticketsError, setTicketsError] = useState<string | null>(null)
+
+  const [faqItems, setFaqItems] = useState<FaqItem[]>([])
+  const [faqLoading, setFaqLoading] = useState(true)
+  const [faqError, setFaqError] = useState<string | null>(null)
+
+  // Detailed conversation for the selected ticket (fetched separately so the
+  // user sees the full back-and-forth, not just the latest message).
+  const [activeTicket, setActiveTicket] = useState<Ticket | null>(null)
+  const [activeTicketLoading, setActiveTicketLoading] = useState(false)
+
+  const [submittingTicket, setSubmittingTicket] = useState(false)
+  const [replying, setReplying] = useState(false)
+
+  // Fetch the user's ticket list (each row only includes the latest message).
+  const refreshTickets = useCallback(async () => {
+    if (!user?.id) {
+      setTickets([])
+      setTicketsLoading(false)
+      return
+    }
+    setTicketsLoading(true)
+    setTicketsError(null)
+    try {
+      const data = await supportApi.getTickets(user.id)
+      // Normalize the API response: each ticket may include `messages` (latest
+      // only) — we keep it so the list view can show a preview, but the full
+      // conversation is fetched on selection.
+      const list: Ticket[] = (data?.tickets ?? []).map((t: any) => ({
+        id: t.id,
+        subject: t.subject ?? '',
+        category: t.category ?? 'support',
+        status: t.status ?? 'open',
+        priority: t.priority ?? 'normal',
+        responseTime: t.responseTime,
+        satisfaction: t.satisfaction ?? null,
+        messages: (t.messages ?? []).map((m: any) => ({
+          id: m.id,
+          message: m.message ?? '',
+          isAdmin: !!m.isAdmin,
+          createdAt: m.createdAt ?? m.date ?? new Date().toISOString(),
+          date: m.date,
+        })),
+        createdAt: t.createdAt ?? new Date().toISOString(),
+        updatedAt: t.updatedAt ?? t.createdAt ?? new Date().toISOString(),
+      }))
+      setTickets(list)
+    } catch (err) {
+      console.error('Failed to load tickets:', err)
+      const msg =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+          ? err.message
+          : 'Não foi possível carregar seus tickets.'
+      setTicketsError(msg)
+      setTickets([])
+    } finally {
+      setTicketsLoading(false)
+    }
+  }, [user?.id])
+
+  // Fetch public FAQs.
+  const refreshFaqs = useCallback(async () => {
+    setFaqLoading(true)
+    setFaqError(null)
+    try {
+      const res = await fetch('/api/faq', { cache: 'no-store' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      const list: FaqItem[] = (data?.faqs ?? []).map((f: any) => ({
+        id: f.id,
+        question: f.question ?? '',
+        answer: f.answer ?? '',
+        category: f.category ?? 'geral',
+      }))
+      setFaqItems(list)
+    } catch (err) {
+      console.error('Failed to load FAQs:', err)
+      setFaqError('Não foi possível carregar as perguntas frequentes.')
+      setFaqItems([])
+    } finally {
+      setFaqLoading(false)
+    }
+  }, [])
+
+  // Initial load — fetch both tickets and FAQs in parallel.
+  useEffect(() => {
+    refreshFaqs()
+    refreshTickets()
+  }, [refreshFaqs, refreshTickets])
+
+  // When a ticket is selected, fetch its full conversation (all messages,
+  // ascending order) so the user sees admin replies as they come in.
+  useEffect(() => {
+    if (!selectedTicket || !user?.id) {
+      setActiveTicket(null)
+      return
+    }
+    let cancelled = false
+    setActiveTicketLoading(true)
+    supportApi
+      .getTicket(selectedTicket, user.id)
+      .then((data: any) => {
+        if (cancelled) return
+        const t = data?.ticket
+        if (!t) {
+          setActiveTicket(null)
+          return
+        }
+        const detail: Ticket = {
+          id: t.id,
+          subject: t.subject ?? '',
+          category: t.category ?? 'support',
+          status: t.status ?? 'open',
+          priority: t.priority ?? 'normal',
+          responseTime: t.responseTime,
+          satisfaction: t.satisfaction ?? null,
+          messages: (t.messages ?? []).map((m: any) => ({
+            id: m.id,
+            message: m.message ?? '',
+            isAdmin: !!m.isAdmin,
+            createdAt: m.createdAt ?? m.date ?? new Date().toISOString(),
+            date: m.date,
+          })),
+          createdAt: t.createdAt ?? new Date().toISOString(),
+          updatedAt: t.updatedAt ?? t.createdAt ?? new Date().toISOString(),
+        }
+        setActiveTicket(detail)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        console.error('Failed to load ticket detail:', err)
+        toast({
+          title: 'Erro ao carregar ticket',
+          description:
+            err instanceof ApiError
+              ? err.message
+              : 'Tente novamente em alguns instantes.',
+          variant: 'destructive',
+        })
+        setActiveTicket(null)
+      })
+      .finally(() => {
+        if (!cancelled) setActiveTicketLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedTicket, user?.id, toast])
+
+  const filtered = tickets.filter((t) => {
     if (categoryFilter === 'all') return true
     return t.category === categoryFilter
   })
-
-  const activeTicket = mockTickets.find((t) => t.id === selectedTicket)
 
   const filteredFaq = faqItems.filter((item) => {
     const matchesCategory = faqCategory === 'all' || item.category === faqCategory
@@ -247,14 +343,96 @@ export function SupportPage() {
     setNewTicketOpen(true)
   }
 
-  const handleSubmitTicket = () => {
+  const handleSubmitTicket = async () => {
     if (!newTicket.subject || !newTicket.category || !newTicket.message) {
       toast({ title: 'Preencha todos os campos', variant: 'destructive' })
       return
     }
-    setNewTicketOpen(false)
-    setNewTicket({ subject: '', category: '', priority: 'normal', message: '' })
-    toast({ title: 'Ticket criado com sucesso!', description: 'Nossa equipe responderá em breve.' })
+    if (!user?.id) {
+      toast({ title: 'Faça login para criar um ticket', variant: 'destructive' })
+      return
+    }
+    setSubmittingTicket(true)
+    try {
+      await supportApi.createTicket(
+        user.id,
+        newTicket.subject,
+        newTicket.category,
+        newTicket.message
+      )
+      setNewTicketOpen(false)
+      setNewTicket({ subject: '', category: '', priority: 'normal', message: '' })
+      toast({
+        title: 'Ticket criado com sucesso!',
+        description: 'Nossa equipe responderá em breve.',
+      })
+      // Refresh the list so the new ticket appears immediately.
+      await refreshTickets()
+    } catch (err) {
+      console.error('Create ticket error:', err)
+      toast({
+        title: 'Erro ao criar ticket',
+        description:
+          err instanceof ApiError
+            ? err.message
+            : 'Tente novamente em alguns instantes.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSubmittingTicket(false)
+    }
+  }
+
+  const handleReply = async () => {
+    if (!selectedTicket || !user?.id) return
+    if (!newMessage.trim()) {
+      toast({ title: 'Digite uma mensagem', variant: 'destructive' })
+      return
+    }
+    setReplying(true)
+    try {
+      await supportApi.replyTicket(selectedTicket, user.id, newMessage.trim())
+      setNewMessage('')
+      // Refresh the full conversation so the user's message appears, then also
+      // refresh the ticket list so the updatedAt timestamp stays in sync.
+      const data = await supportApi.getTicket(selectedTicket, user.id)
+      const t = data?.ticket
+      if (t) {
+        const detail: Ticket = {
+          id: t.id,
+          subject: t.subject ?? '',
+          category: t.category ?? 'support',
+          status: t.status ?? 'open',
+          priority: t.priority ?? 'normal',
+          responseTime: t.responseTime,
+          satisfaction: t.satisfaction ?? null,
+          messages: (t.messages ?? []).map((m: any) => ({
+            id: m.id,
+            message: m.message ?? '',
+            isAdmin: !!m.isAdmin,
+            createdAt: m.createdAt ?? m.date ?? new Date().toISOString(),
+            date: m.date,
+          })),
+          createdAt: t.createdAt ?? new Date().toISOString(),
+          updatedAt: t.updatedAt ?? t.createdAt ?? new Date().toISOString(),
+        }
+        setActiveTicket(detail)
+      }
+      await refreshTickets()
+      toast({ title: 'Mensagem enviada!' })
+    } catch (err) {
+      console.error('Reply error:', err)
+      toast({
+        title: 'Erro ao enviar mensagem',
+        description:
+          err instanceof ApiError
+            ? err.message
+            : 'Tente novamente em alguns instantes.',
+        variant: 'destructive',
+      })
+    } finally {
+      setReplying(false)
+    }
   }
 
   return (
@@ -327,8 +505,19 @@ export function SupportPage() {
                   className={!newTicket.message && newTicket.subject ? 'border-red-300 dark:border-red-700' : ''}
                 />
               </div>
-              <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleSubmitTicket}>
-                Enviar Ticket
+              <Button
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={handleSubmitTicket}
+                disabled={submittingTicket}
+              >
+                {submittingTicket ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Enviando...
+                  </>
+                ) : (
+                  'Enviar Ticket'
+                )}
               </Button>
             </div>
           </DialogContent>
@@ -431,33 +620,53 @@ export function SupportPage() {
             ))}
           </div>
 
-          <Accordion type="single" collapsible className="w-full accordion-smooth">
-            {filteredFaq.map((item, i) => (
-              <AccordionItem key={i} value={`faq-${i}`} className="border-border group/item">
-                <AccordionTrigger className="text-sm text-left hover:text-emerald-700 dark:hover:text-emerald-400 hover:no-underline py-3 [&[data-state=open]>svg]:rotate-180 [&>svg]:transition-transform duration-200">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                    {item.question}
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="text-sm text-muted-foreground pb-4 overflow-hidden">
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    transition={{ duration: 0.3, ease: 'easeInOut' }}
-                    className="pl-5.5 border-l-2 border-emerald-200 dark:border-emerald-800 ml-1.5"
-                  >
-                    {item.answer}
-                  </motion.div>
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-            {filteredFaq.length === 0 && (
-              <div className="text-center py-6 text-sm text-muted-foreground">
-                Nenhuma pergunta encontrada. Tente outro termo.
-              </div>
-            )}
-          </Accordion>
+          {faqLoading ? (
+            <div className="flex items-center justify-center py-10 text-sm text-muted-foreground gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Carregando perguntas frequentes...
+            </div>
+          ) : faqError ? (
+            <div className="flex flex-col items-center justify-center py-10 text-sm text-center gap-2">
+              <AlertCircle className="h-6 w-6 text-red-500" />
+              <p className="text-red-600 dark:text-red-400">{faqError}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-1"
+                onClick={() => refreshFaqs()}
+              >
+                Tentar novamente
+              </Button>
+            </div>
+          ) : (
+            <Accordion type="single" collapsible className="w-full accordion-smooth">
+              {filteredFaq.map((item, i) => (
+                <AccordionItem key={item.id || i} value={`faq-${i}`} className="border-border group/item">
+                  <AccordionTrigger className="text-sm text-left hover:text-emerald-700 dark:hover:text-emerald-400 hover:no-underline py-3 [&[data-state=open]>svg]:rotate-180 [&>svg]:transition-transform duration-200">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                      {item.question}
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="text-sm text-muted-foreground pb-4 overflow-hidden">
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      transition={{ duration: 0.3, ease: 'easeInOut' }}
+                      className="pl-5.5 border-l-2 border-emerald-200 dark:border-emerald-800 ml-1.5"
+                    >
+                      {item.answer}
+                    </motion.div>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+              {filteredFaq.length === 0 && (
+                <div className="text-center py-6 text-sm text-muted-foreground">
+                  Nenhuma pergunta encontrada. Tente outro termo.
+                </div>
+              )}
+            </Accordion>
+          )}
         </CardContent>
       </Card>
 
@@ -485,7 +694,25 @@ export function SupportPage() {
           <Card className="shadow-sm bg-card">
             <CardContent className="p-0">
               <div className="divide-y max-h-[500px] overflow-y-auto custom-scrollbar">
-                {filtered.length === 0 ? (
+                {ticketsLoading ? (
+                  <div className="flex items-center justify-center py-10 text-sm text-muted-foreground gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Carregando tickets...
+                  </div>
+                ) : ticketsError ? (
+                  <div className="flex flex-col items-center justify-center py-10 text-sm text-center gap-2">
+                    <AlertCircle className="h-6 w-6 text-red-500" />
+                    <p className="text-red-600 dark:text-red-400">{ticketsError}</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-1"
+                      onClick={() => refreshTickets()}
+                    >
+                      Tentar novamente
+                    </Button>
+                  </div>
+                ) : filtered.length === 0 ? (
                   <EmptyState
                     icon={MessageSquare}
                     title="Nenhum ticket aberto"
@@ -496,7 +723,7 @@ export function SupportPage() {
                 ) : (
                 filtered.map((ticket, i) => {
                   const StatusIcon = statusIcons[ticket.status] || Clock
-                  const statusConfig = statusBadgeConfig[ticket.status]
+                  const statusConfig = statusBadgeConfig[ticket.status] || statusBadgeConfig.open
                   const priorityConfig = priorityDots[ticket.priority] || priorityDots.normal
                   const satisfactionInfo = ticket.satisfaction ? satisfactionEmojis[ticket.satisfaction] : null
                   return (
@@ -523,7 +750,7 @@ export function SupportPage() {
                           </div>
                           <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <Badge variant="outline" className="text-[10px]">
-                              {categoryLabels[ticket.category]}
+                              {categoryLabels[ticket.category] || ticket.category}
                             </Badge>
                             <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${statusConfig.bg} ${statusConfig.text}`}>
                               {statusConfig.label}
@@ -559,19 +786,28 @@ export function SupportPage() {
 
         {/* Ticket Detail */}
         <div className="lg:col-span-3">
-          {activeTicket ? (
+          {selectedTicket && activeTicketLoading ? (
+            <Card className="shadow-sm bg-card">
+              <CardContent className="p-12 text-center">
+                <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
+                  Carregando conversa...
+                </div>
+              </CardContent>
+            </Card>
+          ) : activeTicket ? (
             <Card className="shadow-sm bg-card">
               <CardHeader className="pb-3 border-b border-border">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base font-bold text-foreground">{activeTicket.subject}</CardTitle>
-                  <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium ${statusBadgeConfig[activeTicket.status].bg} ${statusBadgeConfig[activeTicket.status].text}`}>
-                    <span className={`w-2 h-2 rounded-full ${statusBadgeConfig[activeTicket.status].dot} ${activeTicket.status === 'open' ? 'animate-pulse' : ''}`} />
-                    {statusBadgeConfig[activeTicket.status].label}
+                  <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full font-medium ${(statusBadgeConfig[activeTicket.status] || statusBadgeConfig.open).bg} ${(statusBadgeConfig[activeTicket.status] || statusBadgeConfig.open).text}`}>
+                    <span className={`w-2 h-2 rounded-full ${(statusBadgeConfig[activeTicket.status] || statusBadgeConfig.open).dot} ${activeTicket.status === 'open' ? 'animate-pulse' : ''}`} />
+                    {(statusBadgeConfig[activeTicket.status] || statusBadgeConfig.open).label}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                   <Badge variant="outline" className="text-[10px]">
-                    {categoryLabels[activeTicket.category]}
+                    {categoryLabels[activeTicket.category] || activeTicket.category}
                   </Badge>
                   {/* Priority color coding */}
                   <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium ${
@@ -582,7 +818,7 @@ export function SupportPage() {
                       : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
                   }`}>
                     <AlertCircle className="h-3 w-3" />
-                    {priorityLabels[activeTicket.priority]}
+                    {priorityLabels[activeTicket.priority] || activeTicket.priority}
                   </span>
                   <span>·</span>
                   <span>{formatDate(activeTicket.createdAt)}</span>
@@ -609,7 +845,7 @@ export function SupportPage() {
                           <p className={`text-[10px] mt-1.5 ${
                             msg.isAdmin ? 'text-muted-foreground' : 'text-emerald-200'
                           }`}>
-                            {msg.isAdmin ? '🛡️ Atendimento' : '👤 Você'} · {formatDateTime(msg.date)}
+                            {msg.isAdmin ? '🛡️ Atendimento' : '👤 Você'} · {formatDateTime(msg.date || msg.createdAt)}
                           </p>
                         </div>
                       </motion.div>
@@ -624,9 +860,18 @@ export function SupportPage() {
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
                       className="flex-1"
+                      disabled={replying}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !replying) handleReply()
+                      }}
                     />
-                    <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" size="icon">
-                      <Send className="h-4 w-4" />
+                    <Button
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      size="icon"
+                      onClick={handleReply}
+                      disabled={replying || !newMessage.trim()}
+                    >
+                      {replying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     </Button>
                   </div>
                 )}

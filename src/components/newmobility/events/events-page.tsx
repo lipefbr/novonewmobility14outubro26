@@ -143,11 +143,9 @@ export function EventsPage() {
         past: 'past',
       }
       const data = await eventsApi.getEvents(user.id, statusMap[activeTab] || 'upcoming')
-      if (data?.events) {
-        setEvents(data.events)
-      }
+      setEvents(data?.events ?? [])
     } catch {
-      setEvents(getMockEvents())
+      setEvents([])
     } finally {
       setLoading(false)
     }
@@ -181,101 +179,11 @@ export function EventsPage() {
     window.open(url, '_blank')
   }
 
-  const getMockEvents = (): EventItem[] => {
-    const now = new Date()
-    return [
-      {
-        id: 'evt_01',
-        title: 'Webinar: Como Maximizar seus Ganhos',
-        description: 'Aprenda estratégias avançadas para maximizar seus ganhos com CashBack e indicações na NewMobility.',
-        type: 'webinar',
-        status: 'upcoming',
-        eventDate: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-        endDate: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000 + 2 * 60 * 60 * 1000).toISOString(),
-        location: null,
-        meetingUrl: 'https://meet.google.com/abc-defg-hij',
-        maxAttendees: 100,
-        registrationCount: 45,
-        isRegistered: false,
-      },
-      {
-        id: 'evt_02',
-        title: 'Promoção: CashBack Dobrado no Shopping',
-        description: 'Durante uma semana, todos os CashBack de compras no Shopping serão dobrados! Aproveite essa oportunidade.',
-        type: 'promo',
-        status: 'upcoming',
-        eventDate: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        endDate: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-        location: null,
-        meetingUrl: null,
-        maxAttendees: null,
-        registrationCount: 0,
-        isRegistered: false,
-      },
-      {
-        id: 'evt_03',
-        title: 'Lançamento: App Mobilidade v3.0',
-        description: 'Estamos lançando a nova versão do app com funcionalidades incríveis: rastreamento em tempo real, avaliação de motoristas e muito mais.',
-        type: 'launch',
-        status: 'upcoming',
-        eventDate: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-        endDate: null,
-        location: 'Online + Evento Presencial em SP',
-        meetingUrl: null,
-        maxAttendees: 500,
-        registrationCount: 128,
-        isRegistered: false,
-      },
-      {
-        id: 'evt_04',
-        title: 'Manutenção Programada do Sistema',
-        description: 'O sistema passará por manutenção programada para melhorias de performance e segurança. Algumas funcionalidades podem estar temporariamente indisponíveis.',
-        type: 'maintenance',
-        status: 'upcoming',
-        eventDate: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-        endDate: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000 + 4 * 60 * 60 * 1000).toISOString(),
-        location: null,
-        meetingUrl: null,
-        maxAttendees: null,
-        registrationCount: 0,
-        isRegistered: false,
-      },
-      {
-        id: 'evt_05',
-        title: 'Webinar: Plano de Carreira 2025',
-        description: 'Descubra como alcançar o topo do plano de carreira NewMobility em 2025. Dicas práticas de líderes de sucesso.',
-        type: 'webinar',
-        status: 'upcoming',
-        eventDate: new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000).toISOString(),
-        endDate: new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000 + 2 * 60 * 60 * 1000).toISOString(),
-        location: null,
-        meetingUrl: 'https://meet.google.com/xyz-abcd-efg',
-        maxAttendees: 150,
-        registrationCount: 89,
-        isRegistered: false,
-      },
-      {
-        id: 'evt_06',
-        title: 'Promoção: Indique e Ganhe o Dobro',
-        description: 'Por tempo limitado, todas as indicações que ativarem um plano renderão o dobro de bônus! Não perca essa chance.',
-        type: 'promo',
-        status: 'upcoming',
-        eventDate: new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000).toISOString(),
-        endDate: new Date(now.getTime() + 12 * 24 * 60 * 60 * 1000).toISOString(),
-        location: null,
-        meetingUrl: null,
-        maxAttendees: null,
-        registrationCount: 0,
-        isRegistered: false,
-      },
-    ]
-  }
-
   const filteredEvents = activeTab === 'upcoming'
     ? events
     : events.filter(e => e.status === activeTab)
 
-  const displayEvents = filteredEvents.length > 0 ? filteredEvents : (activeTab === 'upcoming' ? getMockEvents() : [])
+  const displayEvents = filteredEvents
 
   return (
     <div className="space-y-6">

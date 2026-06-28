@@ -71,60 +71,19 @@ function AnimatedNumber({ value, prefix = '', suffix = '', duration = 1500 }: { 
   return <span>{prefix}{display.toLocaleString('pt-BR')}{suffix}</span>
 }
 
-// Fallback mock data
-function getMockLeaderboard(type: string): LeaderboardData {
-  const mockUsers: LeaderboardUser[] = [
-    { id: '1', name: 'Ricardo Almeida', plan: 'blue5', profileImage: null, value: 1250000, valueDisplay: 'R$ 12.500,00', rank: 1 },
-    { id: '2', name: 'Fernanda Costa', plan: 'blue5', profileImage: null, value: 980000, valueDisplay: 'R$ 9.800,00', rank: 2 },
-    { id: '3', name: 'João Pedro Santos', plan: 'blue3', profileImage: null, value: 750000, valueDisplay: 'R$ 7.500,00', rank: 3 },
-    { id: '4', name: 'Ana Beatriz Lima', plan: 'blue5', profileImage: null, value: 620000, valueDisplay: 'R$ 6.200,00', rank: 4 },
-    { id: '5', name: 'Marcos Oliveira', plan: 'blue3', profileImage: null, value: 540000, valueDisplay: 'R$ 5.400,00', rank: 5 },
-    { id: '6', name: 'Patricia Souza', plan: 'blue5', profileImage: null, value: 480000, valueDisplay: 'R$ 4.800,00', rank: 6 },
-    { id: '7', name: 'Lucas Martins', plan: 'blue3', profileImage: null, value: 420000, valueDisplay: 'R$ 4.200,00', rank: 7 },
-    { id: '8', name: 'Camila Rodrigues', plan: 'free', profileImage: null, value: 350000, valueDisplay: 'R$ 3.500,00', rank: 8 },
-    { id: '9', name: 'Bruno Ferreira', plan: 'blue3', profileImage: null, value: 280000, valueDisplay: 'R$ 2.800,00', rank: 9 },
-    { id: '10', name: 'Isabela Santos', plan: 'free', profileImage: null, value: 210000, valueDisplay: 'R$ 2.100,00', rank: 10 },
-  ]
-
-  const referralUsers: LeaderboardUser[] = [
-    { id: '1', name: 'Ricardo Almeida', plan: 'blue5', profileImage: null, value: 45, valueDisplay: '45', rank: 1 },
-    { id: '2', name: 'Fernanda Costa', plan: 'blue5', profileImage: null, value: 38, valueDisplay: '38', rank: 2 },
-    { id: '3', name: 'Ana Beatriz Lima', plan: 'blue5', profileImage: null, value: 32, valueDisplay: '32', rank: 3 },
-    { id: '4', name: 'João Pedro Santos', plan: 'blue3', profileImage: null, value: 28, valueDisplay: '28', rank: 4 },
-    { id: '5', name: 'Patricia Souza', plan: 'blue5', profileImage: null, value: 24, valueDisplay: '24', rank: 5 },
-    { id: '6', name: 'Marcos Oliveira', plan: 'blue3', profileImage: null, value: 21, valueDisplay: '21', rank: 6 },
-    { id: '7', name: 'Camila Rodrigues', plan: 'free', profileImage: null, value: 18, valueDisplay: '18', rank: 7 },
-    { id: '8', name: 'Lucas Martins', plan: 'blue3', profileImage: null, value: 15, valueDisplay: '15', rank: 8 },
-    { id: '9', name: 'Bruno Ferreira', plan: 'blue3', profileImage: null, value: 12, valueDisplay: '12', rank: 9 },
-    { id: '10', name: 'Isabela Santos', plan: 'free', profileImage: null, value: 8, valueDisplay: '8', rank: 10 },
-  ]
-
-  const pointUsers: LeaderboardUser[] = [
-    { id: '1', name: 'Ricardo Almeida', plan: 'blue5', profileImage: null, value: 350, valueDisplay: '350 pts', rank: 1 },
-    { id: '2', name: 'Fernanda Costa', plan: 'blue5', profileImage: null, value: 280, valueDisplay: '280 pts', rank: 2 },
-    { id: '3', name: 'Ana Beatriz Lima', plan: 'blue5', profileImage: null, value: 220, valueDisplay: '220 pts', rank: 3 },
-    { id: '4', name: 'João Pedro Santos', plan: 'blue3', profileImage: null, value: 185, valueDisplay: '185 pts', rank: 4 },
-    { id: '5', name: 'Patricia Souza', plan: 'blue5', profileImage: null, value: 150, valueDisplay: '150 pts', rank: 5 },
-    { id: '6', name: 'Marcos Oliveira', plan: 'blue3', profileImage: null, value: 120, valueDisplay: '120 pts', rank: 6 },
-    { id: '7', name: 'Camila Rodrigues', plan: 'free', profileImage: null, value: 95, valueDisplay: '95 pts', rank: 7 },
-    { id: '8', name: 'Lucas Martins', plan: 'blue3', profileImage: null, value: 75, valueDisplay: '75 pts', rank: 8 },
-    { id: '9', name: 'Bruno Ferreira', plan: 'blue3', profileImage: null, value: 55, valueDisplay: '55 pts', rank: 9 },
-    { id: '10', name: 'Isabela Santos', plan: 'free', profileImage: null, value: 35, valueDisplay: '35 pts', rank: 10 },
-  ]
-
-  const top10 = type === 'referrals' ? referralUsers : type === 'points' ? pointUsers : mockUsers
-
+// Empty leaderboard data shape (used when API returns no entries)
+function getEmptyLeaderboard(type: string): LeaderboardData {
   return {
     type,
     period: 'monthly',
-    top10,
+    top10: [],
     userRank: {
-      position: 15,
-      earnings: { position: 15, value: 'R$ 1.250,00' },
-      referrals: { position: 12, value: '6' },
-      points: { position: 18, value: '42 pts' },
+      position: 0,
+      earnings: { position: 0, value: '—' },
+      referrals: { position: 0, value: '—' },
+      points: { position: 0, value: '—' },
     },
-    totalUsers: 156,
+    totalUsers: 0,
   }
 }
 
@@ -254,13 +213,14 @@ export function LeaderboardPage() {
     setLoading(true)
     try {
       const result = await leaderboardApi.getData(user.id, activeTab, period)
-      if (result?.top10 && result.top10.length > 0) {
+      if (result && result.top10 && result.top10.length > 0) {
         setData(result as LeaderboardData)
       } else {
-        setData(getMockLeaderboard(activeTab))
+        // API returned empty — show proper empty state, no mock entries
+        setData(getEmptyLeaderboard(activeTab))
       }
     } catch {
-      setData(getMockLeaderboard(activeTab))
+      setData(getEmptyLeaderboard(activeTab))
     } finally {
       setLoading(false)
     }
@@ -279,8 +239,9 @@ export function LeaderboardPage() {
   ]
 
   const currentUserId = user?.id || ''
-  const top10 = data?.top10 || getMockLeaderboard(activeTab).top10
+  const top10 = data?.top10 ?? []
   const maxValue = top10.length > 0 ? top10[0].value : 1
+  const isEmpty = top10.length === 0
 
   return (
     <div className="space-y-6">
@@ -313,7 +274,9 @@ export function LeaderboardPage() {
                     <div className="text-white">
                       <span className="text-xs text-amber-100">1º Lugar</span>
                       <p className="text-sm font-bold">
-                        {top10[0] && <AnimatedNumber value={top10[0].value} prefix={activeTab === 'earnings' ? 'R$ ' : ''} />}
+                        {top10[0]
+                          ? <AnimatedNumber value={top10[0].value} prefix={activeTab === 'earnings' ? 'R$ ' : ''} />
+                          : <span className="text-amber-100">—</span>}
                       </p>
                     </div>
                   </div>
@@ -321,7 +284,7 @@ export function LeaderboardPage() {
                     <Users className="h-4 w-4 text-yellow-200" />
                     <div className="text-white">
                       <span className="text-xs text-amber-100">Participantes</span>
-                      <p className="text-sm font-bold"><AnimatedNumber value={data?.totalUsers || 156} /></p>
+                      <p className="text-sm font-bold"><AnimatedNumber value={data?.totalUsers ?? 0} /></p>
                     </div>
                   </div>
                 </div>
@@ -331,8 +294,8 @@ export function LeaderboardPage() {
         </Card>
       </motion.div>
 
-      {/* Your Rank Card */}
-      {data?.userRank && (
+      {/* Your Rank Card — only render when there is real ranking data */}
+      {data?.userRank && !isEmpty && data.userRank.position > 0 && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
           <Card className="shadow-sm border-emerald-200 dark:border-emerald-800 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 overflow-hidden">
             <div className="h-1 bg-gradient-to-r from-emerald-500 to-teal-500" />
@@ -421,6 +384,16 @@ export function LeaderboardPage() {
                   </Card>
                 ))}
               </div>
+            ) : isEmpty ? (
+              <Card className="shadow-sm">
+                <CardContent className="p-12 text-center">
+                  <Trophy className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-lg font-medium text-foreground">Nenhum usuário no ranking ainda</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Comece a indicar amigos e ganhar CashBack para aparecer aqui!
+                  </p>
+                </CardContent>
+              </Card>
             ) : (
               <>
                 {/* Podium for top 3 */}

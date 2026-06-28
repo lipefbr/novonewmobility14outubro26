@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { plansApi } from '@/lib/api'
-import { formatCurrency, formatDate, getPlanName, getPlanPrice } from '@/lib/utils'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import {
   CreditCard, Check, Star, ArrowUpRight, FileText, Calendar,
   Shield, Car, Pill, ShoppingBag, Gamepad2, Trophy, Phone,
@@ -35,9 +35,19 @@ const invoiceTypeLabels: Record<string, string> = {
   residual_entry: 'Entrada Residual',
 }
 
-const allPlans = [
+// Initial loading-state fallback. These values are ONLY used until the
+// `/api/plans` fetch resolves (and as a graceful fallback if the API
+// is unreachable). Once the API responds, the `plans` state is rebuilt
+// from the DB-sourced values — so admin edits to plan prices/names in
+// the Plan table propagate to this page automatically.
+//
+// Presentation-only fields that the DB does not model (color gradient,
+// cashback level labels, and the icon-tagged feature list) are kept here
+// as a per-code template and merged with the API response at runtime.
+const FALLBACK_PLANS = [
   {
     id: 'free',
+    code: 'free',
     name: 'Gratuito',
     price: 'Grátis',
     priceCents: 0,
@@ -60,9 +70,10 @@ const allPlans = [
   },
   {
     id: 'blue3',
+    code: 'blue3',
     name: 'Blue 3',
-    price: 'R$ 200,00/mês',
-    priceCents: 20000,
+    price: 'R$ 97,00/mês',
+    priceCents: 9700,
     color: 'from-teal-400 to-teal-500',
     cashbackEntrada: '5 níveis',
     cashbackResidual: '7 níveis',
@@ -82,9 +93,10 @@ const allPlans = [
   },
   {
     id: 'blue5',
+    code: 'blue5',
     name: 'Blue 5 Premium',
-    price: 'R$ 999,00/mês',
-    priceCents: 99900,
+    price: 'R$ 147,00/mês',
+    priceCents: 14700,
     color: 'from-emerald-600 to-emerald-700',
     popular: true,
     cashbackEntrada: '5 níveis',
@@ -105,11 +117,106 @@ const allPlans = [
   },
 ]
 
+// Shape returned by /api/plans
+type ApiPlan = {
+  id: string
+  code: string
+  name: string
+  price: number
+  priceCents: number
+  description: string
+  features: string[]
+  level: number
+  isActive: boolean
+  isDefault: boolean
+  sortOrder: number
+  matrixEntrada: string
+  matrixResidual: string
+  matrixVendas: string
+}
+
+// Merge an API plan with its presentation template from FALLBACK_PLANS.
+// DB-sourced fields (id/code/name/priceCents) always win; presentation
+// fields (color, icon-tagged features, cashback level labels) come from
+// the fallback template keyed by `code`. Unknown codes get a sensible
+// default presentation.
+function mergeApiPlan(apiPlan: ApiPlan) {
+  const template = FALLBACK_PLANS.find(
+    (p) => p.code === apiPlan.code || p.id === apiPlan.code || p.id === apiPlan.id
+  )
+  const priceLabel =
+    apiPlan.priceCents > 0
+      ? `R$ ${(apiPlan.priceCents / 100).toFixed(2).replace('.', ',')}/mês`
+      : 'Grátis'
+  if (!template) {
+    return {
+      id: apiPlan.code || apiPlan.id,
+      code: apiPlan.code,
+      name: apiPlan.name,
+      price: priceLabel,
+      priceCents: apiPlan.priceCents,
+      color: 'from-emerald-500 to-emerald-600',
+      cashbackEntrada: apiPlan.matrixEntrada && apiPlan.matrixEntrada !== '-' ? apiPlan.matrixEntrada : '-',
+      cashbackResidual: apiPlan.matrixResidual && apiPlan.matrixResidual !== '-' ? apiPlan.matrixResidual : '-',
+      cashbackSales: apiPlan.matrixVendas && apiPlan.matrixVendas !== '-' ? apiPlan.matrixVendas : '-',
+      features: [
+        { icon: Smartphone, label: 'App Mobilidade', included: true },
+        { icon: Gift, label: 'Voucher Bem-Vindo', included: true },
+        { icon: Car, label: 'CashBack Mobilidade', included: apiPlan.priceCents > 0 },
+        { icon: Pill, label: 'CashBack Farmácia', included: apiPlan.priceCents > 0 },
+        { icon: ShoppingBag, label: 'CashBack Shopping', included: false },
+        { icon: Gamepad2, label: 'Portal Gamer', included: false },
+        { icon: Trophy, label: 'Portal Sport Bet', included: false },
+        { icon: Shield, label: 'Seguro Auto', included: false },
+        { icon: Heart, label: 'Seguro de Vida', included: false },
+        { icon: Phone, label: 'Telemedicina', included: false },
+      ],
+    }
+  }
+  return {
+    ...template,
+    id: apiPlan.code || apiPlan.id,
+    code: apiPlan.code,
+    name: apiPlan.name,
+    price: priceLabel,
+    priceCents: apiPlan.priceCents,
+  }
+}
+
 export function MyPlanPage() {
   const { user, updateUser } = useStore()
   const { toast } = useToast()
   const currentPlan = user?.plan || 'blue5'
-  const currentPlanData = allPlans.find((p) => p.id === currentPlan) || allPlans[2]
+
+  // `plans` is the runtime source of truth for the plan comparison UI.
+  // Initialised with FALLBACK_PLANS so the page renders immediately
+  // (no flash of empty content); replaced with DB-sourced values once
+  // /api/plans resolves.
+  const [plans, setPlans] = useState(FALLBACK_PLANS)
+
+  // Fetch plans from the API on mount so admin edits to the Plan table
+  // (prices, names, active flags) propagate to the My Plan page.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await plansApi.getList()
+        if (cancelled) return
+        const apiPlans: ApiPlan[] = Array.isArray(data?.plans) ? data.plans : []
+        if (apiPlans.length > 0) {
+          setPlans(apiPlans.map(mergeApiPlan))
+        }
+      } catch (err) {
+        // Keep FALLBACK_PLANS on error — the page still works.
+        console.warn('Failed to load plans from API, using fallback:', err)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const currentPlanData = plans.find((p) => p.id === currentPlan) || plans[2]
   const nextBillingDate = '05/02/2025'
   const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<string>('blue5')
@@ -133,9 +240,22 @@ export function MyPlanPage() {
       const data = await plansApi.calculateUpgrade(user.id, planId)
       setUpgradeCalc(data)
     } catch (err) {
-      // Fallback to local calculation
-      const planPrices: Record<string, number> = { free: 0, blue3: 20000, blue5: 99900 }
-      const planNames: Record<string, string> = { free: 'Gratuito', blue3: 'Blue 3', blue5: 'Blue 5 Premium' }
+      // Fallback to local calculation — uses the API-fetched `plans`
+      // state so the fallback prices also respect admin edits.
+      const planPrices: Record<string, number> = plans.reduce(
+        (acc, p) => {
+          acc[p.id] = p.priceCents
+          return acc
+        },
+        {} as Record<string, number>
+      )
+      const planNames: Record<string, string> = plans.reduce(
+        (acc, p) => {
+          acc[p.id] = p.name
+          return acc
+        },
+        {} as Record<string, string>
+      )
       const currentPrice = planPrices[currentPlan] || 0
       const targetPrice = planPrices[planId] || 0
       setUpgradeCalc({
@@ -225,8 +345,8 @@ export function MyPlanPage() {
                   <CreditCard className="h-6 w-6" />
                   <span className="text-emerald-200 text-sm">Plano Atual</span>
                 </div>
-                <h3 className="text-2xl font-bold mt-1">{getPlanName(currentPlan)}</h3>
-                <p className="text-emerald-200 text-lg">{getPlanPrice(currentPlan)}/mês</p>
+                <h3 className="text-2xl font-bold mt-1">{currentPlanData?.name}</h3>
+                <p className="text-emerald-200 text-lg">{currentPlanData?.price}</p>
               </div>
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2">
@@ -275,12 +395,12 @@ export function MyPlanPage() {
         <CardContent>
           <div className="space-y-4">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground font-medium">Plano atual: <strong className="text-foreground">{getPlanName(currentPlan)}</strong></span>
-              <span className="text-muted-foreground font-medium">Simular upgrade para: <strong className="text-emerald-600">{selectedPlan === 'blue3' ? 'Blue 3' : selectedPlan === 'blue5' ? 'Blue 5 Premium' : 'Selecione'}</strong></span>
+              <span className="text-muted-foreground font-medium">Plano atual: <strong className="text-foreground">{currentPlanData?.name}</strong></span>
+              <span className="text-muted-foreground font-medium">Simular upgrade para: <strong className="text-emerald-600">{plans.find((p) => p.id === selectedPlan)?.name || 'Selecione'}</strong></span>
             </div>
             
             <div className="flex items-center gap-4">
-              {allPlans.filter(p => p.id !== 'free').map((plan) => (
+              {plans.filter(p => p.id !== 'free').map((plan) => (
                 <button
                   key={plan.id}
                   onClick={() => setSelectedPlan(plan.id)}
@@ -326,13 +446,25 @@ export function MyPlanPage() {
                   <div>
                     <p className="text-xs text-muted-foreground">Custo do Upgrade</p>
                     <p className="text-lg font-bold text-foreground">
-                      {selectedPlan === 'blue5' ? 'R$ 999,00' : 'R$ 200,00'}
+                      {formatCurrency(
+                        Math.max(
+                          0,
+                          (plans.find((p) => p.id === selectedPlan)?.priceCents || 0) -
+                            (plans.find((p) => p.id === currentPlan)?.priceCents || 0)
+                        )
+                      )}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Diferença Mensal</p>
                     <p className="text-lg font-bold text-foreground">
-                      +{selectedPlan === 'blue5' ? 'R$ 799,00' : 'R$ 200,00'}
+                      +{formatCurrency(
+                        Math.max(
+                          0,
+                          (plans.find((p) => p.id === selectedPlan)?.priceCents || 0) -
+                            (plans.find((p) => p.id === currentPlan)?.priceCents || 0)
+                        )
+                      )}
                     </p>
                   </div>
                   <div>
@@ -362,7 +494,7 @@ export function MyPlanPage() {
         </h3>
         {/* Mobile: Cards view */}
         <div className="grid grid-cols-1 md:hidden gap-4">
-          {allPlans.map((plan, i) => (
+          {plans.map((plan, i) => (
             <motion.div
               key={plan.id}
               initial={{ opacity: 0, y: 10 }}
@@ -403,7 +535,7 @@ export function MyPlanPage() {
                       className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white"
                       onClick={() => handleCalculateUpgrade(plan.id)}
                     >
-                      {plan.priceCents > (allPlans.find((p) => p.id === currentPlan)?.priceCents || 0) ? 'Fazer Upgrade' : 'Selecionar'}
+                      {plan.priceCents > (plans.find((p) => p.id === currentPlan)?.priceCents || 0) ? 'Fazer Upgrade' : 'Selecionar'}
                     </Button>
                   )}
                 </CardContent>
@@ -420,7 +552,7 @@ export function MyPlanPage() {
                 <thead>
                   <tr className="border-b">
                     <th className="text-left p-4 text-muted-foreground font-medium">Benefício</th>
-                    {allPlans.map((plan) => (
+                    {plans.map((plan) => (
                       <th key={plan.id} className="p-4 text-center min-w-[160px]">
                         <div className={`inline-block bg-gradient-to-r ${plan.color} text-white px-3 py-1 rounded-lg text-xs font-bold`}>
                           {plan.name}
@@ -433,7 +565,7 @@ export function MyPlanPage() {
                 <tbody>
                   <tr className="border-b bg-muted/30">
                     <td className="p-3 text-muted-foreground font-medium text-xs">CashBack Entrada</td>
-                    {allPlans.map((plan) => (
+                    {plans.map((plan) => (
                       <td key={plan.id} className="p-3 text-center text-xs font-medium">
                         {plan.cashbackEntrada === '-' ? <span className="text-muted-foreground/30">—</span> : <span className="text-emerald-600">{plan.cashbackEntrada}</span>}
                       </td>
@@ -441,7 +573,7 @@ export function MyPlanPage() {
                   </tr>
                   <tr className="border-b">
                     <td className="p-3 text-muted-foreground font-medium text-xs">CashBack Residual</td>
-                    {allPlans.map((plan) => (
+                    {plans.map((plan) => (
                       <td key={plan.id} className="p-3 text-center text-xs font-medium">
                         {plan.cashbackResidual === '-' ? <span className="text-muted-foreground/30">—</span> : <span className="text-emerald-600">{plan.cashbackResidual}</span>}
                       </td>
@@ -449,19 +581,19 @@ export function MyPlanPage() {
                   </tr>
                   <tr className="border-b bg-muted/30">
                     <td className="p-3 text-muted-foreground font-medium text-xs">CashBack Vendas</td>
-                    {allPlans.map((plan) => (
+                    {plans.map((plan) => (
                       <td key={plan.id} className="p-3 text-center text-xs font-medium">
                         {plan.cashbackSales === '-' ? <span className="text-muted-foreground/30">—</span> : <span className="text-emerald-600">{plan.cashbackSales}</span>}
                       </td>
                     ))}
                   </tr>
-                  {allPlans[0].features.map((feature, fi) => (
+                  {plans[0].features.map((feature, fi) => (
                     <tr key={fi} className={`border-b ${fi % 2 === 0 ? '' : 'bg-muted/30'}`}>
                       <td className="p-3 text-muted-foreground text-xs flex items-center gap-1.5">
                         <feature.icon className="h-3.5 w-3.5 text-muted-foreground" />
                         {feature.label}
                       </td>
-                      {allPlans.map((plan) => (
+                      {plans.map((plan) => (
                         <td key={plan.id} className="p-3 text-center">
                           {plan.features[fi].included ? (
                             <Check className="h-4 w-4 text-emerald-500 mx-auto" />
@@ -474,7 +606,7 @@ export function MyPlanPage() {
                   ))}
                   <tr>
                     <td className="p-4" />
-                    {allPlans.map((plan) => (
+                    {plans.map((plan) => (
                       <td key={plan.id} className="p-4 text-center">
                         {currentPlan === plan.id ? (
                           <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">Plano Atual</Badge>

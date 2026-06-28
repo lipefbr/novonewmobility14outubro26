@@ -1,5 +1,6 @@
 import { createHash } from 'crypto'
 import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/db'
 
 export const hashPassword = (password: string) =>
   createHash('sha256').update(password).digest('hex')
@@ -46,36 +47,128 @@ export function formatTimeSince(date: Date): string {
   return 'Hoje'
 }
 
-// Matrix constants
+// Default cashback level percentages (used as fallback if SystemConfig has no entries).
+// These mirror the defaults baked into the admin cashback-config route.
+export const DEFAULT_ENTRADA_LEVELS: number[] = [5, 10, 10, 5, 5]
+export const DEFAULT_RESIDUAL_LEVELS: number[] = [5, 5.5, 6, 6.5, 7, 7.5, 8]
+export const DEFAULT_VENDAS_LEVELS: number[] = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.2]
+
+// Backward-compat structured exports (kept so other files that still import the
+// old constants — e.g. /api/simulator/calculate/route.ts — don't break).
+// New code should prefer the async helpers below.
 export const ENTRADA_LEVELS = [
-  { level: 1, percentage: 5, users: 4 },
-  { level: 2, percentage: 10, users: 16 },
-  { level: 3, percentage: 10, users: 64 },
-  { level: 4, percentage: 5, users: 256 },
-  { level: 5, percentage: 5, users: 1024 },
+  { level: 1, percentage: DEFAULT_ENTRADA_LEVELS[0], users: 4 },
+  { level: 2, percentage: DEFAULT_ENTRADA_LEVELS[1], users: 16 },
+  { level: 3, percentage: DEFAULT_ENTRADA_LEVELS[2], users: 64 },
+  { level: 4, percentage: DEFAULT_ENTRADA_LEVELS[3], users: 256 },
+  { level: 5, percentage: DEFAULT_ENTRADA_LEVELS[4], users: 1024 },
 ]
 
 export const RESIDUAL_LEVELS = [
-  { level: 1, percentage: 5 },
-  { level: 2, percentage: 5.5 },
-  { level: 3, percentage: 6 },
-  { level: 4, percentage: 6.5 },
-  { level: 5, percentage: 7 },
-  { level: 6, percentage: 7.5 },
-  { level: 7, percentage: 8 },
+  { level: 1, percentage: DEFAULT_RESIDUAL_LEVELS[0] },
+  { level: 2, percentage: DEFAULT_RESIDUAL_LEVELS[1] },
+  { level: 3, percentage: DEFAULT_RESIDUAL_LEVELS[2] },
+  { level: 4, percentage: DEFAULT_RESIDUAL_LEVELS[3] },
+  { level: 5, percentage: DEFAULT_RESIDUAL_LEVELS[4] },
+  { level: 6, percentage: DEFAULT_RESIDUAL_LEVELS[5] },
+  { level: 7, percentage: DEFAULT_RESIDUAL_LEVELS[6] },
 ]
 
 export const VENDAS_LEVELS = [
-  { level: 1, percentage: 0.1, category: 'mobility' },
-  { level: 2, percentage: 0.1, category: 'mobility' },
-  { level: 3, percentage: 0.1, category: 'mobility' },
-  { level: 4, percentage: 0.1, category: 'mobility' },
-  { level: 5, percentage: 0.1, category: 'mobility' },
-  { level: 6, percentage: 0.1, category: 'mobility' },
-  { level: 7, percentage: 0.1, category: 'mobility' },
-  { level: 8, percentage: 0.1, category: 'mobility' },
-  { level: 9, percentage: 0.2, category: 'mobility' },
+  { level: 1, percentage: DEFAULT_VENDAS_LEVELS[0], category: 'mobility' },
+  { level: 2, percentage: DEFAULT_VENDAS_LEVELS[1], category: 'mobility' },
+  { level: 3, percentage: DEFAULT_VENDAS_LEVELS[2], category: 'mobility' },
+  { level: 4, percentage: DEFAULT_VENDAS_LEVELS[3], category: 'mobility' },
+  { level: 5, percentage: DEFAULT_VENDAS_LEVELS[4], category: 'mobility' },
+  { level: 6, percentage: DEFAULT_VENDAS_LEVELS[5], category: 'mobility' },
+  { level: 7, percentage: DEFAULT_VENDAS_LEVELS[6], category: 'mobility' },
+  { level: 8, percentage: DEFAULT_VENDAS_LEVELS[7], category: 'mobility' },
+  { level: 9, percentage: DEFAULT_VENDAS_LEVELS[8], category: 'mobility' },
 ]
+
+/**
+ * Live cashback level percentages read from the SystemConfig table.
+ * Keys are stored as `cashback_{type}_level_{n}` (1-indexed) by the admin
+ * cashback-config route. Falls back to the hardcoded defaults on any error
+ * or when no rows are configured.
+ *
+ * Returns a plain number[] of percentages indexed 0..N-1.
+ */
+export async function getEntradaLevels(): Promise<number[]> {
+  const defaults = DEFAULT_ENTRADA_LEVELS
+  try {
+    const configs = await prisma.systemConfig.findMany({
+      where: { key: { startsWith: 'cashback_entrada_level_' } },
+    })
+    if (configs.length === 0) return defaults
+    // Start from defaults so partially-configured admins still get sensible values
+    const levels = [...defaults]
+    let hasAny = false
+    for (const c of configs) {
+      const idx = parseInt(c.key.replace('cashback_entrada_level_', '')) - 1
+      if (idx >= 0 && idx < 5) {
+        const v = parseFloat(c.value)
+        if (!isNaN(v)) {
+          levels[idx] = v
+          hasAny = true
+        }
+      }
+    }
+    return hasAny ? levels : defaults
+  } catch {
+    return defaults
+  }
+}
+
+export async function getResidualLevels(): Promise<number[]> {
+  const defaults = DEFAULT_RESIDUAL_LEVELS
+  try {
+    const configs = await prisma.systemConfig.findMany({
+      where: { key: { startsWith: 'cashback_residual_level_' } },
+    })
+    if (configs.length === 0) return defaults
+    const levels = [...defaults]
+    let hasAny = false
+    for (const c of configs) {
+      const idx = parseInt(c.key.replace('cashback_residual_level_', '')) - 1
+      if (idx >= 0 && idx < 7) {
+        const v = parseFloat(c.value)
+        if (!isNaN(v)) {
+          levels[idx] = v
+          hasAny = true
+        }
+      }
+    }
+    return hasAny ? levels : defaults
+  } catch {
+    return defaults
+  }
+}
+
+export async function getVendasLevels(): Promise<number[]> {
+  const defaults = DEFAULT_VENDAS_LEVELS
+  try {
+    const configs = await prisma.systemConfig.findMany({
+      where: { key: { startsWith: 'cashback_vendas_level_' } },
+    })
+    if (configs.length === 0) return defaults
+    const levels = [...defaults]
+    let hasAny = false
+    for (const c of configs) {
+      const idx = parseInt(c.key.replace('cashback_vendas_level_', '')) - 1
+      if (idx >= 0 && idx < 9) {
+        const v = parseFloat(c.value)
+        if (!isNaN(v)) {
+          levels[idx] = v
+          hasAny = true
+        }
+      }
+    }
+    return hasAny ? levels : defaults
+  } catch {
+    return defaults
+  }
+}
 
 export const CAREER_RANKS = [
   { name: 'Associado', minPoints: 0, stars: 0 },

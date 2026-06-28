@@ -24,7 +24,10 @@ import {
   Pie,
 } from 'recharts'
 
-const cashbackSummary = {
+// Initial loading state — replaced with API data on mount.
+// Hardcoded values mirror the previous mock so the page renders
+// something while the fetch is in-flight.
+const INITIAL_CASHBACK_SUMMARY = {
   entrada: {
     total: 3258000,
     lastMonth: 456000,
@@ -171,8 +174,51 @@ function SummaryCard({
 export function CashbackPage() {
   const [activeTab, setActiveTab] = useState('entrada')
   const [period, setPeriod] = useState<Period>('30d')
+  const [cashbackSummary, setCashbackSummary] = useState(INITIAL_CASHBACK_SUMMARY)
   const { t } = useTranslation()
-  const { setActivePage } = useStore()
+  const { setActivePage, user } = useStore()
+
+  // Fetch live cashback summary from the three cashback APIs.
+  // Replaces the hardcoded INITIAL_CASHBACK_SUMMARY once data arrives.
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelled = false
+
+    Promise.all([
+      fetch(`/api/cashback/entrada?userId=${user.id}`).then((r) => r.json()).catch(() => null),
+      fetch(`/api/cashback/residual?userId=${user.id}`).then((r) => r.json()).catch(() => null),
+      fetch(`/api/cashback/vendas?userId=${user.id}`).then((r) => r.json()).catch(() => null),
+    ]).then(([e, r, v]) => {
+      if (cancelled) return
+      setCashbackSummary({
+        entrada: {
+          total: e?.totalEarned ?? 0,
+          lastMonth: 0,
+          lastWeek: 0,
+          pending: 0,
+          totalUsers: e?.totalUsers ?? 0,
+        },
+        residual: {
+          total: r?.totalEarned ?? 0,
+          lastMonth: 0,
+          lastWeek: 0,
+          pending: 0,
+          totalUsers: r?.totalUsers ?? 0,
+        },
+        vendas: {
+          total: v?.totalEarned ?? 0,
+          lastMonth: 0,
+          lastWeek: 0,
+          pending: 0,
+          totalUsers: v?.totalUsers ?? 0,
+        },
+      })
+    }).catch((err) => console.error('Failed to load cashback summary:', err))
+
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
 
   const hasCashbackData = cashbackSummary.entrada.total > 0
 

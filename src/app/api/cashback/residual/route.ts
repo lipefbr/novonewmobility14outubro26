@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { success, error, RESIDUAL_LEVELS } from '@/lib/api-utils'
+import { success, error, getResidualLevels } from '@/lib/api-utils'
 
 export async function GET(request: Request) {
   try {
@@ -34,12 +34,18 @@ export async function GET(request: Request) {
 
     const totalEarned = entries.reduce((sum, e) => sum + e.amount, 0)
 
-    const levels = RESIDUAL_LEVELS.map((lvl) => ({
-      level: lvl.level,
-      percentage: lvl.percentage,
-      currentUsers: usersPerLevel[lvl.level] || 0,
-      earned: earnedPerLevel[lvl.level] || 0,
-    }))
+    // Read live cashback percentages from SystemConfig (admin-configurable)
+    const percentages = await getResidualLevels()
+
+    const levels = percentages.map((percentage, i) => {
+      const level = i + 1
+      return {
+        level,
+        percentage,
+        currentUsers: usersPerLevel[level] || 0,
+        earned: earnedPerLevel[level] || 0,
+      }
+    })
 
     return success({
       matrixPosition: matrixPosition

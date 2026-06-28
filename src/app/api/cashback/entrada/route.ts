@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { success, error, ENTRADA_LEVELS } from '@/lib/api-utils'
+import { success, error, getEntradaLevels } from '@/lib/api-utils'
 
 export async function GET(request: Request) {
   try {
@@ -35,15 +35,23 @@ export async function GET(request: Request) {
 
     const totalEarned = entries.reduce((sum, e) => sum + e.amount, 0)
 
-    // Build level details
-    const levels = ENTRADA_LEVELS.map((lvl) => ({
-      level: lvl.level,
-      percentage: lvl.percentage,
-      maxUsers: lvl.users,
-      currentUsers: usersPerLevel[lvl.level] || 0,
-      earned: earnedPerLevel[lvl.level] || 0,
-      fillPercentage: Math.min(((usersPerLevel[lvl.level] || 0) / lvl.users) * 100, 100),
-    }))
+    // Read live cashback percentages from SystemConfig (admin-configurable)
+    const percentages = await getEntradaLevels()
+
+    // Build level details (matrix structural dims: 4^level users per level)
+    const levels = percentages.map((percentage, i) => {
+      const level = i + 1
+      const maxUsers = Math.pow(4, level) // 4, 16, 64, 256, 1024
+      const currentUsers = usersPerLevel[level] || 0
+      return {
+        level,
+        percentage,
+        maxUsers,
+        currentUsers,
+        earned: earnedPerLevel[level] || 0,
+        fillPercentage: Math.min((currentUsers / maxUsers) * 100, 100),
+      }
+    })
 
     // Get matrix children counts
     let directChildren = 0

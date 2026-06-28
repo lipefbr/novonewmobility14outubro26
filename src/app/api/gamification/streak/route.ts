@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/lib/db'
+import { db, prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function GET(req: NextRequest) {
@@ -57,16 +57,24 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Streak rewards
-    const streakRewards = [
-      { days: 3, points: 10, claimed: (streak as any).currentStreak >= 3 },
-      { days: 7, points: 50, claimed: (streak as any).currentStreak >= 7 },
-      { days: 14, points: 100, claimed: (streak as any).currentStreak >= 14 },
-      { days: 30, points: 500, claimed: (streak as any).currentStreak >= 30 },
-    ]
+    // Streak rewards — read from the admin-managed StreakReward table so
+    // admin edits propagate here. Mirrors the shape the UI expects:
+    // { days, points, claimed }.
+    const currentStreakValue = (streak as any).currentStreak
+    const rewardRows = await prisma.streakReward.findMany({
+      where: { isActive: true },
+      orderBy: [{ streakDays: 'asc' }],
+    })
+    const streakRewards = rewardRows.map((r) => ({
+      days: r.streakDays,
+      points: r.rewardAmount,
+      description: r.description,
+      rewardType: r.rewardType,
+      claimed: currentStreakValue >= r.streakDays,
+    }))
 
     return success({
-      currentStreak: (streak as any).currentStreak,
+      currentStreak: currentStreakValue,
       longestStreak: (streak as any).longestStreak,
       totalPoints: (streak as any).totalPoints,
       lastLoginDate: (streak as any).lastLoginDate,

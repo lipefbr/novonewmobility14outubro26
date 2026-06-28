@@ -1,5 +1,43 @@
-import { db } from '@/lib/db'
-import { success, error, CAREER_RANKS, getCareerRank, getNextRank } from '@/lib/api-utils'
+import { db, prisma } from '@/lib/db'
+import { success, error } from '@/lib/api-utils'
+
+// Map a CareerPlan row (DB) to the response shape consumed by the
+// career-page.tsx UI. `achieved` is computed dynamically from the user's
+// current careerPoints so it never goes stale when the admin edits a plan.
+function mapPlan(plan: {
+  id: string
+  code: string
+  name: string
+  description: string | null
+  minPoints: number
+  bonusCents: number
+  color: string | null
+  icon: string | null
+  isActive: boolean
+  sortOrder: number
+}, userPoints: number) {
+  // Split the description by newline so admins can list multiple benefits
+  // (one per line) in a single text field.
+  const benefits = (plan.description || '')
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+
+  return {
+    id: plan.id,
+    code: plan.code,
+    name: plan.name,
+    description: plan.description,
+    minPoints: plan.minPoints,
+    bonusCents: plan.bonusCents,
+    color: plan.color,
+    icon: plan.icon,
+    sortOrder: plan.sortOrder,
+    isActive: plan.isActive,
+    achieved: userPoints >= plan.minPoints,
+    benefits,
+  }
+}
 
 export async function GET(request: Request) {
   try {
@@ -16,51 +54,67 @@ export async function GET(request: Request) {
       return error('User not found', 404)
     }
 
-    const currentRank = getCareerRank(user.careerPoints)
-    const nextRank = getNextRank(user.careerPoints)
-    const progress = nextRank
-      ? Math.min(((user.careerPoints / nextRank.minPoints) * 100), 100)
+    const careerPoints = Number(user.careerPoints || 0)
+    const personalPoints = Number(user.personalPoints || 0)
+
+    // Load all active career plans from the DB (admin-managed).
+    const plans = await prisma.careerPlan.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    })
+
+    // Map to response shape with the `achieved` flag computed dynamically.
+    const mappedPlans = plans.map((p) => mapPlan(p, careerPoints))
+
+    // Determine current rank = the highest plan whose minPoints the user has
+    // reached. If no plan matches (e.g. user has 0 points but the lowest plan
+    // requires > 0), treat the user as "Associado" (no rank yet).
+    let currentPlan: typeof mappedPlans[number] | null = null
+    for (const p of mappedPlans) {
+      if (careerPoints >= p.minPoints) currentPlan = p
+    }
+    const hasAchievedAny = currentPlan !== null
+
+    // Determine next rank = first plan with minPoints strictly greater than
+    // the user's current careerPoints. If the user hasn't achieved any plan
+    // yet, the next rank is the first (lowest) plan.
+    const nextPlan = hasAchievedAny
+      ? (mappedPlans.find((p) => careerPoints < p.minPoints) || null)
+      : (mappedPlans[0] || null)
+
+    const progress = nextPlan
+      ? Math.min(((careerPoints / nextPlan.minPoints) * 100), 100)
       : 100
 
-    // Get career milestones
-    const milestones = await db.find(
-      'CareerMilestone',
-      '"userId" = $1',
-      [userId],
-      'ORDER BY "pointsRequired" ASC'
-    )
-
-    // If milestones don't exist yet, create the default list
-    let milestoneData = milestones as any[]
-    if (milestoneData.length === 0) {
-      milestoneData = CAREER_RANKS.map((rank) => ({
-        milestone: rank.name,
-        pointsRequired: rank.minPoints,
-        achieved: user.careerPoints >= rank.minPoints,
-        achievedAt: user.careerPoints >= rank.minPoints ? new Date() : null,
-      })) as any[]
-    }
+    // Career milestones (kept for backward-compat with any callers that still
+    // read this field). Derived from the same DB-driven plan list so admin
+    // edits propagate here too.
+    const milestones = mappedPlans.map((p) => ({
+      id: p.id,
+      milestone: p.name,
+      pointsRequired: p.minPoints,
+      achieved: p.achieved,
+      achievedAt: p.achieved ? new Date().toISOString() : null,
+    }))
 
     return success({
-      currentRank: currentRank.name,
-      currentStars: currentRank.stars,
-      totalPoints: user.careerPoints,
-      personalPoints: user.personalPoints,
-      nextRank: nextRank
+      currentRank: currentPlan?.name ?? 'Associado',
+      currentStars: currentPlan?.sortOrder ?? 0,
+      totalPoints: careerPoints,
+      personalPoints,
+      nextRank: nextPlan
         ? {
-            name: nextRank.name,
-            stars: nextRank.stars,
-            pointsNeeded: nextRank.minPoints - user.careerPoints,
+            name: nextPlan.name,
+            stars: nextPlan.sortOrder,
+            pointsNeeded: Math.max(nextPlan.minPoints - careerPoints, 0),
+            icon: nextPlan.icon,
+            color: nextPlan.color,
+            bonusCents: nextPlan.bonusCents,
           }
         : null,
       progress,
-      milestones: milestoneData.map((m: any) => ({
-        id: m.id,
-        milestone: m.milestone,
-        pointsRequired: m.pointsRequired,
-        achieved: m.achieved,
-        achievedAt: m.achievedAt,
-      })),
+      plans: mappedPlans,
+      milestones,
     })
   } catch (err) {
     console.error('Career error:', err)

@@ -6,114 +6,148 @@ import { Progress } from '@/components/ui/progress'
 import { useStore } from '@/lib/store'
 import { formatCurrency } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
+import { careerApi } from '@/lib/api'
 import {
   Trophy, Star, TrendingUp, Award, Target, Crown,
   Zap, Shield, Percent, Gift, CheckCircle2, ArrowRight, Sparkles, Lock, Unlock
 } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { useEffect, useState } from 'react'
 
-const careerLevels = [
+// Shape used by the UI to render each career level. The DB-backed plan is
+// mapped into this shape after the API call succeeds.
+interface CareerLevel {
+  id: string
+  code: string
+  name: string
+  icon: typeof Award
+  iconEmoji: string
+  starsRequired: number
+  pointsRequired: number
+  // Hex color from the DB (`CareerPlan.color`). Used via inline styles so
+  // the admin can edit the color in the admin panel and see it reflected.
+  color: string
+  reward: number
+  cashbackMultiplier: string
+  achieved: boolean
+  benefits: string[]
+  nextReward: string
+  nextRewardIcon: string
+  sortOrder: number
+}
+
+// Lucide icons cycled based on sortOrder so each plan gets a distinctive
+// badge in the UI even though the DB only stores an emoji.
+const ICON_CYCLE = [Award, Trophy, Crown, Shield, Zap, Percent, Gift]
+
+function cashbackMultiplierFor(sortOrder: number): string {
+  // Simple deterministic multiplier derived from the plan's position so the
+  // admin doesn't need to maintain a separate field in the DB.
+  return `${(1 + Math.max(sortOrder - 1, 0) * 0.2).toFixed(1)}x`
+}
+
+const careerLevels: CareerLevel[] = [
   {
     id: 'bronze',
+    code: 'bronze',
     name: 'Bronze',
     icon: Award,
+    iconEmoji: '🥉',
     starsRequired: 1,
     pointsRequired: 10,
-    color: 'from-amber-600 to-amber-700',
-    bgColor: 'bg-amber-100 dark:bg-amber-900/30',
-    textColor: 'text-amber-700 dark:text-amber-400',
-    borderColor: 'border-amber-300 dark:border-amber-700',
+    color: '#b45309',
     reward: 50000,
     cashbackMultiplier: '1.0x',
     achieved: true,
     benefits: ['CashBack Entrada básico', 'Suporte padrão', 'App Mobilidade'],
     nextReward: 'CashBack Residual',
     nextRewardIcon: '📈',
+    sortOrder: 1,
   },
   {
     id: 'silver',
+    code: 'prata',
     name: 'Prata',
     icon: Award,
+    iconEmoji: '🥈',
     starsRequired: 2,
     pointsRequired: 20,
-    color: 'from-gray-400 to-gray-500',
-    bgColor: 'bg-gray-100 dark:bg-gray-800/30',
-    textColor: 'text-gray-700 dark:text-gray-300',
-    borderColor: 'border-gray-300 dark:border-gray-600',
+    color: '#6b7280',
     reward: 150000,
     cashbackMultiplier: '1.2x',
     achieved: true,
     benefits: ['CashBack Entrada completo', 'CashBack Residual', 'Voucher mensal R$20'],
     nextReward: 'CashBack Vendas',
     nextRewardIcon: '🛒',
+    sortOrder: 2,
   },
   {
     id: 'gold',
+    code: 'ouro',
     name: 'Ouro',
     icon: Trophy,
+    iconEmoji: '🥇',
     starsRequired: 3,
     pointsRequired: 30,
-    color: 'from-yellow-500 to-yellow-600',
-    bgColor: 'bg-yellow-100 dark:bg-yellow-900/30',
-    textColor: 'text-yellow-700 dark:text-yellow-400',
-    borderColor: 'border-yellow-300 dark:border-yellow-700',
+    color: '#eab308',
     reward: 500000,
     cashbackMultiplier: '1.5x',
     achieved: true,
     benefits: ['Tudo do Prata', 'CashBack Vendas', 'Gratificações premium', 'CashBack Farmácia'],
     nextReward: 'Portal Gamer',
     nextRewardIcon: '🎮',
+    sortOrder: 3,
   },
   {
     id: 'sapphire',
+    code: 'safira',
     name: 'Safira',
     icon: Crown,
+    iconEmoji: '🔷',
     starsRequired: 4,
     pointsRequired: 40,
-    color: 'from-blue-500 to-blue-600',
-    bgColor: 'bg-blue-100 dark:bg-blue-900/30',
-    textColor: 'text-blue-700 dark:text-blue-400',
-    borderColor: 'border-blue-300 dark:border-blue-700',
+    color: '#3b82f6',
     reward: 1500000,
     cashbackMultiplier: '2.0x',
     achieved: false,
     benefits: ['Tudo do Ouro', 'Portal Gamer', 'Seguro Auto', 'Telemedicina'],
     nextReward: 'Portal Sport Bet',
     nextRewardIcon: '⚽',
+    sortOrder: 4,
   },
   {
     id: 'diamond',
+    code: 'diamante',
     name: 'Diamante',
     icon: Crown,
+    iconEmoji: '💎',
     starsRequired: 5,
     pointsRequired: 60,
-    color: 'from-cyan-400 to-cyan-500',
-    bgColor: 'bg-cyan-100 dark:bg-cyan-900/30',
-    textColor: 'text-cyan-700 dark:text-cyan-400',
-    borderColor: 'border-cyan-300 dark:border-cyan-700',
+    color: '#06b6d4',
     reward: 3000000,
     cashbackMultiplier: '2.5x',
     achieved: false,
     benefits: ['Tudo do Safira', 'Portal Sport Bet', 'Seguro de Vida', 'Plano Odontológico'],
     nextReward: 'CashBack Máximo',
     nextRewardIcon: '💎',
+    sortOrder: 5,
   },
   {
     id: 'platinum',
+    code: 'platina',
     name: 'Platina',
     icon: Crown,
+    iconEmoji: '👑',
     starsRequired: 6,
     pointsRequired: 100,
-    color: 'from-emerald-500 to-emerald-600',
-    bgColor: 'bg-emerald-100 dark:bg-emerald-900/30',
-    textColor: 'text-emerald-700 dark:text-emerald-400',
-    borderColor: 'border-emerald-300 dark:border-emerald-700',
+    color: '#10b981',
     reward: 5000000,
     cashbackMultiplier: '3.0x',
     achieved: false,
     benefits: ['Tudo do Diamante', 'CashBack máximo', 'Benefícios exclusivos VIP', 'Acesso antecipado'],
     nextReward: 'Benefícios Exclusivos VIP',
     nextRewardIcon: '👑',
+    sortOrder: 6,
   },
 ]
 
@@ -126,16 +160,10 @@ const motivationalMessages = [
 ]
 
 // Custom SVG Rank Badge with shimmer
-function RankBadge({ level, size = 48, shimmer = false }: { level: typeof careerLevels[0]; size?: number; shimmer?: boolean }) {
-  const colors: Record<string, string> = {
-    bronze: '#b45309',
-    silver: '#6b7280',
-    gold: '#eab308',
-    sapphire: '#3b82f6',
-    diamond: '#06b6d4',
-    platinum: '#10b981',
-  }
-  const color = colors[level.id] || '#10b981'
+function RankBadge({ level, size = 48, shimmer = false }: { level: CareerLevel; size?: number; shimmer?: boolean }) {
+  // Use the hex color straight from the DB (`CareerPlan.color`) — falls back
+  // to emerald if the admin left the field empty.
+  const color = level.color || '#10b981'
   const Icon = level.icon
   return (
     <div className="relative" style={{ width: size, height: size }}>
@@ -220,12 +248,83 @@ function ProgressRing({ progress, size = 120, strokeWidth = 10 }: { progress: nu
 export function CareerPage() {
   const { t } = useTranslation()
   const { user } = useStore()
-  const currentStars = user?.stars || 3
-  const currentPoints = user?.careerPoints || 42
-  const personalPoints = user?.personalPoints || 18
+  const currentStars = user?.stars ?? 0
+  const currentPoints = user?.careerPoints ?? 0
+  const personalPoints = user?.personalPoints ?? 0
 
-  const achievedLevel = [...careerLevels].reverse().find((l) => l.achieved) || careerLevels[0]
-  const nextLevel = careerLevels.find((l) => !l.achieved)
+  // careerLevels is kept ONLY as a loading fallback. The real list comes
+  // from /api/career which reads the admin-managed CareerPlan table.
+  const [levels, setLevels] = useState<CareerLevel[]>(careerLevels)
+  const [apiCurrentRank, setApiCurrentRank] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadCareer() {
+      if (!user?.id) return
+      try {
+        const data = await careerApi.getData(user.id)
+        if (cancelled || !data) return
+        // Compute `achieved` dynamically from the user's careerPoints vs the
+        // plan's minPoints — never trust a hardcoded flag.
+        const plans = Array.isArray(data.plans) ? data.plans : []
+        if (plans.length > 0) {
+          const mapped: CareerLevel[] = plans.map((p: any, idx: number) => {
+            const nextPlan = plans[idx + 1] as any | undefined
+            return {
+              id: p.id,
+              code: p.code,
+              name: p.name,
+              icon: ICON_CYCLE[idx % ICON_CYCLE.length],
+              iconEmoji: p.icon || '⭐',
+              starsRequired: p.sortOrder,
+              pointsRequired: p.minPoints,
+              color: p.color || '#10b981',
+              reward: p.bonusCents || 0,
+              cashbackMultiplier: cashbackMultiplierFor(p.sortOrder),
+              achieved: currentPoints >= p.minPoints,
+              benefits: Array.isArray(p.benefits) && p.benefits.length > 0
+                ? p.benefits
+                : (p.description ? [p.description] : []),
+              nextReward: nextPlan?.name || 'Benefícios Exclusivos VIP',
+              nextRewardIcon: nextPlan?.icon || '👑',
+              sortOrder: p.sortOrder,
+            }
+          })
+          setLevels(mapped)
+        }
+        if (data.currentRank) setApiCurrentRank(data.currentRank)
+      } catch (err) {
+        console.error('Failed to load career data:', err)
+        // keep loading fallback on error
+      }
+    }
+    loadCareer()
+    return () => { cancelled = true }
+  }, [user?.id, currentPoints])
+
+  // When the user hasn't achieved any plan yet (careerPoints below the lowest
+  // plan's minPoints), the API returns "Associado" as the current rank. We
+  // synthesize a virtual "Associado" level so the UI shows the correct rank
+  // name and a sensible default benefit list rather than mis-displaying the
+  // lowest plan as "achieved".
+  const achievedLevel: CareerLevel = [...levels].reverse().find((l) => l.achieved) || {
+    id: 'associado',
+    code: 'associado',
+    name: apiCurrentRank || 'Associado',
+    icon: Award,
+    iconEmoji: '⭐',
+    starsRequired: 0,
+    pointsRequired: 0,
+    color: '#6b7280',
+    reward: 0,
+    cashbackMultiplier: '1.0x',
+    achieved: true,
+    benefits: ['Acesso básico ao aplicativo'],
+    nextReward: levels[0]?.name || 'Próximo nível',
+    nextRewardIcon: levels[0]?.iconEmoji || '⭐',
+    sortOrder: 0,
+  }
+  const nextLevel = levels.find((l) => !l.achieved)
   const progressToNext = nextLevel
     ? Math.min((currentPoints / nextLevel.pointsRequired) * 100, 100)
     : 100
@@ -236,14 +335,17 @@ export function CareerPage() {
 
   const currentBenefits = achievedLevel.benefits
 
-  // Rewards unlocked at current rank
+  // Rewards unlocked at current rank — derived from the plan's sortOrder
+  // (which is the DB-driven position) instead of hardcoded id checks so the
+  // logic still works when the admin renames plans.
+  const achievedSort = achievedLevel.sortOrder
   const unlockedRewards = [
     { label: 'CashBack Entrada', unlocked: true, icon: '💰' },
-    { label: 'CashBack Residual', unlocked: achievedLevel.id !== 'bronze', icon: '📈' },
-    { label: 'CashBack Vendas', unlocked: achievedLevel.id === 'gold' || achievedLevel.id === 'sapphire' || achievedLevel.id === 'diamond' || achievedLevel.id === 'platinum', icon: '🛒' },
-    { label: 'Gratificações', unlocked: achievedLevel.id !== 'bronze', icon: '🎁' },
-    { label: 'Portal Gamer', unlocked: achievedLevel.id === 'sapphire' || achievedLevel.id === 'diamond' || achievedLevel.id === 'platinum', icon: '🎮' },
-    { label: 'Seguro Auto', unlocked: achievedLevel.id === 'sapphire' || achievedLevel.id === 'diamond' || achievedLevel.id === 'platinum', icon: '🚗' },
+    { label: 'CashBack Residual', unlocked: achievedSort >= 2, icon: '📈' },
+    { label: 'CashBack Vendas', unlocked: achievedSort >= 3, icon: '🛒' },
+    { label: 'Gratificações', unlocked: achievedSort >= 2, icon: '🎁' },
+    { label: 'Portal Gamer', unlocked: achievedSort >= 4, icon: '🎮' },
+    { label: 'Seguro Auto', unlocked: achievedSort >= 4, icon: '🚗' },
   ]
 
   return (
@@ -588,7 +690,7 @@ export function CareerPage() {
           <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-gradient-to-b from-emerald-400 via-emerald-200 to-gray-200 dark:via-emerald-800 dark:to-gray-700 lg:hidden" />
 
           <div className="space-y-4">
-            {careerLevels.map((level, i) => {
+            {levels.map((level, i) => {
               const Icon = level.icon
               const isEven = i % 2 === 0
               return (
@@ -721,7 +823,13 @@ export function CareerPage() {
                       <CardContent className="p-4">
                         <div className="flex items-start gap-4">
                           <div className="relative">
-                            <div className={`p-3 rounded-xl bg-gradient-to-br ${level.color} text-white shrink-0 shadow-lg`}>
+                            <div
+                              className="p-3 rounded-xl text-white shrink-0 shadow-lg flex items-center justify-center gap-1"
+                              style={{ background: `linear-gradient(135deg, ${level.color}, ${level.color}dd)` }}
+                            >
+                              {level.iconEmoji && (
+                                <span className="text-base leading-none" aria-hidden>{level.iconEmoji}</span>
+                              )}
                               <Icon className="h-6 w-6" />
                             </div>
                             {level.achieved && (

@@ -4,11 +4,26 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useStore } from '@/lib/store'
 import { formatDate } from '@/lib/utils'
+import { pointsApi } from '@/lib/api'
 import { Star, TrendingUp, Users, ShoppingCart, Award, Trophy, Zap, Flame, Target, Car, LifeBuoy, Loader2 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { AchievementsSection } from './achievements-section'
 
+// Real history item shape returned by /api/points -> `history[]`.
+interface PointHistoryEntry {
+  id: string
+  userId: string
+  amount: number
+  type: string
+  description: string | null
+  referenceId: string | null
+  createdAt: string
+}
+
+// Mock history — used ONLY as a loading fallback while the API is in flight
+// or if the API call fails. Replaced by real PointTransaction data once the
+// fetch resolves.
 const mockPointHistory = [
   { id: '1', type: 'direct_referral', amount: 2, description: 'Indicação direta ativa - Ana Paula', date: '2025-01-15' },
   { id: '2', type: 'service_use', amount: 1, description: 'Uso do App Mobilidade', date: '2025-01-14' },
@@ -29,6 +44,14 @@ const typeLabels: Record<string, string> = {
   evaluation_received: 'Avaliação',
   evaluation_upline: 'Avaliação Upline',
   payment: 'Pagamento',
+  // Types actually used by PointTransaction in the DB:
+  reward: 'Recompensa',
+  game_loss: 'Jogo',
+  game_win: 'Jogo',
+  referral: 'Indicação',
+  bonus: 'Bônus',
+  manual: 'Manual',
+  login: 'Login',
 }
 
 const typeColors: Record<string, string> = {
@@ -38,6 +61,13 @@ const typeColors: Record<string, string> = {
   evaluation_received: 'bg-amber-100 text-amber-700',
   evaluation_upline: 'bg-teal-100 text-teal-700',
   payment: 'bg-rose-100 text-rose-700',
+  reward: 'bg-emerald-100 text-emerald-700',
+  game_loss: 'bg-rose-100 text-rose-700',
+  game_win: 'bg-emerald-100 text-emerald-700',
+  referral: 'bg-emerald-100 text-emerald-700',
+  bonus: 'bg-amber-100 text-amber-700',
+  manual: 'bg-gray-100 text-gray-700',
+  login: 'bg-teal-100 text-teal-700',
 }
 
 // Map icon string from the API to a lucide-react component.
@@ -83,14 +113,61 @@ function formatPoints(points: number): string {
 
 export function PointsPage() {
   const { user } = useStore()
-  const totalPoints = user?.careerPoints || 42
-  const personalPoints = user?.personalPoints || 18
-  const networkPoints = totalPoints - personalPoints
+  const totalPoints = user?.careerPoints ?? 0
+  const personalPoints = user?.personalPoints ?? 0
+  const networkPoints = Math.max(totalPoints - personalPoints, 0)
 
-  const totalEarned = mockPointHistory.reduce((acc, p) => acc + p.amount, 0)
+  // Real PointTransaction history from /api/points — falls back to mock only
+  // while the API is loading or if the fetch fails.
+  const [history, setHistory] = useState<typeof mockPointHistory>(mockPointHistory)
+  const [loadingHistory, setLoadingHistory] = useState(true)
+  const [totalEarned, setTotalEarned] = useState<number>(
+    mockPointHistory.reduce((acc, p) => acc + p.amount, 0)
+  )
 
   const [howToEarn, setHowToEarn] = useState<HowToEarnItem[]>(FALLBACK_HOW_TO_EARN)
   const [loadingConfig, setLoadingConfig] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadHistory() {
+      if (!user?.id) {
+        setLoadingHistory(false)
+        return
+      }
+      try {
+        const data = await pointsApi.getData(user.id)
+        if (cancelled || !data) return
+        const realHistory: PointHistoryEntry[] = Array.isArray(data.history) ? data.history : []
+        if (realHistory.length > 0) {
+          // Normalize each row to the shape the UI expects (date string + the
+          // fields the JSX reads). The mock fallback uses `date`, real rows
+          // use `createdAt` — we adapt here so the rest of the JSX is
+          // unchanged.
+          const normalized = realHistory.map((h) => ({
+            id: h.id,
+            type: h.type,
+            amount: Number(h.amount) || 0,
+            description: h.description || '—',
+            date: h.createdAt,
+          }))
+          setHistory(normalized)
+          setTotalEarned(normalized.reduce((acc, p) => acc + (Number(p.amount) || 0), 0))
+        } else {
+          // No transactions in DB — show empty list, not mock data.
+          setHistory([])
+          setTotalEarned(0)
+        }
+      } catch (err) {
+        console.error('Failed to load points history:', err)
+        // keep mock fallback on error
+      } finally {
+        if (!cancelled) setLoadingHistory(false)
+      }
+    }
+    loadHistory()
+    return () => { cancelled = true }
+  }, [user?.id])
 
   useEffect(() => {
     let cancelled = false
@@ -197,30 +274,39 @@ export function PointsPage() {
           <CardTitle className="text-base font-bold flex items-center gap-2">
             <Award className="h-4 w-4 text-emerald-600" />
             Histórico de Pontos
+            {loadingHistory && (
+              <Loader2 className="h-3 w-3 ml-1 animate-spin text-muted-foreground" />
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <div className="divide-y max-h-80 overflow-y-auto custom-scrollbar">
-            {mockPointHistory.map((entry, i) => (
-              <motion.div
-                key={entry.id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: i * 0.03 }}
-                className="flex items-center justify-between px-4 py-3 hover:bg-gray-50"
-              >
-                <div className="flex items-center gap-3">
-                  <Badge className={`text-[10px] ${typeColors[entry.type] || 'bg-gray-100 text-gray-700'}`}>
-                    {typeLabels[entry.type] || entry.type}
-                  </Badge>
-                  <div>
-                    <p className="text-sm text-gray-900">{entry.description}</p>
-                    <p className="text-xs text-gray-500">{formatDate(entry.date)}</p>
+            {history.length === 0 && !loadingHistory ? (
+              <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                Nenhuma transação de pontos registrada ainda.
+              </div>
+            ) : (
+              history.map((entry, i) => (
+                <motion.div
+                  key={entry.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: i * 0.03 }}
+                  className="flex items-center justify-between px-4 py-3 hover:bg-gray-50"
+                >
+                  <div className="flex items-center gap-3">
+                    <Badge className={`text-[10px] ${typeColors[entry.type] || 'bg-gray-100 text-gray-700'}`}>
+                      {typeLabels[entry.type] || entry.type}
+                    </Badge>
+                    <div>
+                      <p className="text-sm text-gray-900">{entry.description}</p>
+                      <p className="text-xs text-gray-500">{formatDate(entry.date)}</p>
+                    </div>
                   </div>
-                </div>
-                <span className="text-sm font-bold text-emerald-700">+{entry.amount}</span>
-              </motion.div>
-            ))}
+                  <span className="text-sm font-bold text-emerald-700">+{entry.amount}</span>
+                </motion.div>
+              ))
+            )}
           </div>
         </CardContent>
       </Card>

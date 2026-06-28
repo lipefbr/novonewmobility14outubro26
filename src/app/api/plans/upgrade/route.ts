@@ -1,9 +1,11 @@
-import { db } from '@/lib/db'
+import { db, prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
-// Plan prices in cents
-const PLAN_PRICES: Record<string, number> = { blue3: 9700, blue5: 14700 }
-const PLAN_ORDER: Record<string, number> = { free: 0, blue3: 1, blue5: 2 }
+// Plan prices and ordering are no longer hardcoded — they are sourced
+// from the `Plan` table (the single source of truth, editable by admins
+// via /api/admin/plans). The `priceCents` and `sortOrder` columns on
+// each Plan row drive both the invoice amount and the upgrade-direction
+// validation below.
 
 /**
  * Generate a mock PIX BR Code (BRcode) string.
@@ -53,21 +55,33 @@ export async function POST(request: Request) {
       return error('userId and plan are required')
     }
 
-    if (!['blue3', 'blue5'].includes(plan)) {
-      return error('Invalid plan. Must be blue3 or blue5')
+    // Look up the target plan from the DB (single source of truth for prices).
+    // Only `isDefault: true` plans are valid upgrade targets — this excludes
+    // monthly add-on plans (mensalidade_*) which are billed separately.
+    const planRecord = await prisma.plan.findUnique({ where: { code: plan } })
+    if (!planRecord || !planRecord.isActive || !planRecord.isDefault) {
+      return error('Invalid plan. Plan not found, inactive, or not an upgrade target.')
     }
+    const price = planRecord.priceCents
+    const targetOrder = planRecord.sortOrder
 
     const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('User not found', 404)
     }
 
-    // Check if it's actually an upgrade
-    if (PLAN_ORDER[plan] <= (PLAN_ORDER[user.plan] ?? 0)) {
-      return error('Can only upgrade to a higher plan')
+    // Look up the user's current plan from the DB to determine upgrade
+    // direction (replaces the hardcoded PLAN_ORDER map).
+    let currentOrder = 0
+    if (user.plan && user.plan !== 'free') {
+      const currentPlanRecord = await prisma.plan.findUnique({ where: { code: user.plan } })
+      currentOrder = currentPlanRecord?.sortOrder ?? 0
     }
 
-    const price = PLAN_PRICES[plan]
+    // Check if it's actually an upgrade
+    if (targetOrder <= currentOrder) {
+      return error('Can only upgrade to a higher plan')
+    }
 
     // Due date for the invoice (3 days from now)
     const dueDate = new Date()
@@ -102,8 +116,9 @@ export async function POST(request: Request) {
         })
       }
 
-      // Generate PIX BR Code
-      const planName = plan === 'blue3' ? 'Plano Blue 3' : 'Plano Blue 5'
+      // Generate PIX BR Code — use the DB-sourced plan name so admin
+      // renames propagate to invoice descriptions and PIX payloads.
+      const planName = `Plano ${planRecord.name}`
       const pixCode = generatePixBrCode(price, `${planName} - NewMobility`, txid)
 
       // Create a pending transaction record for the upgrade attempt
@@ -165,7 +180,7 @@ export async function POST(request: Request) {
         amount: -price,
         status: 'approved',
         category: 'plan_upgrade',
-        description: `Upgrade para ${plan === 'blue3' ? 'Blue 3' : 'Blue 5'} (pago com saldo)`,
+        description: `Upgrade para ${planRecord.name} (pago com saldo)`,
       })
 
       const updatedUser = await db.findOne('User', '"id" = $1', [userId])
