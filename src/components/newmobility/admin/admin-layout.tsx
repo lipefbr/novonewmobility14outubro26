@@ -121,9 +121,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   const sidebarContent = (
     <TooltipProvider delayDuration={0}>
-      <div className="flex flex-col h-full bg-slate-900 text-slate-300">
+      <div className="flex flex-col h-full bg-gray-900 text-gray-300">
         {/* Logo / Branding */}
-        <div className="flex items-center gap-3 px-4 py-5 border-b border-slate-800">
+        <div className="flex items-center gap-3 px-4 py-5 border-b border-gray-800">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shrink-0 shadow-lg shadow-emerald-500/30">
             <Shield className="h-5 w-5" />
           </div>
@@ -140,7 +140,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           <Button
             variant="ghost"
             size="icon"
-            className="hidden lg:flex ml-auto text-slate-400 hover:text-white hover:bg-slate-800 h-8 w-8"
+            className="hidden lg:flex ml-auto text-gray-400 hover:text-white hover:bg-gray-800 h-8 w-8"
             onClick={() => setAdminSidebarCollapsed(!adminSidebarCollapsed)}
             aria-label="Recolher sidebar"
           >
@@ -149,7 +149,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           <Button
             variant="ghost"
             size="icon"
-            className="lg:hidden ml-auto text-slate-400 hover:text-white hover:bg-slate-800 h-8 w-8"
+            className="lg:hidden ml-auto text-gray-400 hover:text-white hover:bg-gray-800 h-8 w-8"
             onClick={() => setAdminMobileSidebarOpen(false)}
             aria-label="Fechar menu"
           >
@@ -159,15 +159,15 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
         {/* User info */}
         {!adminSidebarCollapsed && user && (
-          <div className="px-4 py-3 border-b border-slate-800">
-            <div className="flex items-center gap-3 p-2 rounded-lg bg-slate-800/60">
+          <div className="px-4 py-3 border-b border-gray-800">
+            <div className="flex items-center gap-3 p-2 rounded-lg bg-gray-800/60">
               <div className="relative">
                 <Avatar className="h-9 w-9 border-2 border-emerald-500 shadow-lg shadow-emerald-500/20">
                   <AvatarFallback className="bg-emerald-700 text-white text-sm">
                     {user.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
                   </AvatarFallback>
                 </Avatar>
-                <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 border-2 border-slate-900 animate-pulse" />
+                <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 border-2 border-gray-900 animate-pulse" />
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="text-white text-sm font-medium truncate">{user.name}</span>
@@ -178,7 +178,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         )}
 
         {adminSidebarCollapsed && user && (
-          <div className="px-2 py-3 border-b border-slate-800 flex justify-center">
+          <div className="px-2 py-3 border-b border-gray-800 flex justify-center">
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className="relative">
@@ -187,7 +187,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                       {user.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 border-2 border-slate-900" />
+                  <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-400 border-2 border-gray-900" />
                 </div>
               </TooltipTrigger>
               <TooltipContent side="right" className="text-xs">
@@ -205,19 +205,19 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               <div key={group.group}>
                 {gi > 0 && !adminSidebarCollapsed && (
                   <div className="mx-3 my-3 relative h-px">
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-700 to-transparent" />
                   </div>
                 )}
                 {!adminSidebarCollapsed && (
                   <div className="px-3 pt-2 pb-1 first:pt-0">
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">
                       {group.label}
                     </span>
                   </div>
                 )}
                 {adminSidebarCollapsed && gi > 0 && (
                   <div className="mx-3 my-3 relative h-px">
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-slate-800 to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-800 to-transparent" />
                   </div>
                 )}
                 {group.items.map((item) => {
@@ -232,7 +232,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                         'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 relative group/item',
                         isActive
                           ? 'text-white shadow-lg overflow-hidden'
-                          : 'text-slate-400 hover:text-white hover:bg-slate-800/60',
+                          : 'text-gray-400 hover:text-white hover:bg-gray-800/60',
                       )}
                       whileHover={{ x: adminSidebarCollapsed ? 0 : 2 }}
                       whileTap={{ scale: 0.98 }}
@@ -288,14 +288,14 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         </nav>
 
         {/* Switch to user view */}
-        <div className="px-2 pt-2 border-t border-slate-800">
+        <div className="px-2 pt-2 border-t border-gray-800">
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 onClick={handleSwitchToUser}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 relative overflow-hidden group/switch text-slate-300 hover:text-white hover:bg-slate-800/60"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 relative overflow-hidden group/switch text-gray-300 hover:text-white hover:bg-gray-800/60"
               >
-                <div className="absolute inset-0 rounded-lg bg-slate-800/0 group-hover/switch:bg-slate-800/60 transition-colors" />
+                <div className="absolute inset-0 rounded-lg bg-gray-800/0 group-hover/switch:bg-gray-800/60 transition-colors" />
                 <ArrowLeftRight className="h-4.5 w-4.5 shrink-0 relative z-10 text-amber-400 group-hover/switch:text-amber-300" />
                 {!adminSidebarCollapsed && (
                   <span className="relative z-10">Voltar para Usuário</span>
@@ -342,7 +342,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             )}
           </Tooltip>
           {!adminSidebarCollapsed && (
-            <p className="text-[10px] text-slate-600 text-center mt-2">Admin Panel v1.0.0</p>
+            <p className="text-[10px] text-gray-600 text-center mt-2">Admin Panel v1.0.0</p>
           )}
         </div>
       </div>
@@ -353,12 +353,12 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const pageTitle = activeItem?.label || 'Dashboard'
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-950">
       <div className="flex flex-1 min-h-0">
         {/* Desktop Sidebar */}
         <aside
           className={cn(
-            'hidden lg:flex flex-col fixed top-0 left-0 bottom-0 z-30 border-r border-slate-800',
+            'hidden lg:flex flex-col fixed top-0 left-0 bottom-0 z-30 border-r border-gray-800',
             adminSidebarCollapsed ? 'w-[68px]' : 'w-64',
           )}
         >
@@ -399,7 +399,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         {/* Main content area */}
         <div className="flex flex-col flex-1 min-w-0">
           {/* Header */}
-          <header className="sticky top-0 z-20 bg-slate-900 border-b border-slate-800 shrink-0">
+          <header className="sticky top-0 z-20 bg-gray-900 border-b border-gray-800 shrink-0">
             <div className="h-0.5 bg-gradient-to-r from-emerald-500 via-emerald-400 to-emerald-500" />
             <div className="px-4 py-2.5 flex items-center justify-between gap-2">
               <div className="flex items-center gap-3 min-w-0">
@@ -407,7 +407,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="lg:hidden h-9 w-9 text-slate-400 hover:text-white hover:bg-slate-800"
+                    className="lg:hidden h-9 w-9 text-gray-400 hover:text-white hover:bg-gray-800"
                     onClick={() => setAdminMobileSidebarOpen(true)}
                     aria-label="Abrir menu"
                   >
@@ -425,8 +425,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <div className="hidden lg:flex items-center gap-2 min-w-0">
                   <Shield className="h-4 w-4 text-emerald-400 shrink-0" />
                   <span className="text-sm font-semibold text-white truncate">{pageTitle}</span>
-                  <ChevronLeft className="h-3 w-3 text-slate-500 rotate-180 shrink-0" />
-                  <span className="text-xs text-slate-400 truncate">
+                  <ChevronLeft className="h-3 w-3 text-gray-500 rotate-180 shrink-0" />
+                  <span className="text-xs text-gray-400 truncate">
                     {activeItem?.description}
                   </span>
                 </div>
@@ -441,7 +441,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 text-slate-400 hover:text-white hover:bg-slate-800 relative"
+                  className="h-9 w-9 text-gray-400 hover:text-white hover:bg-gray-800 relative"
                   aria-label="Notificações"
                 >
                   <Bell className="h-4.5 w-4.5" />
@@ -451,7 +451,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 text-slate-400 hover:text-white hover:bg-slate-800"
+                  className="h-9 w-9 text-gray-400 hover:text-white hover:bg-gray-800"
                   onClick={toggleDarkMode}
                   aria-label="Alternar tema"
                 >
@@ -468,7 +468,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="hidden sm:inline-flex gap-1.5 text-xs h-8 bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700 hover:text-white"
+                  className="hidden sm:inline-flex gap-1.5 text-xs h-8 bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700 hover:text-white"
                   onClick={handleSwitchToUser}
                 >
                   <ArrowLeftRight className="h-3.5 w-3.5" />
@@ -477,7 +477,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 </Button>
 
                 {user && (
-                  <div className="flex items-center gap-2 ml-1 pl-2 border-l border-slate-800">
+                  <div className="flex items-center gap-2 ml-1 pl-2 border-l border-gray-800">
                     <Avatar className="h-8 w-8 border-2 border-emerald-500">
                       <AvatarFallback className="bg-emerald-700 text-white text-xs">
                         {user.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
@@ -514,16 +514,16 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           </main>
 
           {/* Footer */}
-          <footer className="bg-slate-900 border-t border-slate-800 px-4 py-3 shrink-0 hidden md:block">
+          <footer className="bg-gray-900 border-t border-gray-800 px-4 py-3 shrink-0 hidden md:block">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-              <p className="text-xs text-slate-500 text-center">
+              <p className="text-xs text-gray-500 text-center">
                 © {new Date().getFullYear()} NewMobility Admin Panel · Todos os direitos reservados
               </p>
               <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-600 flex items-center gap-1">
+                <span className="text-xs text-gray-600 flex items-center gap-1">
                   <RefreshCw className="h-3 w-3" /> Sistema operacional
                 </span>
-                <span className="text-xs text-slate-600">v1.0.0</span>
+                <span className="text-xs text-gray-600">v1.0.0</span>
               </div>
             </div>
           </footer>
@@ -531,7 +531,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
       </div>
 
       {/* Mobile bottom bar with quick switch */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-slate-900 border-t border-slate-800 safe-area-inset-bottom">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-gray-900 border-t border-gray-800 safe-area-inset-bottom">
         <div className="grid grid-cols-4 gap-1 px-2 py-1.5">
           {[
             { key: 'dashboard' as AdminPageKey, icon: LayoutDashboard, label: 'Início' },
@@ -549,7 +549,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                   'flex flex-col items-center gap-0.5 py-1.5 px-1 rounded-lg transition-all duration-200',
                   isActive
                     ? 'text-emerald-400 bg-emerald-500/10'
-                    : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50',
+                    : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50',
                 )}
               >
                 <Icon className={cn('h-5 w-5 transition-transform duration-200', isActive && 'scale-110')} />

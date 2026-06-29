@@ -319,8 +319,8 @@ export function AdminReportsPanel() {
             label: 'Total Usuários',
             value: data.userCounts.total,
             icon: Users,
-            color: 'text-slate-600',
-            bg: 'bg-slate-50 dark:bg-slate-950/30',
+            color: 'text-gray-600',
+            bg: 'bg-gray-50 dark:bg-gray-950/30',
           },
           {
             label: 'Motoristas',
@@ -452,7 +452,7 @@ export function AdminReportsPanel() {
           </CardHeader>
           <CardContent className="space-y-3">
             {[
-              { key: 'free', label: 'Free', color: 'bg-slate-400' },
+              { key: 'free', label: 'Free', color: 'bg-gray-400' },
               { key: 'blue3', label: 'Blue 3', color: 'bg-blue-500' },
               { key: 'blue5', label: 'Blue 5', color: 'bg-emerald-500' },
               { key: 'premium5', label: 'Premium 5', color: 'bg-amber-500' },

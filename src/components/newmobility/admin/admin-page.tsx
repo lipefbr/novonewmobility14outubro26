@@ -2121,7 +2121,7 @@ export function AdminPage() {
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                       isActive
                         ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
-                        : 'bg-white/60 dark:bg-slate-900/40 text-muted-foreground hover:bg-white dark:hover:bg-slate-900/70 hover:text-foreground'
+                        : 'bg-white/60 dark:bg-gray-900/40 text-muted-foreground hover:bg-white dark:hover:bg-gray-900/70 hover:text-foreground'
                     }`}
                   >
                     <SubIcon className="h-3.5 w-3.5" />
