@@ -127,7 +127,7 @@ function PyramidNodeCard({
       whileHover={{ scale: 1.03, y: -2 }}
       whileTap={{ scale: 0.97 }}
       className={cn(
-        'relative flex flex-col items-center gap-1 rounded-xl border-2 px-3 py-2 transition-all text-center min-w-[110px] max-w-[150px]',
+        'relative flex flex-col items-center gap-1 rounded-lg sm:rounded-xl border-2 px-2 sm:px-3 py-2 transition-all text-center min-w-[88px] sm:min-w-[110px] max-w-[130px] sm:max-w-[150px]',
         statusColor,
         isRoot && 'ring-2 ring-amber-400 shadow-lg shadow-amber-500/20',
         isSelected && 'ring-2 ring-emerald-500 shadow-lg shadow-emerald-500/20',
@@ -140,7 +140,7 @@ function PyramidNodeCard({
         </span>
       )}
       <div className="relative">
-        <Avatar className={cn('border-2', isRoot ? 'h-12 w-12 border-amber-400' : 'h-9 w-9 border-emerald-300 dark:border-emerald-700')}>
+        <Avatar className={cn('border-2', isRoot ? 'h-10 w-10 sm:h-12 sm:w-12 border-amber-400' : 'h-8 w-8 sm:h-9 sm:w-9 border-emerald-300 dark:border-emerald-700')}>
           <AvatarFallback className={cn(
             'text-xs font-bold',
             isRoot ? 'bg-gradient-to-br from-amber-400 to-yellow-500 text-white' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
@@ -152,7 +152,7 @@ function PyramidNodeCard({
           <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 border border-white dark:border-gray-900" />
         )}
       </div>
-      <span className="text-[11px] font-semibold text-foreground leading-tight line-clamp-2">
+      <span className="text-[10px] sm:text-[11px] font-semibold text-foreground leading-tight line-clamp-2">
         {node.name}
       </span>
       <div className="flex items-center gap-1">
@@ -331,9 +331,9 @@ function MinhaRedeTreePanel({ type }: { type: MatrixType }) {
   if (loading) {
     return (
       <div className="space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
           {[1, 2, 3, 4].map(i => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
+            <Skeleton key={i} className="h-20 sm:h-24 rounded-xl" />
           ))}
         </div>
         <Skeleton className="h-12 rounded-xl" />
@@ -370,68 +370,117 @@ function MinhaRedeTreePanel({ type }: { type: MatrixType }) {
     return active
   })()
 
+  const inactiveMembers = data.totalUsers - activeMembers
+
   return (
     <div className="space-y-4">
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
         <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-white dark:from-emerald-950/30 dark:to-background">
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
-              <Users className="h-5 w-5 text-emerald-600" />
+              <Users className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-600" />
               <Badge variant="outline" className="text-[9px]">{data.label}</Badge>
             </div>
-            <p className="text-2xl font-bold text-foreground mt-2">{data.totalUsers}</p>
+            <p className="text-xl sm:text-2xl font-bold text-foreground mt-2">{data.totalUsers}</p>
             <p className="text-[10px] text-muted-foreground">Total na sua rede</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
-              <UserPlus className="h-5 w-5 text-blue-600" />
+              <UserPlus className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
             </div>
-            <p className="text-2xl font-bold text-foreground mt-2">{data.directReferrals}</p>
+            <p className="text-xl sm:text-2xl font-bold text-foreground mt-2">{data.directReferrals}</p>
             <p className="text-[10px] text-muted-foreground">Indicações diretas (Nível 1)</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
-              <UserCheck className="h-5 w-5 text-teal-600" />
+              <UserCheck className="h-4 w-4 sm:h-5 sm:w-5 text-teal-600" />
             </div>
-            <p className="text-2xl font-bold text-foreground mt-2">{activeMembers}</p>
+            <p className="text-xl sm:text-2xl font-bold text-foreground mt-2">{activeMembers}</p>
             <p className="text-[10px] text-muted-foreground">Membros ativos</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="p-3 sm:p-4">
             <div className="flex items-center justify-between">
-              <Layers className="h-5 w-5 text-purple-600" />
+              <Layers className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
               <span className="text-[10px] text-muted-foreground">{fillPct.toFixed(2)}%</span>
             </div>
-            <p className="text-2xl font-bold text-foreground mt-2">{data.totalUsers}<span className="text-sm text-muted-foreground">/{totalCapacity.toLocaleString('pt-BR')}</span></p>
+            <p className="text-xl sm:text-2xl font-bold text-foreground mt-2">{data.totalUsers}<span className="text-xs sm:text-sm text-muted-foreground">/{totalCapacity.toLocaleString('pt-BR')}</span></p>
             <p className="text-[10px] text-muted-foreground">Vagas preenchidas</p>
           </CardContent>
         </Card>
       </div>
 
+      {/* Non-payers indicator — hidden for Residual matrix per user request */}
+      {type !== 'residual' && (
+        <Card className="border-amber-200 dark:border-amber-800 bg-gradient-to-r from-amber-50/60 to-rose-50/30 dark:from-amber-950/20 dark:to-rose-950/10">
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <span className="text-xs sm:text-sm font-semibold">Status de Pagamento</span>
+              </div>
+              <Badge variant="outline" className="text-[10px]">
+                {data.totalUsers === 0 ? 'Sem dados' : `${data.totalUsers > 0 ? ((activeMembers / data.totalUsers) * 100).toFixed(0) : 0}% pagos`}
+              </Badge>
+            </div>
+            {/* Stacked bar — paid vs non-payers */}
+            <div className="flex h-3 w-full rounded-full overflow-hidden bg-muted">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all"
+                style={{ width: `${data.totalUsers > 0 ? (activeMembers / data.totalUsers) * 100 : 0}%` }}
+                title={`${activeMembers} pagos`}
+              />
+              <div
+                className="h-full bg-gradient-to-r from-amber-400 to-rose-400 transition-all"
+                style={{ width: `${data.totalUsers > 0 ? (inactiveMembers / data.totalUsers) * 100 : 0}%` }}
+                title={`${inactiveMembers} não pagos`}
+              />
+            </div>
+            <div className="flex items-center justify-between mt-2 text-xs flex-wrap gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 inline-block" />
+                <span className="text-muted-foreground">Pagos:</span>
+                <span className="font-bold text-emerald-600">{activeMembers}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-400 inline-block" />
+                <span className="text-muted-foreground">Não pagos:</span>
+                <span className="font-bold text-amber-600">{inactiveMembers}</span>
+              </div>
+            </div>
+            {inactiveMembers > 0 && (
+              <p className="text-[10px] text-muted-foreground mt-2 italic leading-snug">
+                {inactiveMembers} {inactiveMembers === 1 ? 'cadastro entrou na matriz mas ainda não ativou o pagamento' : 'cadastros entraram na matriz mas ainda não ativaram o pagamento'}. Quando ativarem, entrarão oficialmente na rede.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Level breakdown */}
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-3 sm:p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Layers className="h-4 w-4 text-emerald-600" />
-              <span className="text-sm font-semibold">Distribuição por Nível</span>
+              <span className="text-xs sm:text-sm font-semibold">Distribuição por Nível</span>
             </div>
             <Badge variant="outline" className="text-[10px]">{data.maxDepth} níveis</Badge>
           </div>
-          <div className="flex gap-2 overflow-x-auto pb-1">
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
             {levelStats.map(lv => (
               <div
                 key={lv.level}
-                className="flex-shrink-0 min-w-[100px] rounded-lg border border-border bg-muted/40 p-2.5"
+                className="flex-shrink-0 min-w-[88px] sm:min-w-[100px] rounded-lg border border-border bg-muted/40 p-2 sm:p-2.5"
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[10px] font-semibold text-muted-foreground">Nível {lv.level}</span>
@@ -456,33 +505,33 @@ function MinhaRedeTreePanel({ type }: { type: MatrixType }) {
 
       {/* Tree visualization */}
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-3 sm:p-4">
           {/* Toolbar */}
-          <div className="flex flex-col sm:flex-row gap-2 mb-4">
+          <div className="flex flex-col sm:flex-row gap-2 mb-3 sm:mb-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Buscar pessoa na rede por nome ou email..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 h-9"
+                className="pl-9 h-9 text-sm"
               />
             </div>
-            <div className="flex items-center gap-1.5">
-              <Button variant="outline" size="sm" className="h-9 text-xs" onClick={expandAll}>
-                <ChevronDown className="h-3.5 w-3.5 mr-1" />
-                Expandir tudo
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Button variant="outline" size="sm" className="h-8 sm:h-9 text-xs px-2 sm:px-3" onClick={expandAll}>
+                <ChevronDown className="h-3.5 w-3.5 sm:mr-1" />
+                <span className="hidden sm:inline">Expandir tudo</span>
               </Button>
-              <Button variant="outline" size="sm" className="h-9 text-xs" onClick={collapseAll}>
-                <ChevronRight className="h-3.5 w-3.5 mr-1" />
-                Recolher tudo
+              <Button variant="outline" size="sm" className="h-8 sm:h-9 text-xs px-2 sm:px-3" onClick={collapseAll}>
+                <ChevronRight className="h-3.5 w-3.5 sm:mr-1" />
+                <span className="hidden sm:inline">Recolher tudo</span>
               </Button>
-              <div className="flex items-center gap-1 border rounded-md px-2 h-9">
-                <button onClick={() => setZoom(z => Math.max(50, z - 10))} className="text-muted-foreground hover:text-foreground">
+              <div className="flex items-center gap-1 border rounded-md px-2 h-8 sm:h-9">
+                <button onClick={() => setZoom(z => Math.max(50, z - 10))} className="text-muted-foreground hover:text-foreground" aria-label="Diminuir zoom">
                   <ZoomOut className="h-3.5 w-3.5" />
                 </button>
                 <span className="text-[10px] font-medium w-9 text-center tabular-nums">{zoom}%</span>
-                <button onClick={() => setZoom(z => Math.min(150, z + 10))} className="text-muted-foreground hover:text-foreground">
+                <button onClick={() => setZoom(z => Math.min(150, z + 10))} className="text-muted-foreground hover:text-foreground" aria-label="Aumentar zoom">
                   <ZoomIn className="h-3.5 w-3.5" />
                 </button>
               </div>
@@ -491,16 +540,16 @@ function MinhaRedeTreePanel({ type }: { type: MatrixType }) {
 
           {/* Pyramid Tree Container */}
           <div
-            className="border border-border rounded-2xl bg-gradient-to-b from-emerald-50/30 via-background to-background dark:from-emerald-950/10 overflow-auto custom-scrollbar min-h-[400px] max-h-[70vh] p-4"
+            className="border border-border rounded-xl sm:rounded-2xl bg-gradient-to-b from-emerald-50/30 via-background to-background dark:from-emerald-950/10 overflow-auto custom-scrollbar min-h-[320px] sm:min-h-[400px] max-h-[70vh] p-2 sm:p-4"
             style={{
               transform: `scale(${zoom / 100})`,
               transformOrigin: 'top center',
             }}
           >
             {data.totalUsers === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <div className="h-16 w-16 rounded-full bg-emerald-100 dark:bg-emerald-950/40 flex items-center justify-center mb-3">
-                  <Network className="h-8 w-8 text-emerald-600" />
+              <div className="flex flex-col items-center justify-center py-10 sm:py-16 text-center px-4">
+                <div className="h-14 w-14 sm:h-16 sm:w-16 rounded-full bg-emerald-100 dark:bg-emerald-950/40 flex items-center justify-center mb-3">
+                  <Network className="h-7 w-7 sm:h-8 sm:w-8 text-emerald-600" />
                 </div>
                 <p className="text-sm font-semibold text-foreground">Sua rede está vazia</p>
                 <p className="text-xs text-muted-foreground mt-1 max-w-sm">
@@ -550,14 +599,14 @@ function MinhaRedeTreePanel({ type }: { type: MatrixType }) {
                 className="overflow-hidden mt-3"
               >
                 <div className="flex flex-col sm:flex-row items-start gap-3 bg-emerald-50 dark:bg-emerald-950/20 rounded-xl p-3 border border-emerald-200 dark:border-emerald-800">
-                  <Avatar className="h-12 w-12 border-2 border-emerald-300 dark:border-emerald-700 shrink-0">
+                  <Avatar className="h-11 w-11 sm:h-12 sm:w-12 border-2 border-emerald-300 dark:border-emerald-700 shrink-0">
                     <AvatarFallback className="bg-emerald-100 text-emerald-700 text-sm dark:bg-emerald-900/40 dark:text-emerald-300">
                       {getInitials(selectedNode.name)}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 w-full">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-bold text-foreground">{selectedNode.name}</span>
+                      <span className="text-sm font-bold text-foreground break-words">{selectedNode.name}</span>
                       <Badge variant="outline" className="text-[10px]">{getPlanName(selectedNode.plan)}</Badge>
                       {selectedNode.level > 0 && (
                         <Badge className="text-[10px] bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-0">Nível {selectedNode.level}</Badge>
@@ -638,15 +687,15 @@ export function MinhaRedePage() {
   }
 
   return (
-    <div className="space-y-6 p-4 md:p-6 pb-20">
+    <div className="space-y-4 sm:space-y-6 p-2 sm:p-4 lg:p-6 pb-20">
       {/* Header */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-3">
-          <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/25">
-            <Network className="h-6 w-6 text-white" />
+          <div className="h-9 w-9 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/25 shrink-0">
+            <Network className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-2 flex-wrap">
               {t('sidebar.minha-rede')}
               <Badge className="bg-rose-500 text-white text-[9px] px-1.5 h-4 border-0 animate-bounce-subtle">NOVO</Badge>
             </h1>
@@ -659,7 +708,7 @@ export function MinhaRedePage() {
 
       {/* Tabs */}
       <Tabs value={tab} onValueChange={(v) => setTab(v as MatrixType)} className="w-full">
-        <TabsList className="grid grid-cols-3 w-full max-w-xl h-auto">
+        <TabsList className="grid grid-cols-3 w-full max-w-xl h-auto gap-1 p-1">
           {(Object.keys(tabConfig) as MatrixType[]).map(key => {
             const cfg = tabConfig[key]
             const Icon = cfg.icon
@@ -668,12 +717,12 @@ export function MinhaRedePage() {
                 key={key}
                 value={key}
                 className={cn(
-                  'flex flex-col items-center gap-1 py-2 data-[state=active]:bg-gradient-to-b data-[state=active]:text-white',
+                  'flex flex-col items-center gap-1 py-1.5 sm:py-2 data-[state=active]:bg-gradient-to-b data-[state=active]:text-white',
                   tab === key && cfg.gradient
                 )}
               >
-                <Icon className="h-4 w-4" />
-                <span className="text-xs font-semibold capitalize">
+                <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                <span className="text-[10px] sm:text-xs font-semibold capitalize">
                   {key === 'direta' ? 'Direta' : key === 'residual' ? 'Residual' : 'Vendas'}
                 </span>
               </TabsTrigger>
@@ -683,17 +732,17 @@ export function MinhaRedePage() {
 
         {/* Description banner */}
         <div className={cn(
-          'rounded-xl border p-3 bg-gradient-to-r text-white shadow-md',
+          'rounded-xl border p-2.5 sm:p-3 bg-gradient-to-r text-white shadow-md',
           tabConfig[tab].gradient
         )}>
-          <div className="flex items-start gap-3">
+          <div className="flex items-start gap-2 sm:gap-3">
             {(() => {
               const Icon = tabConfig[tab].icon
-              return <Icon className="h-5 w-5 mt-0.5 shrink-0" />
+              return <Icon className="h-4 w-4 sm:h-5 sm:w-5 mt-0.5 shrink-0" />
             })()}
-            <div>
-              <p className="text-sm font-bold">{tabConfig[tab].description.split('—')[0].trim()}</p>
-              <p className="text-xs text-white/90 mt-0.5">{tabConfig[tab].description.split('—')[1]?.trim()}</p>
+            <div className="min-w-0">
+              <p className="text-xs sm:text-sm font-bold">{tabConfig[tab].description.split('—')[0].trim()}</p>
+              <p className="text-[11px] sm:text-xs text-white/90 mt-0.5">{tabConfig[tab].description.split('—')[1]?.trim()}</p>
             </div>
           </div>
         </div>

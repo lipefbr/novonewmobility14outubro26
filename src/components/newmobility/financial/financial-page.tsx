@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency, formatDate, getStatusLabel, getStatusVariant, cn } from '@/lib/utils'
-import { financialApi, transferApi, apiFetch } from '@/lib/api'
+import { financialApi, transferApi, apiFetch, invoicesApi, referralsApi } from '@/lib/api'
 import { FinancialSkeleton } from '../ui/loading-skeletons'
 import { EmptyState } from '../ui/empty-states'
 import { InvoiceViewer } from './invoice-viewer'
@@ -27,6 +27,9 @@ import {
   PieChart,
   Pie,
   Cell,
+  BarChart,
+  Bar,
+  Legend,
 } from 'recharts'
 import {
   Wallet,
@@ -61,6 +64,11 @@ import {
   Loader2,
   Ban,
   Info,
+  Users,
+  Network,
+  Receipt,
+  Coins,
+  HandCoins,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
@@ -97,6 +105,7 @@ const typeLabels: Record<string, string> = {
   cashback_entry: 'CB Entrada',
   cashback_residual: 'CB Residual',
   cashback_sales: 'CB Vendas',
+  cashback: 'CashBack',
   withdrawal: 'Saque',
   deposit: 'Depósito',
   gratification: 'Gratificação',
@@ -105,6 +114,70 @@ const typeLabels: Record<string, string> = {
   transfer_out: 'Transferência Envio',
   transfer_in: 'Transferência Recebido',
   transfer: 'Transferência',
+  fee: 'Taxa',
+  plan_upgrade: 'Upgrade de Plano',
+}
+
+// Translate raw API category values into Portuguese labels (Task 11-G).
+// The Transaction.category field on the backend stores raw English keys like
+// `bills`, `plan_upgrade`, `cashback`, `withdrawal_fee`, `meal`, `mobility`.
+// This map ensures the financial page is fully in Portuguese.
+const categoryLabels: Record<string, string> = {
+  bills: 'Contas',
+  plan_upgrade: 'Upgrade de Plano',
+  cashback: 'CashBack',
+  withdrawal_fee: 'Taxa de Saque',
+  meal: 'Refeição',
+  food: 'Refeição',
+  mobility: 'Mobilidade',
+  pharmacy: 'Farmácia',
+  shopping: 'Compras',
+  gratification: 'Gratificação',
+  withdrawal: 'Saque',
+  paymentInvoice: 'Pagamento Fatura',
+  free: 'Saldo Livre',
+  deposit: 'Depósito',
+  voucher: 'Voucher',
+  bonus: 'Bônus',
+}
+
+function getCategoryLabel(category?: string | null): string {
+  if (!category) return ''
+  return categoryLabels[category] || category
+}
+
+// Resolve the most appropriate Portuguese label for a transaction row.
+// Prefer the category label when available (more specific), else fall back to
+// the type label, and finally the raw type string.
+function getTransactionLabel(tx: any): string {
+  if (tx?.category && categoryLabels[tx.category]) return categoryLabels[tx.category]
+  if (tx?.type && typeLabels[tx.type]) return typeLabels[tx.type]
+  return tx?.type || tx?.category || ''
+}
+
+// Build monthly gratification chart data (last 6 months).
+// A transaction counts toward gratification when its type OR category is `gratification`.
+function buildGratificationData(transactions: any[]) {
+  const now = new Date()
+  const months: { key: string; label: string; gratificacao: number }[] = []
+  const monthLabels = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`
+    months.push({ key, label: monthLabels[d.getMonth()], gratificacao: 0 })
+  }
+  const indexByKey = new Map(months.map((m, i) => [m.key, i]))
+  for (const tx of transactions) {
+    if (tx.type !== 'gratification' && tx.category !== 'gratification') continue
+    const d = new Date(tx.createdAt || tx.date)
+    if (isNaN(d.getTime())) continue
+    const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`
+    const idx = indexByKey.get(key)
+    if (idx === undefined) continue
+    const amt = Number(tx.amount) || 0
+    if (amt > 0) months[idx].gratificacao += amt
+  }
+  return months.map(({ label, gratificacao }) => ({ month: label, gratificacao }))
 }
 
 // Color-coded transaction type icon config (Lucide icons with colors)
@@ -112,6 +185,7 @@ const typeIconConfig: Record<string, { icon: React.ElementType; color: string; b
   cashback_entry: { icon: ArrowDownLeft, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-100 dark:bg-emerald-900/30' },
   cashback_residual: { icon: ArrowDownLeft, color: 'text-teal-600 dark:text-teal-400', bgColor: 'bg-teal-100 dark:bg-teal-900/30' },
   cashback_sales: { icon: RotateCcw, color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30' },
+  cashback: { icon: HandCoins, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-100 dark:bg-emerald-900/30' },
   withdrawal: { icon: ArrowUpRight, color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-100 dark:bg-red-900/30' },
   deposit: { icon: ArrowDownLeft, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-100 dark:bg-emerald-900/30' },
   gratification: { icon: ArrowDownLeft, color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30' },
@@ -120,6 +194,8 @@ const typeIconConfig: Record<string, { icon: React.ElementType; color: string; b
   transfer_out: { icon: ArrowRightLeft, color: 'text-orange-600 dark:text-orange-400', bgColor: 'bg-orange-100 dark:bg-orange-900/30' },
   transfer_in: { icon: ArrowRightLeft, color: 'text-teal-600 dark:text-teal-400', bgColor: 'bg-teal-100 dark:bg-teal-900/30' },
   transfer: { icon: ArrowRightLeft, color: 'text-cyan-600 dark:text-cyan-400', bgColor: 'bg-cyan-100 dark:bg-cyan-900/30' },
+  fee: { icon: Ban, color: 'text-rose-600 dark:text-rose-400', bgColor: 'bg-rose-100 dark:bg-rose-900/30' },
+  plan_upgrade: { icon: Star, color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30' },
 }
 
 // Enhanced status icon config with background colors
@@ -136,6 +212,7 @@ const typeBadgeConfig: Record<string, { bg: string; text: string; border: string
   cashback_entry: { bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-400', border: 'border-emerald-200 dark:border-emerald-800' },
   cashback_residual: { bg: 'bg-teal-100 dark:bg-teal-900/30', text: 'text-teal-700 dark:text-teal-400', border: 'border-teal-200 dark:border-teal-800' },
   cashback_sales: { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400', border: 'border-amber-200 dark:border-amber-800' },
+  cashback: { bg: 'bg-emerald-100 dark:bg-emerald-900/30', text: 'text-emerald-700 dark:text-emerald-400', border: 'border-emerald-200 dark:border-emerald-800' },
   withdrawal: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400', border: 'border-red-200 dark:border-red-800' },
   deposit: { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400', border: 'border-blue-200 dark:border-blue-800' },
   gratification: { bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400', border: 'border-purple-200 dark:border-purple-800' },
@@ -144,6 +221,8 @@ const typeBadgeConfig: Record<string, { bg: string; text: string; border: string
   transfer_out: { bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400', border: 'border-orange-200 dark:border-orange-800' },
   transfer_in: { bg: 'bg-teal-100 dark:bg-teal-900/30', text: 'text-teal-700 dark:text-teal-400', border: 'border-teal-200 dark:border-teal-800' },
   transfer: { bg: 'bg-cyan-100 dark:bg-cyan-900/30', text: 'text-cyan-700 dark:text-cyan-400', border: 'border-cyan-200 dark:border-cyan-800' },
+  fee: { bg: 'bg-rose-100 dark:bg-rose-900/30', text: 'text-rose-700 dark:text-rose-400', border: 'border-rose-200 dark:border-rose-800' },
+  plan_upgrade: { bg: 'bg-indigo-100 dark:bg-indigo-900/30', text: 'text-indigo-700 dark:text-indigo-400', border: 'border-indigo-200 dark:border-indigo-800' },
 }
 
 // Transaction type filter chips with icons
@@ -224,6 +303,12 @@ export function FinancialPage() {
   const [pixKeyValue, setPixKeyValue] = useState('')
   const [pixSaving, setPixSaving] = useState(false)
 
+  // Invoices + referral stats (Task 11-G): real per-user data from the API
+  const [invoices, setInvoices] = useState<any[]>([])
+  const [invoicesLoading, setInvoicesLoading] = useState(false)
+  const [referralStats, setReferralStats] = useState<{ totalDirect: number; totalNetwork: number; activeDirect: number } | null>(null)
+  const [referralStatsLoading, setReferralStatsLoading] = useState(false)
+
   const PAGE_LIMIT = 20
 
   const refreshBalances = useCallback(async () => {
@@ -300,6 +385,41 @@ export function FinancialPage() {
     }
   }, [user?.id])
 
+  // Fetch real invoices for the logged-in user (Task 11-G).
+  // Used by the "Saldo para Faturas" section and the InvoiceViewer tab.
+  const refreshInvoices = useCallback(async () => {
+    if (!user?.id) return
+    setInvoicesLoading(true)
+    try {
+      const data = await invoicesApi.getList(user.id)
+      setInvoices(data.invoices || [])
+    } catch (err) {
+      console.error('Failed to refresh invoices', err)
+      setInvoices([])
+    } finally {
+      setInvoicesLoading(false)
+    }
+  }, [user?.id])
+
+  // Fetch referral stats (direct + total network) for the earnings summary (Task 11-G).
+  const refreshReferralStats = useCallback(async () => {
+    if (!user?.id) return
+    setReferralStatsLoading(true)
+    try {
+      const data = await referralsApi.getList(user.id)
+      setReferralStats({
+        totalDirect: data.stats?.totalDirect ?? 0,
+        totalNetwork: data.stats?.totalNetwork ?? 0,
+        activeDirect: data.stats?.activeDirect ?? 0,
+      })
+    } catch (err) {
+      console.error('Failed to refresh referral stats', err)
+      setReferralStats(null)
+    } finally {
+      setReferralStatsLoading(false)
+    }
+  }, [user?.id])
+
   // Initial mount: fetch balances, transactions (page 1), withdrawals, chart data
   useEffect(() => {
     if (!user?.id) {
@@ -314,6 +434,8 @@ export function FinancialPage() {
         refreshTransactions(1, 'all'),
         refreshWithdrawals(),
         refreshAllTransactionsForChart(),
+        refreshInvoices(),
+        refreshReferralStats(),
       ])
       if (!cancelled) setInitialLoading(false)
     })()
@@ -340,8 +462,10 @@ export function FinancialPage() {
       refreshTransactions(currentPage, filterType),
       refreshWithdrawals(),
       refreshAllTransactionsForChart(),
+      refreshInvoices(),
+      refreshReferralStats(),
     ])
-  }, [refreshBalances, refreshTransactions, refreshWithdrawals, refreshAllTransactionsForChart, currentPage, filterType])
+  }, [refreshBalances, refreshTransactions, refreshWithdrawals, refreshAllTransactionsForChart, refreshInvoices, refreshReferralStats, currentPage, filterType])
 
   // Keep the transfer destination valid whenever the source changes: it must never equal
   // the source and must never be `withdrawal` (Saldo para Saque), which is only ever a
@@ -382,6 +506,46 @@ export function FinancialPage() {
   }
   const availableBalance = user?.balanceWithdrawal || 0
 
+  // ===== Earnings breakdowns (Task 11-G) — all from the logged-in user's transactions =====
+  // Total CashBack earned across all cashback-* types/categories
+  const totalCashbackEarned = allTransactionsForChart
+    .filter((tx) => (tx.type && tx.type.startsWith('cashback')) || tx.category === 'cashback')
+    .reduce((sum, tx) => sum + Math.max(0, Number(tx.amount) || 0), 0)
+
+  // Total Gratification earned (type or category == 'gratification')
+  const totalGratificationEarned = allTransactionsForChart
+    .filter((tx) => tx.type === 'gratification' || tx.category === 'gratification')
+    .reduce((sum, tx) => sum + Math.max(0, Number(tx.amount) || 0), 0)
+
+  // Total referral earnings: residual + entry cashback plus any transaction whose
+  // description references referrals/indicações/residual.
+  const totalReferralEarnings = allTransactionsForChart
+    .filter((tx) => {
+      if (tx.type === 'cashback_residual') return true
+      const desc = String(tx.description || '').toLowerCase()
+      return /indica|residual|referral|rede|binary|binário/.test(desc)
+    })
+    .reduce((sum, tx) => sum + Math.max(0, Number(tx.amount) || 0), 0)
+
+  // Gratification chart data (monthly, last 6 months)
+  const gratificationData = buildGratificationData(allTransactionsForChart)
+
+  // Latest 5 gratification transactions (most recent first)
+  const latestGratificationTransactions = allTransactionsForChart
+    .filter((tx) => tx.type === 'gratification' || tx.category === 'gratification')
+    .slice()
+    .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+    .slice(0, 5)
+
+  // Pending invoices for the "Saldo para Faturas" section
+  const pendingInvoices = invoices.filter(
+    (inv) => inv.status === 'pending' || inv.status === 'overdue'
+  )
+  const totalPendingInvoices = pendingInvoices.reduce(
+    (sum, inv) => sum + Math.abs(Number(inv.amount) || 0),
+    0
+  )
+
   const balances = [
     { label: t('financial.balance.withdrawal'), value: user?.balanceWithdrawal || 0, icon: Wallet, color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400', gradient: 'from-emerald-500 to-emerald-600', change: 5 },
     { label: t('financial.balance.mobility'), value: user?.balanceMobility || 0, icon: Car, color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400', gradient: 'from-blue-500 to-blue-600', change: -2 },
@@ -410,7 +574,7 @@ export function FinancialPage() {
   const handleExportCSV = () => {
     const headers = 'Data,Descrição,Tipo,Valor,Status\n'
     const rows = (filtered.length > 0 ? filtered : allTransactionsForChart).map(tx =>
-      `${tx.createdAt || tx.date},"${tx.description}",${typeLabels[tx.type] || tx.type},${tx.amount / 100},${getStatusLabel(tx.status)}`
+      `${tx.createdAt || tx.date},"${tx.description}",${getTransactionLabel(tx) || tx.type},${tx.amount / 100},${getStatusLabel(tx.status)}`
     ).join('\n')
     const csv = headers + rows
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -826,6 +990,87 @@ export function FinancialPage() {
         </div>
       </motion.div>
 
+      {/* ===== Task 11-G: Lucros e Indicações (Profit & Referral Earnings Summary) ===== */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.07, duration: 0.3 }}
+      >
+        <Card className="shadow-sm bg-card border-emerald-200/60 dark:border-emerald-900/40">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+              <Coins className="h-5 w-5 text-emerald-600" />
+              Lucros e Indicações
+              <span className="text-[10px] font-normal text-muted-foreground">(ganho do usuário logado)</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {/* Total CashBack */}
+              <div className="rounded-lg border border-border bg-emerald-50/50 dark:bg-emerald-950/20 p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <HandCoins className="h-3.5 w-3.5 text-emerald-600" />
+                  <p className="text-[11px] text-muted-foreground font-medium">Total CashBack</p>
+                </div>
+                <p className="text-lg font-bold text-foreground">{formatCurrency(totalCashbackEarned)}</p>
+              </div>
+              {/* Total Gratification */}
+              <div className="rounded-lg border border-border bg-purple-50/50 dark:bg-purple-950/20 p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Gift className="h-3.5 w-3.5 text-purple-600" />
+                  <p className="text-[11px] text-muted-foreground font-medium">Total Gratificação</p>
+                </div>
+                <p className="text-lg font-bold text-foreground">{formatCurrency(totalGratificationEarned)}</p>
+              </div>
+              {/* Total Referral Earnings */}
+              <div className="rounded-lg border border-border bg-teal-50/50 dark:bg-teal-950/20 p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Network className="h-3.5 w-3.5 text-teal-600" />
+                  <p className="text-[11px] text-muted-foreground font-medium">Ganhos de Indicação</p>
+                </div>
+                <p className="text-lg font-bold text-foreground">{formatCurrency(totalReferralEarnings)}</p>
+              </div>
+              {/* Direct Referrals */}
+              <div className="rounded-lg border border-border bg-blue-50/50 dark:bg-blue-950/20 p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Users className="h-3.5 w-3.5 text-blue-600" />
+                  <p className="text-[11px] text-muted-foreground font-medium">Indicações Diretas</p>
+                </div>
+                {referralStatsLoading ? (
+                  <p className="text-lg font-bold text-foreground">—</p>
+                ) : (
+                  <p className="text-lg font-bold text-foreground">{referralStats?.totalDirect ?? 0}</p>
+                )}
+              </div>
+              {/* Active Direct Referrals */}
+              <div className="rounded-lg border border-border bg-amber-50/50 dark:bg-amber-950/20 p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-amber-600" />
+                  <p className="text-[11px] text-muted-foreground font-medium">Indicações Ativas</p>
+                </div>
+                {referralStatsLoading ? (
+                  <p className="text-lg font-bold text-foreground">—</p>
+                ) : (
+                  <p className="text-lg font-bold text-foreground">{referralStats?.activeDirect ?? 0}</p>
+                )}
+              </div>
+              {/* Total Network Size */}
+              <div className="rounded-lg border border-border bg-indigo-50/50 dark:bg-indigo-950/20 p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Network className="h-3.5 w-3.5 text-indigo-600" />
+                  <p className="text-[11px] text-muted-foreground font-medium">Tamanho da Rede</p>
+                </div>
+                {referralStatsLoading ? (
+                  <p className="text-lg font-bold text-foreground">—</p>
+                ) : (
+                  <p className="text-lg font-bold text-foreground">{referralStats?.totalNetwork ?? 0}</p>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* Pending Transactions Section with pulsing dot */}
       {pendingTransactions.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
@@ -910,6 +1155,89 @@ export function FinancialPage() {
         </Card>
       </motion.div>
 
+      {/* ===== Task 11-G: Saldo de Gratificação (Gratification Balance Chart) ===== */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.12, duration: 0.3 }}
+      >
+        <Card className="shadow-sm bg-card overflow-hidden">
+          <div className="h-1 bg-gradient-to-r from-purple-500 to-amber-500" />
+          <CardHeader className="pb-2">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                  <Gift className="h-5 w-5 text-purple-600" />
+                  Saldo de Gratificação
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">Gratificações recebidas pelo usuário logado</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[11px] text-muted-foreground font-medium">Saldo atual</p>
+                <p className="text-2xl font-bold text-purple-700 dark:text-purple-400">
+                  {formatCurrency(user?.balanceGratification || 0)}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  Total recebido: {formatCurrency(totalGratificationEarned)}
+                </p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[180px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={gratificationData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                  <defs>
+                    <linearGradient id="colorGratificacao" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.95} />
+                      <stop offset="100%" stopColor="#a78bfa" stopOpacity={0.5} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.3)" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                    tickFormatter={(value) => `R$${(value / 100000).toFixed(0)}k`}
+                  />
+                  <Tooltip
+                    formatter={(value: number) => [`R$ ${(value / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Gratificação']}
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar dataKey="gratificacao" name="Gratificação" fill="url(#colorGratificacao)" radius={[4, 4, 0, 0]} animationDuration={900} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            {/* Latest gratification transactions */}
+            {latestGratificationTransactions.length > 0 && (
+              <div className="mt-4 border-t border-border pt-3">
+                <p className="text-[11px] font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                  <Clock className="h-3 w-3" /> Últimas gratificações
+                </p>
+                <div className="space-y-1.5 max-h-32 overflow-y-auto custom-scrollbar">
+                  {latestGratificationTransactions.map((tx) => (
+                    <div key={tx.id} className="flex items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <div className="p-1 rounded bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400 shrink-0">
+                          <Gift className="h-3 w-3" />
+                        </div>
+                        <span className="text-foreground truncate">{tx.description || 'Gratificação'}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-muted-foreground">{formatDate(tx.createdAt || tx.date)}</span>
+                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                          +{formatCurrency(Math.abs(Number(tx.amount) || 0))}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* Balance Cards with gradient top border accents */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {balances.map((balance, i) => (
@@ -946,6 +1274,113 @@ export function FinancialPage() {
           </motion.div>
         ))}
       </div>
+
+      {/* ===== Task 11-G: Saldo para Faturas (Invoice / Bill Balance Section) ===== */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15, duration: 0.3 }}
+      >
+        <Card className="shadow-sm bg-card border-cyan-200/60 dark:border-cyan-900/40">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+              <Receipt className="h-5 w-5 text-cyan-600" />
+              Saldos para Faturas
+              <span className="text-[10px] font-normal text-muted-foreground">(faturas listadas do usuário logado)</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+              {/* Saldo para Faturas (balancePending) */}
+              <div className="rounded-lg border border-border bg-amber-50/50 dark:bg-amber-950/20 p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Receipt className="h-3.5 w-3.5 text-amber-600" />
+                  <p className="text-[11px] text-muted-foreground font-medium">{t('financial.balance.bills')}</p>
+                </div>
+                <p className="text-lg font-bold text-foreground">{formatCurrency(user?.balancePending || 0)}</p>
+                <p className="text-[10px] text-muted-foreground">Saldo reservado para contas/boletos</p>
+              </div>
+              {/* Saldo Pagamento Fatura (balancePaymentInvoice) */}
+              <div className="rounded-lg border border-border bg-cyan-50/50 dark:bg-cyan-950/20 p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <FileText className="h-3.5 w-3.5 text-cyan-600" />
+                  <p className="text-[11px] text-muted-foreground font-medium">{t('financial.balance.paymentInvoice')}</p>
+                </div>
+                <p className="text-lg font-bold text-foreground">{formatCurrency(user?.balancePaymentInvoice || 0)}</p>
+                <p className="text-[10px] text-muted-foreground">Saldo para pagamento de faturas</p>
+              </div>
+              {/* Total pending invoices */}
+              <div className="rounded-lg border border-border bg-rose-50/50 dark:bg-rose-950/20 p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Clock className="h-3.5 w-3.5 text-rose-600" />
+                  <p className="text-[11px] text-muted-foreground font-medium">Faturas Pendentes</p>
+                </div>
+                {invoicesLoading ? (
+                  <p className="text-lg font-bold text-foreground">—</p>
+                ) : (
+                  <>
+                    <p className="text-lg font-bold text-foreground">{formatCurrency(totalPendingInvoices)}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {pendingInvoices.length} fatura(s) em aberto
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Pending invoices list */}
+            <div className="border-t border-border pt-3">
+              <p className="text-[11px] font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                <FileText className="h-3 w-3" /> Faturas em aberto
+              </p>
+              {invoicesLoading ? (
+                <div className="space-y-2">
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} className="h-12 rounded-md bg-muted/50 animate-pulse" />
+                  ))}
+                </div>
+              ) : pendingInvoices.length === 0 ? (
+                <div className="text-center py-4 text-xs text-muted-foreground">
+                  <CheckCircle2 className="h-6 w-6 text-emerald-500 mx-auto mb-1" />
+                  Nenhuma fatura pendente. Todas as faturas estão em dia.
+                </div>
+              ) : (
+                <div className="space-y-1.5 max-h-44 overflow-y-auto custom-scrollbar">
+                  {pendingInvoices.slice(0, 6).map((inv) => (
+                    <div
+                      key={inv.id}
+                      className="flex items-center justify-between gap-2 p-2 rounded-md border border-border bg-muted/30 hover:bg-muted/60 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="p-1.5 rounded bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400 shrink-0">
+                          <Receipt className="h-3.5 w-3.5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-foreground truncate">
+                            {inv.description || inv.type || 'Fatura'}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {inv.dueDate ? `Venc.: ${formatDate(inv.dueDate)}` : ''}
+                            {inv.createdAt ? ` · Emitida: ${formatDate(inv.createdAt)}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs font-bold text-foreground">
+                          {formatCurrency(Math.abs(Number(inv.amount) || 0))}
+                        </p>
+                        <Badge className="text-[9px] bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-400">
+                          {getStatusLabel(inv.status)}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
 
       {/* Export Dialog */}
       <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
@@ -1169,16 +1604,17 @@ export function FinancialPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium text-foreground truncate">{tx.description}</span>
-                            {/* Color-coded type badge */}
+                            {/* Color-coded type badge — Task 11-G: prefers Portuguese category label */}
                             {(() => {
                               const badgeCfg = typeBadgeConfig[tx.type]
+                              const displayLabel = getTransactionLabel(tx) || tx.type
                               return badgeCfg ? (
                                 <Badge className={`text-[10px] shrink-0 hidden sm:inline-flex border ${badgeCfg.bg} ${badgeCfg.text} ${badgeCfg.border}`}>
-                                  {typeLabels[tx.type] || tx.type}
+                                  {displayLabel}
                                 </Badge>
                               ) : (
                                 <Badge variant="outline" className="text-[10px] shrink-0 hidden sm:inline-flex">
-                                  {typeLabels[tx.type] || tx.type}
+                                  {displayLabel}
                                 </Badge>
                               )
                             })()}

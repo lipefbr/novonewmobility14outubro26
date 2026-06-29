@@ -266,7 +266,7 @@ export function DashboardPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: 'easeOut' }}
       >
-        <Card className="border-0 shadow-xl overflow-hidden">
+        <Card className="border-0 shadow-xl overflow-hidden rounded-2xl">
           <div className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 relative">
             {/* Decorative pattern */}
             <div className="absolute inset-0 opacity-10" style={{
@@ -274,64 +274,17 @@ export function DashboardPage() {
             }} />
             <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent" />
             <CardContent className="p-5 md:p-6 relative">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div className="text-white">
-                  <div className="flex items-center gap-3 mb-1">
-                    <motion.span
-                      animate={{ rotate: [0, 14, -8, 14, -4, 10, 0] }}
-                      transition={{ delay: 0.5, duration: 0.8, ease: 'easeInOut' }}
-                      className="inline-block"
-                    >
-                      <GreetingIcon className={`h-7 w-7 ${greeting.iconClass}`} />
-                    </motion.span>
-                    <h2 className="text-xl md:text-2xl font-bold">
-                      {greeting.text}, {user?.name?.split(' ')[0] || 'Usuário'}!
-                    </h2>
-                  </div>
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-2 text-emerald-100 text-sm">
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="h-3.5 w-3.5" />
-                      {currentTime}
-                    </span>
-                    <span className="hidden sm:inline text-emerald-300">•</span>
-                    <span>{t('dashboard.since')}: {user?.createdAt ? formatDate(user.createdAt) : '-'}</span>
-                    <span className="hidden sm:inline text-emerald-300">•</span>
-                    <span className="font-medium text-white">{user?.createdAt ? timeSince(user.createdAt) : '-'}</span>
-                    <Badge variant="secondary" className="w-fit bg-white/20 text-white border-0 hover:bg-white/30">
-                      <Crown className="h-3 w-3 mr-1" />
-                      {getPlanName(currentPlan)}
-                    </Badge>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-2 bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/10">
-                  <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2">
-                    <Link2 className="h-4 w-4 text-emerald-200 shrink-0" />
-                    <span className="text-sm text-white truncate max-w-[200px] md:max-w-[260px]">
-                      🔗 {t('dashboard.referral.link')}:
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2">
-                    <span className="text-sm font-mono text-white font-medium truncate flex-1">
-                      {referralLink}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleCopyLink}
-                      className="h-7 px-2 text-emerald-200 hover:text-white hover:bg-white/15"
-                    >
-                      {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleShareLink}
-                      className="h-7 px-2 text-emerald-200 hover:text-white hover:bg-white/15"
-                    >
-                      <Share2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
+              <div className="flex items-center gap-3 text-white">
+                <motion.span
+                  animate={{ rotate: [0, 14, -8, 14, -4, 10, 0] }}
+                  transition={{ delay: 0.5, duration: 0.8, ease: 'easeInOut' }}
+                  className="inline-block"
+                >
+                  <GreetingIcon className={`h-7 w-7 ${greeting.iconClass}`} />
+                </motion.span>
+                <h2 className="text-xl md:text-2xl font-bold">
+                  {greeting.text}, {user?.name?.split(' ')[0] || 'Usuário'}!
+                </h2>
               </div>
             </CardContent>
           </div>
@@ -739,7 +692,7 @@ export function DashboardPage() {
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
             <DollarSign className="h-5 w-5 text-emerald-600" />
-            {t('dashboard.financial')}
+            Indicador
             <span className="flex-1 h-px bg-gradient-to-r from-emerald-400/60 to-transparent ml-2" />
           </h3>
           <Button
@@ -753,6 +706,45 @@ export function DashboardPage() {
           </Button>
         </div>
         <FinancialCards data={dashboardData} />
+
+        {/* ===== DETALHAMENTO DE GANHOS TABLE ===== */}
+        <Card className="mt-4 shadow-sm border border-emerald-100/50 dark:border-emerald-900/30 overflow-hidden">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-emerald-600" />
+              Detalhamento de Ganhos
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/30">
+                    <th className="text-left font-semibold text-muted-foreground px-4 py-2.5">Tipo</th>
+                    <th className="text-right font-semibold text-muted-foreground px-4 py-2.5">Quantidade</th>
+                    <th className="text-left font-semibold text-muted-foreground px-4 py-2.5 hidden sm:table-cell">Descrição</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { tipo: 'CashBack Entrada', qtd: dashboardData?.cashbackEntrada?.totalUsers ?? 0, desc: 'Membros na matriz de entrada (4×5)', cor: 'text-emerald-600' },
+                    { tipo: 'CashBack Residual', qtd: dashboardData?.cashbackResidual?.totalUsers ?? 0, desc: 'Membros na matriz residual (4×7)', cor: 'text-teal-600' },
+                    { tipo: 'CashBack Vendas', qtd: dashboardData?.cashbackVendas?.totalUsers ?? 0, desc: 'Membros na matriz de vendas (4×9)', cor: 'text-amber-600' },
+                    { tipo: 'Indicações Diretas', qtd: dashboardData?.directReferralCount ?? 0, desc: 'Pessoas indicadas diretamente por você', cor: 'text-emerald-600' },
+                    { tipo: 'Pontos de Carreira', qtd: dashboardData?.career?.points ?? user?.careerPoints ?? 0, desc: 'Pontos acumulados no plano de carreira', cor: 'text-amber-600' },
+                    { tipo: 'Rede Total', qtd: dashboardData?.network?.totalSize ?? 0, desc: 'Tamanho total da sua rede (todos os níveis)', cor: 'text-emerald-600' },
+                  ].map((row, i) => (
+                    <tr key={i} className={i % 2 === 0 ? 'bg-transparent' : 'bg-muted/20'}>
+                      <td className="px-4 py-2.5 font-medium text-foreground">{row.tipo}</td>
+                      <td className={`px-4 py-2.5 text-right font-bold ${row.cor}`}>{row.qtd.toLocaleString('pt-BR')}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground text-xs hidden sm:table-cell">{row.desc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Section Separator */}

@@ -22,7 +22,7 @@ const DEFAULT_PLANS_SEED = [
     id: 'blue3',
     code: 'blue3',
     name: 'Blue 3',
-    priceCents: 9700,
+    priceCents: 14900,
     description: 'Plano Blue 3 com acesso completo às matrizes e apps.',
     features: [
       'Cashback Entrada (matriz 4x5)',
@@ -45,9 +45,9 @@ const DEFAULT_PLANS_SEED = [
   {
     id: 'blue5',
     code: 'blue5',
-    name: 'Blue 5',
-    priceCents: 14700,
-    description: 'Plano Blue 5 premium com benefícios exclusivos.',
+    name: 'Blue 5 Premium',
+    priceCents: 99990,
+    description: 'Plano Blue 5 Premium com benefícios exclusivos.',
     features: [
       'Tudo do plano Blue 3',
       'Gratificações exclusivas',

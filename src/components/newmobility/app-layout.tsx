@@ -74,7 +74,7 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   const { user, setMobileSidebarOpen, updateUser, activePage, darkMode, toggleDarkMode, setActivePage, setAdminViewAsUser } = useStore()
   const { t } = useTranslation()
-  const [searchOpen, setSearchOpen] = useState(false)
+  // searchOpen state removed — header search lupa was removed per user request
 
   const isAdmin = user?.role === 'admin'
 
@@ -120,33 +120,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <span className="font-medium text-foreground truncate">{t(sidebarLabelKeys[activePage]) || 'Dashboard'}</span>
                 </div>
 
-                <AnimatePresence>
-                  {searchOpen ? (
-                    <motion.div
-                      initial={{ width: 0, opacity: 0 }}
-                      animate={{ width: 200, opacity: 1 }}
-                      exit={{ width: 0, opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="hidden lg:block overflow-hidden"
-                    >
-                      <Input
-                        placeholder="Buscar..."
-                        className="h-8 text-xs"
-                        autoFocus
-                        onBlur={() => setSearchOpen(false)}
-                      />
-                    </motion.div>
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="hidden lg:flex h-8 w-8 text-muted-foreground hover:text-foreground"
-                      onClick={() => setSearchOpen(true)}
-                    >
-                      <Search className="h-4 w-4" />
-                    </Button>
-                  )}
-                </AnimatePresence>
+                {/* Search lupa removed per user request — sidebar search is sufficient */}
               </div>
 
               <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -164,14 +138,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                     <span className="md:hidden">Admin</span>
                   </Button>
                 )}
-
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="lg:hidden h-9 w-9 text-muted-foreground hover:text-foreground"
-                >
-                  <Search className="h-4.5 w-4.5" />
-                </Button>
 
                 <NotificationPanel />
 
