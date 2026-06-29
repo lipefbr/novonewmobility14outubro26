@@ -3597,3 +3597,37 @@ Unresolved Issues / Next Steps:
 - Tab switching via headless automation is flaky (Radix UI tab needs real pointer events), but works fine in real browser interaction — verified via keyboard arrow navigation + VLM screenshots
 - Original pending tasks from prior sessions still open: fix homepage dashboard infinite loading + filter to logged-in user; remove all fictional/fake data; make purchase matrix visible; create mobile apps
 - The new page is user-facing only — admin doesn't have a separate admin view (uses same page, which is correct since admins also have their own network)
+
+---
+Task ID: 10
+Agent: Main Agent
+Task: Fix admin sidebar menu readability — user reported admin menu was too light/invisible ("ta tudo praticaamente sem da pra ver nada do admin"), user side was fine
+
+Work Log:
+- Investigated via agent-browser: logged in as admin@newmobility.com (password: 123456) via "Entrar como Admin" button on login page
+- Discovered ROOT CAUSE: Tailwind CSS 4 was NOT generating `slate-*` color utility rules. Verified via getComputedStyle: only `--color-slate-500` existed in compiled CSS (1 shade), while `--color-gray-*` had all 11 shades (50-950) generated
+- The admin-layout.tsx used `bg-slate-900` for the sidebar background, `text-slate-300/400` for menu text, `border-slate-800` for borders — NONE of these generated CSS rules → sidebar background was transparent → showed the light `bg-slate-50` parent → white sidebar with white text = INVISIBLE menu items
+- The user sidebar (sidebar.tsx) used `bg-gradient-to-b from-gray-950 to-gray-900` + `text-white/60` — these WORKED because gray-* shades ARE generated. This is why the user side was "normal"
+- Also discovered a SECOND bug: /api/admin/users route was failing with "Unknown field `balancePaymentInvoice`" because the Prisma Client was stale (schema had the field but the generated client didn't). This caused the admin Users table to show headers + "53 usuários" count but ZERO data rows (the findMany threw, catch left users=[], but count succeeded)
+- Fixed admin-layout.tsx: replaced all `slate-*` → `gray-*` (bg-slate→bg-gray, text-slate→text-gray, border-slate→border-gray, via-slate→via-gray) — 34 replacements. Careful to NOT match "translate" (which contains "slate" as a substring) by only replacing prefixed patterns (bg-/text-/border-/via-)
+- Fixed admin-page.tsx: replaced `dark:bg-slate-900/40` → `dark:bg-gray-900/40` and `dark:hover:bg-slate-900/70` → `dark:hover:bg-gray-900/70` (2 real slate usages; rest were "translate" false positives)
+- Fixed admin-reports-panel.tsx: replaced `text-slate-600` → `text-gray-600`, `bg-slate-50 dark:bg-slate-950/30` → `bg-gray-50 dark:bg-gray-950/30`, `bg-slate-400` → `bg-gray-400` (3 replacements)
+- Ran `npx prisma generate` to regenerate the Prisma Client from the current schema — this made `balancePaymentInvoice` available to the query
+- Restarted dev server (required because db.ts caches the PrismaClient instance in globalThis)
+- Verified via agent-browser: admin sidebar is now DARK (navy) with readable white/light-gray text; all 9 menu items visible (Dashboard, Usuários, Financeiro, Planos & Preços, Gratificações, Vouchers, Jogos & Apostas, Voltar para Usuário, Sair)
+- Verified Users page: table now shows real user data rows (Test User, zanutim 15, zanutim 14, etc.) instead of empty body
+- Verified admin users API returns 200 with full user objects including `balancePaymentInvoice: 0`
+
+Stage Summary:
+- ✅ Admin sidebar menu is now DARK and readable (matches user sidebar style using gray-* palette)
+- ✅ Admin Users table now shows real user data (Prisma client regenerated, balancePaymentInvoice field recognized)
+- ✅ All 3 admin component files fixed (admin-layout.tsx, admin-page.tsx, admin-reports-panel.tsx)
+- ✅ Lint: 0 new errors (13 pre-existing no-require-imports errors in root .js files, unchanged)
+- ✅ Pushed to GitHub (commit 73fad44)
+
+Root Cause Analysis:
+- Tailwind CSS 4's JIT engine only generates color utilities for shades that are explicitly used in scanned source files. The `@theme inline` block in globals.css explicitly defines `--color-emerald-*` (all 11 shades) but does NOT define slate/gray/zinc/etc. Those come from Tailwind's default theme. However, Tailwind 4 only generates the specific shades it finds used in the codebase. Since the user sidebar (sidebar.tsx) uses `gray-950` and `gray-900`, those shades (and all others used elsewhere) are generated. But `slate-900` was only used in admin-layout.tsx, and for some reason Tailwind 4's scanner didn't pick it up (possibly because admin-layout.tsx is a large file or the scanner has a limit). Only `slate-500` (used in a few places) was generated. The fix (switching to gray-*) ensures the colors are generated since gray-* is already used throughout the codebase.
+
+Unresolved Issues:
+- The dev server process dies after ~30-40 seconds when started via `setsid bash -c 'exec bun run dev' &` in a bash tool call. The original server (started by the environment) ran stably for 30+ minutes. This is a process management issue with the sandbox, not a code issue. The server works fine while running — all API and page tests pass.
+- The original pending tasks from prior sessions remain: fix homepage dashboard infinite loading + filter to logged-in user; remove all fictional/fake data; create mobile apps
