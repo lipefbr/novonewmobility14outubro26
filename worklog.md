@@ -3530,3 +3530,70 @@ Notes for next phase:
 - The matrix visualization shows "8/4" for Nível 1 when a user has 8 direct referrals but the matrix width is 4 — this is visually confusing (occupancy > 100%) but reflects reality (more referrals than matrix slots). A future enhancement could cap the display or show "overflow" indicators.
 - The MOCK_MESSAGES in games-page.tsx (line 923) is still fictitious chat data — could be removed or replaced with real chat integration in a future phase.
 - The onlineUsers=24 hardcoded value in games-page.tsx ChatSection is also fictitious — should be replaced with real online count via WebSocket.
+
+---
+Task ID: 9
+Agent: Main Agent
+Task: Add "Minha Rede" menu tab with 3 sub-options (Direta, Residual, Vendas) showing the user's network organized as a pyramid/tree matrix per type, then push to git
+
+Work Log:
+- Researched existing sidebar structure (`src/components/newmobility/sidebar.tsx`) — flat MenuItem list, no nested submenus, so the 3 sub-options (Direta/Residual/Vendas) must live INSIDE the page component as Tabs
+- Researched MatrixVisualization component — confirmed it only shows capacity/filled numbers per level (HARDCODED mock), NOT actual people. The cashback APIs (`/api/cashback/{entrada,residual,vendas}`) also only return per-level aggregate counts, no member names
+- Found existing reusable tree pattern in `network-modal.tsx` (TreeNode interface + recursive TreeNodeView) but it was hardcoded with mockTreeData. The real `/api/referrals/tree` endpoint returns nested users with names via User.referredById recursion
+- Added 'minha-rede' to PageKey union in `src/lib/store.ts`
+- Added sidebar menu item in `src/components/newmobility/sidebar.tsx` (Network icon, group financial, isNew badge) right after 'referrals'
+- Added 'minha-rede' label key to sidebarLabelKeys Record in `src/components/newmobility/app-layout.tsx`
+- Added 'sidebar.minha-rede' translations in all 5 languages (PT: "Minha Rede", EN: "My Network", ES: "Mi Red", FR: "Mon Réseau", IT: "La Mia Rete") in `src/lib/i18n.ts`
+- Added minha-rede entry to SidebarSearch keywords (network, árvore, pirâmide, matriz, direta, residual, vendas) in `src/components/newmobility/search/search-dialog.tsx`
+- Created new API endpoint `src/app/api/minha-rede/[type]/route.ts`:
+  * Next.js 16 dynamic route with `params: Promise<{type:string}>` (must be awaited)
+  * Walks User.referredById recursively up to the matrix's maxDepth (5/7/9)
+  * Returns {rootUser, tree[], levels[], totalUsers, directReferrals, maxMatrixSize, label}
+  * Each tree node has id, name, email, plan, isActive, referralCode, profileImage, stars, createdAt, level, children[]
+  * Per-level stats: level, percentage, capacity, currentUsers, fillPercentage
+- Created new page `src/components/newmobility/minha-rede/minha-rede-page.tsx` (~600 lines):
+  * 3 Tabs (Direta / Residual / Vendas) using shadcn Tabs
+  * Per-tab description banner with gradient color matching matrix type
+  * 4 summary cards: total members, direct referrals (N1), active members, vagas preenchidas
+  * Per-level distribution strip (capacity / fill / progress bar) — visual pyramid header
+  * PyramidTree visualization:
+    - Root user card with crown + "VOCÊ" badge + amber ring
+    - Recursive PyramidLevel renders children in horizontal flex-wrap rows
+    - Each member card: avatar with initials, name, plan badge, level badge (N1..N9), active status dot, indicados count
+    - Expand/collapse buttons ("Ver N" / "Recolher") with vertical connector line + dashed border container for children
+    - Search box (filters by name/email), Expand All / Collapse All buttons, Zoom slider (50-150%)
+    - Empty state with referral code hint when network is empty
+    - Selected-member detail panel with email, referral code, join date, stars, direct count
+  * Loading skeletons, error state with AlertCircle
+- Registered MinhaRedePage in `src/app/page.tsx` (case 'minha-rede')
+- Restored Neon PostgreSQL DATABASE_URL in .env (was reverted to old SQLite URL, breaking all DB calls)
+- Verified with agent-browser + VLM:
+  * Login as carlos.silva@email.com works
+  * "Minha Rede" menu visible in sidebar with NOVO badge, between "Meus Indicados" and "CashBack"
+  * Page loads with title "Minha Rede" + NOVO badge and subtitle "Visualize sua rede em formato de pirâmide para cada matriz"
+  * Direta tab: green gradient banner "Matriz de Entrada 4×5 — 5 níveis, até 1.364 vagas"
+  * Vendas tab: amber gradient banner "Matriz de Vendas 4×9 — 9 níveis, até 349.524 vagas"
+  * Summary cards show REAL data (22 total, 8 direct, 15 active, 22/capacity fill %)
+  * Pyramid tree shows real people: Carlos Eduardo Silva (root, CE avatar), Ana Paula Santos (N1, AP avatar), Fernanda Oliveira (N1, 3 indicados), João Pedro Almeida (N1, 3 indicados), Lucas Martins / Rafael Gomes / Diego Rocha (N2 under Fernanda), Julia Ferreira / Patricia Alves / Beatriz Carvalho (N2 under João Pedro)
+  * Expand/collapse buttons visible, level indicators N1/N2 visible, plan badges visible
+  * All 3 API endpoints return 200 OK with real member data
+  * Footer properly sticky at bottom of viewport
+- Resolved git rebase conflict: remote had intentionally removed .env from tracking (security best practice); respected that decision by `git rm --cached .env` to keep my commit clean while preserving local .env on disk for dev
+- Pushed commit 7b2da76 to origin/main (8 files changed, 903 insertions)
+
+Stage Summary:
+- ✅ New "Minha Rede" menu item in sidebar (between Meus Indicados and CashBack, with NOVO badge)
+- ✅ 3 sub-tabs (Direta/Residual/Vendas) inside the page, each showing a real pyramid tree of the user's network
+- ✅ Real member names with avatars, plan badges, level indicators (N1..N9), active status, and direct-referral counts
+- ✅ Root user card with crown + VOCÊ badge; expandable/collapsible tree with search + zoom controls
+- ✅ Per-level distribution strip with capacity / fill % / progress bar
+- ✅ 4 summary cards with real network stats (22 total members, 8 direct, 15 active)
+- ✅ API endpoint /api/minha-rede/[type] returns real per-level member data for all 3 matrix types
+- ✅ Pushed to GitHub (commit 7b2da76)
+- ✅ Local .env preserved (untracked) so dev server keeps working
+
+Unresolved Issues / Next Steps:
+- Lint shows 15 pre-existing `no-require-imports` errors in root .js utility files + src/lib/db.ts (not from this task)
+- Tab switching via headless automation is flaky (Radix UI tab needs real pointer events), but works fine in real browser interaction — verified via keyboard arrow navigation + VLM screenshots
+- Original pending tasks from prior sessions still open: fix homepage dashboard infinite loading + filter to logged-in user; remove all fictional/fake data; make purchase matrix visible; create mobile apps
+- The new page is user-facing only — admin doesn't have a separate admin view (uses same page, which is correct since admins also have their own network)
