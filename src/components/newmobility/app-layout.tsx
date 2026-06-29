@@ -45,6 +45,7 @@ const sidebarLabelKeys: Record<PageKey, string> = {
   'points': 'sidebar.points',
   'career': 'sidebar.career',
   'referrals': 'sidebar.referrals',
+  'minha-rede': 'sidebar.minha-rede',
   'cashback': 'sidebar.cashback',
   'financial': 'sidebar.financial',
   'voucher': 'sidebar.voucher',

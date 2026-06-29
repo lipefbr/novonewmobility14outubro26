@@ -32,6 +32,7 @@ import {
   Ticket,
   Headphones,
   Command,
+  Network,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -57,6 +58,7 @@ const searchItems: SearchItem[] = [
   { key: 'points', labelKey: 'sidebar.points', icon: Star, groupKey: 'sidebar.group.financial', keywords: ['pontos', 'points', 'pontuação'] },
   { key: 'career', labelKey: 'sidebar.career', icon: TrendingUp, groupKey: 'sidebar.group.financial', keywords: ['carreira', 'career', 'rank', 'plano'] },
   { key: 'referrals', labelKey: 'sidebar.referrals', icon: Users, groupKey: 'sidebar.group.financial', keywords: ['indicações', 'referrals', 'rede', 'indicados'] },
+  { key: 'minha-rede', labelKey: 'sidebar.minha-rede', icon: Network, groupKey: 'sidebar.group.financial', keywords: ['minha rede', 'network', 'árvore', 'pirâmide', 'matriz', 'direta', 'residual', 'vendas'] },
   { key: 'cashback', labelKey: 'sidebar.cashback', icon: DollarSign, groupKey: 'sidebar.group.financial', keywords: ['cashback', 'cb', 'dinheiro', 'ganho'] },
   { key: 'financial', labelKey: 'sidebar.financial', icon: Wallet, groupKey: 'sidebar.group.financial', keywords: ['financeiro', 'financial', 'saldo', 'saque', 'extrato'] },
   { key: 'voucher', labelKey: 'sidebar.voucher', icon: Ticket, groupKey: 'sidebar.group.financial', keywords: ['voucher', 'vale', 'cupom'] },

@@ -29,6 +29,7 @@ export type PageKey =
   | 'leaderboard'
   | 'marketplace'
   | 'services'
+  | 'minha-rede'
 
 export type AuthView = 'login' | 'register'
 

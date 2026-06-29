@@ -32,6 +32,7 @@ import { EventsPage } from '@/components/newmobility/events/events-page'
 import { LeaderboardPage } from '@/components/newmobility/leaderboard/leaderboard-page'
 import { MarketplacePage } from '@/components/newmobility/marketplace/marketplace-page'
 import { ServicesPage } from '@/components/newmobility/services/services-page'
+import { MinhaRedePage } from '@/components/newmobility/minha-rede/minha-rede-page'
 
 function PageContent() {
   const { activePage, user, setActivePage } = useStore()
@@ -111,6 +112,8 @@ function PageContent() {
       return <MarketplacePage />
     case 'services':
       return <ServicesPage />
+    case 'minha-rede':
+      return <MinhaRedePage />
     default:
       return <DashboardPage />
   }

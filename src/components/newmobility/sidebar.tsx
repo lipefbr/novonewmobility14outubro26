@@ -33,6 +33,7 @@ import {
   Flame,
   ShoppingBag,
   Wrench,
+  Network,
 } from 'lucide-react'
 import { useStore, type PageKey } from '@/lib/store'
 import { cn, getPlanName, formatCurrency } from '@/lib/utils'
@@ -78,6 +79,7 @@ const allMenuItems: MenuItem[] = [
   { key: 'points', labelKey: 'sidebar.points', icon: Star, groupKey: 'sidebar.group.financial' },
   { key: 'career', labelKey: 'sidebar.career', icon: TrendingUp, groupKey: 'sidebar.group.financial' },
   { key: 'referrals', labelKey: 'sidebar.referrals', icon: Users, groupKey: 'sidebar.group.financial', shortcut: '⌘3' },
+  { key: 'minha-rede', labelKey: 'sidebar.minha-rede', icon: Network, groupKey: 'sidebar.group.financial', isNew: true },
   { key: 'cashback', labelKey: 'sidebar.cashback', icon: DollarSign, groupKey: 'sidebar.group.financial', shortcut: '⌘4' },
   { key: 'financial', labelKey: 'sidebar.financial', icon: Wallet, groupKey: 'sidebar.group.financial', shortcut: '⌘5' },
   { key: 'voucher', labelKey: 'sidebar.voucher', icon: Ticket, groupKey: 'sidebar.group.financial' },
