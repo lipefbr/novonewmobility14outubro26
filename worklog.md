@@ -4024,3 +4024,47 @@ Stage Summary:
 - All financial data is user-specific via `user.id` from the store (Task 11-G §6 ✓)
 - InvoiceViewer tab no longer shows mock data — uses real invoices from the API
 - 0 new lint/TypeScript errors introduced
+
+---
+Task ID: 11 (Main Agent - Phase Summary)
+Agent: Main Agent
+Task: Major multi-area fixes per user's extensive request (90+ items) — Dashboard, Cashback, Profile, Plans, Financial, Ranking, Simulator, Career, Minha Rede, Voucher
+
+Work Log:
+- Dispatched 8 parallel subagents (Tasks 11-A through 11-H) to handle different areas simultaneously
+- Task 11-A (Dashboard): Removed search lupa from header, simplified greeting card (removed time/user-since/plan-badge/referral-link block), renamed Financeiro→Indicador, made icons round (rounded-full), added Detalhamento de Ganhos table, filtered userDistribution to logged-in user's downline, fixed activity feed to use real API data, fixed weekly referrals count
+- Task 11-B (Cashback): Added 3 type-switcher buttons at top, real logged-in user data, removed "pico 53% do pico" nomenclature, reorganized into clean Cards, fully responsive
+- Task 11-C (Profile): Fixed photo saving, made plan/graduation dynamic, made fields editable, fixed bank/emergency contact saving, added mobile vertical menu, made forms responsive
+- Task 11-D (Plans): Fixed Level 4=R$12.800,00 and Level 5=R$51.200,00, fixed monthly cost=R$999,90, added Comparação de Planos, simplified Mensalidade Recorrente
+- Task 11-E (Ranking+Voucher): Removed Ganhos column, added daily login points, fixed R$ NaN voucher bug (hardened formatCurrency)
+- Task 11-F (Simulator+Career): Fixed auto-update with debounced recalculation, added all plans from API, formatted career numbers with pt-BR separators, redesigned mobile timeline
+- Task 11-G (Financial): Added gratification balance chart, invoice/bill balance section, profit/referral earnings summary, translated all categories to Portuguese
+- Task 11-H (Minha Rede): Fixed mobile responsiveness, added non-payers indicator chart for Direta/Vendas tabs
+- Main agent verified and fixed issues subagents missed: actually removed search lupa from header code, actually simplified greeting card (subagent had not done it), actually renamed section to "Indicador" (was still using t('dashboard.financial')), actually added Detalhamento de Ganhos table, added rounded-2xl to greeting card
+- Browser-verified: greeting shows only "Boa noite, Carlos!", no search lupa in header, rounded card corners
+- Pushed commit 0c39a88 to origin/main (7 files changed, 1122 insertions, 233 deletions — note: many more files were changed by subagents but committed in their own commits before the final push)
+
+Stage Summary:
+- ✅ Dashboard: search lupa removed, greeting simplified, Indicador section, round icons, Detalhamento table, real user data
+- ✅ Cashback: 3 type buttons at top, real data, no "pico" labels, organized in cards, responsive
+- ✅ Profile: photo saving, editable fields, bank/emergency saving, mobile menu, responsive
+- ✅ Plans: correct potentials (N4=12800, N5=51200), real monthly cost, Comparação de Planos, simplified mensalidade
+- ✅ Financial: gratification chart, invoice balance, profit summary, Portuguese categories
+- ✅ Ranking: removed Ganhos, login points working
+- ✅ Voucher: NaN bug fixed
+- ✅ Simulator: auto-update, all plans
+- ✅ Career: pt-BR number formatting, mobile responsive
+- ✅ Minha Rede: mobile responsive, non-payers indicator
+- ✅ Pushed to GitHub (commit 0c39a88)
+
+Unresolved Issues / Next Steps:
+- KYC/CNH upload with document photos and verification blocking — NOT YET DONE (complex feature requiring schema changes + file upload + admin verification flow)
+- Asaas payment integration (boleto/pix for plans and withdrawals) — NOT YET DONE (requires API key config + webhook + payment flow)
+- Admin: user type editing, 3 buttons (entrar/ver/editar), admin permission system, edit log — NOT YET DONE
+- Faturas: menu "pagar faturas", automatic debit option, 5-day notification before blocking — NOT YET DONE
+- Gratificação/Metas: per-user-type access, admin config per cadastro type, points-or-indications choice — NOT YET DONE
+- Announcements: targeted by user type, popup in backoffice — NOT YET DONE
+- Reports: segmented data export, Ganhos por Matriz/Bloco de App — NOT YET DONE
+- Config: Asaas config, webhook, logo change — NOT YET DONE
+- Mobile apps: NOT YET STARTED
+- These items require significant additional development and should be prioritized in the next session(s)
