@@ -462,7 +462,7 @@ export function MatrixVisualization({ type, onUpgradeClick }: MatrixVisualizatio
                       >
                         {lvl.filled.toLocaleString('pt-BR')}
                         <span className="block text-[10px] font-normal text-muted-foreground">
-                          {lvl.locked ? 'bloqueado' : `${membersPct}% do pico`}
+                          {lvl.locked ? 'bloqueado' : `${membersPct}% do máximo`}
                         </span>
                       </TableCell>
                       <TableCell className="text-right hidden sm:table-cell text-muted-foreground">
