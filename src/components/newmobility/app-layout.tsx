@@ -56,6 +56,8 @@ const sidebarLabelKeys: Record<PageKey, string> = {
   'reports': 'sidebar.reports',
   'support': 'sidebar.support',
   'admin': 'sidebar.admin',
+  'billing': 'sidebar.billing',
+  'kyc': 'sidebar.kyc',
 }
 
 // Mobile bottom navigation items

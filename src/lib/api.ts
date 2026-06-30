@@ -214,6 +214,13 @@ export const vouchersApi = {
       method: 'POST',
       body: JSON.stringify({ userId, code }),
     }),
+  // Task 14-E: redeem an already-owned voucher by its database ID. Credits
+  // the voucher amount to balanceShopping (non-withdrawable per spec §7).
+  redeemById: (userId: string, voucherId: string) =>
+    apiFetch<any>(`/vouchers/${voucherId}/redeem`, {
+      method: 'POST',
+      body: JSON.stringify({ userId }),
+    }),
 }
 
 // Invoices
@@ -397,8 +404,8 @@ export const reportsApi = {
 
 // Announcements
 export const announcementApi = {
-  getActive: () =>
-    apiFetch<any>('/announcements'),
+  getActive: (userId?: string) =>
+    apiFetch<any>(`/announcements${userId ? `?userId=${encodeURIComponent(userId)}` : ''}`),
 }
 
 // Seed

@@ -9,7 +9,8 @@ import { Progress } from '@/components/ui/progress'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatDate } from '@/lib/utils'
+import { formatBRL } from '@/lib/format'
 import {
   Ticket, Check, Clock, Car, ShoppingBag, Gift, Copy, Check as CheckIcon,
   Pill, UtensilsCrossed, ShoppingCart, Plus, QrCode, Filter, Timer, Sparkles,
@@ -182,6 +183,10 @@ export function VoucherPage() {
   const [redeemCode, setRedeemCode] = useState('')
   const [isRedeeming, setIsRedeeming] = useState(false)
 
+  // Track which voucher is currently being redeemed via the "Resgatar"
+  // (redeem-by-id) button on each active voucher card.
+  const [redeemingVoucherId, setRedeemingVoucherId] = useState<string | null>(null)
+
   const fetchVouchers = useCallback(async () => {
     if (!user?.id) {
       setLoading(false)
@@ -282,7 +287,7 @@ export function VoucherPage() {
       const result = await vouchersApi.redeem(user.id, code)
       toast({
         title: 'Voucher resgatado! 🎉',
-        description: `${formatCurrency(result?.creditedAmount || 0)} creditado em ${result?.balanceName || 'sua conta'}.`,
+        description: `${formatBRL(result?.creditedAmount || 0)} creditado em ${result?.balanceName || 'sua conta'}.`,
       })
       setRedeemDialogOpen(false)
       setRedeemCode('')
@@ -352,17 +357,61 @@ export function VoucherPage() {
 
     toast({
       title: 'Voucher comprado com sucesso! 🎉',
-      description: `Voucher ${categoryConfig[selectedCategory].label} de ${formatCurrency(selectedAmount)} adicionado à sua conta. Código: ${code}`,
+      description: `Voucher ${categoryConfig[selectedCategory].label} de ${formatBRL(selectedAmount)} adicionado à sua conta. Código: ${code}`,
     })
   }
 
   const handleShareVoucher = (code: string, amount: number) => {
-    const text = `🎁 Voucher NewMobility: ${formatCurrency(amount)} - Código: ${code}`
+    const text = `🎁 Voucher NewMobility: ${formatBRL(amount)} - Código: ${code}`
     if (navigator.share) {
       navigator.share({ title: 'Voucher NewMobility', text })
     } else {
       navigator.clipboard.writeText(text)
       toast({ title: 'Copiado!', description: 'Link do voucher copiado' })
+    }
+  }
+
+  /**
+   * Redeem a voucher owned by the current user by its database ID.
+   *
+   * Task 14-E: hits POST /api/vouchers/[id]/redeem — marks the voucher as
+   * used (isUsed=true, usedAt=now) and credits the amount to the user's
+   * `balanceShopping` wallet (non-withdrawable per spec §7). On success
+   * the local voucher list is refreshed so the redeemed voucher moves to
+   * the "used" tab and the user's balance store is updated.
+   */
+  const handleRedeemById = async (voucherId: string) => {
+    if (!user?.id) return
+    setRedeemingVoucherId(voucherId)
+    try {
+      const result = await vouchersApi.redeemById(user.id, voucherId)
+      toast({
+        title: 'Voucher resgatado! 🎉',
+        description: `${formatBRL(result?.creditedAmount || 0)} creditado em ${result?.balanceName || 'Saldo Compras'}.`,
+      })
+      // Refresh voucher list so the redeemed voucher moves to "used".
+      fetchVouchers()
+      // Update user balances in the global store so other pages reflect the change.
+      if (result?.user) {
+        updateUser({
+          balanceShopping: result.user.balanceShopping,
+          balanceWithdrawal: result.user.balanceWithdrawal,
+          balanceMobility: result.user.balanceMobility,
+          balanceFood: result.user.balanceFood,
+          balancePharmacy: result.user.balancePharmacy,
+          balanceGratification: result.user.balanceGratification,
+          balancePaymentInvoice: result.user.balancePaymentInvoice,
+        })
+      }
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : 'Não foi possível resgatar o voucher.'
+      toast({
+        title: 'Erro ao resgatar voucher',
+        description: message,
+      })
+    } finally {
+      setRedeemingVoucherId(null)
     }
   }
 
@@ -700,7 +749,7 @@ export function VoucherPage() {
                   <span className="text-sm text-muted-foreground">Valor</span>
                 </div>
                 <span className="text-xl font-bold text-foreground">
-                  {formatCurrency(selectedAmount)}
+                  {formatBRL(selectedAmount)}
                 </span>
               </div>
 
@@ -755,7 +804,7 @@ export function VoucherPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           { icon: Ticket, label: 'TOTAL', value: vouchers.length, color: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
-          { icon: Check, label: 'ATIVOS', value: activeVouchers.length, color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400', sub: formatCurrency(totalActiveValue) },
+          { icon: Check, label: 'ATIVOS', value: activeVouchers.length, color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400', sub: formatBRL(totalActiveValue) },
           { icon: Clock, label: 'USADOS', value: usedVouchers.length, color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' },
           { icon: Filter, label: 'EXPIRADOS', value: expiredVouchers.length, color: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' },
         ].map((stat, i) => (
@@ -840,7 +889,7 @@ export function VoucherPage() {
                 {renderQRPattern(featuredVoucher.id, featuredVoucher.category, true)}
                 <div className="flex-1">
                   <p className="text-xs text-muted-foreground font-medium">Maior Voucher Ativo</p>
-                  <p className="text-3xl font-bold text-foreground mt-1">{formatCurrency(featuredVoucher.amount)}</p>
+                  <p className="text-3xl font-bold text-foreground mt-1">{formatBRL(featuredVoucher.amount)}</p>
                   <p className="text-sm font-mono text-muted-foreground mt-1">{featuredVoucher.code}</p>
                   <div className="flex items-center gap-3 mt-2">
                     <Badge variant="outline" className="text-[10px] gap-1">
@@ -853,7 +902,7 @@ export function VoucherPage() {
                     <div className="mt-3">
                       <div className="flex items-center justify-between text-[10px] mb-1">
                         <span className="text-muted-foreground">Valor utilizado</span>
-                        <span className="font-medium text-foreground">{formatCurrency(featuredVoucher.usedAmount)} / {formatCurrency(featuredVoucher.amount)}</span>
+                        <span className="font-medium text-foreground">{formatBRL(featuredVoucher.usedAmount)} / {formatBRL(featuredVoucher.amount)}</span>
                       </div>
                       <div className="h-2 bg-muted rounded-full overflow-hidden">
                         <motion.div
@@ -868,11 +917,29 @@ export function VoucherPage() {
                   )}
                 </div>
               </div>
-              <div className="flex gap-2 mt-4 pt-4 border-t border-border">
+              <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-border">
+                <Button
+                  size="sm"
+                  className="flex-1 min-w-[120px] h-9 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                  onClick={() => handleRedeemById(featuredVoucher.id)}
+                  disabled={redeemingVoucherId === featuredVoucher.id}
+                >
+                  {redeemingVoucherId === featuredVoucher.id ? (
+                    <>
+                      <span className="h-3.5 w-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                      Resgatando...
+                    </>
+                  ) : (
+                    <>
+                      <Wallet className="h-3.5 w-3.5" />
+                      Resgatar Voucher
+                    </>
+                  )}
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="flex-1 h-9 text-xs gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                  className="flex-1 min-w-[120px] h-9 text-xs gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
                   onClick={() => handleCopy(featuredVoucher.code, featuredVoucher.id)}
                 >
                   {copiedId === featuredVoucher.id ? <CheckIcon className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
@@ -881,7 +948,7 @@ export function VoucherPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="flex-1 h-9 text-xs gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                  className="flex-1 min-w-[120px] h-9 text-xs gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
                   onClick={() => handleShareVoucher(featuredVoucher.code, featuredVoucher.amount)}
                 >
                   <Share2 className="h-3.5 w-3.5" />
@@ -1097,7 +1164,7 @@ export function VoucherPage() {
                           )}
                         </div>
 
-                        <p className="text-lg font-bold text-foreground">{formatCurrency(voucher.amount)}</p>
+                        <p className="text-lg font-bold text-foreground">{formatBRL(voucher.amount)}</p>
                         <p className="text-xs font-mono text-muted-foreground mt-0.5">{voucher.code}</p>
                         <div className="flex items-center justify-between mt-1">
                           <p className="text-[10px] text-muted-foreground">
@@ -1117,7 +1184,7 @@ export function VoucherPage() {
                           <div className="mt-2">
                             <div className="flex items-center justify-between text-[9px] mb-0.5">
                               <span className="text-muted-foreground">Utilizado</span>
-                              <span className="font-medium text-foreground">{formatCurrency(voucher.usedAmount)}</span>
+                              <span className="font-medium text-foreground">{formatBRL(voucher.usedAmount)}</span>
                             </div>
                             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                               <motion.div
@@ -1138,11 +1205,29 @@ export function VoucherPage() {
                     </div>
 
                     {isActive && (
-                      <div className="flex gap-2 mt-3 pt-3 border-t border-border">
+                      <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-border">
+                        <Button
+                          size="sm"
+                          className="flex-1 min-w-[110px] h-8 text-xs gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                          onClick={() => handleRedeemById(voucher.id)}
+                          disabled={redeemingVoucherId === voucher.id}
+                        >
+                          {redeemingVoucherId === voucher.id ? (
+                            <>
+                              <span className="h-3 w-3 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                              Resgatando...
+                            </>
+                          ) : (
+                            <>
+                              <Wallet className="h-3 w-3" />
+                              Resgatar
+                            </>
+                          )}
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          className="flex-1 h-8 text-xs gap-1 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                          className="flex-1 min-w-[110px] h-8 text-xs gap-1 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
                           onClick={() => handleCopy(voucher.code, voucher.id)}
                         >
                           {copiedId === voucher.id ? <CheckIcon className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
@@ -1151,7 +1236,7 @@ export function VoucherPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="flex-1 h-8 text-xs gap-1 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                          className="flex-1 min-w-[110px] h-8 text-xs gap-1 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
                           onClick={() => handleShareVoucher(voucher.code, voucher.amount)}
                         >
                           <Share2 className="h-3 w-3" />
@@ -1170,10 +1255,14 @@ export function VoucherPage() {
       {filtered.length === 0 && !loading && (
         <EmptyState
           icon={Ticket}
-          title="Nenhum voucher ativo"
-          description="Adicione um voucher com o código recebido ou compre um novo voucher para aproveitar descontos em mobilidade, farmácia, refeição e compras!"
-          actionLabel="Adicionar Voucher"
-          onAction={handleOpenRedeem}
+          title={vouchers.length === 0 ? 'Você ainda não tem vouchers' : 'Nenhum voucher nesta categoria'}
+          description={
+            vouchers.length === 0
+              ? 'Adicione um voucher com o código recebido ou compre um novo voucher para aproveitar descontos em mobilidade, farmácia, refeição e compras!'
+              : 'Tente mudar os filtros de categoria ou status para encontrar seus vouchers.'
+          }
+          actionLabel={vouchers.length === 0 ? 'Adicionar Voucher' : undefined}
+          onAction={vouchers.length === 0 ? handleOpenRedeem : undefined}
         />
       )}
 

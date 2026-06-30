@@ -34,6 +34,9 @@ import {
   ShoppingBag,
   Wrench,
   Network,
+  FileText,
+  ShieldCheck,
+  type LucideIcon,
 } from 'lucide-react'
 import { useStore, type PageKey } from '@/lib/store'
 import { cn, getPlanName, formatCurrency } from '@/lib/utils'
@@ -68,6 +71,8 @@ const allMenuItems: MenuItem[] = [
   { key: 'apps', labelKey: 'sidebar.apps', icon: Smartphone, groupKey: 'sidebar.group.main', shortcut: '⌘2' },
   { key: 'bank', labelKey: 'sidebar.bank', icon: Building2, groupKey: 'sidebar.group.main' },
   { key: 'profile', labelKey: 'sidebar.profile', icon: User, groupKey: 'sidebar.group.main' },
+  { key: 'kyc', labelKey: 'sidebar.kyc', icon: ShieldCheck, groupKey: 'sidebar.group.main', isNew: true },
+  { key: 'billing', labelKey: 'sidebar.billing', icon: FileText, groupKey: 'sidebar.group.main', isNew: true },
   { key: 'myplan', labelKey: 'sidebar.myplan', icon: CreditCard, groupKey: 'sidebar.group.main' },
   { key: 'purchases', labelKey: 'sidebar.purchases', icon: ShoppingCart, groupKey: 'sidebar.group.main' },
   { key: 'marketplace', labelKey: 'sidebar.marketplace', icon: ShoppingBag, groupKey: 'sidebar.group.main', isNew: true },

@@ -492,18 +492,18 @@ export function DashboardPage() {
             <CardContent>
               <div className="grid grid-cols-3 gap-3">
                 <div className="text-center p-3 bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-950/30 dark:to-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-900/50">
-                  <Users className="h-6 w-6 text-emerald-600 mx-auto mb-1" />
-                  <p className="text-xl font-bold text-foreground">{networkStats.totalSize.toLocaleString('pt-BR')}</p>
+                  <Users className="h-5 w-5 sm:h-6 sm:w-6 text-emerald-600 mx-auto mb-1" />
+                  <p className="text-lg sm:text-xl font-bold text-foreground">{networkStats.totalSize.toLocaleString('pt-BR')}</p>
                   <p className="text-[10px] text-muted-foreground font-medium">{t('dashboard.network.total')}</p>
                 </div>
                 <div className="text-center p-3 bg-gradient-to-br from-teal-50 to-teal-100/50 dark:from-teal-950/30 dark:to-teal-900/20 rounded-xl border border-teal-100 dark:border-teal-900/50">
-                  <TrendingUp className="h-6 w-6 text-teal-600 mx-auto mb-1" />
-                  <p className="text-xl font-bold text-foreground">{networkStats.activeMembers}</p>
+                  <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6 text-teal-600 mx-auto mb-1" />
+                  <p className="text-lg sm:text-xl font-bold text-foreground">{networkStats.activeMembers}</p>
                   <p className="text-[10px] text-muted-foreground font-medium">{t('dashboard.network.active')}</p>
                 </div>
                 <div className="text-center p-3 bg-gradient-to-br from-emerald-50 to-teal-100/50 dark:from-emerald-950/30 dark:to-teal-900/20 rounded-xl border border-emerald-100 dark:border-emerald-900/50">
-                  <UserPlus className="h-6 w-6 text-emerald-600 mx-auto mb-1" />
-                  <p className="text-xl font-bold text-foreground">{networkStats.newReferrals}</p>
+                  <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-emerald-600 mx-auto mb-1" />
+                  <p className="text-lg sm:text-xl font-bold text-foreground">{networkStats.newReferrals}</p>
                   <p className="text-[10px] text-muted-foreground font-medium">{t('dashboard.network.new')}</p>
                 </div>
               </div>

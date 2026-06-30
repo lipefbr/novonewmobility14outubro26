@@ -33,6 +33,11 @@ import { toast } from 'sonner'
 import { AdminReportsPanel } from '@/components/newmobility/admin/admin-reports-panel'
 import { AdminWithdrawalsPanel } from '@/components/newmobility/admin/admin-withdrawals-panel'
 import { AsaasConfigPanel } from '@/components/newmobility/admin/asaas-config-panel'
+import AdminKycPanel from '@/components/newmobility/admin/admin-kyc-panel'
+import { AdminAuditPanel } from '@/components/newmobility/admin/admin-audit-panel'
+import { AdminPermissionsPanel } from '@/components/newmobility/admin/admin-permissions-panel'
+import { AdminChallengesPanel } from '@/components/newmobility/admin/admin-challenges-panel'
+import { AdminUsersPanel } from '@/components/newmobility/admin/admin-users-panel'
 
 // ---------- Interfaces ----------
 
@@ -366,6 +371,10 @@ const adminPageToTab: Record<string, string> = {
   'streak-rewards': 'streak-rewards',
   events: 'events',
   faq: 'faq',
+  kyc: 'kyc',
+  audit: 'audit',
+  permissions: 'permissions',
+  challenges: 'challenges',
 }
 
 export function AdminPage() {
@@ -5006,6 +5015,26 @@ export function AdminPage() {
         {/* Asaas Config Tab — gateway configuration (Task 12-B) */}
         <TabsContent value="asaas" className="mt-4 space-y-4">
           <AsaasConfigPanel />
+        </TabsContent>
+
+        {/* KYC Approval Tab — Task 14-A */}
+        <TabsContent value="kyc" className="mt-4 space-y-4">
+          <AdminKycPanel />
+        </TabsContent>
+
+        {/* Audit Log Tab — Task 14-D */}
+        <TabsContent value="audit" className="mt-4 space-y-4">
+          <AdminAuditPanel />
+        </TabsContent>
+
+        {/* Permissions Matrix Tab — Task 14-D */}
+        <TabsContent value="permissions" className="mt-4 space-y-4">
+          <AdminPermissionsPanel />
+        </TabsContent>
+
+        {/* Challenges Tab — Task 14-G */}
+        <TabsContent value="challenges" className="mt-4 space-y-4">
+          <AdminChallengesPanel />
         </TabsContent>
       </Tabs>
 

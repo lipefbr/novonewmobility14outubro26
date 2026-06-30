@@ -31,6 +31,10 @@ import {
   HelpCircle,
   Banknote,
   Landmark,
+  ShieldCheck,
+  ScrollText,
+  Lock,
+  Target,
 } from 'lucide-react'
 import { useStore, type AdminPageKey } from '@/lib/store'
 import { cn } from '@/lib/utils'
@@ -66,8 +70,12 @@ const adminNavItems: AdminNavItem[] = [
   { key: 'bets', label: 'Jogos & Apostas', icon: Gamepad2, description: 'Gerenciar apostas e jogos', group: 'main' },
   { key: 'matrices', label: 'Matrizes MMN', icon: Network, description: 'Visualizar matrizes de indicações', group: 'main' },
   { key: 'support', label: 'Tickets de Suporte', icon: Headphones, description: 'Atendimento ao cliente', group: 'main' },
+  { key: 'kyc', label: 'Aprovação KYC', icon: ShieldCheck, description: 'Validar documentos de usuários', group: 'main' },
+  { key: 'challenges', label: 'Desafios', icon: Target, description: 'Criar desafios semanais e mensais', group: 'main' },
   { key: 'announcements', label: 'Anúncios', icon: Megaphone, description: 'Comunicados da plataforma', group: 'system' },
   { key: 'reports', label: 'Relatórios', icon: BarChart3, description: 'Analytics e relatórios', group: 'system' },
+  { key: 'audit', label: 'Logs de Auditoria', icon: ScrollText, description: 'Histórico de ações dos admins', group: 'system' },
+  { key: 'permissions', label: 'Permissões', icon: Lock, description: 'Matriz de permissões por papel', group: 'system' },
   { key: 'achievements', label: 'Conquistas', icon: Trophy, description: 'Gerenciar conquistas e prêmios', group: 'system' },
   { key: 'career-plans', label: 'Plano de Carreira', icon: Crown, description: 'Níveis e bônus de carreira', group: 'system' },
   { key: 'streak-rewards', label: 'Recompensas de Sequência', icon: Flame, description: 'Prêmios por dias consecutivos', group: 'system' },

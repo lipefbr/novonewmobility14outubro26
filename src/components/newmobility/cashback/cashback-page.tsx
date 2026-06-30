@@ -512,7 +512,7 @@ export function CashbackPage() {
       </motion.div>
 
       {/* Period Filter */}
-      <div className="flex items-center gap-2">
+      <div className="grid grid-cols-3 md:flex md:items-center gap-2">
         {[
           { key: '7d' as Period, label: t('cashback.period.7d') },
           { key: '30d' as Period, label: t('cashback.period.30d') },
@@ -522,7 +522,7 @@ export function CashbackPage() {
             key={p.key}
             variant={period === p.key ? 'default' : 'outline'}
             size="sm"
-            className={cn('text-xs min-h-[36px] h-9 px-3 sm:h-7 sm:px-2', period === p.key && 'bg-emerald-600 hover:bg-emerald-700 text-white')}
+            className={cn('text-xs min-h-[40px] h-10 md:min-h-[36px] md:h-9 px-3 md:px-2 w-full md:w-auto', period === p.key && 'bg-emerald-600 hover:bg-emerald-700 text-white')}
             onClick={() => setPeriod(p.key)}
           >
             {p.label}

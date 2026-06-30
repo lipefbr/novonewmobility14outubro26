@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 import { getAsaasConfig, verifyWebhookToken } from '@/lib/asaas'
+import { generateVoucherForUser } from '@/lib/voucher'
 
 /**
  * POST /api/asaas/webhook
@@ -203,6 +204,47 @@ async function handlePaymentPaid(paymentId: string, _payment: any): Promise<void
 
     // 3. Plan activation + balance credit
     await applyPlanAndBalanceForInvoice(invoice)
+
+    // 4. Task 14-E: auto-generate a plan-bonus voucher sized to the user's
+    //    userType when a plan-type invoice is paid. Mirrors the same flow
+    //    in /api/billing/pay/[invoiceId]. Best-effort — never fails the
+    //    webhook processing. The notification lets the user know their
+    //    voucher is available in the Voucher tab.
+    if (invoice.type?.startsWith('plan_')) {
+      try {
+        const freshUser = await prisma.user.findUnique({
+          where: { id: invoice.userId },
+          select: { id: true, userType: true },
+        })
+        if (freshUser) {
+          const userType = freshUser.userType || 'usuario'
+          await generateVoucherForUser(freshUser.id, userType, {
+            type: 'plan_bonus',
+          })
+          try {
+            await prisma.notification.create({
+              data: {
+                userId: freshUser.id,
+                title: 'Bônus de plano liberado! 🎁',
+                message:
+                  'Você recebeu um novo voucher por assinar/atualizar seu plano. Confira na aba Vouchers!',
+                type: 'voucher',
+              },
+            })
+          } catch (notifErr) {
+            console.warn(
+              '[Asaas webhook] could not create plan-bonus notification:',
+              notifErr
+            )
+          }
+        }
+      } catch (voucherErr) {
+        console.error(
+          '[Asaas webhook] NON-CRITICAL: failed to create plan-bonus voucher:',
+          voucherErr
+        )
+      }
+    }
   }
 }
 

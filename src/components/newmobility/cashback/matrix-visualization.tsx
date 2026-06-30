@@ -193,6 +193,14 @@ export function MatrixVisualization({ type, onUpgradeClick }: MatrixVisualizatio
   const { user } = useStore()
   const [config, setConfig] = useState(FALLBACK_MATRIX_CONFIG[type])
 
+  // ---------- Task 14-F: matrix blocking state ----------
+  // True when the user has reached the earning ceiling for this matrix
+  // (entrada R$96.500 / residual R$750.000 / vendas 1.000 vendas).
+  // When blocked, the UI shows an overlay banner at the top.
+  const [isBlocked, setIsBlocked] = useState(false)
+  const [blockPct, setBlockPct] = useState(0)
+  const [blockThresholdLabel, setBlockThresholdLabel] = useState<string>('')
+
   // Whether the user's plan gates this matrix. Only `entrada` is gated
   // by Blue 3 / Premium 5 per client spec §1.1 + §3 — residual (4x7)
   // and vendas (4x9) matrices are unlocked at Blue 3 already.
@@ -216,6 +224,9 @@ export function MatrixVisualization({ type, onUpgradeClick }: MatrixVisualizatio
   // not useful for a per-level "members" display, so we override it
   // with the dashboard's `byLevel` data.
   // Falls back to FALLBACK_MATRIX_CONFIG on any error.
+  //
+  // Task 14-F: also fetches /api/network/matrix-progress to know
+  // whether the matrix is blocked (earning ceiling reached).
   useEffect(() => {
     if (!user?.id) return
     let cancelled = false
@@ -227,8 +238,25 @@ export function MatrixVisualization({ type, onUpgradeClick }: MatrixVisualizatio
       fetch(`/api/dashboard?userId=${user.id}`)
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
-    ]).then(([cashbackData, dashboardData]) => {
+      // Task 14-F: matrix blocking progress
+      fetch(`/api/network/matrix-progress?userId=${user.id}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+    ]).then(([cashbackData, dashboardData, matrixProgressData]) => {
       if (cancelled || !cashbackData || !Array.isArray(cashbackData.levels)) return
+
+      // Task 14-F: extract blocking info for THIS matrix type.
+      const blockEntry = Array.isArray(matrixProgressData?.progress)
+        ? matrixProgressData.progress.find(
+            (p: { type: string; isBlocked: boolean; pct: number; thresholdLabel: string }) =>
+              p.type === type,
+          )
+        : null
+      setIsBlocked(!!blockEntry?.isBlocked)
+      setBlockPct(typeof blockEntry?.pct === 'number' ? blockEntry.pct : 0)
+      setBlockThresholdLabel(
+        typeof blockEntry?.thresholdLabel === 'string' ? blockEntry.thresholdLabel : '',
+      )
 
       // The dashboard's per-matrix byLevel map has the REAL network
       // descendant count at each level (1-indexed).
@@ -288,6 +316,45 @@ export function MatrixVisualization({ type, onUpgradeClick }: MatrixVisualizatio
 
   return (
     <div className="space-y-5">
+      {/* Task 14-F: matrix blocking overlay banner.
+          Shown when the user has reached the earning ceiling for this
+          matrix type (entrada R$96.500 / residual R$750.000 / vendas 1.000 vendas).
+          Renders ABOVE everything else so the user immediately sees the
+          matrix is blocked. */}
+      {isBlocked && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <Card className="border-rose-300 dark:border-rose-800 bg-gradient-to-r from-rose-50 to-rose-100 dark:from-rose-950/40 dark:to-rose-900/20 shadow-sm">
+            <CardContent className="p-3 sm:p-4 flex items-start gap-3">
+              <div className="p-2 rounded-full bg-rose-500 text-white shrink-0">
+                <Lock className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-rose-700 dark:text-rose-300">
+                  Matriz Bloqueada — Limite atingido
+                </p>
+                <p className="text-xs text-rose-600/80 dark:text-rose-400/80 mt-0.5">
+                  Você atingiu o teto de ganhos desta matriz
+                  {blockThresholdLabel ? ` (${blockThresholdLabel})` : ''}.
+                  Continue promovendo sua rede nas outras matrizes para continuar
+                  acumulando cashback.
+                </p>
+                {/* Progress to threshold (will be 100% when blocked) */}
+                <div className="mt-2 h-1.5 w-full rounded-full bg-rose-200 dark:bg-rose-900/40 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-rose-500"
+                    style={{ width: `${Math.min(blockPct, 100)}%` }}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
       {/* Total Members Highlight Card */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}

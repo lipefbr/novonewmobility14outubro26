@@ -30,6 +30,8 @@ export type PageKey =
   | 'marketplace'
   | 'services'
   | 'minha-rede'
+  | 'billing'
+  | 'kyc'
 
 export type AuthView = 'login' | 'register'
 
@@ -54,6 +56,10 @@ export type AdminPageKey =
   | 'faq'
   | 'withdrawals-asaas'
   | 'asaas'
+  | 'kyc'
+  | 'audit'
+  | 'permissions'
+  | 'challenges'
 
 export interface UserData {
   id: string

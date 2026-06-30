@@ -21,7 +21,6 @@ import { ProfilePage } from '@/components/newmobility/profile/profile-page'
 import { PortalLojista } from '@/components/newmobility/portals/portal-lojista'
 import { PortalGamer } from '@/components/newmobility/portals/portal-gamer'
 import { PortalSportBet } from '@/components/newmobility/portals/portal-sportbet'
-import { AppsPage } from '@/components/newmobility/portals/apps-page'
 import { BankPage } from '@/components/newmobility/portals/bank-page'
 import { PurchasesPage } from '@/components/newmobility/portals/purchases-page'
 import { AdminPage } from '@/components/newmobility/admin/admin-page'
@@ -33,6 +32,9 @@ import { LeaderboardPage } from '@/components/newmobility/leaderboard/leaderboar
 import { MarketplacePage } from '@/components/newmobility/marketplace/marketplace-page'
 import { ServicesPage } from '@/components/newmobility/services/services-page'
 import { MinhaRedePage } from '@/components/newmobility/minha-rede/minha-rede-page'
+import { BillingPage } from '@/components/newmobility/billing/billing-page'
+import KycPage from '@/components/newmobility/kyc/kyc-page'
+import { TalkMobiPage } from '@/components/newmobility/talkmobi/talkmobi-page'
 
 function PageContent() {
   const { activePage, user, setActivePage } = useStore()
@@ -65,7 +67,8 @@ function PageContent() {
     case 'dashboard':
       return <DashboardPage />
     case 'apps':
-      return <AppsPage />
+      // Apps tab renders the TalkMobi + Telemedicina plans page
+      return <TalkMobiPage />
     case 'bank':
       return <BankPage />
     case 'profile':
@@ -114,6 +117,10 @@ function PageContent() {
       return <ServicesPage />
     case 'minha-rede':
       return <MinhaRedePage />
+    case 'billing':
+      return <BillingPage />
+    case 'kyc':
+      return <KycPage />
     default:
       return <DashboardPage />
   }

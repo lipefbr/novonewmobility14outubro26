@@ -1,5 +1,7 @@
 import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { hashPassword, generateReferralCode, success, error, sanitizeUser } from '@/lib/api-utils'
+import { generateVoucherForUser } from '@/lib/voucher'
 
 function generateId(): string {
   // Generate a cuid-like ID
@@ -571,6 +573,40 @@ export async function POST(request: Request) {
     } catch (voucherErr) {
       console.error('[Register] NON-CRITICAL: Error creating welcome voucher:', voucherErr)
       // Continue - voucher is optional
+    }
+
+    // --- Task 14-E: signup_bonus voucher, sized to the user's "gratuito"
+    //     plan-type at registration time. Sends a Notification to alert the
+    //     new user. Best-effort — failure here never blocks registration. ---
+    try {
+      const signupVoucher = await generateVoucherForUser(user.id, 'gratuito')
+      console.log(
+        '[Register] Signup-bonus voucher created:',
+        signupVoucher.code,
+        '(R$',
+        (signupVoucher.amount / 100).toFixed(2),
+        ') for user',
+        userId
+      )
+      try {
+        await prisma.notification.create({
+          data: {
+            userId: user.id,
+            title: 'Bônus de boas-vindas! 🎁',
+            message:
+              'Você recebeu um voucher de R$ 5,00. Confira seus vouchers na aba Voucher e use em compras no app!',
+            type: 'voucher',
+          },
+        })
+      } catch (notifErr) {
+        console.warn('[Register] could not create welcome-bonus notification:', notifErr)
+      }
+    } catch (signupVoucherErr) {
+      console.error(
+        '[Register] NON-CRITICAL: Error creating signup_bonus voucher:',
+        signupVoucherErr
+      )
+      // Continue — voucher is optional
     }
 
     // --- Return success with user data ---
