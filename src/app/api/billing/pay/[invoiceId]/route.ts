@@ -109,6 +109,70 @@ export async function POST(
           voucherErr
         )
       }
+
+      // --- Monthly recurrence: generate next month's invoice ---
+      // When a plan invoice is paid, automatically create the next month's
+      // invoice (due in ~30 days). This ensures the user always has a pending
+      // invoice to pay every month — the billing cycle never breaks.
+      try {
+        const nextDueDate = new Date(now)
+        nextDueDate.setDate(nextDueDate.getDate() + 30)
+
+        // Avoid duplicate: only create if no pending plan invoice exists
+        // with a dueDate in the future for this user.
+        const existingPending = await prisma.invoice.findFirst({
+          where: {
+            userId: invoice.userId,
+            status: 'pending',
+            type: invoice.type,
+            dueDate: { gt: now },
+          },
+          select: { id: true },
+        })
+
+        if (!existingPending) {
+          const nextInvoice = await prisma.invoice.create({
+            data: {
+              userId: invoice.userId,
+              amount: invoice.amount,
+              type: invoice.type,
+              status: 'pending',
+              dueDate: nextDueDate,
+              description: invoice.description
+                ? `${invoice.description} (renovação mensal)`
+                : 'Renovação mensal de plano',
+            },
+          })
+
+          // Notify the user about the new invoice
+          try {
+            await prisma.notification.create({
+              data: {
+                userId: invoice.userId,
+                title: 'Nova fatura mensal gerada 📅',
+                message: `Sua próxima fatura de renovação (${new Intl.NumberFormat(
+                  'pt-BR',
+                  { style: 'currency', currency: 'BRL' }
+                ).format(invoice.amount / 100)}) vence em ${nextDueDate.toLocaleDateString(
+                  'pt-BR'
+                )}. Mantenha o pagamento em dia para evitar bloqueios.`,
+                type: 'invoice',
+              },
+            })
+          } catch (notifErr) {
+            console.warn('[billing/pay] could not create renewal notification:', notifErr)
+          }
+
+          console.log(
+            `[billing/pay] Created next monthly invoice ${nextInvoice.id} for user ${invoice.userId}, due ${nextDueDate.toISOString()}`
+          )
+        }
+      } catch (renewErr) {
+        console.error(
+          '[billing/pay] NON-CRITICAL: failed to create next monthly invoice:',
+          renewErr
+        )
+      }
     }
 
     return success({ invoice: updated })

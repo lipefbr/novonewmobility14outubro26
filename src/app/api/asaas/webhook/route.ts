@@ -244,6 +244,75 @@ async function handlePaymentPaid(paymentId: string, _payment: any): Promise<void
           voucherErr
         )
       }
+
+      // --- Monthly recurrence: generate next month's invoice ---
+      // When a plan invoice is paid via Asaas, automatically create the next
+      // month's invoice (due in ~30 days). This ensures the billing cycle
+      // never breaks — the user always has a pending invoice to pay monthly.
+      if (invoice.type?.startsWith('plan_')) {
+        try {
+          const now = new Date()
+          const nextDueDate = new Date(now)
+          nextDueDate.setDate(nextDueDate.getDate() + 30)
+
+          // Avoid duplicate: only create if no pending plan invoice exists
+          // with a dueDate in the future for this user.
+          const existingPending = await prisma.invoice.findFirst({
+            where: {
+              userId: invoice.userId,
+              status: 'pending',
+              type: invoice.type,
+              dueDate: { gt: now },
+            },
+            select: { id: true },
+          })
+
+          if (!existingPending) {
+            const nextInvoice = await prisma.invoice.create({
+              data: {
+                userId: invoice.userId,
+                amount: invoice.amount,
+                type: invoice.type,
+                status: 'pending',
+                dueDate: nextDueDate,
+                description: invoice.description
+                  ? `${invoice.description} (renovação mensal)`
+                  : 'Renovação mensal de plano',
+              },
+            })
+
+            try {
+              await prisma.notification.create({
+                data: {
+                  userId: invoice.userId,
+                  title: 'Nova fatura mensal gerada 📅',
+                  message: `Sua próxima fatura de renovação (${new Intl.NumberFormat(
+                    'pt-BR',
+                    { style: 'currency', currency: 'BRL' }
+                  ).format(invoice.amount / 100)}) vence em ${nextDueDate.toLocaleDateString(
+                    'pt-BR'
+                  )}. Mantenha o pagamento em dia para evitar bloqueios.`,
+                  type: 'invoice',
+                },
+              })
+            } catch (notifErr) {
+              console.warn(
+                '[Asaas webhook] could not create renewal notification:',
+                notifErr
+              )
+            }
+
+            console.log(
+              `[Asaas webhook] Created next monthly invoice ${nextInvoice.id} for user ${invoice.userId}, due ${nextDueDate.toISOString()}`
+            )
+          }
+        } catch (renewErr) {
+          console.error(
+            '[Asaas webhook] NON-CRITICAL: failed to create next monthly invoice:',
+            renewErr
+          )
+        }
+      }
     }
   }
 }

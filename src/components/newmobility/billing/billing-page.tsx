@@ -19,6 +19,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Calendar,
+  CalendarClock,
   CheckCircle2,
   Clock,
   CreditCard,
@@ -263,6 +264,25 @@ export function BillingPage() {
         <p className="text-sm text-muted-foreground">
           Gerencie suas cobranças e evite bloqueios
         </p>
+      </div>
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Monthly recurrence info banner                                   */}
+      {/* ---------------------------------------------------------------- */}
+      <div className="rounded-2xl border border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-950/30 p-4 flex items-start gap-3">
+        <div className="p-2 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 shrink-0">
+          <CalendarClock className="h-5 w-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">
+            Cobrança mensal recorrente
+          </p>
+          <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-0.5">
+            Sua fatura é gerada todo mês e <strong>renova automaticamente</strong> após o pagamento.
+            Você precisa pagar a fatura mensalmente para manter sua conta ativa e evitar bloqueios.
+            Ao pagar, a próxima fatura é gerada com vencimento em 30 dias.
+          </p>
+        </div>
       </div>
 
       {/* ---------------------------------------------------------------- */}

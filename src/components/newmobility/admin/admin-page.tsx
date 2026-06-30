@@ -4076,7 +4076,7 @@ export function AdminPage() {
                               <p className="text-[10px] text-muted-foreground">{v.userEmail || ''}</p>
                             </td>
                             <td className="p-3"><Badge className={getVoucherTypeBadge(v.type)}>{getVoucherTypeLabel(v.type)}</Badge></td>
-                            <td className="p-3"><span className="text-sm font-semibold text-foreground">{formatCurrency(v.amountInCents)}</span></td>
+                            <td className="p-3"><span className="text-sm font-semibold text-foreground">{formatCurrency(Number(v.amount ?? v.amountInCents ?? 0))}</span></td>
                             <td className="p-3"><Badge className={statusInfo.badge}>{statusInfo.label}</Badge></td>
                             <td className="p-3 hidden md:table-cell">
                               <span className="text-xs text-muted-foreground">
