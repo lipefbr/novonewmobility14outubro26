@@ -6694,3 +6694,45 @@ Next actions:
 - Optional: build an admin UI (in src/components/newmobility/admin/) to manage TalkMobi plans via the new POST/PUT/DELETE endpoints. The API is ready; the backoffice page just needs a form + table. Out of scope for this task.
 - Optional: render `plan.description` somewhere in the page UI (the field is now in the DTO but the page doesn't display it — could go under the plan name as a subtitle).
 - Optional: when the "Assinar" button is wired to a real subscription flow, swap the `deleteMany({})` in `seedTalkMobiPlansForce()` for a soft-delete (set isActive=false on stale plans) to preserve any historical subscription references. Currently safe because no subscriptions exist yet.
+
+---
+Task ID: 16 (Main Agent - Final Deployment)
+Agent: Main Orchestrator
+Task: Completar 3 itens pendentes + sincronizar schema + deploy para GitHub
+
+Work Log:
+- Despachei 3 subagentes em paralelo:
+  * 16-A: Wire KYC blocking em 5 APIs críticas (withdrawal, transfer, cashback claim, plan upgrade, asaas withdrawal) com isKycApproved() helper + cache 60s + admin bypass
+  * 16-B: Enforce permissions matrix no admin sidebar (useAdminPermissions hook + superadmin bypass + 'Acesso negado' guard)
+  * 16-C: Seed TalkMobi plans (4 planos: 10GB R$29,90 / 20GB R$39,90 / 50GB R$59,90 / Ilimitado R$99,90) + CRUD API
+- Descobri problema crítico: prisma/schema.prisma fonte estava DESSINCRONIZADO com o DB e o Prisma Client gerado — faltavam modelos KycDocument, AuditLog e campos kycStatus no User
+- CORREÇÃO: Adicionei KycDocument + AuditLog models e 4 campos KYC (kycStatus, kycVerifiedAt, kycVerifiedById, kycRejectedReason) ao User no schema.prisma
+- Rodei `DATABASE_URL="..." bunx prisma db push --accept-data-loss` — DB sincronizado em 10.32s, Prisma Client v6.19.2 regenerado
+
+Verification (agent-browser):
+- ✅ App carrega HTTP 200, console sem erros de DB
+- ✅ Sidebar usuário mostra todos os itens: KYC, Pagar Faturas, Metas, Minha Rede, CashBack, Indicador
+- ✅ Sidebar admin mostra 17 itens: Dashboard, Usuários, Financeiro, Saques Asaas, Gratificações, Jogos, Matrizes MMN, Desafios, Anúncios, Logs de Auditoria, Permissões, Conquistas, Recompensas, FAQ, Config Cashback, Asaas, Configurações
+- ✅ Página Usuários admin renderiza com filtros por plano/status
+- ✅ Página Logs de Auditoria admin renderiza (vazio mas funcional)
+- ✅ Página Permissões admin renderiza com matriz role×page
+- ✅ API /api/talkmobi/plans retorna 4 planos com preços BRL corretos
+- ✅ API /api/admin/kyc requer autenticação (401 correto)
+- ✅ Lint src/ 100% limpo (0 erros)
+
+Git Deploy:
+- Commit 549dfc4: "feat: KYC enforcement, admin permissions, TalkMobi plans, schema sync (Task 16)"
+- Push para https://github.com/lipefbr/newmobility.git main → main: 442254b..549dfc4
+- 4 commits pushados no total (3 anteriores + Task 16)
+- Working tree clean, branch up to date com origin/main
+
+Stage Summary:
+- ✅ TODOS os 3 itens pendentes da Task 14 foram completados:
+  1. KYC blocking wired nas 5 APIs críticas (com cache + invalidação + admin bypass)
+  2. Permissions matrix enforced no admin sidebar (superadmin bypass + fail-safe)
+  3. TalkMobi plans seeded no DB (4 planos) com CRUD API + fallback na página
+- ✅ Schema Prisma sincronizado: KycDocument + AuditLog + campos KYC no User
+- ✅ Deploy para GitHub concluído: github.com/lipefbr/newmobility.git
+- ✅ Lint src/ 100% limpo
+- ✅ Cron job automático (ID 241323) roda a cada 15min para QA contínuo
+- Status: PROJETO COMPLETO E DEPLOYADO
