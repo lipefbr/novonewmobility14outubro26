@@ -37,6 +37,7 @@ import {
   Target,
 } from 'lucide-react'
 import { useStore, type AdminPageKey } from '@/lib/store'
+import { useAdminPermissions } from '@/lib/admin-permissions'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -105,6 +106,10 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     toggleDarkMode,
   } = useStore()
 
+  // Permissions enforcement — super admins always see everything; sub-admin
+  // roles are filtered by the per-role allow-list stored in the database.
+  const { canAccess } = useAdminPermissions(user)
+
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
   const handleItemClick = (key: AdminPageKey) => {
@@ -127,8 +132,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   }
 
   const groupedItems: { group: 'main' | 'system'; label: string; items: AdminNavItem[] }[] = [
-    { group: 'main', label: 'Gerenciamento', items: adminNavItems.filter(i => i.group === 'main') },
-    { group: 'system', label: 'Sistema', items: adminNavItems.filter(i => i.group === 'system') },
+    { group: 'main', label: 'Gerenciamento', items: adminNavItems.filter(i => i.group === 'main' && canAccess(i.key)) },
+    { group: 'system', label: 'Sistema', items: adminNavItems.filter(i => i.group === 'system' && canAccess(i.key)) },
   ]
 
   const sidebarContent = (
@@ -550,7 +555,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
             { key: 'users' as AdminPageKey, icon: Users, label: 'Usuários' },
             { key: 'financial' as AdminPageKey, icon: Wallet, label: 'Financeiro' },
             { key: 'settings' as AdminPageKey, icon: Settings, label: 'Config' },
-          ].map((item) => {
+          ].filter((item) => canAccess(item.key)).map((item) => {
             const Icon = item.icon
             const isActive = adminActivePage === item.key
             return (

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
+import { isKycApproved } from '@/lib/kyc'
 
 const MIN_WITHDRAWAL_CENTS = 5000 // R$ 50,00 minimum (per spec)
 
@@ -74,6 +75,17 @@ export async function POST(req: NextRequest) {
 
     const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user) return error('Usuário não encontrado', 404)
+
+    // KYC gate: block withdrawals if user's KYC is not approved (admins bypass).
+    if (user.role !== 'admin' && user.userType !== 'admin' && user.userType !== 'ADMIN') {
+      const kycOk = await isKycApproved(user.id)
+      if (!kycOk) {
+        return error(
+          'KYC não aprovado. Complete sua verificação de documentos na aba KYC para liberar saques.',
+          403
+        )
+      }
+    }
 
     if (user.balanceWithdrawal < amount) {
       return error(

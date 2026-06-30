@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
+import { isKycApproved } from '@/lib/kyc'
 
 function generateId(): string {
   const timestamp = Date.now().toString(36)
@@ -40,6 +41,18 @@ export async function POST(request: Request) {
     const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('Usuário não encontrado', 404)
+    }
+
+    // KYC gate: block gratification/cashback claims if user's KYC is not
+    // approved (admins bypass).
+    if (user.role !== 'admin' && user.userType !== 'admin' && user.userType !== 'ADMIN') {
+      const kycOk = await isKycApproved(user.id as string)
+      if (!kycOk) {
+        return error(
+          'KYC não aprovado. Complete sua verificação de documentos na aba KYC para resgatar gratificações.',
+          403
+        )
+      }
     }
 
     // Mark as claimed

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { success, error, reaisToCents, centsToReais } from '@/lib/api-utils'
+import { isKycApproved } from '@/lib/kyc'
 
 // Map the public balance keys (used by the UI) to the underlying User model columns.
 // Note: `bills` is backed by `balancePending` to avoid a DB schema migration; the UI
@@ -77,6 +78,17 @@ export async function POST(req: NextRequest) {
     const amountCents = reaisToCents(Number(amount))
     if (!Number.isFinite(amountCents) || amountCents <= 0) {
       return error('Valor deve ser positivo')
+    }
+
+    // KYC gate: block transfers if user's KYC is not approved (admins bypass
+    // inside isKycApproved). Done before the transaction so we don't open a
+    // DB transaction unnecessarily when the user is blocked.
+    const kycOk = await isKycApproved(userId)
+    if (!kycOk) {
+      return error(
+        'KYC não aprovado. Complete sua verificação de documentos na aba KYC para liberar transferências.',
+        403
+      )
     }
 
     // Run the read + write inside a transaction so we always see consistent balances

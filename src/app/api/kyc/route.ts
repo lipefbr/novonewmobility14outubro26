@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 import { getSession } from '@/lib/auth'
-import { KYC_DOC_TYPES, type KycDocType } from '@/lib/kyc'
+import { KYC_DOC_TYPES, type KycDocType, invalidateKycCache } from '@/lib/kyc'
 
 /**
  * GET /api/kyc
@@ -193,6 +193,10 @@ export async function POST(req: NextRequest) {
           kycRejectedReason: null,
         },
       })
+      // Invalidate the KYC approval cache so the new 'pending' status
+      // is reflected immediately on the next gated API call (a previously
+      // 'approved' user must be re-blocked until admin re-approves).
+      invalidateKycCache(session.userId)
     }
 
     return success({

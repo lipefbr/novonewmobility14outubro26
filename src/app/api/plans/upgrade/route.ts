@@ -1,5 +1,6 @@
 import { db, prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
+import { isKycApproved } from '@/lib/kyc'
 
 // Plan prices and ordering are no longer hardcoded — they are sourced
 // from the `Plan` table (the single source of truth, editable by admins
@@ -125,6 +126,17 @@ export async function POST(request: Request) {
     const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('User not found', 404)
+    }
+
+    // KYC gate: block plan upgrades if user's KYC is not approved (admins bypass).
+    if (user.role !== 'admin' && user.userType !== 'admin' && user.userType !== 'ADMIN') {
+      const kycOk = await isKycApproved(user.id as string)
+      if (!kycOk) {
+        return error(
+          'KYC não aprovado. Complete sua verificação de documentos na aba KYC para evoluir de plano.',
+          403
+        )
+      }
     }
 
     // Look up the user's current plan from the DB to determine upgrade

@@ -36,6 +36,7 @@ interface TalkMobiPlanDTO {
   priceCents: number
   cashbackCents: number
   rewardPoints: number
+  description: string | null
   features: string[]
   isPopular: boolean
   isRecommended: boolean
@@ -48,6 +49,103 @@ interface ApiResponse {
   plans: TalkMobiPlanDTO[]
 }
 
+/**
+ * Hardcoded fallback catalogue shown if the API returns no plans (e.g.
+ * the DB is unreachable, the table is empty, or the auto-seed in
+ * /api/talkmobi/plans failed). Mirrors the four canonical plans in
+ * src/lib/seed-talkmobi.ts so the user always sees something useful,
+ * even on a totally broken backend. The `id` field uses the same slug
+ * so React reconciliation stays stable when the API recovers.
+ */
+const FALLBACK_PLANS: TalkMobiPlanDTO[] = [
+  {
+    id: 'talkmobi-10gb',
+    name: 'Plano 10 GB',
+    dataAmount: '10 GB',
+    priceCents: 2990,
+    cashbackCents: 0,
+    rewardPoints: 0,
+    description: null,
+    features: [
+      '10 GB de internet',
+      'Ligações ilimitadas',
+      'SMS ilimitado',
+      'App TalkMobi',
+    ],
+    isPopular: false,
+    isRecommended: false,
+    sortOrder: 1,
+    priceFormatted: 'R$ 29,90',
+    cashbackFormatted: 'R$ 0,00',
+  },
+  {
+    id: 'talkmobi-20gb',
+    name: 'Plano 20 GB',
+    dataAmount: '20 GB',
+    priceCents: 3990,
+    cashbackCents: 0,
+    rewardPoints: 0,
+    description: null,
+    features: [
+      '20 GB de internet',
+      'Ligações ilimitadas',
+      'SMS ilimitado',
+      'App TalkMobi',
+      'Roaming nacional',
+    ],
+    isPopular: true,
+    isRecommended: false,
+    sortOrder: 2,
+    priceFormatted: 'R$ 39,90',
+    cashbackFormatted: 'R$ 0,00',
+  },
+  {
+    id: 'talkmobi-50gb',
+    name: 'Plano 50 GB',
+    dataAmount: '50 GB',
+    priceCents: 5990,
+    cashbackCents: 0,
+    rewardPoints: 0,
+    description: null,
+    features: [
+      '50 GB de internet',
+      'Ligações ilimitadas',
+      'SMS ilimitado',
+      'App TalkMobi',
+      'Roaming nacional',
+      '5G prioritário',
+    ],
+    isPopular: false,
+    isRecommended: true,
+    sortOrder: 3,
+    priceFormatted: 'R$ 59,90',
+    cashbackFormatted: 'R$ 0,00',
+  },
+  {
+    id: 'talkmobi-ilimitado',
+    name: 'Plano Ilimitado',
+    dataAmount: 'Ilimitado',
+    priceCents: 9990,
+    cashbackCents: 0,
+    rewardPoints: 0,
+    description: null,
+    features: [
+      'Internet ilimitada',
+      'Ligações ilimitadas',
+      'SMS ilimitado',
+      'App TalkMobi',
+      'Roaming nacional/internacional',
+      '5G prioritário',
+      'Telemedicina inclusa',
+    ],
+    isPopular: false,
+    isRecommended: false,
+    sortOrder: 4,
+    priceFormatted: 'R$ 99,90',
+    cashbackFormatted: 'R$ 0,00',
+  },
+]
+
 export function TalkMobiPage() {
   const [plans, setPlans] = useState<TalkMobiPlanDTO[]>([])
   const [loading, setLoading] = useState(true)
@@ -57,12 +155,22 @@ export function TalkMobiPage() {
     let cancelled = false
     const load = async () => {
       try {
-        const data = await apiFetch<ApiResponse>('/talkmobi')
+        const data = await apiFetch<ApiResponse>('/talkmobi/plans')
         if (cancelled || !data) return
-        setPlans(Array.isArray(data.plans) ? data.plans : [])
+        const apiPlans = Array.isArray(data.plans) ? data.plans : []
+        if (apiPlans.length > 0) {
+          setPlans(apiPlans)
+        } else {
+          // API responded but the table is empty / seed failed — fall
+          // back to the hardcoded catalogue so the page is never blank.
+          console.warn('TalkMobi API returned no plans — using hardcoded fallback.')
+          setPlans(FALLBACK_PLANS)
+        }
       } catch (err) {
-        // Fail silently — the empty state explains the situation.
-        console.error('TalkMobi plans load failed:', err)
+        // Network / 500 error — also fall back to the hardcoded list so
+        // the user still sees the four plans even if the backend is down.
+        console.error('TalkMobi plans load failed — using hardcoded fallback:', err)
+        setPlans(FALLBACK_PLANS)
       } finally {
         if (!cancelled) setLoading(false)
       }

@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
+import { useAdminPermissions } from '@/lib/admin-permissions'
 import { formatCurrency } from '@/lib/utils'
 import { apiFetch, adminApi } from '@/lib/api'
 import {
@@ -589,6 +590,11 @@ export function AdminPage() {
   const [faqSaving, setFaqSaving] = useState(false)
 
   const isAdmin = user?.role === 'admin'
+
+  // Per-role page permissions (Task 16-B). Super admins bypass the fetch
+  // and always see everything. Sub-admin roles are filtered by the
+  // per-role allow-list stored in the database.
+  const { canAccess, loading: permissionsLoading } = useAdminPermissions(user)
 
   useEffect(() => {
     loadStats()
@@ -2092,6 +2098,36 @@ export function AdminPage() {
           <Shield className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-center text-red-700 dark:text-red-400">Acesso Restrito</h2>
           <p className="text-sm text-center text-red-600 dark:text-red-300 mt-2">Apenas administradores podem acessar este painel.</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Per-page permission guard (Task 16-B). Hides the panel entirely and
+  // shows "Acesso negado" if the current admin role is not allowed to
+  // view the active page. Super admins (isAdmin === true) always pass.
+  // While permissions are still loading for a sub-admin, render a spinner
+  // instead of flashing the denied state.
+  if (!canAccess(adminActivePage)) {
+    if (permissionsLoading) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
+          <span className="h-6 w-6 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+          <span className="text-sm text-muted-foreground">Verificando permissões...</span>
+        </div>
+      )
+    }
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <div className="p-6 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 max-w-md">
+          <AlertTriangle className="h-12 w-12 text-amber-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-center text-amber-700 dark:text-amber-400">Acesso negado</h2>
+          <p className="text-sm text-center text-amber-600 dark:text-amber-300 mt-2">
+            Seu perfil não tem permissão para acessar esta página do painel administrativo.
+          </p>
+          <p className="text-xs text-center text-amber-500/80 dark:text-amber-400/70 mt-1">
+            Solicite acesso ao administrador principal.
+          </p>
         </div>
       </div>
     )

@@ -76,6 +76,13 @@ model User {
   // Asaas payment gateway integration
   asaasCustomerId       String?
   asaasWalletId         String?
+  // KYC verification (Task 14-A / 16-A)
+  kycStatus             String?  // 'none' | 'pending' | 'approved' | 'rejected'
+  kycVerifiedAt         DateTime?
+  kycVerifiedById       String?
+  kycRejectedReason     String?
+  kycDocuments          KycDocument[]
+  auditLogs             AuditLog[]
   beneficiaries         Beneficiary[]
   bets                  Bet[]
   careerMilestones      CareerMilestone[]
@@ -592,13 +599,14 @@ model TalkMobiPlan {
   priceCents    Int
   cashbackCents Int      @default(0)
   rewardPoints  Int      @default(0)
+  description   String?
   features      String   @default("[]")
   isPopular     Boolean  @default(false)
   isRecommended Boolean  @default(false)
   isActive      Boolean  @default(true)
   sortOrder     Int      @default(0)
   createdAt     DateTime @default(now())
-  updatedAt     DateTime
+  updatedAt     DateTime @updatedAt
 }
 
 model Achievement {
@@ -668,4 +676,53 @@ model GameConfig {
   isActive        Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KYC document uploads (Task 14-A / 16-A)
+// A user uploads 5 documents (CNH frente/verso, RG frente/verso, comprovante).
+// Admin reviews and approves/rejects. Account is blocked from withdrawals,
+// cashback claims, and plan upgrades until kycStatus === 'approved'.
+// ─────────────────────────────────────────────────────────────────────────────
+model KycDocument {
+  id          String   @id @default(cuid())
+  userId      String
+  docType     String   // 'cnh_front' | 'cnh_back' | 'rg_front' | 'rg_back' | 'proof_of_address'
+  fileUrl     String
+  fileName    String?
+  fileSize    Int?
+  mimeType    String?
+  status      String   @default("pending") // 'pending' | 'approved' | 'rejected'
+  reviewedById String?
+  reviewedAt  DateTime?
+  rejectReason String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Audit log (Task 14-D)
+// Records admin actions for compliance: who did what, when, from where.
+// ─────────────────────────────────────────────────────────────────────────────
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?  // admin who performed the action
+  action      String   // e.g. 'user.edit', 'kyc.approve', 'withdrawal.approve'
+  entityType  String?  // 'User', 'Invoice', 'WithdrawalRequest', etc.
+  entityId    String?
+  details     String?  // JSON string with before/after or extra context
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
 }

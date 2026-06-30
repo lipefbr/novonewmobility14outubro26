@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 import { getSession } from '@/lib/auth'
+import { invalidateKycCache } from '@/lib/kyc'
 
 /**
  * POST /api/admin/kyc/[userId]/reject
@@ -80,6 +81,10 @@ export async function POST(
         },
       }),
     ])
+
+    // Invalidate the KYC approval cache for this user so the new status
+    // is reflected immediately on the next gated API call.
+    invalidateKycCache(userId)
 
     // 3. Audit log
     try {

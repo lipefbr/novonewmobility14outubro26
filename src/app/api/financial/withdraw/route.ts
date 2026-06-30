@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { success, error, reaisToCents } from '@/lib/api-utils'
+import { isKycApproved } from '@/lib/kyc'
 
 // Withdrawal rules per client spec (Índice.docx §15):
 //   • Minimum per withdrawal: R$ 100,00 (10000 cents)
@@ -50,6 +51,17 @@ export async function POST(request: Request) {
     const user = await db.findOne('User', '"id" = $1', [userId])
     if (!user) {
       return error('User not found', 404)
+    }
+
+    // KYC gate: block withdrawals if user's KYC is not approved (admins bypass).
+    if (user.role !== 'admin' && user.userType !== 'admin' && user.userType !== 'ADMIN') {
+      const kycOk = await isKycApproved(user.id as string)
+      if (!kycOk) {
+        return error(
+          'KYC não aprovado. Complete sua verificação de documentos na aba KYC para liberar saques.',
+          403
+        )
+      }
     }
 
     // Block withdrawals for free plan users (subscription not paid)
