@@ -6736,3 +6736,23 @@ Stage Summary:
 - ✅ Lint src/ 100% limpo
 - ✅ Cron job automático (ID 241323) roda a cada 15min para QA contínuo
 - Status: PROJETO COMPLETO E DEPLOYADO
+
+---
+Task ID: 17 (Main Agent - Welcome Panel Border Fix)
+Agent: Main Orchestrator
+Task: Corrigir bordas do painel de boas-vindas do dashboard — usuário solicitou "as 4 bordas arredondadas"
+
+Work Log:
+- Analisei a screenshot enviada pelo usuário (Captura de Tela 2026-06-30 às 16.59.45.png) via VLM (glm-4.6v)
+- Identifiquei o painel de boas-vindas verde no dashboard (mostra "Boa tarde, Zanutim!")
+- No arquivo src/components/newmobility/dashboard/dashboard-page.tsx (linha 265-266), encontrei:
+  * Card: `rounded-none sm:rounded-b-3xl` → apenas cantos inferiores arredondados no desktop, nenhum no mobile
+  * Inner gradient div: `rounded-b-3xl sm:rounded-b-3xl` → apenas cantos inferiores
+- CORREÇÃO: Mudei ambos para `rounded-3xl` (todos os 4 cantos arredondados em todos os tamanhos de tela)
+- Verificação via agent-browser + VLM confirmou: "Os 4 cantos do painel de boas-vindas verde estão arredondados."
+
+Stage Summary:
+- ✅ Painel de boas-vindas do dashboard agora tem os 4 cantos arredondados (`rounded-3xl`)
+- ✅ Funciona em mobile e desktop (antes era `rounded-none` no mobile, `rounded-b-3xl` no desktop)
+- ✅ Lint dos arquivos alterados limpo (erros pré-existentes em arquivos .js raiz não relacionados)
+- Files changed: 1 (src/components/newmobility/dashboard/dashboard-page.tsx)
