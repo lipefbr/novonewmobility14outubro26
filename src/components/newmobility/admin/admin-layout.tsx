@@ -29,6 +29,8 @@ import {
   Flame,
   Calendar,
   HelpCircle,
+  Banknote,
+  Landmark,
 } from 'lucide-react'
 import { useStore, type AdminPageKey } from '@/lib/store'
 import { cn } from '@/lib/utils'
@@ -57,6 +59,7 @@ const adminNavItems: AdminNavItem[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, description: 'Visão geral e estatísticas', group: 'main' },
   { key: 'users', label: 'Usuários', icon: Users, description: 'Gerenciamento de usuários', group: 'main' },
   { key: 'financial', label: 'Financeiro', icon: Wallet, description: 'Transações, saques e cashback', group: 'main' },
+  { key: 'withdrawals-asaas', label: 'Saques Asaas', icon: Banknote, description: 'Aprovar saques via Asaas (PIX/TED)', group: 'main' },
   { key: 'plans', label: 'Planos & Preços', icon: CreditCard, description: 'Planos e matrizes', group: 'main' },
   { key: 'gratifications', label: 'Gratificações', icon: Gift, description: 'Saldos de gratificação', group: 'main' },
   { key: 'vouchers', label: 'Vouchers', icon: Ticket, description: 'Gerenciar vouchers e cupons', group: 'main' },
@@ -71,6 +74,7 @@ const adminNavItems: AdminNavItem[] = [
   { key: 'events', label: 'Eventos', icon: Calendar, description: 'Eventos, webinars e promoções', group: 'system' },
   { key: 'faq', label: 'Perguntas Frequentes', icon: HelpCircle, description: 'FAQ da plataforma', group: 'system' },
   { key: 'cashback-config', label: 'Config Cashback', icon: Percent, description: 'Configurar porcentagens e pontos', group: 'system' },
+  { key: 'asaas', label: 'Asaas', icon: Landmark, description: 'Configuração do gateway de pagamentos', group: 'system' },
   { key: 'settings', label: 'Configurações', icon: Settings, description: 'Configurações do sistema', group: 'system' },
 ]
 

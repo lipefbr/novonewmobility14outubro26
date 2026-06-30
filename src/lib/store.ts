@@ -52,6 +52,8 @@ export type AdminPageKey =
   | 'streak-rewards'
   | 'events'
   | 'faq'
+  | 'withdrawals-asaas'
+  | 'asaas'
 
 export interface UserData {
   id: string

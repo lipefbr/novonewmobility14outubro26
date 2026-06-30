@@ -10,10 +10,12 @@ import { useTranslation } from '@/lib/i18n'
 import { formatDate, formatCurrency, getStatusLabel, getStatusVariant } from '@/lib/utils'
 import { invoicesApi } from '@/lib/api'
 import {
-  FileText, Download, Eye, Calendar, DollarSign, Receipt, Filter, Loader2
+  FileText, Download, Eye, Calendar, DollarSign, Receipt, Filter, Loader2,
+  QrCode,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
+import { AsaasPaymentDialog } from '@/components/newmobility/payment/asaas-payment-dialog'
 
 type Invoice = {
   id: string
@@ -24,6 +26,9 @@ type Invoice = {
   paidAt?: string | null
   createdAt?: string
   description?: string
+  // Asaas payment integration fields (present when a payment was already created).
+  asaasPaymentId?: string | null
+  paymentMethod?: string | null
 }
 
 export function InvoiceViewer() {
@@ -33,6 +38,11 @@ export function InvoiceViewer() {
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Asaas payment dialog state — opened by the "Pagar" / "Ver Pagamento"
+  // buttons on pending / overdue invoices.
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
+  const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null)
 
   // Fetch real invoices for the logged-in user (Task 11-G — replaces mockInvoices)
   const refreshInvoices = useCallback(async () => {
@@ -70,6 +80,27 @@ export function InvoiceViewer() {
     setSelectedInvoice(invoice)
   }
 
+  // Open the AsaasPaymentDialog for a pending/overdue invoice. If the
+  // invoice already has an `asaasPaymentId`, the dialog opens directly in
+  // the "created" step showing the existing payment.
+  const handlePayInvoice = (invoice: Invoice) => {
+    setPaymentInvoice(invoice)
+    setPaymentDialogOpen(true)
+  }
+
+  // Refresh invoice list + selected invoice after a payment is created or
+  // status is verified, so the row reflects the latest state.
+  const handlePaymentCreated = useCallback(() => {
+    refreshInvoices()
+    if (selectedInvoice && paymentInvoice?.id === selectedInvoice.id) {
+      // Refresh the detail dialog as well (best-effort).
+      invoicesApi.getList(user?.id || '').then((data) => {
+        const updated = (data.invoices || []).find((i: Invoice) => i.id === selectedInvoice.id)
+        if (updated) setSelectedInvoice(updated)
+      }).catch(() => {})
+    }
+  }, [refreshInvoices, selectedInvoice, paymentInvoice, user?.id])
+
   return (
     <div className="space-y-4">
       {/* Filter */}
@@ -95,7 +126,7 @@ export function InvoiceViewer() {
       {/* Invoice List */}
       <Card className="shadow-sm bg-card">
         <CardContent className="p-0">
-          <div className="divide-y divide-border">
+          <div className="divide-y divide-border max-h-96 overflow-y-auto">
             {loading ? (
               <div className="p-6 space-y-3">
                 {[0, 1, 2].map((i) => (
@@ -115,66 +146,82 @@ export function InvoiceViewer() {
                 <p className="text-sm text-muted-foreground">{t('invoice.noInvoices')}</p>
               </div>
             ) : (
-              filtered.map((invoice, i) => (
-                <motion.div
-                  key={invoice.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: i * 0.03 }}
-                  className="flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors"
-                >
-                  <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">
-                    <FileText className="h-5 w-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-foreground truncate">
-                        {invoice.description || invoice.type || 'Fatura'}
-                      </span>
-                      <Badge variant={getStatusVariant(invoice.status)} className="text-[10px] shrink-0">
-                        {getStatusLabel(invoice.status)}
-                      </Badge>
+              filtered.map((invoice, i) => {
+                const isPayable =
+                  invoice.status === 'pending' || invoice.status === 'overdue'
+                const hasAsaasPayment = !!invoice.asaasPaymentId
+                return (
+                  <motion.div
+                    key={invoice.id}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: i * 0.03 }}
+                    className="flex flex-wrap items-center gap-3 p-4 hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">
+                      <FileText className="h-5 w-5" />
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
-                      {invoice.createdAt && (
-                        <span className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          {formatDate(invoice.createdAt)}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-foreground truncate">
+                          {invoice.description || invoice.type || 'Fatura'}
                         </span>
-                      )}
-                      {invoice.dueDate && (
-                        <>
-                          <span>·</span>
-                          <span>{t('invoice.due')}: {formatDate(invoice.dueDate)}</span>
-                        </>
-                      )}
-                      <span>·</span>
-                      <span className="font-mono text-[10px]">#{String(invoice.id).toUpperCase().slice(0, 12)}</span>
+                        <Badge variant={getStatusVariant(invoice.status)} className="text-[10px] shrink-0">
+                          {getStatusLabel(invoice.status)}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
+                        {invoice.createdAt && (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            {formatDate(invoice.createdAt)}
+                          </span>
+                        )}
+                        {invoice.dueDate && (
+                          <>
+                            <span>·</span>
+                            <span>{t('invoice.due')}: {formatDate(invoice.dueDate)}</span>
+                          </>
+                        )}
+                        <span>·</span>
+                        <span className="font-mono text-[10px]">#{String(invoice.id).toUpperCase().slice(0, 12)}</span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-right shrink-0 flex items-center gap-2">
-                    <p className="text-sm font-bold text-foreground">{formatCurrency(Math.abs(Number(invoice.amount) || 0))}</p>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-emerald-600"
-                        onClick={() => handleViewInvoice(invoice)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-emerald-600"
-                        onClick={() => handleDownload(invoice.id)}
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
+                    <div className="text-right shrink-0 flex items-center gap-2">
+                      <p className="text-sm font-bold text-foreground">{formatCurrency(Math.abs(Number(invoice.amount) || 0))}</p>
+                      <div className="flex gap-1">
+                        {isPayable && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                            onClick={() => handlePayInvoice(invoice)}
+                          >
+                            <QrCode className="h-3.5 w-3.5" />
+                            {hasAsaasPayment ? 'Ver Pagamento' : 'Pagar'}
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-emerald-600"
+                          onClick={() => handleViewInvoice(invoice)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-emerald-600"
+                          onClick={() => handleDownload(invoice.id)}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </motion.div>
-              ))
+                  </motion.div>
+                )
+              })
             )}
           </div>
         </CardContent>
@@ -222,6 +269,15 @@ export function InvoiceViewer() {
                   {getStatusLabel(selectedInvoice.status)}
                 </Badge>
               </div>
+              {(selectedInvoice.status === 'pending' || selectedInvoice.status === 'overdue') && (
+                <Button
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                  onClick={() => handlePayInvoice(selectedInvoice)}
+                >
+                  <QrCode className="h-4 w-4" />
+                  {selectedInvoice.asaasPaymentId ? 'Ver Pagamento' : 'Pagar com PIX / Boleto'}
+                </Button>
+              )}
               <Button
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
                 onClick={() => handleDownload(selectedInvoice.id)}
@@ -233,6 +289,23 @@ export function InvoiceViewer() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Asaas Payment Dialog — opened by "Pagar" / "Ver Pagamento" buttons. */}
+      <AsaasPaymentDialog
+        open={paymentDialogOpen}
+        onOpenChange={setPaymentDialogOpen}
+        invoiceId={paymentInvoice?.id || ''}
+        invoiceDescription={
+          paymentInvoice?.description ||
+          paymentInvoice?.type ||
+          'Fatura NewMobility'
+        }
+        invoiceAmountCents={Math.abs(Number(paymentInvoice?.amount) || 0)}
+        initialAsaasPaymentId={
+          paymentInvoice?.asaasPaymentId || undefined
+        }
+        onPaymentCreated={handlePaymentCreated}
+      />
     </div>
   )
 }

@@ -15,6 +15,7 @@ import { financialApi, transferApi, apiFetch, invoicesApi, referralsApi } from '
 import { FinancialSkeleton } from '../ui/loading-skeletons'
 import { EmptyState } from '../ui/empty-states'
 import { InvoiceViewer } from './invoice-viewer'
+import { WithdrawalCard } from './withdrawal-card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   AreaChart,
@@ -1237,6 +1238,9 @@ export function FinancialPage() {
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* ===== Asaas-tracked Withdrawal Card (Task 12-D) — explicit PIX/TED saques ===== */}
+      <WithdrawalCard />
 
       {/* Balance Cards with gradient top border accents */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

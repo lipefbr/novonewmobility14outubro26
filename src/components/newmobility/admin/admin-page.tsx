@@ -31,6 +31,8 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { AdminReportsPanel } from '@/components/newmobility/admin/admin-reports-panel'
+import { AdminWithdrawalsPanel } from '@/components/newmobility/admin/admin-withdrawals-panel'
+import { AsaasConfigPanel } from '@/components/newmobility/admin/asaas-config-panel'
 
 // ---------- Interfaces ----------
 
@@ -347,6 +349,8 @@ const adminPageToTab: Record<string, string> = {
   dashboard: 'stats',
   users: 'users',
   financial: 'financial',
+  'withdrawals-asaas': 'withdrawals-asaas',
+  asaas: 'asaas',
   plans: 'plans',
   gratifications: 'gratifications',
   support: 'tickets',
@@ -4992,6 +4996,16 @@ export function AdminPage() {
               <p className="text-sm text-muted-foreground">Nenhuma pergunta frequente cadastrada</p>
             </CardContent></Card>
           )}
+        </TabsContent>
+
+        {/* Withdrawals Asaas Tab — admin approval panel for Asaas-tracked withdrawals (Task 12-D) */}
+        <TabsContent value="withdrawals-asaas" className="mt-4 space-y-4">
+          <AdminWithdrawalsPanel />
+        </TabsContent>
+
+        {/* Asaas Config Tab — gateway configuration (Task 12-B) */}
+        <TabsContent value="asaas" className="mt-4 space-y-4">
+          <AsaasConfigPanel />
         </TabsContent>
       </Tabs>
 

@@ -8,17 +8,18 @@ import { Slider } from '@/components/ui/slider'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
-import { plansApi } from '@/lib/api'
+import { plansApi, userApi } from '@/lib/api'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import {
   CreditCard, Check, Star, ArrowUpRight, FileText, Calendar,
   Shield, Car, Pill, ShoppingBag, Gamepad2, Trophy, Phone,
   Heart, Zap, Gift, Users, Smartphone, Clock, Calculator, TrendingUp, Sparkles, Copy,
-  Lock, Wallet, ShieldCheck, ChevronRight, AlertCircle
+  Lock, Wallet, ShieldCheck, ChevronRight, AlertCircle, Loader2, QrCode
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
 import { toast } from 'sonner'
+import { AsaasPaymentDialog } from '@/components/newmobility/payment/asaas-payment-dialog'
 
 const mockInvoices = [
   { id: '1', type: 'plan_blue5', amount: 99900, status: 'paid', dueDate: '2025-01-05', paidAt: '2025-01-03' },
@@ -208,6 +209,17 @@ export function MyPlanPage() {
   const [premium5Processing, setPremium5Processing] = useState(false)
   const [premium5PixData, setPremium5PixData] = useState<any>(null)
   const [premium5Copied, setPremium5Copied] = useState(false)
+
+  // ─── Asaas direct payment (PIX/Boleto) for plan subscription ─────
+  // Opens the AsaasPaymentDialog with a freshly-created Invoice. Used by
+  // the "Assinar" buttons in the Comparação de Planos cards/table for
+  // NON-free plans that the user is not currently on.
+  const [asaasDialogOpen, setAsaasDialogOpen] = useState(false)
+  const [asaasInvoiceId, setAsaasInvoiceId] = useState<string>('')
+  const [asaasInvoiceDescription, setAsaasInvoiceDescription] = useState<string>('')
+  const [asaasInvoiceAmount, setAsaasInvoiceAmount] = useState<number>(0)
+  const [asaasInitialPaymentId, setAsaasInitialPaymentId] = useState<string | undefined>(undefined)
+  const [assaasCreatingInvoice, setAsaasCreatingInvoice] = useState(false)
 
   // Fetch plans from the API on mount so admin edits to the Plan table
   // (prices, names, active flags) propagate to the My Plan page.
@@ -460,6 +472,71 @@ export function MyPlanPage() {
     setPremium5Step('choose')
     setPremium5PixData(null)
     setPremium5DialogOpen(true)
+  }
+
+  // ─── Asaas direct subscription flow ─────────────────────────────
+  // Creates a pending Invoice for the selected plan (type 'plan_subscription')
+  // and opens the AsaasPaymentDialog so the user can pay via PIX or Boleto.
+  // Only invoked for NON-free plans (priceCents > 0).
+  const handleAssinarPlan = async (planId: string) => {
+    if (!user?.id) {
+      toast({ title: 'Usuário não autenticado', variant: 'destructive' })
+      return
+    }
+    const plan = plans.find((p) => p.id === planId)
+    if (!plan || plan.priceCents <= 0) return
+
+    setAsaasCreatingInvoice(true)
+    try {
+      const dueDate = new Date()
+      dueDate.setDate(dueDate.getDate() + 3)
+
+      const res = await fetch('/api/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          amount: plan.priceCents,
+          type: 'plan_subscription',
+          dueDate: dueDate.toISOString(),
+          description: `Assinatura do plano ${plan.name}`,
+        }),
+      })
+      const data = await res.json().catch(() => ({} as any))
+      if (!res.ok || !data?.invoice?.id) {
+        throw new Error(data?.error || 'Falha ao criar fatura')
+      }
+
+      setAsaasInvoiceId(data.invoice.id)
+      setAsaasInvoiceDescription(`Assinatura do plano ${plan.name}`)
+      setAsaasInvoiceAmount(plan.priceCents)
+      setAsaasInitialPaymentId(undefined)
+      setAsaasDialogOpen(true)
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao iniciar pagamento',
+        description: err?.message || 'Tente novamente mais tarde',
+        variant: 'destructive',
+      })
+    } finally {
+      setAsaasCreatingInvoice(false)
+    }
+  }
+
+  // Refresh the logged-in user's data from the API after a payment is created
+  // (so the plan/balances reflect the new invoice / payment).
+  const handleAsaasPaymentCreated = async () => {
+    if (!user?.id) return
+    try {
+      const fresh = await userApi.getProfile(user.id)
+      if (fresh?.user) {
+        updateUser(fresh.user)
+      } else if (fresh && fresh.id) {
+        updateUser(fresh)
+      }
+    } catch {
+      // Silent — the dialog already shows the payment details.
+    }
   }
 
   return (
@@ -849,12 +926,29 @@ export function MyPlanPage() {
                       Seu plano atual
                     </div>
                   ) : (
-                    <Button
-                      className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white"
-                      onClick={() => handleCalculateUpgrade(plan.id)}
-                    >
-                      {plan.priceCents > (plans.find((p) => p.id === currentPlan)?.priceCents || 0) ? 'Fazer Upgrade' : 'Selecionar'}
-                    </Button>
+                    <div className="mt-4 space-y-2">
+                      <Button
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                        onClick={() => handleCalculateUpgrade(plan.id)}
+                      >
+                        {plan.priceCents > (plans.find((p) => p.id === currentPlan)?.priceCents || 0) ? 'Fazer Upgrade' : 'Selecionar'}
+                      </Button>
+                      {plan.priceCents > 0 && (
+                        <Button
+                          variant="outline"
+                          className="w-full gap-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                          disabled={assaasCreatingInvoice}
+                          onClick={() => handleAssinarPlan(plan.id)}
+                        >
+                          {assaasCreatingInvoice ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <QrCode className="h-4 w-4" />
+                          )}
+                          Assinar (PIX / Boleto)
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -929,13 +1023,31 @@ export function MyPlanPage() {
                         {currentPlan === plan.id ? (
                           <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">Plano Atual</Badge>
                         ) : (
-                          <Button
-                            size="sm"
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                            onClick={() => handleCalculateUpgrade(plan.id)}
-                          >
-                            Selecionar
-                          </Button>
+                          <div className="flex flex-col gap-2 items-stretch">
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                              onClick={() => handleCalculateUpgrade(plan.id)}
+                            >
+                              Selecionar
+                            </Button>
+                            {plan.priceCents > 0 && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                                disabled={assaasCreatingInvoice}
+                                onClick={() => handleAssinarPlan(plan.id)}
+                              >
+                                {assaasCreatingInvoice ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <QrCode className="h-3.5 w-3.5" />
+                                )}
+                                Assinar
+                              </Button>
+                            )}
+                          </div>
                         )}
                       </td>
                     ))}
@@ -1425,6 +1537,20 @@ export function MyPlanPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ─── Asaas Payment Dialog (PIX / Boleto) ───────────────────
+          Opened by the "Assinar (PIX / Boleto)" buttons in the Comparação
+          de Planos section. Creates a fresh invoice via /api/invoices and
+          lets the user pay through the Asaas gateway. */}
+      <AsaasPaymentDialog
+        open={asaasDialogOpen}
+        onOpenChange={setAsaasDialogOpen}
+        invoiceId={asaasInvoiceId}
+        invoiceDescription={asaasInvoiceDescription}
+        invoiceAmountCents={asaasInvoiceAmount}
+        initialAsaasPaymentId={asaasInitialPaymentId}
+        onPaymentCreated={handleAsaasPaymentCreated}
+      />
     </div>
   )
 }

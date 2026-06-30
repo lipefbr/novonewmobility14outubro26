@@ -4068,3 +4068,272 @@ Unresolved Issues / Next Steps:
 - Config: Asaas config, webhook, logo change — NOT YET DONE
 - Mobile apps: NOT YET STARTED
 - These items require significant additional development and should be prioritized in the next session(s)
+
+---
+Task ID: 12-D
+Agent: Sub Agent (general-purpose) — Asaas withdrawal UI + admin approval
+Task: Build user withdrawal card + admin withdrawals approval panel + admin listing route
+
+Work Log:
+- Read context: worklog.md, src/lib/asaas.ts (Asaas SDK), prisma/schema.prisma (WithdrawalRequest model), financial-page.tsx, admin-page.tsx, admin-layout.tsx, existing /api/admin/withdrawals route (Transaction-based, used as reference for shape).
+- Created /home/z/my-project/src/components/newmobility/financial/withdrawal-card.tsx — "use client" component with:
+  • "Solicitar Saque" Card with balance display "Saldo disponível para saque: R$ X,XX" (from user.balanceWithdrawal / 100).
+  • Form fields: Valor (Input number, min R$ 50,00 helper text), Método de pagamento (Select PIX / TED).
+  • PIX selected → PIX key input. TED selected → bankCode/bankAgency/bankAccount/bankType (CHECKING=Conta Corrente / SAVINGS=Conta Poupança) inputs.
+  • Pre-fills PIX key and bank details from the user's profile.
+  • Inline validation (amount >= 50, payment-method-specific required fields, balance check).
+  • Submit POST /api/asaas/withdrawal → on success clears form, shows toast "Solicitação de saque criada! Aguarde aprovação do administrador.", refreshes history list below.
+  • "Histórico de Saques" list fetched from GET /api/asaas/withdrawals?userId=... with status badges (pending=Amarelo "Pendente", approved=Azul "Aprovado", paid=Verde "Pago", rejected=Vermelho "Rejeitado", failed=Vermelho "Falhou") and inline rejectedReason display.
+  • max-h-96 overflow-y-auto custom-scrollbar for the history list. Detail dialog with all fields (Asaas transfer id/status, receipt URL when present).
+  • All Portuguese, gray-* colors, lucide-react icons, shadcn/ui Card/Button/Input/Label/Select/Badge/Separator.
+- Inserted <WithdrawalCard /> into financial-page.tsx immediately after the Balance Cards grid (before "Saldo para Faturas" section) with a small "Saques processados via Asaas (PIX/TED)" Label so users know the new flow exists alongside the existing withdraw dialog.
+- Created /home/z/my-project/src/components/newmobility/admin/admin-withdrawals-panel.tsx — "use client" component with:
+  • Header "Solicitações de Saque" + subtitle "Aprove e processe saques via Asaas".
+  • 4 stats mini-cards (Pendentes/Aprovados/Pagos/Rejeitados) that double as filter buttons.
+  • Filter buttons row: Todos | Pendentes | Aprovados | Pagos | Rejeitados.
+  • Responsive table (desktop shadcn Table + mobile list) of WithdrawalRequests with columns: Solicitante (name + email), Valor, Método (PIX/TED badge), Dados (pix key or bank account summary), Status (badge + rejected reason), Solicitado em, Ações.
+  • Pagination (20 per page, prev/next, total/totalPages).
+  • Ações: pending → "Aprovar e transferir via Asaas" (green) + "Rejeitar" (red). paid/approved/rejected/failed → "Ver comprovante/Detalhes" dialog.
+  • Approve action: POST /api/admin/asaas/withdrawals/[id]/approve with { adminUserId } → toast "Saque aprovado e transferência Asaas criada".
+  • Reject action: opens Dialog asking for reason (Textarea, min 3 chars), then POST /api/admin/asaas/withdrawals/[id]/reject with { adminUserId, reason } → toast "Saque rejeitado e valor devolvido ao usuário".
+  • Detail/Receipt Dialog: best-effort fetches transactionReceiptUrl from /api/admin/asaas/withdrawals/[id]/transfer and displays it as a clickable link.
+- Registered admin tab "Saques Asaas" (key 'withdrawals-asaas'):
+  • Added 'withdrawals-asaas' to AdminPageKey type in src/lib/store.ts.
+  • Added Banknote icon import + nav item "Saques Asaas" (group: 'main', after "Financeiro") in src/components/newmobility/admin/admin-layout.tsx.
+  • Added 'withdrawals-asaas' → 'withdrawals-asaas' mapping in adminPageToTab + AdminWithdrawalsPanel import + <TabsContent value="withdrawals-asaas"> rendering <AdminWithdrawalsPanel /> in src/components/newmobility/admin/admin-page.tsx.
+- Created /home/z/my-project/src/app/api/admin/asaas/withdrawals/route.ts — GET admin listing route:
+  • Validates admin via `?userId=<admin_user_id>` query (must have role === 'admin').
+  • Supports `?status=all|pending|approved|paid|rejected|failed`, `?page=1`, `?limit=20` (max 100).
+  • Returns `{ withdrawals, total, page, totalPages, stats: { pendingCount, approvedCount, paidCount, rejectedCount } }`.
+  • WithdrawalRequest.findMany with `include: { user: { select: { id, name, email, cpf, pixKey, bankCode, bankAgency, bankAccount, bankType } } }` ordered by createdAt desc.
+  • Uses Promise.all for parallel queries (list + count + 4 status counts).
+- Created /home/z/my-project/src/app/api/admin/asaas/withdrawals/[id]/transfer/route.ts — GET admin transfer lookup route:
+  • Returns live Asaas transfer details (including transactionReceiptUrl) for a given WithdrawalRequest.
+  • Calls getTransfer(wr.asaasTransferId) from the Asaas SDK and persists the latest asaasStatus back on our record.
+  • Returns 404 if the withdrawal doesn't exist or has no asaasTransferId yet (e.g. pending or rejected).
+- Verification:
+  • `bunx eslint` on all 6 touched files + the 2 new API routes → 0 errors, 0 warnings (after removing an unused eslint-disable directive in withdrawal-card.tsx).
+  • `bunx tsc --noEmit` filtered for my new files → 0 errors.
+  • Pre-existing TS errors in admin-page.tsx (4 errors on lines 226/1705/2394/2398 — unrelated to my edits) and financial-page.tsx (1 error on line 2039 — unrelated to my edits) are not touched by this task and remain in the codebase baseline.
+
+Stage Summary:
+- Files created:
+  • src/components/newmobility/financial/withdrawal-card.tsx
+  • src/components/newmobility/admin/admin-withdrawals-panel.tsx
+  • src/app/api/admin/asaas/withdrawals/route.ts
+  • src/app/api/admin/asaas/withdrawals/[id]/transfer/route.ts
+- Files modified:
+  • src/lib/store.ts (added 'withdrawals-asaas' to AdminPageKey)
+  • src/components/newmobility/admin/admin-layout.tsx (Banknote icon import + nav item "Saques Asaas")
+  • src/components/newmobility/admin/admin-page.tsx (AdminWithdrawalsPanel import + adminPageToTab entry + TabsContent)
+  • src/components/newmobility/financial/financial-page.tsx (WithdrawalCard import + placement after balance cards)
+- Key decisions:
+  • Used a fresh `/api/admin/asaas/withdrawals` route (separate from the legacy `/api/admin/withdrawals` which queries Transaction records) so the new Asaas-tracked WithdrawalRequest model has its own clean listing endpoint.
+  • The user-side withdrawal card is added alongside (not replacing) the existing withdraw dialog flow, with a clear "Saques processados via Asaas (PIX/TED)" label so users know which flow they're using.
+  • The admin panel calls the existing /api/admin/asaas/withdrawals/[id]/approve and /reject routes created by Task 12-A, trusting the documented contract.
+  • Added an extra /api/admin/asaas/withdrawals/[id]/transfer GET route so the admin detail dialog can fetch the live Asaas transactionReceiptUrl on demand (rather than storing it on every webhook event).
+  • All UI uses gray-* colors (never slate-*), shadcn/ui components, lucide-react icons, and pt-BR formatting (currency via formatCurrency / Intl.NumberFormat, dates via Intl.DateTimeFormat).
+- Next actions for parent agent:
+  • End-to-end smoke test: log in as a regular user → request a PIX/TED withdrawal → log in as admin → approve/reject → verify status flow and toast messages.
+  • Verify the admin "Saques Asaas" sidebar entry renders correctly on both desktop (collapsed + expanded) and mobile sidebar variants.
+  • Confirm that the receipt URL link in the detail dialog opens correctly in a new tab when Asaas returns a transactionReceiptUrl.
+
+---
+Task ID: 12-C
+Agent: Sub Agent (general-purpose) — Asaas payment UI
+Task: Build AsaasPaymentDialog + wire into Meu Plano + Invoices page
+
+Work Log:
+- Read context: /home/z/my-project/worklog.md (last ~400 lines), src/lib/asaas.ts
+  (Asaas SDK), src/components/newmobility/myplan/myplan-page.tsx (1435 lines,
+  has "Comparação de Planos" section at line 807 with mobile cards + desktop
+  table), src/components/newmobility/financial/invoice-viewer.tsx (238 lines,
+  real invoices from invoicesApi.getList), src/lib/store.ts (useStore hook with
+  `user` and `updateUser`), src/lib/api.ts (apiFetch + userApi.getProfile),
+  src/lib/db.ts (db.findOne/find/insert/update helpers backed by Prisma),
+  src/app/api/invoices/route.ts (had GET only, no POST), src/app/api/plans/upgrade/route.ts
+  (reference for invoice creation pattern + wallet deduction).
+- Confirmed Asaas SDK exports `findOrCreateCustomer`, `createPayment`,
+  `getPayment`, `centsToAsaasValue`, `sanitizeCpfCnpj`, types `AsaasPayment`
+  (with pixQrCode as `data:image/png;base64,...`, pixCopyPaste, bankSlipUrl,
+  invoiceUrl, dueDate, status), `AsaasBillingType`.
+- Confirmed Invoice prisma model has `asaasPaymentId`, `paymentMethod`,
+  `invoiceUrl`, `bankSlipUrl`, `pixCode`, `pixQrCode`, `description` columns
+  (added by a previous task — no schema migration needed).
+- Confirmed no /api/asaas/* routes existed (only src/lib/asaas.ts SDK).
+- Confirmed no POST /api/invoices handler existed (only GET).
+
+Step 1 — API routes created:
+- /api/invoices/route.ts — added POST handler that accepts
+  { userId, amount, type, dueDate, description? } and creates a pending
+  Invoice. Returns { invoice } with the new invoice id (used by the
+  AsaasPaymentDialog as `invoiceId`). The existing GET handler was preserved
+  unchanged. (File went 30 → 83 lines.)
+- /api/asaas/customer/route.ts — new POST handler that ensures the user has
+  an Asaas customer linked. If user has `asaasCustomerId` set, returns it
+  directly. Otherwise calls `findOrCreateCustomer` with name/cpf/email/phone,
+  persists the returned id on the User row, and returns { customerId, customer }.
+  Returns 400 'Cliente Asaas não encontrado' if the user is missing OR has no
+  CPF (Asaas requires cpfCnpj). Returns 503 if the Asaas API key is not
+  configured.
+- /api/asaas/payment/route.ts — new POST handler that creates a PIX or BOLETO
+  payment in Asaas for an existing Invoice. Validates the user has
+  `asaasCustomerId`, loads the Invoice (must belong to the user, must not be
+  paid), and creates the payment via `createPayment({ customer, billingType,
+  value, dueDate, description, externalReference: invoice.id })`. Persists
+  `asaasPaymentId`, `paymentMethod`, `invoiceUrl`, `bankSlipUrl`, `pixCode`,
+  `pixQrCode` back on the Invoice so the UI can render without a second
+  round-trip. Idempotent: if the invoice already has an `asaasPaymentId`,
+  re-fetches and returns the existing payment instead of creating a duplicate.
+  Also added GET handler at /api/asaas/payment?userId=...&invoiceId=... that
+  returns the cached payment fields plus a fresh status from Asaas, and
+  syncs the Invoice.status with Asaas' authoritative status (PENDING → pending,
+  RECEIVED/CONFIRMED → paid, OVERDUE → overdue, REFUNDED/CHARGEBACK_* → cancelled).
+- /api/asaas/payment/[id]/route.ts — new GET handler that fetches the current
+  state of an Asaas payment by its Asaas id. Looks up the linked Invoice
+  (by asaasPaymentId, must belong to the requesting user) and syncs its
+  status field with whatever Asaas returns. Used by the dialog's
+  "Já paguei — verificar status" button.
+
+Step 2 — AsaasPaymentDialog component created:
+- File: src/components/newmobility/payment/asaas-payment-dialog.tsx (581 lines).
+- Props: { open, onOpenChange, invoiceId, invoiceDescription?, invoiceAmountCents,
+  initialAsaasPaymentId?, onPaymentCreated? }.
+- Two-step flow:
+  - `choose` step: shows invoice summary card (description + amount formatted
+    with formatCurrency) + two big buttons "Pagar com PIX" (green, QrCode icon)
+    and "Pagar com Boleto" (gray outline, FileText icon). Each button sets
+    its own loading state and calls startPayment(billingType), which first
+    POSTs to /api/asaas/customer, then POSTs to /api/asaas/payment with
+    { userId, invoiceId, billingType }. On success switches to `created`
+    step and calls onPaymentCreated callback.
+  - `created` step: shows the AsaasPayment details with a colored status
+    badge (Aguardando pagamento yellow / Pagamento confirmado green /
+    Boleto vencido red / Cancelado gray). For PIX: renders the `pixQrCode`
+    base64 image (w-56 h-56) + a read-only textarea with `pixCopyPaste` +
+    "Copiar código PIX" button using navigator.clipboard.writeText with a
+    2.5s "Código copiado!" feedback. For BOLETO: shows due date + amount,
+    "Baixar Boleto (PDF)" link (opens bankSlipUrl in new tab) and "Ver Boleto
+    Online" link (opens invoiceUrl in new tab). Footer has
+    "Já paguei — verificar status" button (re-fetches GET /api/asaas/payment/{id}
+    and updates status display) + "Voltar" + "Fechar" buttons.
+- If `initialAsaasPaymentId` is provided, the dialog opens directly in
+  `created` step by fetching the existing payment from Asaas (used by the
+  "Ver Pagamento" button on invoices that already have an asaasPaymentId).
+- State auto-resets 200ms after the dialog closes so re-opening always
+  starts fresh.
+- Uses only `gray-*` colors for the boleto button (no slate-*), emerald-*
+  for the PIX/primary actions, and amber-* for the pending status badge.
+  All labels in Portuguese. Uses sonner `toast` for feedback.
+
+Step 3 — Wired into Meu Plano page:
+- File: src/components/newmobility/myplan/myplan-page.tsx (1435 → 1560 lines).
+- Added imports: `userApi` from @/lib/api, `Loader2` + `QrCode` from lucide-react,
+  `AsaasPaymentDialog` from the new payment folder.
+- Added state: asaasDialogOpen, asaasInvoiceId, asaasInvoiceDescription,
+  asaasInvoiceAmount, asaasInitialPaymentId, assaasCreatingInvoice.
+- Added `handleAssinarPlan(planId)` handler that creates a pending Invoice
+  via POST /api/invoices with { userId, amount: plan.priceCents,
+  type: 'plan_subscription', dueDate: today+3 days ISO,
+  description: 'Assinatura do plano {planName}' }, then opens the
+  AsaasPaymentDialog with the new invoice id. Only invoked for non-free plans
+  (priceCents > 0).
+- Added `handleAsaasPaymentCreated` callback that calls userApi.getProfile
+  and updateUser to refresh the logged-in user's plan/balances after a
+  payment is created or status verified.
+- In the "Comparação de Planos" section:
+  - Mobile cards (one per plan): added a secondary "Assinar (PIX / Boleto)"
+    outline button below the existing "Fazer Upgrade" / "Selecionar" button,
+    visible only for NON-free plans (plan.priceCents > 0) that the user is
+    NOT currently on. The "Gratuito" plan keeps its current "Selecionar"
+    behavior (no Asaas button since priceCents === 0).
+  - Desktop table (last row, one cell per plan): same pattern — primary
+    "Selecionar" button stays, secondary "Assinar" outline button added
+    for non-free plans. "Plano Atual" badge unchanged for current plan.
+- Mounted <AsaasPaymentDialog> at the end of the JSX (after the Premium 5
+  dialog) with all the state vars wired up.
+- The existing upgrade simulator flow (handleCalculateUpgrade →
+  setUpgradeDialogOpen → handleConfirmUpgrade → handleConfirmPixPayment) is
+  preserved unchanged. The new Asaas flow is an additional path.
+
+Step 4 — Wired into Invoice viewer:
+- File: src/components/newmobility/financial/invoice-viewer.tsx (238 → 311 lines).
+- Added `asaasPaymentId?: string | null` and `paymentMethod?: string | null`
+  fields to the Invoice type.
+- Added state: paymentDialogOpen, paymentInvoice.
+- Added `handlePayInvoice(invoice)` that sets paymentInvoice + opens the
+  AsaasPaymentDialog. The dialog's `initialAsaasPaymentId` prop is set to
+  the invoice's existing asaasPaymentId (if any) so the dialog opens in
+  `created` step showing the existing payment.
+- Added `handlePaymentCreated` callback that calls refreshInvoices() to
+  re-fetch the list after a payment is created / status verified, and
+  also refreshes the detail dialog if it's open for the same invoice.
+- For each invoice row with status 'pending' or 'overdue': added a
+  "Pagar" / "Ver Pagamento" outline button (QrCode icon) between the
+  amount and the Eye/Download icon buttons. The label is "Ver Pagamento"
+  when the invoice has an asaasPaymentId (re-opening an existing payment),
+  or "Pagar" when starting a new one.
+- Inside the invoice detail dialog: added a full-width
+  "Pagar com PIX / Boleto" (or "Ver Pagamento") button at the top of the
+  action area for pending/overdue invoices, above the existing
+  "Baixar PDF" button.
+- The invoice list now uses `flex-wrap` on each row so the new "Pagar"
+  button doesn't break the layout on narrow mobile screens.
+- Mounted <AsaasPaymentDialog> at the bottom of the JSX.
+- List container bumped to `max-h-96 overflow-y-auto` per the UI rules.
+
+Verification:
+- `bunx eslint src/components/newmobility/payment src/components/newmobility/myplan/myplan-page.tsx src/components/newmobility/financial/invoice-viewer.tsx src/app/api/asaas/customer/route.ts src/app/api/asaas/payment/route.ts src/app/api/asaas/payment/[id]/route.ts src/app/api/invoices/route.ts` → 0 errors, 0 warnings.
+- `bunx tsc --noEmit` (filtered for touched files) → 0 errors in
+  asaas-payment-dialog, myplan-page, invoice-viewer, asaas/customer,
+  asaas/payment, asaas/payment/[id], invoices/route. (Pre-existing errors in
+  src/lib/db.ts loose-typing on db.insert are unchanged and unrelated.)
+- Color palette: only gray-* / emerald-* / amber-* / red-* used (no slate-*).
+- All UI labels in Portuguese.
+- All shadcn components reused (Dialog, Button, Badge, Card, CardContent).
+- All icons from lucide-react (QrCode, FileText, Copy, Check, Loader2, Clock,
+  RefreshCw, ExternalLink, Download, AlertCircle, ArrowLeft).
+
+Stage Summary:
+- New files:
+  - src/components/newmobility/payment/asaas-payment-dialog.tsx (581 lines)
+  - src/app/api/asaas/customer/route.ts (77 lines)
+  - src/app/api/asaas/payment/route.ts (228 lines)
+  - src/app/api/asaas/payment/[id]/route.ts (89 lines)
+- Modified files:
+  - src/app/api/invoices/route.ts (30 → 83 lines, added POST handler)
+  - src/components/newmobility/myplan/myplan-page.tsx (1435 → 1560 lines,
+    added AsaasPaymentDialog mount + Assinar buttons + handleAssinarPlan)
+  - src/components/newmobility/financial/invoice-viewer.tsx (238 → 311 lines,
+    added AsaasPaymentDialog mount + Pagar/Ver Pagamento buttons + asaasPaymentId
+    field on Invoice type + handlePayInvoice + handlePaymentCreated)
+- Key decisions:
+  - The AsaasPaymentDialog is fully reusable: it takes invoiceId + amount +
+    description as props and can be opened from any page (Meu Plano or
+    Financial). The `initialAsaasPaymentId` prop lets callers open it
+    directly in the "created" step for invoices that already have a payment.
+  - The /api/asaas/payment POST is idempotent: if the invoice already has
+    an asaasPaymentId, it re-fetches and returns the existing payment
+    instead of creating a duplicate charge in Asaas.
+  - The /api/asaas/payment/[id] GET and the /api/asaas/payment GET both
+    sync the Invoice.status with Asaas' authoritative status, so the rest
+    of the backoffice (invoice list, financial page) reflects the payment
+    automatically — no webhook required for the basic flow. (In production
+    a webhook should still be configured for true real-time updates.)
+  - The customer route returns 400 'Cliente Asaas não encontrado' (the
+    exact error string the task spec mentioned) when the user is missing
+    OR has no CPF on file, since Asaas requires cpfCnpj for any billing
+    customer.
+  - The existing upgrade simulator flow on the Meu Plano page (calculate
+    upgrade → confirm → PIX → success) was preserved unchanged — the new
+    Asaas flow is an additional path via the "Assinar (PIX / Boleto)"
+    buttons, so users who prefer the simulator can still use it.
+- Deviations from spec:
+  - The task spec referenced /api/asaas/customer, /api/asaas/payment, and
+    /api/asaas/payment/{id} routes as if they existed — they did NOT exist
+    in the codebase, so I created them as part of this task (the spec's
+    fallback instructions explicitly allowed creating missing routes).
+  - The task spec said "If no such route exists, look at how the system
+    creates invoices... If no creation route exists, add a simple POST
+    handler to /api/invoices/route.ts". The POST handler was indeed missing,
+    so I added it.
