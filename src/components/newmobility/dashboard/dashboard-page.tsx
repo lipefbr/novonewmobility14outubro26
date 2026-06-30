@@ -13,8 +13,8 @@ import { ComparisonWidget } from './comparison-widget'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
 import { motion } from 'framer-motion'
+import { toast } from 'sonner'
 import {
   Copy,
   Link2,
@@ -49,9 +49,6 @@ import {
   ShoppingCart,
   CreditCard,
   ChevronRight,
-  Sparkles,
-  Rocket,
-  Crown,
   BarChart3,
 } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
@@ -68,7 +65,11 @@ interface DashboardData {
   network?: { totalSize: number; activeMembers: number; newReferrals: number }
   balances: any
   recentTransactions: any[]
+  recentActivity?: any[]
+  weeklyReferralCount?: number
+  weeklyReferralsByDay?: { day: string; value: number; percentage: number }[]
   career: any
+  // Per-user downline distribution by plan (e.g. { free: 3, blue3: 5, blue5: 2 })
   userDistribution: any
   revenueByCategory: any
 }
@@ -79,11 +80,6 @@ function getGreeting() {
   if (hour >= 5 && hour < 12) return { text: 'Bom dia', icon: Sun, iconClass: 'text-yellow-400' }
   if (hour >= 12 && hour < 18) return { text: 'Boa tarde', icon: CloudSun, iconClass: 'text-orange-400' }
   return { text: 'Boa noite', icon: Moon, iconClass: 'text-blue-300' }
-}
-
-// Format current time as HH:mm
-function getCurrentTime() {
-  return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
 
 // Network Health mini chart data
@@ -97,23 +93,18 @@ const networkHealthData = [
   { month: 'Jan', growth: 42 },
 ]
 
-// Plan upgrade progress data
-const planProgressData: Record<string, { current: string; next: string; progress: number; pointsNeeded: number; benefits: string[] }> = {
-  free: { current: 'Gratuito', next: 'Blue 3', progress: 20, pointsNeeded: 30, benefits: ['CashBack Entrada', 'Suporte básico'] },
-  blue3: { current: 'Blue 3', next: 'Blue 5 Premium', progress: 55, pointsNeeded: 15, benefits: ['CashBack Entrada + Residual', 'Vouchers mensais', 'Suporte prioritário'] },
-  blue5: { current: 'Blue 5 Premium', next: 'Blue 5 Elite', progress: 78, pointsNeeded: 8, benefits: ['CashBack Completo', 'Gratificações semanais', 'Saques ilimitados', 'App Motorista grátis'] },
-}
-
-// Weekly referral-growth data for CSS bar chart.
-// Privacy-safe: every value is a count of new referrals, never a R$ amount.
-const weeklyReferralsData = [
-  { day: 'Seg', value: 2, percentage: 42 },
-  { day: 'Ter', value: 3, percentage: 55 },
-  { day: 'Qua', value: 1, percentage: 36 },
-  { day: 'Qui', value: 4, percentage: 71 },
-  { day: 'Sex', value: 3, percentage: 65 },
-  { day: 'Sáb', value: 5, percentage: 88 },
-  { day: 'Dom', value: 2, percentage: 50 },
+// Fallback weekly referral-growth data for the CSS bar chart. Used only
+// when the dashboard API has not returned `weeklyReferralsByDay` yet (e.g.
+// during initial load). Privacy-safe: every value is a count of new
+// referrals, never a R$ amount.
+const fallbackWeeklyReferrals = [
+  { day: 'Seg', value: 0, percentage: 0 },
+  { day: 'Ter', value: 0, percentage: 0 },
+  { day: 'Qua', value: 0, percentage: 0 },
+  { day: 'Qui', value: 0, percentage: 0 },
+  { day: 'Sex', value: 0, percentage: 0 },
+  { day: 'Sáb', value: 0, percentage: 0 },
+  { day: 'Dom', value: 0, percentage: 0 },
 ]
 
 export function DashboardPage() {
@@ -122,13 +113,6 @@ export function DashboardPage() {
   const [copied, setCopied] = useState(false)
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [currentTime, setCurrentTime] = useState(getCurrentTime())
-
-  // Update time every minute
-  useEffect(() => {
-    const interval = setInterval(() => setCurrentTime(getCurrentTime()), 60000)
-    return () => clearInterval(interval)
-  }, [])
 
   const quickActions = [
     { label: 'Comprar Voucher', icon: ShoppingCart, color: 'from-emerald-500 to-emerald-600', page: 'voucher' as const, description: 'Mobilidade, Farmácia...' },
@@ -198,6 +182,11 @@ export function DashboardPage() {
     navigator.clipboard.writeText(referralLink).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+      toast.success('Link de indicação copiado!', {
+        description: 'Compartilhe com seus amigos e ganhe CashBack.',
+      })
+    }).catch(() => {
+      toast.error('Não foi possível copiar o link. Tente novamente.')
     })
   }
 
@@ -238,56 +227,92 @@ export function DashboardPage() {
   const greeting = getGreeting()
   const GreetingIcon = greeting.icon
 
-  // Plan progress
-  const currentPlan = user?.plan || 'free'
-  const planInfo = planProgressData[currentPlan] || planProgressData.free
-
-  // Total referrals this week (count, not currency)
-  const weeklyTotal = useMemo(
-    () => weeklyReferralsData.reduce((sum, d) => sum + d.value, 0),
-    [],
+  // Per-user weekly referrals from the dashboard API. Falls back to zeros
+  // while the data is loading so we never render platform-wide mock data.
+  const weeklyReferralsData = useMemo(
+    () => dashboardData?.weeklyReferralsByDay?.length
+      ? dashboardData.weeklyReferralsByDay
+      : fallbackWeeklyReferrals,
+    [dashboardData?.weeklyReferralsByDay],
   )
+  const weeklyTotal = useMemo(
+    () => weeklyReferralsData.reduce((sum, d) => sum + (d.value || 0), 0),
+    [weeklyReferralsData],
+  )
+  const weeklyBestDay = useMemo(() => {
+    const best = [...weeklyReferralsData].sort((a, b) => (b.value || 0) - (a.value || 0))[0]
+    return best && best.value > 0 ? best : null
+  }, [weeklyReferralsData])
 
   if (loading) {
     return <DashboardSkeleton />
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Announcement Banner */}
       <AnnouncementBanner />
 
       {/* Visual separator */}
       <div className="border-b border-emerald-200/50 dark:border-emerald-800/30" />
 
-      {/* ===== ENHANCED GREETING CARD ===== */}
+      {/* ===== GREETING CARD (simplified — JUST the greeting) ===== */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: 'easeOut' }}
       >
-        <Card className="border-0 shadow-xl overflow-hidden rounded-2xl">
+        <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
           <div className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 relative">
             {/* Decorative pattern */}
             <div className="absolute inset-0 opacity-10" style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
             }} />
             <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent" />
-            <CardContent className="p-5 md:p-6 relative">
+            <CardContent className="p-4 sm:p-5 md:p-6 relative">
               <div className="flex items-center gap-3 text-white">
                 <motion.span
                   animate={{ rotate: [0, 14, -8, 14, -4, 10, 0] }}
                   transition={{ delay: 0.5, duration: 0.8, ease: 'easeInOut' }}
-                  className="inline-block"
+                  className="inline-block shrink-0"
                 >
-                  <GreetingIcon className={`h-7 w-7 ${greeting.iconClass}`} />
+                  <GreetingIcon className={`h-6 w-6 sm:h-7 sm:w-7 ${greeting.iconClass}`} />
                 </motion.span>
-                <h2 className="text-xl md:text-2xl font-bold">
+                <h2 className="text-lg sm:text-xl md:text-2xl font-bold truncate">
                   {greeting.text}, {user?.name?.split(' ')[0] || 'Usuário'}!
                 </h2>
               </div>
             </CardContent>
           </div>
+        </Card>
+      </motion.div>
+
+      {/* ===== INDICAR AMIGO small action card (referral link button) ===== */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1, duration: 0.35 }}
+      >
+        <Card className="rounded-2xl shadow-sm border border-emerald-100/50 dark:border-emerald-900/30">
+          <CardContent className="p-3 md:p-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-2 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 shrink-0">
+                <UserPlus className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground truncate">Indique amigos e ganhe CashBack</p>
+                <p className="text-[11px] text-muted-foreground truncate">Toque para copiar seu link de indicação</p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={handleCopyLink}
+              className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+            >
+              {copied ? <Check className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
+              <span className="hidden sm:inline">{copied ? 'Copiado!' : 'Indicar Amigo'}</span>
+            </Button>
+          </CardContent>
         </Card>
       </motion.div>
 
@@ -307,10 +332,10 @@ export function DashboardPage() {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 transition={{ delay: 0.1 + i * 0.06, duration: 0.35, ease: 'easeOut' }}
                 whileHover={{ scale: 1.03, y: -2 }}
-                className={`flex items-center gap-2.5 ${stat.bg} border border-emerald-100 dark:border-emerald-900/40 rounded-xl px-3.5 py-2.5 shadow-sm cursor-pointer transition-shadow duration-200 hover:shadow-md`}
+                className={`flex items-center gap-2 sm:gap-2.5 ${stat.bg} border border-emerald-100 dark:border-emerald-900/40 rounded-2xl px-3 sm:px-3.5 py-2 sm:py-2.5 shadow-sm cursor-pointer transition-shadow duration-200 hover:shadow-md`}
               >
-                <div className={`p-1.5 rounded-lg bg-white/60 dark:bg-white/5 ${stat.color}`}>
-                  <Icon className="h-4 w-4 shrink-0" />
+                <div className={`p-1.5 rounded-full bg-white/60 dark:bg-white/5 ${stat.color} shrink-0`}>
+                  <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
                 </div>
                 <div className="min-w-0">
                   <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide truncate">{stat.label}</p>
@@ -345,7 +370,7 @@ export function DashboardPage() {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 transition={{ delay: 0.15 + i * 0.06, duration: 0.3, ease: 'easeOut' }}
                 onClick={() => setActivePage(action.page)}
-                className="group relative overflow-hidden rounded-xl text-left transition-all duration-200"
+                className="group relative overflow-hidden rounded-2xl text-left transition-all duration-200"
                 whileHover={{ scale: 1.03, y: -2 }}
                 whileTap={{ scale: 0.97 }}
               >
@@ -354,14 +379,14 @@ export function DashboardPage() {
                 <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                   <div className="absolute inset-0 bg-white/5" />
                 </div>
-                <div className="relative p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="p-2.5 rounded-xl bg-white/20 backdrop-blur-sm shadow-sm">
-                      <Icon className="h-5 w-5 text-white" />
+                <div className="relative p-3 sm:p-4">
+                  <div className="flex items-center justify-between mb-2 sm:mb-3">
+                    <div className="p-2 sm:p-2.5 rounded-full bg-white/20 backdrop-blur-sm shadow-sm">
+                      <Icon className="h-4 w-4 sm:h-5 sm:w-5 text-white" />
                     </div>
                     <ChevronRight className="h-4 w-4 text-white/40 group-hover:text-white/80 group-hover:translate-x-0.5 transition-all duration-200" />
                   </div>
-                  <span className="text-sm font-bold text-white block">{action.label}</span>
+                  <span className="text-xs sm:text-sm font-bold text-white block">{action.label}</span>
                   <span className="text-[10px] text-emerald-100/80 mt-0.5 block">{action.description}</span>
                 </div>
               </motion.button>
@@ -379,15 +404,15 @@ export function DashboardPage() {
       {/* Section Separator */}
       <div className="section-separator" />
 
-      {/* ===== WEEKLY EARNINGS MINI CHART + PLAN UPGRADE PROGRESS ===== */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        {/* Weekly Referrals CSS Bar Chart */}
+      {/* ===== INDICAÇÕES DA SEMANA (per-user data from dashboard API) ===== */}
+      <div className="grid grid-cols-1 gap-4 md:gap-6">
+        {/* Weekly Referrals CSS Bar Chart — per-user data from the dashboard API */}
         <motion.div
           initial={{ opacity: 0, x: -15 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2, duration: 0.4 }}
         >
-          <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden border-0 bg-gradient-to-br from-card to-emerald-50/30 dark:to-emerald-950/10">
+          <Card className="rounded-2xl shadow-sm hover:shadow-lg transition-shadow duration-300 overflow-hidden border-0 bg-gradient-to-br from-card to-emerald-50/30 dark:to-emerald-950/10">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
@@ -400,11 +425,11 @@ export function DashboardPage() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between mb-4">
+            <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">
+              <div className="flex items-center justify-between mb-3 sm:mb-4">
                 <div>
                   <p className="text-xs text-muted-foreground font-medium">Total semanal</p>
-                  <p className="text-2xl font-bold text-foreground">{weeklyTotal} indicações</p>
+                  <p className="text-xl sm:text-2xl font-bold text-foreground">{weeklyTotal} indicações</p>
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-muted-foreground font-medium">Média diária</p>
@@ -412,7 +437,7 @@ export function DashboardPage() {
                 </div>
               </div>
               {/* CSS Bar Chart */}
-              <div className="flex items-end justify-between gap-1.5 h-32 mb-2">
+              <div className="flex items-end justify-between gap-1 sm:gap-1.5 h-24 sm:h-32 mb-2">
                 {weeklyReferralsData.map((item, i) => (
                   <div key={item.day} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
                     <motion.div
@@ -435,110 +460,13 @@ export function DashboardPage() {
               </div>
               <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Melhor dia</span>
-                <span className="font-semibold text-emerald-600">Sábado — 5 indicações</span>
+                <span className="font-semibold text-emerald-600">
+                  {weeklyBestDay
+                    ? `${weeklyBestDay.day} — ${weeklyBestDay.value} ${weeklyBestDay.value === 1 ? 'indicação' : 'indicações'}`
+                    : 'Sem indicações esta semana'}
+                </span>
               </div>
             </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* Plan Upgrade Progress Card */}
-        <motion.div
-          initial={{ opacity: 0, x: 15 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.25, duration: 0.4 }}
-        >
-          <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden border-0">
-            <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 relative">
-              {/* Decorative circles */}
-              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
-              <div className="absolute bottom-0 left-0 w-24 h-24 bg-emerald-500/5 rounded-full translate-y-1/2 -translate-x-1/2" />
-              <CardHeader className="pb-2 relative">
-                <CardTitle className="text-sm font-bold text-white flex items-center gap-2">
-                  <Rocket className="h-4 w-4 text-emerald-400" />
-                  Progresso do Plano
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="relative space-y-4">
-                {/* Current & Next Plan */}
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/5">
-                    <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">Plano Atual</p>
-                    <p className="text-lg font-bold text-white flex items-center gap-1.5 mt-0.5">
-                      <Crown className="h-4 w-4 text-emerald-400" />
-                      {planInfo.current}
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-center gap-1">
-                    <motion.div
-                      animate={{ x: [0, 4, 0] }}
-                      transition={{ repeat: Infinity, duration: 1.5, ease: 'easeInOut' }}
-                    >
-                      <ArrowRight className="h-5 w-5 text-emerald-400" />
-                    </motion.div>
-                    <span className="text-[8px] text-gray-500 uppercase">Upgrade</span>
-                  </div>
-                  <div className="flex-1 bg-emerald-500/15 backdrop-blur-sm rounded-xl p-3 border border-emerald-500/20">
-                    <p className="text-[10px] text-emerald-300 font-semibold uppercase tracking-wider">Próximo</p>
-                    <p className="text-lg font-bold text-emerald-300 flex items-center gap-1.5 mt-0.5">
-                      <Sparkles className="h-4 w-4 text-emerald-300" />
-                      {planInfo.next}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Progress Bar */}
-                <div>
-                  <div className="flex justify-between items-center text-xs mb-2">
-                    <span className="text-gray-400">Progresso geral</span>
-                    <span className="text-emerald-400 font-bold text-sm">{planInfo.progress}%</span>
-                  </div>
-                  <div className="h-3 bg-gray-700/80 rounded-full overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${planInfo.progress}%` }}
-                      transition={{ delay: 0.6, duration: 1.2, ease: 'easeOut' }}
-                      className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full relative"
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
-                    </motion.div>
-                  </div>
-                </div>
-
-                {/* Points needed */}
-                <div className="flex items-center gap-2 bg-amber-500/10 rounded-lg px-3 py-2 border border-amber-500/15">
-                  <Target className="h-4 w-4 text-amber-400 shrink-0" />
-                  <p className="text-xs text-amber-200">
-                    Faltam <span className="font-bold">{planInfo.pointsNeeded} pontos</span> para o próximo nível
-                  </p>
-                </div>
-
-                {/* Benefits list */}
-                <div className="space-y-1.5">
-                  <p className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">Benefícios do próximo plano</p>
-                  {planInfo.benefits.map((benefit, i) => (
-                    <motion.div
-                      key={benefit}
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.8 + i * 0.08, duration: 0.3 }}
-                      className="flex items-center gap-2 text-xs"
-                    >
-                      <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                      <span className="text-gray-300">{benefit}</span>
-                    </motion.div>
-                  ))}
-                </div>
-
-                {/* CTA Button */}
-                <Button
-                  className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-semibold shadow-lg shadow-emerald-500/20 transition-all duration-200"
-                  onClick={() => setActivePage('myplan')}
-                >
-                  <Crown className="h-4 w-4 mr-2" />
-                  Ver Detalhes do Plano
-                </Button>
-              </CardContent>
-            </div>
           </Card>
         </motion.div>
       </div>
@@ -554,7 +482,7 @@ export function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, duration: 0.35 }}
         >
-          <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full bg-card border border-emerald-100/50 dark:border-emerald-900/30">
+          <Card className="rounded-2xl shadow-sm hover:shadow-lg transition-shadow duration-300 h-full bg-card border border-emerald-100/50 dark:border-emerald-900/30">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
                 <Activity className="h-5 w-5 text-emerald-600" />
@@ -589,7 +517,7 @@ export function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25, duration: 0.35 }}
         >
-          <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full bg-card border border-emerald-100/50 dark:border-emerald-900/30">
+          <Card className="rounded-2xl shadow-sm hover:shadow-lg transition-shadow duration-300 h-full bg-card border border-emerald-100/50 dark:border-emerald-900/30">
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
                 <TrendingUp className="h-5 w-5 text-emerald-600" />
@@ -632,12 +560,12 @@ export function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.35 }}
         >
-          <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full bg-gradient-to-br from-gray-900 to-gray-800 border-0 overflow-hidden relative">
+          <Card className="rounded-2xl shadow-sm hover:shadow-lg transition-shadow duration-300 h-full bg-gradient-to-br from-gray-900 to-gray-800 border-0 overflow-hidden relative">
             <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
             <CardContent className="p-4 flex flex-col justify-between h-full relative">
               <div>
                 <div className="flex items-center gap-2 mb-3">
-                  <div className="p-2 rounded-lg bg-emerald-500/20">
+                  <div className="p-2 rounded-full bg-emerald-500/20">
                     <Trophy className="h-5 w-5 text-emerald-400" />
                   </div>
                   <div>
@@ -672,7 +600,7 @@ export function DashboardPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-2 text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 gap-1"
+                  className="rounded-xl h-7 px-2 text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 gap-1"
                   onClick={() => setActivePage('career')}
                 >
                   Ver trilha
@@ -690,15 +618,15 @@ export function DashboardPage() {
       {/* ===== FINANCIAL CARDS ===== */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-emerald-600" />
+          <h3 className="text-base sm:text-lg font-bold text-foreground flex items-center gap-2">
+            <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-600 shrink-0" />
             Indicador
             <span className="flex-1 h-px bg-gradient-to-r from-emerald-400/60 to-transparent ml-2" />
           </h3>
           <Button
             variant="ghost"
             size="sm"
-            className="text-xs text-muted-foreground hover:text-emerald-600 gap-1"
+            className="rounded-xl text-xs text-muted-foreground hover:text-emerald-600 gap-1"
             onClick={() => setActivePage('financial')}
           >
             <Eye className="h-3.5 w-3.5" />
@@ -708,7 +636,7 @@ export function DashboardPage() {
         <FinancialCards data={dashboardData} />
 
         {/* ===== DETALHAMENTO DE GANHOS TABLE ===== */}
-        <Card className="mt-4 shadow-sm border border-emerald-100/50 dark:border-emerald-900/30 overflow-hidden">
+        <Card className="mt-4 rounded-2xl shadow-sm border border-emerald-100/50 dark:border-emerald-900/30 overflow-hidden">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-emerald-600" />
@@ -717,12 +645,12 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs sm:text-sm min-w-[320px]">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    <th className="text-left font-semibold text-muted-foreground px-4 py-2.5">Tipo</th>
-                    <th className="text-right font-semibold text-muted-foreground px-4 py-2.5">Quantidade</th>
-                    <th className="text-left font-semibold text-muted-foreground px-4 py-2.5 hidden sm:table-cell">Descrição</th>
+                    <th className="text-left font-semibold text-muted-foreground px-3 sm:px-4 py-2 sm:py-2.5">Tipo</th>
+                    <th className="text-right font-semibold text-muted-foreground px-3 sm:px-4 py-2 sm:py-2.5">Quantidade</th>
+                    <th className="text-left font-semibold text-muted-foreground px-3 sm:px-4 py-2 sm:py-2.5 hidden sm:table-cell">Descrição</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -735,9 +663,9 @@ export function DashboardPage() {
                     { tipo: 'Rede Total', qtd: dashboardData?.network?.totalSize ?? 0, desc: 'Tamanho total da sua rede (todos os níveis)', cor: 'text-emerald-600' },
                   ].map((row, i) => (
                     <tr key={i} className={i % 2 === 0 ? 'bg-transparent' : 'bg-muted/20'}>
-                      <td className="px-4 py-2.5 font-medium text-foreground">{row.tipo}</td>
-                      <td className={`px-4 py-2.5 text-right font-bold ${row.cor}`}>{row.qtd.toLocaleString('pt-BR')}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground text-xs hidden sm:table-cell">{row.desc}</td>
+                      <td className="px-3 sm:px-4 py-2 sm:py-2.5 font-medium text-foreground">{row.tipo}</td>
+                      <td className={`px-3 sm:px-4 py-2 sm:py-2.5 text-right font-bold ${row.cor}`}>{row.qtd.toLocaleString('pt-BR')}</td>
+                      <td className="px-3 sm:px-4 py-2 sm:py-2.5 text-muted-foreground text-xs hidden sm:table-cell">{row.desc}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -755,7 +683,7 @@ export function DashboardPage() {
 
       {/* ===== ACTIVITY FEED + APP DOWNLOAD ===== */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        <ActivityFeed />
+        <ActivityFeed activities={dashboardData?.recentActivity} />
 
         {/* App Download Section */}
         <motion.div
@@ -763,7 +691,7 @@ export function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.35 }}
         >
-          <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full bg-card border border-emerald-100/50 dark:border-emerald-900/30">
+          <Card className="rounded-2xl shadow-sm hover:shadow-lg transition-shadow duration-300 h-full bg-card border border-emerald-100/50 dark:border-emerald-900/30">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
                 <Smartphone className="h-5 w-5 text-emerald-600" />
@@ -775,7 +703,7 @@ export function DashboardPage() {
               <div className="grid grid-cols-2 gap-3">
                 <Button
                   variant="outline"
-                  className="h-auto py-3 flex flex-col gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-400 dark:hover:border-emerald-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
+                  className="rounded-xl h-auto py-3 flex flex-col gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-400 dark:hover:border-emerald-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
                 >
                   <Smartphone className="h-5 w-5 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
                   <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Android</span>
@@ -783,7 +711,7 @@ export function DashboardPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-auto py-3 flex flex-col gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-400 dark:hover:border-emerald-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
+                  className="rounded-xl h-auto py-3 flex flex-col gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-400 dark:hover:border-emerald-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
                 >
                   <Apple className="h-5 w-5 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
                   <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">iOS</span>
@@ -791,7 +719,7 @@ export function DashboardPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-auto py-3 flex flex-col gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-400 dark:hover:border-emerald-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
+                  className="rounded-xl h-auto py-3 flex flex-col gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-400 dark:hover:border-emerald-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
                 >
                   <Smartphone className="h-5 w-5 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
                   <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Android</span>
@@ -799,7 +727,7 @@ export function DashboardPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="h-auto py-3 flex flex-col gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-400 dark:hover:border-emerald-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
+                  className="rounded-xl h-auto py-3 flex flex-col gap-1.5 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:border-emerald-400 dark:hover:border-emerald-600 group transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
                 >
                   <Apple className="h-5 w-5 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
                   <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">iOS</span>
@@ -835,8 +763,8 @@ export function DashboardPage() {
       {/* ===== VISÃO GERAL - MINI WIDGETS ===== */}
       <div className="border-b border-emerald-200/50 dark:border-emerald-800/30" />
       <div>
-        <h3 className="text-lg font-bold text-foreground flex items-center gap-2 mb-4">
-          <Eye className="h-5 w-5 text-emerald-600" />
+        <h3 className="text-base sm:text-lg font-bold text-foreground flex items-center gap-2 mb-4">
+          <Eye className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-600 shrink-0" />
           Visão Geral
           <span className="flex-1 h-px bg-gradient-to-r from-emerald-400/60 to-transparent ml-2" />
         </h3>
@@ -847,7 +775,7 @@ export function DashboardPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1, duration: 0.35 }}
           >
-            <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full bg-card border border-emerald-100/50 dark:border-emerald-900/30">
+            <Card className="rounded-2xl shadow-sm hover:shadow-lg transition-shadow duration-300 h-full bg-card border border-emerald-100/50 dark:border-emerald-900/30">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
                   <CalendarIcon className="h-4 w-4 text-emerald-600" />
@@ -881,7 +809,7 @@ export function DashboardPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="w-full text-xs text-muted-foreground hover:text-emerald-600 gap-1 mt-1"
+                  className="rounded-xl w-full text-xs text-muted-foreground hover:text-emerald-600 gap-1 mt-1"
                   onClick={() => setActivePage('events')}
                 >
                   Ver todos os eventos
@@ -897,7 +825,7 @@ export function DashboardPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, duration: 0.35 }}
           >
-            <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full bg-gradient-to-br from-gray-900 to-gray-800 border-0 overflow-hidden relative">
+            <Card className="rounded-2xl shadow-sm hover:shadow-lg transition-shadow duration-300 h-full bg-gradient-to-br from-gray-900 to-gray-800 border-0 overflow-hidden relative">
               <div className="absolute top-0 right-0 w-20 h-20 bg-amber-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
               <CardHeader className="pb-2 relative">
                 <CardTitle className="text-sm font-bold text-white flex items-center gap-2">
@@ -934,7 +862,7 @@ export function DashboardPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="w-full text-xs text-gray-400 hover:text-amber-400 mt-3 gap-1"
+                  className="rounded-xl w-full text-xs text-gray-400 hover:text-amber-400 mt-3 gap-1"
                   onClick={() => setActivePage('leaderboard')}
                 >
                   Ver ranking completo
@@ -950,7 +878,7 @@ export function DashboardPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.35 }}
           >
-            <Card className="shadow-md hover:shadow-lg transition-shadow duration-300 h-full bg-card border border-emerald-100/50 dark:border-emerald-900/30">
+            <Card className="rounded-2xl shadow-sm hover:shadow-lg transition-shadow duration-300 h-full bg-card border border-emerald-100/50 dark:border-emerald-900/30">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
                   <TrendingUp className="h-4 w-4 text-emerald-600" />
@@ -961,11 +889,11 @@ export function DashboardPage() {
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <p className="text-xs text-muted-foreground">Indicações esta semana</p>
-                    <p className="text-xl font-bold text-foreground">{weeklyTotal} indicações</p>
+                    <p className="text-xl font-bold text-foreground">{dashboardData?.weeklyReferralCount ?? weeklyTotal} indicações</p>
                   </div>
                   <div className="flex items-center gap-1 text-xs font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-1 rounded-full">
                     <TrendingUp className="h-3 w-3" />
-                    +{weeklyTotal}
+                    +{dashboardData?.weeklyReferralCount ?? weeklyTotal}
                   </div>
                 </div>
                 {/* SVG Sparkline */}

@@ -72,6 +72,8 @@ export async function PUT(request: Request) {
       emergencyName,
       emergencyPhone,
       emergencyRelation,
+      // Auto-debit opt-in for monthly fee (Task 13-B §4)
+      autoDebitEnabled,
     } = body
 
     if (!userId) {
@@ -122,6 +124,11 @@ export async function PUT(request: Request) {
     if (emergencyName !== undefined) updateData.emergencyName = emergencyName === '' ? null : emergencyName
     if (emergencyPhone !== undefined) updateData.emergencyPhone = emergencyPhone === '' ? null : emergencyPhone
     if (emergencyRelation !== undefined) updateData.emergencyRelation = emergencyRelation === '' ? null : emergencyRelation
+
+    // Auto-debit opt-in (boolean toggle)
+    if (autoDebitEnabled !== undefined) {
+      updateData.autoDebitEnabled = Boolean(autoDebitEnabled)
+    }
 
     const updatedUser = await prisma.user.update({
       where: { id: userId },

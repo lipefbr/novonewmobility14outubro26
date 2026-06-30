@@ -48,6 +48,10 @@ const userColorMap: Record<string, string> = {
   'Nível 3': '#34d399',
   'Nível 4': '#6ee7b7',
   'Nível 5': '#a7f3d0',
+  // Per-user downline distribution (descendants grouped by plan)
+  'Gratuito': '#34d399',
+  'Blue 3': '#10b981',
+  'Blue 5 Premium': '#059669',
   'blue5': '#059669',
   'blue3': '#10b981',
   'free': '#34d399',
@@ -57,10 +61,22 @@ const revenueColorMap: Record<string, string> = {
   'Entrada': '#059669',
   'Residual': '#10b981',
   'Gratific.': '#f59e0b',
+  'Gratificação': '#f59e0b',
   'Mobilidade': '#3b82f6',
   'Farmácia': '#f43f5e',
   'Refeição': '#f97316',
   'Shopping': '#8b5cf6',
+  'Compras': '#8b5cf6',
+  'Contas': '#0ea5e9',
+  'CashBack': '#059669',
+  'Taxa de Saque': '#dc2626',
+  'Upgrade de Plano': '#6366f1',
+  'Saque': '#dc2626',
+  'Pagamento Fatura': '#06b6d4',
+  'Depósito': '#22c55e',
+  'Voucher': '#ec4899',
+  'Bônus': '#eab308',
+  'Outros': '#6b7280',
   'plan_upgrade': '#059669',
   'withdrawal': '#10b981',
   'mobility': '#3b82f6',
@@ -69,38 +85,72 @@ const revenueColorMap: Record<string, string> = {
   'shopping': '#8b5cf6',
   'gratification': '#f59e0b',
   'plan_blue3': '#34d399',
+  'bills': '#0ea5e9',
+  'cashback': '#059669',
+  'withdrawal_fee': '#dc2626',
+  'meal': '#f97316',
+  'paymentInvoice': '#06b6d4',
+  'deposit': '#22c55e',
+  'voucher': '#ec4899',
+  'bonus': '#eab308',
+  'other': '#6b7280',
 }
 
 const nameTranslations: Record<string, string> = {
-  'plan_upgrade': 'Upgrade',
+  'plan_upgrade': 'Upgrade de Plano',
   'withdrawal': 'Saque',
   'mobility': 'Mobilidade',
   'food': 'Refeição',
   'pharmacy': 'Farmácia',
-  'shopping': 'Shopping',
-  'gratification': 'Gratific.',
+  'shopping': 'Compras',
+  'gratification': 'Gratificação',
   'plan_blue3': 'Blue 3',
-  'blue5': 'Blue 5',
+  'blue5': 'Blue 5 Premium',
   'blue3': 'Blue 3',
   'free': 'Gratuito',
+  // Per-user category labels (must match financial-page.tsx categoryLabels)
+  'bills': 'Contas',
+  'cashback': 'CashBack',
+  'withdrawal_fee': 'Taxa de Saque',
+  'meal': 'Refeição',
+  'paymentInvoice': 'Pagamento Fatura',
+  'free_balance': 'Saldo Livre',
+  'deposit': 'Depósito',
+  'voucher': 'Voucher',
+  'bonus': 'Bônus',
+  'other': 'Outros',
 }
 
 const RADIAN = Math.PI / 180
 
-// Page navigation mapping for clickable chart segments
+// Page navigation mapping for clickable chart segments.
+// Updated for the per-user downline distribution: plan keys (free / blue3 /
+// blue5) navigate to the referrals page so users can inspect their downline.
 const segmentPageMap: Record<string, PageKey> = {
   'Diretos': 'referrals',
   'Nível 2': 'referrals',
   'Nível 3': 'referrals',
   'Nível 4': 'referrals',
   'Nível 5': 'referrals',
+  'Gratuito': 'referrals',
+  'Blue 3': 'referrals',
+  'Blue 5 Premium': 'referrals',
   'Entrada': 'cashback',
   'Residual': 'cashback',
-  'Gratific.': 'gratifications',
+  'Gratificação': 'gratifications',
   'Mobilidade': 'financial',
   'Farmácia': 'financial',
   'Refeição': 'financial',
-  'Shopping': 'financial',
+  'Compras': 'financial',
+  'Contas': 'financial',
+  'CashBack': 'cashback',
+  'Taxa de Saque': 'financial',
+  'Upgrade de Plano': 'myplan',
+  'Saque': 'financial',
+  'Pagamento Fatura': 'financial',
+  'Depósito': 'financial',
+  'Voucher': 'voucher',
+  'Bônus': 'financial',
 }
 
 function renderCustomizedLabel({
@@ -255,17 +305,17 @@ export function DashboardCharts({ data }: DashboardChartsProps) {
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: 0.4, duration: 0.4 }}
       >
-        <Card className="shadow-sm bg-card">
+        <Card className="rounded-2xl shadow-sm bg-card">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
                 <PieChartIcon className="h-5 w-5 text-emerald-600" />
                 {t('dashboard.charts.users')}
               </CardTitle>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="text-xs text-muted-foreground hover:text-emerald-600 gap-1"
+              <Button
+                variant="ghost"
+                size="sm"
+                className="rounded-xl text-xs text-muted-foreground hover:text-emerald-600 gap-1"
                 onClick={() => setActivePage('referrals')}
               >
                 <FileText className="h-3.5 w-3.5" />
@@ -330,17 +380,17 @@ export function DashboardCharts({ data }: DashboardChartsProps) {
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: 0.5, duration: 0.4 }}
       >
-        <Card className="shadow-sm bg-card">
+        <Card className="rounded-2xl shadow-sm bg-card">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
                 <BarChart3 className="h-5 w-5 text-emerald-600" />
                 {t('dashboard.charts.revenue')}
               </CardTitle>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="text-xs text-muted-foreground hover:text-emerald-600 gap-1"
+              <Button
+                variant="ghost"
+                size="sm"
+                className="rounded-xl text-xs text-muted-foreground hover:text-emerald-600 gap-1"
                 onClick={() => setActivePage('financial')}
               >
                 <FileText className="h-3.5 w-3.5" />

@@ -64,9 +64,9 @@ function FinancialCard({
       animate={{ opacity: 1, scale: 1 }}
       transition={{ delay, duration: 0.3 }}
     >
-      <Card className="border-0 shadow-md hover:shadow-lg transition-all duration-200 overflow-hidden group cursor-pointer hover:scale-[1.01]">
+      <Card className="rounded-2xl border-0 shadow-sm hover:shadow-lg transition-all duration-200 overflow-hidden group cursor-pointer hover:scale-[1.01]">
         <CardContent className="p-0">
-          <div className={`bg-gradient-to-br ${gradient} p-4 md:p-5 relative min-h-[100px]`}>
+          <div className={`bg-gradient-to-br ${gradient} p-3 sm:p-4 md:p-5 relative min-h-[90px] sm:min-h-[100px]`}>
             {/* Pattern overlay */}
             <div className="absolute inset-0 opacity-[0.06]" style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='1' fill-rule='evenodd'%3E%3Ccircle cx='20' cy='20' r='3'/%3E%3C/g%3E%3C/svg%3E")`,
@@ -82,12 +82,12 @@ function FinancialCard({
                 </span>
                 <div className="flex items-center gap-2">
                   <ChangeIndicator value={change} />
-                  <div className="p-1.5 rounded-lg bg-white/20">
+                  <div className="p-1.5 rounded-full bg-white/20">
                     <Icon className="h-4 w-4 text-white" />
                   </div>
                 </div>
               </div>
-              <AnimatedCount value={value} className="text-xl md:text-2xl font-bold text-white" />
+              <AnimatedCount value={value} className="text-lg sm:text-xl md:text-2xl font-bold text-white" />
               <p className="text-[10px] text-white/70 font-medium mt-0.5 uppercase tracking-wide">
                 {subtitle}
               </p>
@@ -191,7 +191,7 @@ export function FinancialCards({ data }: FinancialCardsProps) {
   ]
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
       {cards.map((card, i) => (
         <FinancialCard
           key={card.title}

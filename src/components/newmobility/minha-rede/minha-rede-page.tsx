@@ -514,25 +514,25 @@ function MinhaRedeTreePanel({ type }: { type: MatrixType }) {
                 placeholder="Buscar pessoa na rede por nome ou email..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 h-9 text-sm"
+                className="pl-9 h-11 sm:h-9 text-sm"
               />
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
-              <Button variant="outline" size="sm" className="h-8 sm:h-9 text-xs px-2 sm:px-3" onClick={expandAll}>
+              <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0 h-11 sm:h-9 text-xs px-2 sm:px-3" onClick={expandAll}>
                 <ChevronDown className="h-3.5 w-3.5 sm:mr-1" />
                 <span className="hidden sm:inline">Expandir tudo</span>
               </Button>
-              <Button variant="outline" size="sm" className="h-8 sm:h-9 text-xs px-2 sm:px-3" onClick={collapseAll}>
+              <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0 h-11 sm:h-9 text-xs px-2 sm:px-3" onClick={collapseAll}>
                 <ChevronRight className="h-3.5 w-3.5 sm:mr-1" />
                 <span className="hidden sm:inline">Recolher tudo</span>
               </Button>
-              <div className="flex items-center gap-1 border rounded-md px-2 h-8 sm:h-9">
-                <button onClick={() => setZoom(z => Math.max(50, z - 10))} className="text-muted-foreground hover:text-foreground" aria-label="Diminuir zoom">
-                  <ZoomOut className="h-3.5 w-3.5" />
+              <div className="flex items-center gap-1 border rounded-md px-2 h-11 sm:h-9">
+                <button onClick={() => setZoom(z => Math.max(50, z - 10))} className="text-muted-foreground hover:text-foreground p-1.5" aria-label="Diminuir zoom">
+                  <ZoomOut className="h-4 w-4" />
                 </button>
                 <span className="text-[10px] font-medium w-9 text-center tabular-nums">{zoom}%</span>
-                <button onClick={() => setZoom(z => Math.min(150, z + 10))} className="text-muted-foreground hover:text-foreground" aria-label="Aumentar zoom">
-                  <ZoomIn className="h-3.5 w-3.5" />
+                <button onClick={() => setZoom(z => Math.min(150, z + 10))} className="text-muted-foreground hover:text-foreground p-1.5" aria-label="Aumentar zoom">
+                  <ZoomIn className="h-4 w-4" />
                 </button>
               </div>
             </div>
@@ -717,7 +717,7 @@ export function MinhaRedePage() {
                 key={key}
                 value={key}
                 className={cn(
-                  'flex flex-col items-center gap-1 py-1.5 sm:py-2 data-[state=active]:bg-gradient-to-b data-[state=active]:text-white',
+                  'flex flex-col items-center gap-1 min-h-[44px] py-2 sm:py-2 data-[state=active]:bg-gradient-to-b data-[state=active]:text-white',
                   tab === key && cfg.gradient
                 )}
               >

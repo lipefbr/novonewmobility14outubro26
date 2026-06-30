@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { useStore } from '@/lib/store'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, formatNumber } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
 import { careerApi } from '@/lib/api'
 import {
@@ -480,12 +480,12 @@ export function CareerPage() {
                 <div className="grid grid-cols-3 gap-4">
                   <div className="text-center">
                     <p className="text-emerald-200 text-xs">Carreira</p>
-                    <p className="text-xl font-bold">{currentPoints}</p>
+                    <p className="text-lg sm:text-xl font-bold">{formatNumber(currentPoints)}</p>
                     <p className="text-[10px] text-emerald-300">pontos</p>
                   </div>
                   <div className="text-center">
                     <p className="text-emerald-200 text-xs">Pessoais</p>
-                    <p className="text-xl font-bold">{personalPoints}</p>
+                    <p className="text-lg sm:text-xl font-bold">{formatNumber(personalPoints)}</p>
                     <p className="text-[10px] text-emerald-300">pontos</p>
                   </div>
                   <div className="text-center">
@@ -516,8 +516,8 @@ export function CareerPage() {
                   </motion.div>
                   Progresso para {nextLevel.name}
                 </span>
-                <span className="text-sm font-bold text-emerald-600">
-                  {currentPoints}/{nextLevel.pointsRequired} pontos
+                <span className="text-xs sm:text-sm font-bold text-emerald-600">
+                  {formatNumber(currentPoints)}/{formatNumber(nextLevel.pointsRequired)} pontos
                 </span>
               </div>
               <div className="relative">
@@ -535,7 +535,7 @@ export function CareerPage() {
               </div>
               <div className="flex items-center justify-between mt-2">
                 <p className="text-xs text-muted-foreground">
-                  Faltam <span className="font-semibold text-emerald-600">{nextLevel.pointsRequired - currentPoints} pontos</span> para atingir {nextLevel.name}
+                  Faltam <span className="font-semibold text-emerald-600">{formatNumber(nextLevel.pointsRequired - currentPoints)} pontos</span> para atingir {nextLevel.name}
                 </p>
                 <div className="flex items-center gap-1 text-xs text-emerald-600">
                   <Sparkles className="h-3 w-3" />
@@ -547,7 +547,7 @@ export function CareerPage() {
                 <div>
                   <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">{motivational.message}</p>
                   <p className="text-[10px] text-emerald-600 dark:text-emerald-500 mt-1">
-                    Cada estrela equivale a 2 pontos. Você precisa de {nextLevel.starsRequired} estrelas e {nextLevel.pointsRequired} pontos.
+                    Cada estrela equivale a 2 pontos. Você precisa de {nextLevel.starsRequired} estrelas e {formatNumber(nextLevel.pointsRequired)} pontos.
                   </p>
                 </div>
               </div>
@@ -580,7 +580,7 @@ export function CareerPage() {
                     "{motivational.message}"
                   </p>
                   <p className="text-[10px] text-amber-600 dark:text-amber-500 mt-0.5">
-                    Faltam apenas {nextLevel.pointsRequired - currentPoints} pontos para desbloquear {nextLevel.nextReward}
+                    Faltam apenas {formatNumber(nextLevel.pointsRequired - currentPoints)} pontos para desbloquear {nextLevel.nextReward}
                   </p>
                 </div>
               </div>
@@ -662,7 +662,7 @@ export function CareerPage() {
                   <div className="grid grid-cols-3 gap-3 text-xs">
                     <div>
                       <span className="text-muted-foreground">Min. Pontos</span>
-                      <p className="font-semibold text-foreground">{nextLevel.pointsRequired}</p>
+                      <p className="font-semibold text-foreground">{formatNumber(nextLevel.pointsRequired)}</p>
                     </div>
                     <div>
                       <span className="text-muted-foreground">CashBack</span>
@@ -843,7 +843,7 @@ export function CareerPage() {
                             <div className="grid grid-cols-2 gap-2 text-xs">
                               <div>
                                 <span className="text-muted-foreground">Min. Pontos</span>
-                                <p className="font-medium text-foreground">{level.pointsRequired}</p>
+                                <p className="font-medium text-foreground">{formatNumber(level.pointsRequired)}</p>
                               </div>
                               <div>
                                 <span className="text-muted-foreground">Multiplicador</span>
@@ -901,17 +901,19 @@ export function CareerPage() {
                           <Badge className="bg-emerald-600 text-white text-[10px]">Conquistado</Badge>
                         </div>
                       )}
-                      <CardContent className="p-4">
-                        <div className="flex items-start gap-4">
-                          <div className="relative">
+                      <CardContent className="p-3 sm:p-4">
+                        {/* 3-zone header: emoji | name+stars | reward */}
+                        <div className="flex items-start gap-3">
+                          <div className="relative shrink-0">
                             <div
-                              className="p-3 rounded-xl text-white shrink-0 shadow-lg flex items-center justify-center gap-1"
+                              className="p-2 sm:p-2.5 rounded-lg sm:rounded-xl text-white shadow-lg flex items-center justify-center"
                               style={{ background: `linear-gradient(135deg, ${level.color}, ${level.color}dd)` }}
                             >
-                              {level.iconEmoji && (
-                                <span className="text-base leading-none" aria-hidden>{level.iconEmoji}</span>
+                              {level.iconEmoji ? (
+                                <span className="text-lg sm:text-xl leading-none" aria-hidden>{level.iconEmoji}</span>
+                              ) : (
+                                <Icon className="h-5 w-5" />
                               )}
-                              <Icon className="h-6 w-6" />
                             </div>
                             {level.achieved && (
                               <motion.div
@@ -925,44 +927,51 @@ export function CareerPage() {
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h4 className="font-bold text-foreground text-base">{level.name}</h4>
+                            <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                              <h4 className="font-bold text-foreground text-sm sm:text-base">{level.name}</h4>
                               <div className="flex items-center gap-0.5">
                                 {Array.from({ length: level.starsRequired }).map((_, si) => (
                                   <Star key={si} className="h-3 w-3 text-yellow-500 fill-yellow-500" />
                                 ))}
                               </div>
                             </div>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                              <div>
-                                <span className="text-muted-foreground">Min. Estrelas</span>
-                                <p className="font-medium text-foreground">{level.starsRequired}</p>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">Min. Pontos</span>
-                                <p className="font-medium text-foreground">{level.pointsRequired}</p>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">Multiplicador</span>
-                                <p className="font-medium text-emerald-600">{level.cashbackMultiplier}</p>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">Recompensa</span>
-                                <p className="font-semibold text-emerald-600">{formatCurrency(level.reward)}</p>
-                              </div>
-                            </div>
-                            {level.benefits.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {level.benefits.slice(0, 3).map((b, bi) => (
-                                  <Badge key={bi} variant="outline" className="text-[10px]">{b}</Badge>
-                                ))}
-                                {level.benefits.length > 3 && (
-                                  <Badge variant="outline" className="text-[10px]">+{level.benefits.length - 3}</Badge>
-                                )}
-                              </div>
-                            )}
+                            <p className="text-[11px] sm:text-xs text-muted-foreground leading-snug">
+                              {level.achieved ? 'Graduação conquistada' : `A partir de ${formatNumber(level.pointsRequired)} pontos`}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-[9px] sm:text-[10px] text-muted-foreground uppercase tracking-wide">Recompensa</p>
+                            <p className="text-xs sm:text-sm font-bold text-emerald-600 whitespace-nowrap">{formatCurrency(level.reward)}</p>
+                            <p className="text-[9px] text-muted-foreground">/mês</p>
                           </div>
                         </div>
+
+                        {/* Stats grid with separator */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3 pt-3 border-t border-border/50 text-xs">
+                          <div>
+                            <span className="text-muted-foreground text-[10px]">Min. Estrelas</span>
+                            <p className="font-medium text-foreground">{level.starsRequired}</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground text-[10px]">Min. Pontos</span>
+                            <p className="font-medium text-foreground">{formatNumber(level.pointsRequired)}</p>
+                          </div>
+                          <div className="col-span-2 sm:col-span-1">
+                            <span className="text-muted-foreground text-[10px]">Multiplicador</span>
+                            <p className="font-medium text-emerald-600">{level.cashbackMultiplier}</p>
+                          </div>
+                        </div>
+
+                        {level.benefits.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2.5">
+                            {level.benefits.slice(0, 3).map((b, bi) => (
+                              <Badge key={bi} variant="outline" className="text-[10px]">{b}</Badge>
+                            ))}
+                            {level.benefits.length > 3 && (
+                              <Badge variant="outline" className="text-[10px]">+{level.benefits.length - 3}</Badge>
+                            )}
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   </div>

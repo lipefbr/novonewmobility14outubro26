@@ -31,6 +31,8 @@ import {
   BarChart,
   Bar,
   Legend,
+  LineChart,
+  Line,
 } from 'recharts'
 import {
   Wallet,
@@ -547,6 +549,73 @@ export function FinancialPage() {
     0
   )
 
+  // ===== Task 13-E: Indicator breakdowns for the new "Indicadores de Ganhos" section =====
+  // All values are derived from the logged-in user's transactions only (per-user data).
+  // 1. Lucro Total: sum of ALL positive transactions for the user
+  const lucroTotal = allTransactionsForChart
+    .reduce((sum, tx) => sum + Math.max(0, Number(tx.amount) || 0), 0)
+
+  // 3. Ganhos Entrada: cashback_entry transactions only
+  const ganhosEntrada = allTransactionsForChart
+    .filter((tx) => tx.type === 'cashback_entry' || tx.category === 'cashback_entry')
+    .reduce((sum, tx) => sum + Math.max(0, Number(tx.amount) || 0), 0)
+
+  // 4. Ganhos Residual: cashback_residual transactions only
+  const ganhosResidual = allTransactionsForChart
+    .filter((tx) => tx.type === 'cashback_residual' || tx.category === 'cashback_residual')
+    .reduce((sum, tx) => sum + Math.max(0, Number(tx.amount) || 0), 0)
+
+  // 5. Ganhos Vendas: cashback_sales transactions only
+  const ganhosVendas = allTransactionsForChart
+    .filter((tx) => tx.type === 'cashback_sales' || tx.category === 'cashback_sales')
+    .reduce((sum, tx) => sum + Math.max(0, Number(tx.amount) || 0), 0)
+
+  // 8. Saldo reservado para Faturas: balancePending + balancePaymentInvoice
+  const saldoReservadoFaturas = (user?.balancePending || 0) + (user?.balancePaymentInvoice || 0)
+
+  // ===== Task 13-E: Chart data for the 4 new charts (Saldo Gratificação, Saldo Faturas, Saldo Disponível, Saldo Sacável) =====
+
+  // 2. Saldo Faturas PieChart: pending vs paid invoices (count + amount)
+  const invoicePieData = (() => {
+    const pendingList = invoices.filter(
+      (inv) => inv.status === 'pending' || inv.status === 'overdue'
+    )
+    const paidList = invoices.filter(
+      (inv) => inv.status === 'paid' || inv.status === 'completed'
+    )
+    const pendingAmt = pendingList.reduce((s, inv) => s + Math.abs(Number(inv.amount) || 0), 0)
+    const paidAmt = paidList.reduce((s, inv) => s + Math.abs(Number(inv.amount) || 0), 0)
+    return [
+      { name: 'Pendentes', value: pendingAmt, count: pendingList.length, color: '#f43f5e' },
+      { name: 'Pagas', value: paidAmt, count: paidList.length, color: '#059669' },
+    ].filter((d) => d.count > 0)
+  })()
+
+  // 3. Saldo Disponível LineChart: approximate balanceWithdrawal over the last 6 months.
+  // For each month M, balance_at_end_of_M ≈ currentBalance - sum(all tx with createdAt > M.end).
+  // This is an approximation (ignores manual balance adjustments) but gives a useful trend.
+  const saldoDisponivelData = (() => {
+    const now = new Date()
+    const monthLabels = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+    const months: { label: string; end: Date }[] = []
+    for (let i = 5; i >= 0; i--) {
+      // Last day of (current month - i)
+      const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59, 999)
+      months.push({ label: monthLabels[end.getMonth()], end })
+    }
+    const currentBalance = user?.balanceWithdrawal || 0
+    return months.map((m) => {
+      const futureDelta = allTransactionsForChart
+        .filter((tx) => {
+          const d = new Date(tx.createdAt || tx.date)
+          if (isNaN(d.getTime())) return false
+          return d > m.end
+        })
+        .reduce((s, tx) => s + (Number(tx.amount) || 0), 0)
+      return { month: m.label, saldo: Math.max(0, currentBalance - futureDelta) }
+    })
+  })()
+
   const balances = [
     { label: t('financial.balance.withdrawal'), value: user?.balanceWithdrawal || 0, icon: Wallet, color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400', gradient: 'from-emerald-500 to-emerald-600', change: 5 },
     { label: t('financial.balance.mobility'), value: user?.balanceMobility || 0, icon: Car, color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400', gradient: 'from-blue-500 to-blue-600', change: -2 },
@@ -991,6 +1060,99 @@ export function FinancialPage() {
         </div>
       </motion.div>
 
+      {/* ===== Task 13-E: Indicadores de Ganhos (8 indicator cards) ===== */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.06, duration: 0.3 }}
+      >
+        <Card className="shadow-sm bg-card border-emerald-200/60 dark:border-emerald-900/40">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-emerald-600" />
+              Indicadores de Ganhos
+              <span className="text-[10px] font-normal text-muted-foreground">(indicadores do usuário logado)</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* 1. Lucro Total */}
+              <div className="rounded-lg border border-border bg-emerald-50/50 dark:bg-emerald-950/20 p-4">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Coins className="h-4 w-4 text-emerald-600" />
+                  <p className="text-xs text-muted-foreground font-medium">Lucro Total</p>
+                </div>
+                <p className="text-lg font-bold text-foreground">{formatCurrency(lucroTotal)}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Soma de todos os ganhos</p>
+              </div>
+              {/* 2. Ganhos por Indicação */}
+              <div className="rounded-lg border border-border bg-teal-50/50 dark:bg-teal-950/20 p-4">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Network className="h-4 w-4 text-teal-600" />
+                  <p className="text-xs text-muted-foreground font-medium">Ganhos por Indicação</p>
+                </div>
+                <p className="text-lg font-bold text-foreground">{formatCurrency(totalReferralEarnings)}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Residual + indicações</p>
+              </div>
+              {/* 3. Ganhos Entrada */}
+              <div className="rounded-lg border border-border bg-emerald-50/50 dark:bg-emerald-950/20 p-4">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <ArrowDownLeft className="h-4 w-4 text-emerald-600" />
+                  <p className="text-xs text-muted-foreground font-medium">Ganhos Entrada</p>
+                </div>
+                <p className="text-lg font-bold text-foreground">{formatCurrency(ganhosEntrada)}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">CashBack Entrada</p>
+              </div>
+              {/* 4. Ganhos Residual */}
+              <div className="rounded-lg border border-border bg-teal-50/50 dark:bg-teal-950/20 p-4">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <TrendingUp className="h-4 w-4 text-teal-600" />
+                  <p className="text-xs text-muted-foreground font-medium">Ganhos Residual</p>
+                </div>
+                <p className="text-lg font-bold text-foreground">{formatCurrency(ganhosResidual)}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">CashBack Residual</p>
+              </div>
+              {/* 5. Ganhos Vendas */}
+              <div className="rounded-lg border border-border bg-blue-50/50 dark:bg-blue-950/20 p-4">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <RotateCcw className="h-4 w-4 text-blue-600" />
+                  <p className="text-xs text-muted-foreground font-medium">Ganhos Vendas</p>
+                </div>
+                <p className="text-lg font-bold text-foreground">{formatCurrency(ganhosVendas)}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">CashBack Vendas</p>
+              </div>
+              {/* 6. Saldo Disponível */}
+              <div className="rounded-lg border border-border bg-emerald-50/50 dark:bg-emerald-950/20 p-4">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Wallet className="h-4 w-4 text-emerald-600" />
+                  <p className="text-xs text-muted-foreground font-medium">Saldo Disponível</p>
+                </div>
+                <p className="text-lg font-bold text-foreground">{formatCurrency(user?.balanceWithdrawal || 0)}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Saldo líquido disponível</p>
+              </div>
+              {/* 7. Saldo para Saque */}
+              <div className="rounded-lg border border-border bg-amber-50/50 dark:bg-amber-950/20 p-4">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <ArrowDownToLine className="h-4 w-4 text-amber-600" />
+                  <p className="text-xs text-muted-foreground font-medium">Saldo para Saque</p>
+                </div>
+                <p className="text-lg font-bold text-foreground">{formatCurrency(user?.balanceWithdrawal || 0)}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Valor liberado para saque</p>
+              </div>
+              {/* 8. Saldo reservado para Faturas */}
+              <div className="rounded-lg border border-border bg-rose-50/50 dark:bg-rose-950/20 p-4">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Receipt className="h-4 w-4 text-rose-600" />
+                  <p className="text-xs text-muted-foreground font-medium">Saldo reservado para Faturas</p>
+                </div>
+                <p className="text-lg font-bold text-foreground">{formatCurrency(saldoReservadoFaturas)}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Contas + Pagamento Fatura</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* ===== Task 11-G: Lucros e Indicações (Profit & Referral Earnings Summary) ===== */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
@@ -1238,6 +1400,171 @@ export function FinancialPage() {
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* ===== Task 13-E: 4 new charts (Saldo Gratificação, Saldo Faturas, Saldo Disponível, Saldo Sacável) ===== */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* 1. Saldo Gratificação — BarChart (monthly gratification, last 6 months) */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.13, duration: 0.3 }}
+        >
+          <Card className="shadow-sm bg-card h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                <Gift className="h-4 w-4 text-purple-600" />
+                Saldo Gratificação
+              </CardTitle>
+              <p className="text-[11px] text-muted-foreground">Gratificação mensal — últimos 6 meses</p>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[200px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={gratificationData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.3)" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                      tickFormatter={(value) => `R$${(value / 100000).toFixed(0)}k`}
+                    />
+                    <Tooltip
+                      formatter={(value: number) => [`R$ ${(value / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Gratificação']}
+                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                    />
+                    <Bar dataKey="gratificacao" name="Gratificação" fill="#8b5cf6" radius={[4, 4, 0, 0]} animationDuration={900} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* 2. Saldo Faturas — PieChart (pending vs paid invoices) */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.14, duration: 0.3 }}
+        >
+          <Card className="shadow-sm bg-card h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                <Receipt className="h-4 w-4 text-cyan-600" />
+                Saldo Faturas
+              </CardTitle>
+              <p className="text-[11px] text-muted-foreground">Faturas pendentes vs pagas do usuário logado</p>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[200px]">
+                {invoicePieData.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-xs text-muted-foreground">
+                    <Receipt className="h-8 w-8 text-muted-foreground/40 mb-1" />
+                    Nenhuma fatura encontrada.
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={invoicePieData}
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={70}
+                        dataKey="value"
+                        label={(entry: any) => `${entry.name}: ${entry.count}`}
+                        animationDuration={900}
+                      >
+                        {invoicePieData.map((entry, index) => (
+                          <Cell key={`inv-pie-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(_value: number, _name: string, entry: any) => [
+                          `${entry.payload.count} fatura(s) — R$ ${(entry.payload.value / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+                          entry.payload.name,
+                        ]}
+                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* 3. Saldo Disponível — LineChart (balanceWithdrawal trend, last 6 months) */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15, duration: 0.3 }}
+        >
+          <Card className="shadow-sm bg-card h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                <Wallet className="h-4 w-4 text-emerald-600" />
+                Saldo Disponível
+              </CardTitle>
+              <p className="text-[11px] text-muted-foreground">Evolução do saldo para saque — últimos 6 meses</p>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[200px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={saldoDisponivelData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.3)" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                      tickFormatter={(value) => `R$${(value / 100000).toFixed(0)}k`}
+                    />
+                    <Tooltip
+                      formatter={(value: number) => [`R$ ${(value / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Saldo']}
+                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                    />
+                    <Line type="monotone" dataKey="saldo" name="Saldo" stroke="#059669" strokeWidth={2} dot={{ r: 3 }} animationDuration={900} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* 4. Saldo Sacável — Big number card with withdrawal trend */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.16, duration: 0.3 }}
+        >
+          <Card className="shadow-sm bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-950/40 dark:to-emerald-900/20 border-emerald-200/60 dark:border-emerald-900/40 h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+                <ArrowDownToLine className="h-4 w-4 text-emerald-600" />
+                Saldo Sacável
+              </CardTitle>
+              <p className="text-[11px] text-muted-foreground">Valor líquido disponível para saque imediato</p>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-3 h-[200px] justify-center">
+                <div>
+                  <p className="text-[11px] text-muted-foreground font-medium">Saldo atual</p>
+                  <p className="text-3xl font-bold text-emerald-700 dark:text-emerald-400">
+                    {formatCurrency(user?.balanceWithdrawal || 0)}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-md bg-white/60 dark:bg-emerald-950/40 p-2 border border-emerald-100 dark:border-emerald-900/50">
+                    <p className="text-[10px] text-muted-foreground font-medium">Total sacado</p>
+                    <p className="text-sm font-bold text-foreground">{formatCurrency(totalWithdrawn)}</p>
+                  </div>
+                  <div className="rounded-md bg-white/60 dark:bg-emerald-950/40 p-2 border border-emerald-100 dark:border-emerald-900/50">
+                    <p className="text-[10px] text-muted-foreground font-medium">Saques solicitados</p>
+                    <p className="text-sm font-bold text-foreground">{withdrawals.length}</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
 
       {/* ===== Asaas-tracked Withdrawal Card (Task 12-D) — explicit PIX/TED saques ===== */}
       <WithdrawalCard />
@@ -2032,7 +2359,7 @@ export function FinancialPage() {
                     onClick={() => {
                       // Generate a random PIX key (UUID-like format)
                       const chars = 'abcdef0123456789'
-                      const blocks = []
+                      const blocks: string[] = []
                       for (let b = 0; b < 4; b++) {
                         let block = ''
                         for (let i = 0; i < 8; i++) block += chars[Math.floor(Math.random() * chars.length)]

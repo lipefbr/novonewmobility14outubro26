@@ -11,7 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useStore } from '@/lib/store'
-import { getPlanName, getPlanPrice, timeSince, formatDate } from '@/lib/utils'
+import { getPlanName, timeSince, formatDate } from '@/lib/utils'
+import { getCareerRank } from '@/lib/api-utils'
 import { useTranslation } from '@/lib/i18n'
 import {
   User, Building2, Lock, Save, Camera, Shield, Calendar,
@@ -295,6 +296,30 @@ function ConnectedAccounts() {
   )
 }
 
+// Full set of editable personal information fields. The previous state
+// only carried name/email/phone/cpf/address/city/state, which meant the
+// "Salvar Alterações" button on the personal tab silently dropped every
+// other personal field (birthDate, rg, maritalStatus, gender, education,
+// zipCode, sponsorId, qualification). Task 13-D extends both the state
+// shape and the save payload so the entire personal form is editable.
+interface PersonalInfo {
+  name: string
+  email: string
+  phone: string
+  cpf: string
+  address: string
+  city: string
+  state: string
+  birthDate: string // ISO date string (or '')
+  rg: string
+  maritalStatus: string
+  gender: string
+  education: string
+  zipCode: string
+  sponsorId: string
+  qualification: string
+}
+
 export function ProfilePage() {
   const { t } = useTranslation()
   const { user, updateUser } = useStore()
@@ -303,14 +328,22 @@ export function ProfilePage() {
   const [copiedCode, setCopiedCode] = useState(false)
   const [activeTab, setActiveTab] = useState('personal')
 
-  const [personalInfo, setPersonalInfo] = useState({
+  const [personalInfo, setPersonalInfo] = useState<PersonalInfo>({
     name: user?.name || '',
     email: user?.email || '',
     phone: user?.phone || '',
     cpf: user?.cpf || '',
-    address: 'Rua das Flores, 123 - Apt 45',
-    city: 'São Paulo',
-    state: 'SP',
+    address: '',
+    city: '',
+    state: '',
+    birthDate: '',
+    rg: '',
+    maritalStatus: '',
+    gender: '',
+    education: '',
+    zipCode: '',
+    sponsorId: '',
+    qualification: '',
   })
 
   // Emergency contact state
@@ -353,13 +386,27 @@ export function ProfilePage() {
         phone: u.emergencyPhone || '',
         relationship: u.emergencyRelation || '',
       })
-      // Sync personal info (address/city/state may come from server)
-      setPersonalInfo((p) => ({
-        ...p,
-        address: u.address || p.address,
-        city: u.city || p.city,
-        state: u.state || p.state,
-      }))
+      // Sync personal info — include ALL editable personal fields so that
+      // handleSavePersonal can re-send them without wiping values that
+      // were previously saved via the PersonalDataSection component.
+      // birthDate arrives as an ISO string from the API; we keep it as-is.
+      setPersonalInfo({
+        name: u.name ?? '',
+        email: u.email ?? '',
+        phone: u.phone ?? '',
+        cpf: u.cpf ?? '',
+        address: u.address ?? '',
+        city: u.city ?? '',
+        state: u.state ?? '',
+        birthDate: u.birthDate ? String(u.birthDate) : '',
+        rg: u.rg ?? '',
+        maritalStatus: u.maritalStatus ?? '',
+        gender: u.gender ?? '',
+        education: u.education ?? '',
+        zipCode: u.zipCode ?? '',
+        sponsorId: u.sponsorId ?? '',
+        qualification: u.qualification ?? '',
+      })
     }
   }, [user?.id])
 
@@ -560,18 +607,41 @@ export function ProfilePage() {
         method: 'PUT',
         body: JSON.stringify({
           userId: user.id,
+          // Core contact fields (managed by the InlineField section above)
           name: personalInfo.name,
           phone: personalInfo.phone,
           address: personalInfo.address,
           city: personalInfo.city,
           state: personalInfo.state,
+          // Extra personal fields — these are also edited through the
+          // PersonalDataSection below, but we re-send them on every save
+          // so this handler does not wipe them out with empty values.
+          birthDate: personalInfo.birthDate || null,
+          rg: personalInfo.rg || null,
+          maritalStatus: personalInfo.maritalStatus || null,
+          gender: personalInfo.gender || null,
+          education: personalInfo.education || null,
+          zipCode: personalInfo.zipCode || null,
+          sponsorId: personalInfo.sponsorId || null,
+          qualification: personalInfo.qualification || null,
         }),
       })
       // Update the local store with the latest data from the server
       updateUser({
         name: updated.name ?? personalInfo.name,
         phone: updated.phone ?? personalInfo.phone,
-      })
+        // Persist extra personal fields to the store too so that on
+        // navigation away/back the useEffect rehydrates from fresh data
+        // instead of stale defaults.
+        birthDate: updated.birthDate ?? personalInfo.birthDate,
+        rg: updated.rg ?? personalInfo.rg,
+        maritalStatus: updated.maritalStatus ?? personalInfo.maritalStatus,
+        gender: updated.gender ?? personalInfo.gender,
+        education: updated.education ?? personalInfo.education,
+        zipCode: updated.zipCode ?? personalInfo.zipCode,
+        sponsorId: updated.sponsorId ?? personalInfo.sponsorId,
+        qualification: updated.qualification ?? personalInfo.qualification,
+      } as any)
       toast({
         title: 'Dados atualizados',
         description: 'Suas informações pessoais foram salvas com sucesso.',
@@ -608,6 +678,15 @@ export function ProfilePage() {
           emergencyRelation: emergencyContact.relationship || null,
         }),
       })
+      // Sync to the user store so the data persists across navigation.
+      // These fields are not declared on the UserData interface, so we
+      // cast to any — updateUser merges them onto the user object via
+      // spread, and the useEffect above reads them back through `as any`.
+      updateUser({
+        emergencyName: emergencyContact.name,
+        emergencyPhone: emergencyContact.phone,
+        emergencyRelation: emergencyContact.relationship || null,
+      } as any)
       toast({
         title: 'Contato de emergência salvo',
         description: 'As informações do contato de emergência foram atualizadas com sucesso.',
@@ -751,10 +830,13 @@ export function ProfilePage() {
 
   const memberSince = user?.createdAt ? timeSince(user.createdAt) : '0 dias'
   const memberSinceDate = user?.createdAt ? formatDate(user.createdAt) : ''
-  // Privacy: the previous `totalEarned` (sum of all balance fields)
-  // was a personal-earnings aggregate and has been removed from the
-  // user-facing profile per task 4b. The profile summary cards now
-  // show referral counts and career points instead.
+  // Career graduation rank (Safira / Rubi / Esmeralda / Diamante /
+  // Imperial / Associado) computed from the user's careerPoints.
+  // Previously this card showed the plan name (e.g. "Blue 5 Premium")
+  // under a "Graduação" label, which was misleading — the plan name is
+  // already shown next to the user's name in the header. Now the 4th
+  // summary card shows the real career pin.
+  const careerRank = getCareerRank(user?.careerPoints ?? 0)
 
   // Verification status
   const verificationItems = [
@@ -863,6 +945,11 @@ export function ProfilePage() {
                 <Avatar className="h-24 w-24 border-4 border-card shadow-xl">
                   {user?.profileImage ? (
                     <AvatarImage
+                      // The `key` forces Radix Avatar to remount whenever
+                      // the uploaded URL changes (the backend appends a
+                      // `?t=<timestamp>` cache-buster), preventing the
+                      // browser from showing a stale image after upload.
+                      key={user.profileImage}
                       src={user.profileImage}
                       alt={user?.name || 'Avatar'}
                       className="object-cover"
@@ -967,10 +1054,12 @@ export function ProfilePage() {
                 <p className="text-[9px] text-amber-600 dark:text-amber-400 mt-0.5">{referralStats.activeDirect} ativos</p>
               </div>
               <div className="bg-blue-50 dark:bg-blue-950/30 rounded-lg p-3 text-center border border-blue-100 dark:border-blue-900/50">
-                <CreditCard className="h-4 w-4 text-blue-600 mx-auto mb-1" />
-                <p className="text-sm font-bold text-foreground">{getPlanName(user?.plan || 'free')}</p>
+                <Award className="h-4 w-4 text-blue-600 mx-auto mb-1" />
+                <p className="text-sm font-bold text-foreground">{careerRank.name}</p>
                 <p className="text-[10px] text-muted-foreground">Graduação</p>
-                <p className="text-[9px] text-blue-600 dark:text-blue-400 mt-0.5">{getPlanPrice(user?.plan || 'free')}/mês</p>
+                <p className="text-[9px] text-blue-600 dark:text-blue-400 mt-0.5">
+                  {careerRank.stars} ★ · {getPlanName(user?.plan || 'free')}
+                </p>
               </div>
             </div>
 
@@ -1027,18 +1116,22 @@ export function ProfilePage() {
       {/* Tabs with sliding underline indicator */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="relative">
-          <TabsList className="w-full sm:w-auto bg-transparent p-0 h-auto border-b border-border">
+          {/* On mobile the TabsList becomes a horizontally-scrollable row
+              so ALL 5 tabs (Informações Pessoais / Dados Bancários /
+              Beneficiários / Alterar Senha / Segurança) stay accessible
+              regardless of screen width. On sm+ it snaps back to a single
+              inline row that fits without scrolling. */}
+          <TabsList className="flex w-full sm:w-auto sm:inline-flex h-auto bg-transparent p-0 border-b border-border rounded-none overflow-x-auto sm:overflow-visible">
             {tabs.map((tab) => {
               const Icon = tab.icon
               return (
                 <TabsTrigger
                   key={tab.value}
                   value={tab.value}
-                  className="gap-1.5 data-[state=active]:bg-transparent data-[state=active]:text-emerald-600 data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-600 px-4 py-2.5 text-sm font-medium text-muted-foreground data-[state=active]:font-semibold flex-1 sm:flex-none transition-all hover:text-emerald-600 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 hover:scale-[1.02] active:scale-[0.98]"
+                  className="gap-1.5 shrink-0 min-h-[44px] data-[state=active]:bg-transparent data-[state=active]:text-emerald-600 data-[state=active]:shadow-none rounded-none border-b-2 border-transparent data-[state=active]:border-emerald-600 px-4 py-2.5 text-sm font-medium text-muted-foreground data-[state=active]:font-semibold transition-all hover:text-emerald-600 hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 hover:scale-[1.02] active:scale-[0.98]"
                 >
-                  <Icon className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">{tab.label}</span>
-                  <span className="sm:hidden">{tab.shortLabel}</span>
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="whitespace-nowrap">{tab.shortLabel}</span>
                 </TabsTrigger>
               )
             })}

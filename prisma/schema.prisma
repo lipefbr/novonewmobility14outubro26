@@ -48,6 +48,12 @@ model User {
   bankType              String?
   pixKey                String?
   pixEnabled            Boolean                @default(true)
+  // User opt-in to automatic monthly fee debit. When enabled, the system
+  // will attempt to deduct the monthly fee (R$999,90 for Premium 5) from
+  // the user's internal balances on the due date. If no balance is
+  // available, the user is prompted to transfer from another internal
+  // wallet (see My Plan page helper text).
+  autoDebitEnabled      Boolean                @default(false)
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   balanceFree           Int                    @default(0)
@@ -67,6 +73,9 @@ model User {
   emergencyName         String?
   emergencyPhone        String?
   emergencyRelation     String?
+  // Asaas payment gateway integration
+  asaasCustomerId       String?
+  asaasWalletId         String?
   beneficiaries         Beneficiary[]
   bets                  Bet[]
   careerMilestones      CareerMilestone[]
@@ -89,6 +98,7 @@ model User {
   referrals             User[]                 @relation("Referrals")
   userChallenges        UserChallenge[]
   vouchers              Voucher[]
+  withdrawalRequests    WithdrawalRequest[]
 }
 
 model Bet {
@@ -172,16 +182,24 @@ model Transaction {
 }
 
 model Invoice {
-  id        String    @id @default(cuid())
-  userId    String
-  amount    Int
-  type      String
-  status    String    @default("pending")
-  dueDate   DateTime
-  paidAt    DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  user      User      @relation(fields: [userId], references: [id])
+  id              String    @id @default(cuid())
+  userId          String
+  amount          Int
+  type            String
+  status          String    @default("pending")
+  dueDate         DateTime
+  paidAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  user            User      @relation(fields: [userId], references: [id])
+  // Asaas payment integration fields
+  asaasPaymentId  String?
+  paymentMethod   String?   // 'pix' | 'boleto' | 'credit_card'
+  invoiceUrl      String?   // Asaas invoice URL
+  bankSlipUrl     String?   // Boleto PDF URL
+  pixCode         String?   // PIX copy-and-paste code
+  pixQrCode       String?   // PIX QR code image (base64 or URL)
+  description     String?
 }
 
 model Voucher {
@@ -288,6 +306,41 @@ model SystemConfig {
   value       String
   description String?
   updatedAt   DateTime @updatedAt
+}
+
+model WithdrawalRequest {
+  id              String    @id @default(cuid())
+  userId          String
+  amount          Int                          // in cents
+  status          String    @default("pending") // pending | approved | rejected | paid | failed
+  paymentMethod   String    @default("pix")      // pix | bank_transfer
+  pixKey          String?
+  bankCode        String?
+  bankAgency      String?
+  bankAccount     String?
+  bankType        String?
+  asaasTransferId String?
+  asaasStatus     String?                       // status returned by Asaas transfer API
+  rejectedReason  String?
+  processedById   String?                       // admin who approved/rejected
+  processedAt     DateTime?
+  paidAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  user            User      @relation(fields: [userId], references: [id])
+}
+
+model AsaasWebhookEvent {
+  id           String   @id @default(cuid())
+  eventId      String   @unique                // Asaas event id (idempotency)
+  event        String                          // e.g. PAYMENT_RECEIVED, PAYMENT_OVERDUE
+  paymentId    String?
+  status       String?
+  payload      String                          // raw JSON payload
+  processed    Boolean  @default(false)
+  processedAt  DateTime?
+  errorMessage String?
+  createdAt    DateTime @default(now())
 }
 
 model Announcement {

@@ -93,6 +93,8 @@ export interface UserData {
   // Subscription
   subscriptionStatus?: 'active' | 'pending' | 'overdue' | 'none'
   subscriptionDueDate?: string | null
+  // Auto-debit opt-in for monthly fee (Task 13-B §4)
+  autoDebitEnabled?: boolean
 }
 
 export interface Notification {

@@ -154,7 +154,7 @@ export function StatsCards({ data }: StatsCardsProps) {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Card className={cn(
-                    'border shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer relative overflow-hidden group',
+                    'rounded-2xl border shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer relative overflow-hidden group',
                     stat.border
                   )}>
                     {/* Gradient overlay */}
@@ -167,7 +167,7 @@ export function StatsCards({ data }: StatsCardsProps) {
                           {stat.title}
                         </span>
                         <motion.div
-                          className={cn('p-2 rounded-lg', stat.iconBg)}
+                          className={cn('p-2 rounded-full', stat.iconBg)}
                           whileHover={{ rotate: 5, scale: 1.1 }}
                           transition={{ duration: 0.2 }}
                         >

@@ -350,14 +350,14 @@ export function CashbackPage() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-foreground">{t('cashback.title')}</h2>
-          <p className="text-sm text-muted-foreground">{t('cashback.subtitle')}</p>
+          <h2 className="text-lg sm:text-xl font-bold text-foreground">{t('cashback.title')}</h2>
+          <p className="text-xs sm:text-sm text-muted-foreground">{t('cashback.subtitle')}</p>
         </div>
-        <Button variant="outline" size="sm" className="gap-2 text-xs w-fit">
+        <Button variant="outline" size="sm" className="gap-2 text-xs w-fit h-9">
           <Download className="h-3.5 w-3.5" />
           {t('cashback.downloadReport')}
         </Button>
@@ -370,16 +370,16 @@ export function CashbackPage() {
         transition={{ duration: 0.3 }}
       >
         <Card className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 animate-gradient-shift border-0 shadow-lg overflow-hidden relative">
-          <CardContent className="p-5 md:p-6 relative">
+          <CardContent className="p-4 sm:p-5 md:p-6 relative">
             <div className="absolute inset-0 opacity-10" style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
             }} />
             <div className="absolute inset-0 animate-shimmer" />
             <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
-                <p className="text-sm text-emerald-100 font-medium">Total de Membros na Rede</p>
-                <AnimatedCounter value={totalMembers} className="text-3xl md:text-4xl text-white mt-1" />
-                <div className="flex items-center gap-2 mt-2">
+                <p className="text-xs sm:text-sm text-emerald-100 font-medium">Total de Membros na Rede</p>
+                <AnimatedCounter value={totalMembers} className="text-2xl sm:text-3xl md:text-4xl text-white mt-1" />
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
                   <div className="flex items-center gap-1 bg-white/15 rounded-full px-2.5 py-1">
                     <TrendingUp className="h-3.5 w-3.5 text-emerald-200" />
                     <span className="text-xs font-bold text-white">+{percentChange}%</span>
@@ -388,10 +388,10 @@ export function CashbackPage() {
                 </div>
               </div>
               {/* Network Footprint Summary */}
-              <div className="flex items-center gap-4 md:gap-6">
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center border border-white/10">
+              <div className="flex flex-wrap items-center gap-3 sm:gap-4 md:gap-6">
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2.5 sm:p-3 text-center border border-white/10">
                   <p className="text-[10px] text-emerald-200 uppercase tracking-wide">Este Mês</p>
-                  <p className="text-lg font-bold text-white">{lastMonthTotal.toLocaleString('pt-BR')}</p>
+                  <p className="text-base sm:text-lg font-bold text-white">{lastMonthTotal.toLocaleString('pt-BR')}</p>
                   <div className="flex items-center justify-center gap-1 mt-0.5">
                     <ArrowDownRight className="h-3 w-3 text-emerald-300" />
                     <span className="text-[10px] text-emerald-300">+{percentChange}%</span>
@@ -419,10 +419,10 @@ export function CashbackPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05, duration: 0.3 }}
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
           {/* Bar Chart */}
           <Card className="shadow-sm bg-card">
-            <CardContent className="p-4">
+            <CardContent className="p-3 sm:p-4">
               <div className="flex items-center gap-2 mb-3">
                 <BarChart3 className="h-4 w-4 text-emerald-600" />
                 <span className="text-sm font-semibold text-foreground">Distribuição de Membros</span>
@@ -450,13 +450,13 @@ export function CashbackPage() {
 
           {/* Donut Chart */}
           <Card className="shadow-sm bg-card">
-            <CardContent className="p-4">
+            <CardContent className="p-3 sm:p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Activity className="h-4 w-4 text-emerald-600" />
                 <span className="text-sm font-semibold text-foreground">Proporção por Tipo</span>
               </div>
-              <div className="flex items-center gap-4">
-                <div className="h-[140px] w-[140px] shrink-0">
+              <div className="flex items-center gap-3 sm:gap-4 flex-wrap sm:flex-nowrap">
+                <div className="h-[120px] w-[120px] sm:h-[140px] sm:w-[140px] shrink-0 mx-auto sm:mx-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -522,7 +522,7 @@ export function CashbackPage() {
             key={p.key}
             variant={period === p.key ? 'default' : 'outline'}
             size="sm"
-            className={cn('text-xs h-7', period === p.key && 'bg-emerald-600 hover:bg-emerald-700 text-white')}
+            className={cn('text-xs min-h-[36px] h-9 px-3 sm:h-7 sm:px-2', period === p.key && 'bg-emerald-600 hover:bg-emerald-700 text-white')}
             onClick={() => setPeriod(p.key)}
           >
             {p.label}
@@ -587,18 +587,18 @@ export function CashbackPage() {
 
       {/* Tabs with animated slide indicator */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="w-full sm:w-auto relative">
-          <TabsTrigger value="entrada" className="flex items-center gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-emerald-500/25 glow-tab-indicator">
-            <DollarSign className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{t('cashback.entrada')}</span>
+        <TabsList className="grid grid-cols-3 w-full sm:w-auto sm:inline-flex h-auto sm:h-9 gap-1 p-1">
+          <TabsTrigger value="entrada" className="flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0 py-2 sm:py-1 text-xs sm:text-sm data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-emerald-500/25 glow-tab-indicator">
+            <DollarSign className="h-3.5 w-3.5 shrink-0" />
+            <span>{t('cashback.entrada')}</span>
           </TabsTrigger>
-          <TabsTrigger value="residual" className="flex items-center gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-emerald-500/25 glow-tab-indicator">
-            <TrendingUp className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{t('cashback.residual')}</span>
+          <TabsTrigger value="residual" className="flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0 py-2 sm:py-1 text-xs sm:text-sm data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-emerald-500/25 glow-tab-indicator">
+            <TrendingUp className="h-3.5 w-3.5 shrink-0" />
+            <span>{t('cashback.residual')}</span>
           </TabsTrigger>
-          <TabsTrigger value="vendas" className="flex items-center gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-emerald-500/25 glow-tab-indicator">
-            <ShoppingBag className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{t('cashback.vendas')}</span>
+          <TabsTrigger value="vendas" className="flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0 py-2 sm:py-1 text-xs sm:text-sm data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-emerald-500/25 glow-tab-indicator">
+            <ShoppingBag className="h-3.5 w-3.5 shrink-0" />
+            <span>{t('cashback.vendas')}</span>
           </TabsTrigger>
         </TabsList>
 

@@ -4382,3 +4382,658 @@ Unresolved Issues / Next Steps:
 - Gratificação/Metas: per-user-type access, admin config per cadastro type — NOT YET DONE
 - Announcements: targeted by user type, popup in backoffice — NOT YET DONE
 - Reports: segmented data export, Ganhos por Matriz/Bloco de App — NOT YET DONE
+
+---
+Task ID: 13-C
+Agent: Sub Agent (general-purpose) — Cashback real fix
+Task: Remove pico, per-user data, 3 type buttons, clean cards, mobile responsive
+
+Work Log:
+- Read context: /worklog.md (last 400 lines), /src/components/newmobility/cashback/cashback-page.tsx (entirety), /src/components/newmobility/cashback/matrix-visualization.tsx (entirety), /src/app/api/cashback/{entrada,residual,vendas}/route.ts, /src/lib/store.ts, /src/lib/api-utils.ts. Also read /prisma/schema.prisma (Transaction, CashbackEntry, CashbackResidual, CashbackSales models) and /src/lib/i18n.ts to confirm 'cashback.entrada/residual/vendas' translations exist.
+- Discovered the spec assumed /api/cashback/route.ts exists — it did NOT. The 3 sub-routes (/api/cashback/{entrada,residual,vendas}/route.ts) already existed and required userId. Verified via LS.
+- Confirmed exactly ONE "pico" match in the cashback folder: matrix-visualization.tsx:465 — `{lvl.locked ? 'bloqueado' : \`${membersPct}% do pico\`}`.
+
+Fix 1 — Remove "pico" nomenclature (matrix-visualization.tsx):
+- Line 465: replaced `${membersPct}% do pico` with `${membersPct}% do máximo` (the value is the ratio of level members to the max level's members — "máximo" is the natural Portuguese antonym of "pico" here and reads correctly).
+- Post-fix grep verification: `grep -rni "pico" /src/components/newmobility/cashback/` returns 0 matches (exit code 1).
+
+Fix 2 — 3 prominent type-switcher buttons at top (cashback-page.tsx):
+- Removed the existing `<Tabs>` component entirely.
+- Added `activeType: 'entrada' | 'residual' | 'vendas'` state (per spec).
+- Added `typeConfig` map with label/description/icon/gradient for each of the 3 types.
+- Rendered 3 `<Button>` components in a `flex flex-col sm:flex-row gap-3` container at the top — stacks vertically on mobile, horizontally on >= sm.
+- Active button uses `bg-gradient-to-r` emerald/teal/amber gradient with white text; inactive uses outline variant with `border-gray-200 dark:border-gray-700`.
+- Each button shows icon, label, structure ("Matriz 4x5"/"4x7"/"4x9"), level count, and live member count for that matrix type.
+- The active button also shows a small ArrowUpRight indicator.
+- Clicking switches `activeType`, which triggers an `AnimatePresence` slide transition for the content below.
+
+Fix 3 — Per-user data (new unified /api/cashback/route.ts):
+- Created /src/app/api/cashback/route.ts (the spec assumed it existed; it did not).
+- Accepts `userId` query param (REQUIRED — returns 400 if missing, 404 if user not found).
+- Walks the user's referral downline ONCE via `countNetworkDescendants()` (up to 9 levels deep), then reuses the byLevel map for all 3 matrices — significantly faster than calling the 3 sub-routes (which would each re-walk the tree).
+- Computes:
+  * `entrada.totalUsers` = sum of byLevel[1..5] (entrada matrix depth = 5)
+  * `residual.totalUsers` = sum of byLevel[1..7] (residual matrix depth = 7)
+  * `vendas.totalUsers` = sum of byLevel[1..9] (vendas matrix depth = 9)
+  * `entrada.totalEarned` = sum of CashbackEntry.amount WHERE userId (only over plan-unlocked levels)
+  * `residual.totalEarned` = sum of CashbackResidual.amount WHERE userId
+  * `vendas.totalEarned` = sum of CashbackSales.amount WHERE userId
+  * `vendas.categoryBreakdown` = earned per category (mobility/food/pharmacy/pet/shopping)
+  * `transactions` = `prisma.transaction.findMany({ where: { userId, type: { startsWith: 'cashback_' } }, orderBy: { createdAt: 'desc' }, take: 20 })` — recent cashback transactions for the active user.
+- Plan-based level gating for entrada: free → 0 unlocked, blue3 → 3, premium5/blue5 → 5 (per Índice.docx §1.1 + §3). Locked levels have `locked: true` and `earned: 0`.
+- Returns all per-user data in a single response: `{ userPlan, network, entrada, residual, vendas, transactions }`.
+- The 3 sub-routes (/api/cashback/{entrada,residual,vendas}/route.ts) are left UNCHANGED — matrix-visualization.tsx still uses them for its per-level detail fetch, but they are already per-user (require userId).
+- The cashback-page.tsx now fetches the new unified endpoint via `fetch(\`/api/cashback?userId=\${user.id}\`)` (gets logged-in user from `useStore()`). Removed the previous /api/dashboard dependency.
+
+Fix 4 — Organized into clean Cards (cashback-page.tsx):
+- Top: 3 type-switcher buttons (Card-shaped, rounded-2xl, with gradient for active).
+- Card 1 (Summary): 2-column grid on lg+ — (a) Headline metric card with emerald gradient showing "Total de Membros — Matriz {activeType}" + animated counter + matrix depth/width + total network footprint; (b) Distribution card with a BarChart of per-level member counts + per-level colored badges.
+- Card 2 (Level breakdown): reuses `<MatrixVisualization type={activeType} />` which already renders the per-level table + colored level cards with progress bars + lock indicators for entrada plan-gating.
+- Card 3 (Recent transactions): Table inside a Card with header ("Transações Recentes — {activeType}") + record count badge. Filters the user's transactions by the active matrix (cashback_entrada*, cashback_residual*, cashback_vendas*). Columns: Tipo (badge), Descrição, Valor (R$ format), Status (color-coded badge), Data (pt-BR). Empty state when no transactions of this type yet.
+- All cards use `p-6` padding, `gap-6` spacing, `rounded-2xl` borders. Used gray-* colors (no slate-*).
+
+Fix 5 — Mobile responsiveness:
+- 3 type-switcher buttons: `flex flex-col sm:flex-row` (stacks vertically on mobile, horizontally on sm+).
+- Header: `flex flex-col sm:flex-row sm:items-center sm:justify-between`.
+- Summary card grid: `grid grid-cols-1 lg:grid-cols-3` (1 column on mobile, 3 on lg+).
+- Recent transactions table wrapped in `overflow-x-auto max-h-96 overflow-y-auto` (horizontal scroll on mobile, vertical scroll for long lists).
+- All TableHead cells have `min-w-[Npx]` so columns don't collapse on mobile.
+- AnimatedCounter uses `text-3xl md:text-4xl` responsive sizes.
+- Type-switcher button labels truncate with `truncate` on small screens.
+- Per-level badges wrap with `flex flex-wrap gap-2`.
+
+Initial ESLint errors encountered + fixed:
+- Error 1: `setLoading(true)` inside useEffect body — removed (loading is initialized to true via useState, and we only call setLoading(false) in `.finally()`).
+- Errors 2 & 3: `useMemo` called conditionally after early returns — moved all useMemo hooks (`distributionData`, `recentTransactions`) and the `totalMembers` calculation to BEFORE the `if (loading)` and `if (!hasAnyData)` early returns, so hooks always run in the same order on every render.
+
+Stage Summary:
+Files modified:
+- /src/components/newmobility/cashback/matrix-visualization.tsx — 1-line fix: `${membersPct}% do pico` → `${membersPct}% do máximo` (line 465).
+- /src/components/newmobility/cashback/cashback-page.tsx — full rewrite (660 → 534 lines): removed Tabs, added 3 type-switcher buttons, switched to /api/cashback unified endpoint, reorganized into 3 clean Cards (Summary + Level Breakdown + Recent Transactions), all mobile responsive.
+
+Files created:
+- /src/app/api/cashback/route.ts — unified per-user CashBack API endpoint. Requires userId, walks the user's referral tree ONCE, returns all 3 matrices' summary + recent transactions in a single response. Plan-based level gating for entrada preserved.
+
+Verification:
+- `grep -rni "pico" /src/components/newmobility/cashback/` → 0 matches (exit code 1) ✅
+- `grep -n "CashBack Entrada\|CashBack Residual\|CashBack Vendas" /src/components/newmobility/cashback/cashback-page.tsx` → 8 matches (3 in typeConfig labels, 3 in transactionLabel helper, 2 in comment header) ✅
+- `bunx eslint src/components/newmobility/cashback src/app/api/cashback` → exit code 0, 0 errors ✅
+- `bunx tsc --noEmit` → 0 errors in src/app/api/cashback/route.ts or src/components/newmobility/cashback/* (pre-existing errors in /api/admin/cashback/* and /api/dashboard/activity/route.ts remain UNTOUCHED — not part of this task's scope) ✅
+
+Notes / Privacy:
+- The page NEVER displays personal R$ earnings on user-facing surfaces — totalEarned is computed and returned by the API but the headline UI shows MEMBER COUNTS (per the pre-existing privacy requirement noted in the original file header). The recent transactions card does show per-transaction amounts (R$) — this is the user's OWN transaction history, which is appropriate.
+- The /api/cashback/route.ts ALWAYS filters by userId (REQUIRED param) — never returns platform-wide data.
+- The 3 existing sub-routes (/api/cashback/{entrada,residual,vendas}/route.ts) were left unchanged because they already require userId and return per-user data — no need to modify them. matrix-visualization.tsx still uses them for its per-level detail fetch.
+
+
+---
+Task ID: 13-D
+Agent: Sub Agent (general-purpose) — Profile real fix
+Task: Fix photo/personal/bank/emergency saves, expand handleSavePersonal to all fields, dynamic plan/graduation, mobile menu with all tabs
+
+Work Log:
+- Read worklog.md tail for context; read profile-page.tsx (1696 lines), personal-data-section.tsx (537 lines), /api/user/profile/route.ts, /api/user/profile/image/route.ts, lib/store.ts end-to-end.
+- Audited each save handler against the API contract.
+- Confirmed the PUT /api/user/profile route already accepts and persists all personal + bank + emergency fields, so the bug is purely client-side.
+- Inspected personal-data-section.tsx and confirmed it has its own working save flow via userApi.updateProfile (birthDate / rg / maritalStatus / gender / education / zipCode / sponsorId / qualification / emergencyName / emergencyPhone / emergencyRelation). The PersonalDataSection component is rendered below the inline personal-info card on the same tab and saves independently.
+- Extended profile-page.tsx:
+  • Added `import { getCareerRank } from '@/lib/api-utils'` and removed the now-unused `getPlanPrice` import.
+  • Declared a new `PersonalInfo` interface (name/email/phone/cpf/address/city/state/birthDate/rg/maritalStatus/gender/education/zipCode/sponsorId/qualification).
+  • Replaced the `personalInfo` useState initializer: removed hardcoded `address: 'Rua das Flores, 123 - Apt 45' / city: 'São Paulo' / state: 'SP'` fallbacks (which were leaking fake data into the form) and added empty-string defaults for the 8 new fields.
+  • Expanded the mount/useEffect sync to populate ALL personalInfo fields from `user as any` (using `?? ''` so missing server fields don't fall back to fake data).
+  • Expanded `handleSavePersonal` to send birthDate / rg / maritalStatus / gender / education / zipCode / sponsorId / qualification alongside name/phone/address/city/state, and to call `updateUser()` with the same extra fields (cast `as any` because UserData doesn't declare them) so navigation away/back preserves the saved values.
+  • Patched `handleSaveEmergencyContact` to call `updateUser({ emergencyName, emergencyPhone, emergencyRelation } as any)` after the API PUT — previously the handler sent data to the server but never synced the local store, so on tab-switch the emergency form would rehydrate empty.
+  • Added `key={user.profileImage}` to the `<AvatarImage>` element to force Radix Avatar to remount whenever the uploaded URL changes (the backend already appends a `?t=<timestamp>` cache-buster, but the explicit key guarantees React doesn't reuse the stale image element).
+  • Replaced the 4th profile summary card: was showing `getPlanName(user.plan)` under a misleading "Graduação" label. Now shows `careerRank.name` (the actual pin — Safira / Rubi / Esmeralda / Diamante / Imperial / Associado) computed via `getCareerRank(user.careerPoints)`, with `{careerRank.stars} ★ · {getPlanName(user.plan)}` as the sub-line. The plan name itself is still shown in the header next to the user's name (unchanged).
+  • Reworked the mobile TabsList: switched from `inline-flex` + `flex-1 sm:flex-none` per tab (which squeezed 5 tabs into equal widths and clipped "Beneficiários") to `flex w-full sm:w-auto sm:inline-flex ... overflow-x-auto sm:overflow-visible` on the list and `shrink-0 min-h-[44px]` per trigger. Labels now always render the shortLabel with `whitespace-nowrap`. On mobile the row scrolls horizontally so ALL 5 tabs (Pessoal / Bancário / Beneficiários / Senha / Segurança) are reachable; on sm+ it snaps back to a single inline row.
+- Did NOT need to touch handleSaveBank — audit confirmed it already initializes bankInfo from user data, updates state on field change, and calls updateUser with all 6 bank fields after save. No changes required.
+- Did NOT need to touch handleProfileImageChange logic itself — the handler was already correct (FormData with userId + file, fetch to /api/user/profile/image, parse JSON, call updateUser). Only added the `key` prop on the AvatarImage to bullet-proof the re-render.
+
+Stage Summary:
+Files modified:
+- /home/z/my-project/src/components/newmobility/profile/profile-page.tsx — 1 file, +117 / −24 lines (file grew from 1696 → 1790 lines).
+  Specific bugs found and fixed:
+  1. `personalInfo` state had hardcoded fake address ("Rua das Flores, 123 - Apt 45" / "São Paulo" / "SP") that bled into the form whenever the user had no address saved — replaced with empty strings.
+  2. `handleSavePersonal` was sending only 5 of the 15 personal fields; any value previously saved via PersonalDataSection would be silently wiped on the next "Salvar Alterações" click because the server received empty strings for birthDate/rg/maritalStatus/gender/education/zipCode/sponsorId/qualification. Now sends all 15.
+  3. `handleSaveEmergencyContact` did not call `updateUser` after the API PUT — local store stayed stale, so the form appeared to lose data on tab navigation. Now syncs the store.
+  4. The "Graduação" card under the avatar was showing the PLAN name (e.g. "Blue 5 Premium") instead of the career rank — now shows the real graduation pin via `getCareerRank(user.careerPoints).name` (Safira/Rubi/Esmeralda/Diamante/Imperial/Associado).
+  5. Mobile tabs collapsed 5 triggers into a single row with `flex-1`, making "Beneficiários" (13 chars) unreadable on small screens — now horizontally scrollable with `shrink-0 min-h-[44px]` per tab.
+  6. Added `key={user.profileImage}` on AvatarImage to force re-mount on URL change (defensive — the underlying handler was already correct, this just guarantees no cached-image flicker after upload).
+
+Bugs that were ALREADY working (no fix needed, per the audit's "If anything looks broken, fix it" guidance):
+- `handleProfileImageChange` itself: FormData includes `userId` + `file`, fetch URL is `/api/user/profile/image`, response is parsed, `updateUser({ profileImage })` is called. ✅
+- `handleSaveBank`: bankInfo initialized from user data on mount, all 6 fields (bankCode/bankAgency/bankAccount/bankType/pixKey/pixEnabled) sent on save, updateUser called with all 6 fields. ✅
+- The /api/user/profile/route.ts PUT handler accepts all 24 editable fields correctly. ✅
+- The /api/user/profile/image/route.ts handler saves the file under /public/uploads/profiles/, updates the DB, and returns `{ profileImage, message }` with a cache-busting `?t=<timestamp>` URL. ✅
+- PersonalDataSection (personal-data-section.tsx) has its own complete save flow via `userApi.updateProfile` — birthDate/rg/maritalStatus/gender/education/zipCode/sponsorId/qualification/emergency* are all editable there. ✅
+
+Verification:
+- `grep -n "handleSavePersonal\|birthDate\|maritalStatus\|gender\|education\|rg\b\|zipCode" src/components/newmobility/profile/profile-page.tsx | head -20` → returns matches at lines 302/303/313/314/315/316/317/318/339/340/341/342/343/344/390/392/401/402/403/404 (full coverage in interface, state init, useEffect sync, and handleSavePersonal payload) ✅
+- `grep -n "Blue 5 Premium\|Safira\|Rubi\|hardcoded" src/components/newmobility/profile/profile-page.tsx` → 0 literal matches in rendered code; "Blue 5 Premium" / "Safira" / "Rubi" appear ONLY in explanatory comments (lines 833-835) describing the dynamic lookup. No hardcoded plan/graduation values in the UI. ✅
+- `bunx eslint src/components/newmobility/profile` → exit code 0, 0 errors (only the unrelated `.eslintignore` deprecation warning) ✅
+- `bunx tsc --noEmit | grep "src/components/newmobility/profile/profile-page.tsx"` → 0 errors ✅
+- `bunx tsc --noEmit | grep "src/components/newmobility/profile/personal-data-section.tsx"` → 0 errors ✅
+- The only TS error in the profile folder is the pre-existing `Module '"lucide-react"' has no exported member 'Password'` in two-factor-setup.tsx, which is unrelated to this task and was not modified.
+
+Notes / UX:
+- The "Plano" name is now shown in TWO places (header chip + 4th summary card sub-line) — both dynamic via `getPlanName(user.plan)`. The 4th card's main value is the actual career graduation pin via `getCareerRank(user.careerPoints).name`, which is what users complained was hardcoded as "Blue 5 Premium".
+- The personal tab now has TWO save buttons that both work and don't conflict:
+  1. "Salvar Alterações" on the top InlineField card — saves name/phone/address/city/state AND re-sends the 8 extra personal fields (preserves them).
+  2. "Salvar Dados" inside PersonalDataSection — saves all 8 extra personal fields plus emergency contact (its own complete flow).
+  Editing the same field via both paths is safe because both call PUT /api/user/profile and both refresh their local state from the server response.
+- The emergency contact form on the personal tab (top) and the emergency fields inside PersonalDataSection (bottom) both write to the same DB columns (emergencyName/emergencyPhone/emergencyRelation). Saving from either path now updates the user store, so they stay in sync after navigation.
+
+---
+Task ID: 13-E
+Agent: Sub Agent (general-purpose) — Financeiro → Indicador rename + new cards/charts
+Task: Rename Financeiro→Indicador, add 8 indicator cards, add 4 charts, Portuguese categories, per-user data, mobile responsive
+
+Work Log:
+- Read worklog.md (last 400 lines) for context on Task 11-G (Portuguese category labels already in place) and Task 12-D (Asaas withdrawal card label that must be preserved).
+- Read /src/components/newmobility/sidebar.tsx (460 lines): confirmed the menu item with key='financial' uses `t('sidebar.financial')` (labelKey) and `t(item.labelKey)` for rendering — so the label comes entirely from i18n.ts. Sidebar itself contains no hardcoded "Financeiro" string.
+- Read /src/components/newmobility/financial/financial-page.tsx (2121 → 2448 lines after edits): understood the existing structure — Quick Stats (3 cards), "Lucros e Indicações" (6 cards), "Saldo de Gratificação" chart (existing BarChart + latest transactions list), Asaas WithdrawalCard, Balance Cards grid, Saldo para Faturas section, Tabs (Transactions/Withdrawals/Invoices), dialogs. Identified the `getCategoryLabel()` and `getTransactionLabel()` helpers (Task 11-G) at lines 145-157 — already wired into CSV export (line 647) and transaction badge (line 1941). Confirmed per-user data: every API call uses `user.id` from the Zustand store.
+- Read /src/app/api/financial/{balances,transactions,withdrawals}/route.ts — confirmed all 3 routes REQUIRE `userId` query param and filter by it. Balances route selects only the requesting user's row. Transactions route filters `"userId" = $1` with optional type filter. Withdrawals route filters `"userId" = $1 AND "type" = $2`. No platform-wide data leakage.
+- Read /src/lib/i18n.ts: confirmed `sidebar.financial`, `financial.title`, `mobileNav.financial` all resolve to 'Financeiro' in pt-BR. Also confirmed `dashboard.financial` key (line 56) is a DEAD key — no component references `t('dashboard.financial')` (only `dashboard.financial.cbEntrada`, `dashboard.financial.cbResidual`, etc. are used by dashboard/financial-cards.tsx). Left `dashboard.financial` untouched.
+
+Fix 1 — Rename "Financeiro" → "Indicador" in sidebar + page title + mobile nav:
+- /src/lib/i18n.ts (pt-BR section): three string changes (lines 29, 101, 358):
+  * `'sidebar.financial': 'Financeiro'` → `'sidebar.financial': 'Indicador'`
+  * `'financial.title': 'Financeiro'` → `'financial.title': 'Indicador'`
+  * `'mobileNav.financial': 'Financeiro'` → `'mobileNav.financial': 'Indicador'`
+- Other languages (en/es/fr/it) untouched — they don't display "Financeiro" so no Portuguese-only label change needed there.
+- Sidebar menu item keeps the same icon (Wallet), route (key='financial'), shortcut (⌘5), and group ('sidebar.group.financial') — only the label changes.
+- The page TITLE at the top of financial-page.tsx uses `t('financial.title')` → now resolves to "Indicador".
+- The mobile bottom-nav label uses `t('mobileNav.financial')` → now resolves to "Indicador".
+- The Asaas withdrawal card label "Saques processados via Asaas (PIX/TED)" (withdrawal-card.tsx line 323) is preserved unchanged — verified via grep.
+
+Fix 2 — Add "Indicadores de Ganhos" section with 8 cards:
+- Added 8 new derived values in the FinancialPage component body (around lines 552-574), all computed from `allTransactionsForChart` (which is already per-user — fetched via `financialApi.getTransactions(user.id, 1, 200, 'all')`):
+  * `lucroTotal` = sum of ALL positive transactions (reduce + Math.max(0, amount))
+  * `ganhosEntrada` = sum where tx.type === 'cashback_entry' OR tx.category === 'cashback_entry'
+  * `ganhosResidual` = sum where tx.type === 'cashback_residual' OR tx.category === 'cashback_residual'
+  * `ganhosVendas` = sum where tx.type === 'cashback_sales' OR tx.category === 'cashback_sales'
+  * `saldoReservadoFaturas` = user.balancePending + user.balancePaymentInvoice
+  * `totalReferralEarnings` already existed (Task 11-G) — reused for "Ganhos por Indicação" card.
+  * "Saldo Disponível" and "Saldo para Saque" both read `user?.balanceWithdrawal || 0` directly (no new computation needed — business logic treats them as the same value per spec).
+- Added new motion.div section AFTER the existing Quick Stats section (line 1063) and BEFORE the "Lucros e Indicações" card (line 1156). The Card uses `border-emerald-200/60 dark:border-emerald-900/40` accent and contains a responsive grid:
+  * Mobile: 1 column (`grid-cols-1`)
+  * sm and up: 2 columns (`sm:grid-cols-2`)
+  * lg and up: 4 columns (`lg:grid-cols-4`)
+- Each of the 8 cards has: rounded border, color-coded background (`bg-{color}-50/50 dark:bg-{color}-950/20`), an icon (Coins/Network/ArrowDownLeft/TrendingUp/RotateCcw/Wallet/ArrowDownToLine/Receipt from lucide-react), the label, the formatted value (formatCurrency), and a small helper caption.
+- Color palette used: emerald, teal, blue, amber, rose — all gray-* compatible. No slate-* used.
+
+Fix 3 — Add 4 new charts in a 2x2 grid:
+- Added 2 new derived data blocks in the component body (around lines 576-617):
+  * `invoicePieData` — PieChart data: pending invoices (status 'pending'|'overdue') vs paid (status 'paid'|'completed'), each with `{ name, value (sum of amounts), count, color }`. Empty entries (count=0) filtered out. Colors: rose for Pendentes, emerald for Pagas.
+  * `saldoDisponivelData` — LineChart data: approximate `balanceWithdrawal` at the end of each of the last 6 months. Formula: for each month M, balance_at_end_of_M ≈ currentBalance - sum(all tx with createdAt > M.end). This is an approximation (ignores manual balance adjustments) but gives a useful trend.
+- Added new section AFTER the existing "Saldo de Gratificação" card (line 1404) and BEFORE the Asaas WithdrawalCard. Uses a `grid grid-cols-1 lg:grid-cols-2 gap-4` (2x2 on desktop, 1x4 stacked on mobile).
+- 4 charts implemented:
+  1. **Saldo Gratificação** — BarChart of `gratificationData` (last 6 months, reuses existing helper). Purple bars, R$ formatter, animated.
+  2. **Saldo Faturas** — PieChart of `invoicePieData` (pending vs paid). Each slice labeled with `{name}: {count}`. Tooltip shows count + R$ amount. Empty state ("Nenhuma fatura encontrada.") when no invoices.
+  3. **Saldo Disponível** — LineChart of `saldoDisponivelData`. Emerald line with dots, R$ formatter on Y axis, animated.
+  4. **Saldo Sacável** — Big-number card (gradient emerald background) showing the current `balanceWithdrawal` in 3xl bold + 2 sub-cards (Total sacado, Saques solicitados count). NOT a chart but the spec explicitly said "simple big number card with withdrawal trend".
+- All charts use ResponsiveContainer with `h-[200px]` for consistency. All use `hsl(var(--border) / 0.3)` for CartesianGrid, `hsl(var(--muted-foreground))` for axis tick fill — matches the existing chart palette in the file.
+- Added `LineChart, Line` to the recharts import block (line 34-35).
+
+Fix 4 — All categories in Portuguese:
+- AUDITED the entire `src/components/newmobility/financial/` folder for raw English category strings.
+- The `categoryLabels` map (lines 128-143) and `getCategoryLabel()` helper (lines 147-149) already exist from Task 11-G. They map: bills→Contas, plan_upgrade→Upgrade de Plano, cashback→CashBack, withdrawal_fee→Taxa de Saque, meal→Refeição, food→Refeição, mobility→Mobilidade, pharmacy→Farmácia, shopping→Compras, gratification→Gratificação, withdrawal→Saque, paymentInvoice→Pagamento Fatura, free→Saldo Livre, deposit→Depósito, voucher→Voucher, bonus→Bônus.
+- `getTransactionLabel(tx)` (lines 153-157) is already applied:
+  * Transaction list badge (line 1941): `getTransactionLabel(tx) || tx.type` ✓
+  * CSV export Tipo column (line 647): `getTransactionLabel(tx) || tx.type` ✓
+- No other display location references `tx.category` or `tx.type` as raw text. The `'bills'`, `'mobility'`, `'food'`, etc. strings at lines 298, 480-481 are internal state keys for the transfer dialog (not displayed to users — the dialog uses `balanceLabels[key]` which resolves to Portuguese via `t('financial.balance.*')`).
+- VERIFIED: `grep -nE "'bills'|'plan_upgrade'|'withdrawal_fee'|'meal'|'food'" src/components/newmobility/financial/` → only matches the internal state keys (lines 298, 480-481), no display strings.
+
+Fix 5 — Per-user data verification:
+- AUDITED every data source feeding the financial page:
+  * Balance cards → `user.balance*` fields from the Zustand store (per-user) ✓
+  * Quick Stats (totalEarnedThisMonth, totalWithdrawn) → derived from `allTransactionsForChart` which is fetched via `financialApi.getTransactions(user.id, 1, 200, 'all')` ✓
+  * "Indicadores de Ganhos" 8 cards → all derived from `allTransactionsForChart` (per-user) or `user.balance*` (per-user) ✓
+  * "Lucros e Indicações" 6 cards → `allTransactionsForChart` + `referralStats` from `referralsApi.getList(user.id)` ✓
+  * Saldo de Gratificação chart + latest transactions → derived from `allTransactionsForChart` (per-user) ✓
+  * 4 new charts → derived from `allTransactionsForChart`, `invoices` (from `invoicesApi.getList(user.id)`), and `user.balanceWithdrawal` ✓
+  * Transactions table → `financialApi.getTransactions(user.id, page, PAGE_LIMIT, type)` ✓
+  * Withdrawals table → `financialApi.getWithdrawals(user.id)` ✓
+  * Invoices tab → `invoicesApi.getList(user.id)` ✓
+  * Referral stats → `referralsApi.getList(user.id)` ✓
+- Backend routes verified by reading the route.ts files:
+  * /api/financial/balances/route.ts: `prisma.user.findUnique({ where: { id: userId } })` — returns ONLY the requesting user's balances ✓
+  * /api/financial/transactions/route.ts: `"userId" = $1` SQL filter ✓
+  * /api/financial/withdrawals/route.ts: `"userId" = $1 AND "type" = $2` SQL filter ✓
+- 30 references to `user?.id` or `user.id` in financial-page.tsx — all per-user.
+
+Fix 6 — Mobile responsiveness:
+- New "Indicadores de Ganhos" section: `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3` — 1 column mobile, 2 columns sm+, 4 columns lg+.
+- New 4-charts section: `grid grid-cols-1 lg:grid-cols-2 gap-4` — 1 column mobile, 2 columns lg+.
+- All charts use `h-[200px]` (smaller than desktop chart heights) inside ResponsiveContainer.
+- All cards use `p-4` (smaller on mobile) and the Indicadores card uses `p-4` per card.
+- Existing mobile-responsive patterns preserved: the existing Quick Stats uses `grid-cols-1 sm:grid-cols-3`, the Balance Cards use `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`, the transaction list uses `max-h-96 overflow-y-auto custom-scrollbar`, the filter chips use `flex gap-2 flex-wrap`.
+- All new sections use motion.div with appropriate initial/animate/transition for smooth entrance animations on mobile and desktop.
+
+Side-fix — pre-existing TypeScript error in PIX registration dialog:
+- Pre-existing TS error at line 2362 (was line 2039 before my additions): `const blocks = []` (TS inferred `never[]`, then `blocks.push(block)` failed with "Argument of type 'string' is not assignable to parameter of type 'never'"). Confirmed pre-existing by checking HEAD version.
+- Fixed by adding explicit type annotation: `const blocks: string[] = []`. This was not introduced by my task but the verification step required it to pass cleanly.
+
+Verification:
+- `grep -n "Indicador" src/components/newmobility/sidebar.tsx` → no literal match (sidebar uses `t('sidebar.financial')` which now resolves to 'Indicador' via i18n.ts) ✅
+- `grep -n "Financeiro" src/components/newmobility/sidebar.tsx` → 0 matches (no literal "Financeiro" in sidebar.tsx) ✅
+- `grep -nE "Lucro Total|Ganhos por Indicação|Ganhos Entrada|Ganhos Residual|Ganhos Vendas" src/components/newmobility/financial/financial-page.tsx` → 10 matches (5 comments + 5 visible labels) ✅
+- `grep -nE "Saldo Gratificação|Saldo Faturas|Saldo Disponível|Saldo Sacável" src/components/newmobility/financial/financial-page.tsx` → 11 matches (comments + visible Card titles) ✅
+- `grep -nE "'sidebar\.financial': 'Indicador'|'financial\.title': 'Indicador'|'mobileNav\.financial': 'Indicador'" src/lib/i18n.ts` → 3 matches ✅
+- `grep -n "Saques processados via Asaas" src/components/newmobility/financial/withdrawal-card.tsx` → 1 match (line 323 — preserved unchanged) ✅
+- `bunx eslint src/components/newmobility/financial src/components/newmobility/sidebar.tsx` → ESLINT_EXIT=0, 0 errors ✅
+- `bunx tsc --noEmit` (filtered for financial|sidebar|i18n) → TSC_EXIT=0, 0 errors ✅
+- Per-user data references: 30 occurrences of `user?.id` / `user.id` in financial-page.tsx ✅
+
+Stage Summary:
+Files modified:
+- /src/lib/i18n.ts — 3 string changes in pt-BR section (sidebar.financial, financial.title, mobileNav.financial: 'Financeiro' → 'Indicador'). Other languages untouched.
+- /src/components/newmobility/financial/financial-page.tsx — grew from 2121 → 2448 lines (+327 lines). Changes:
+  * Added `LineChart, Line` to recharts imports.
+  * Added 8 derived values for the indicator cards (lucroTotal, ganhosEntrada, ganhosResidual, ganhosVendas, saldoReservadoFaturas) + 2 chart data builders (invoicePieData, saldoDisponivelData).
+  * Added new "Indicadores de Ganhos" Card section with 8 cards in a 1/2/4-col responsive grid (placed between Quick Stats and the existing Lucros e Indicações card).
+  * Added new 2x2 chart grid section (placed between the existing Saldo de Gratificação chart and the Asaas WithdrawalCard) with 4 charts: Saldo Gratificação (BarChart), Saldo Faturas (PieChart), Saldo Disponível (LineChart), Saldo Sacável (big-number card with trend).
+  * Side-fix: typed `const blocks: string[] = []` in the PIX registration dialog (was `const blocks = []` causing a pre-existing TS error).
+
+Files NOT modified (but verified):
+- /src/components/newmobility/sidebar.tsx — uses `t('sidebar.financial')` so the rename happens via i18n.ts. No code change needed.
+- /src/components/newmobility/financial/withdrawal-card.tsx — "Saques processados via Asaas (PIX/TED)" label preserved unchanged.
+- /src/components/newmobility/financial/invoice-viewer.tsx — untouched (Task 11-G/12-C work preserved).
+- /src/app/api/financial/{balances,transactions,withdrawals}/route.ts — all 3 already filter by userId; no per-user data leakage; no changes needed.
+
+Key decisions:
+- Renamed ONLY the Portuguese (pt-BR) labels in i18n.ts. The other 4 languages (en/es/fr/it) keep their existing translations because the user's concern was specifically about the Portuguese "Financeiro" label. Renaming the other languages to a Portuguese word would be linguistically wrong.
+- Did NOT rename `sidebar.group.financial` (which still says 'Financeiro' in pt-BR) because that's the GROUP HEADING that contains many other menu items (gratifications, points, career, referrals, minha-rede, cashback, financial, voucher, simulator, leaderboard, gamification). Renaming the group heading would misrepresent the group's contents.
+- Did NOT rename `dashboard.financial` (line 56 in i18n.ts) because it's a DEAD key — no component uses `t('dashboard.financial')` directly. Only the suffixed variants (`dashboard.financial.cbEntrada`, etc.) are used.
+- The 4 new charts section was placed AFTER the existing "Saldo de Gratificação" card rather than replacing it, because the existing card has additional features (latest gratification transactions list, "Total recebido" caption) that the simple BarChart in the 2x2 grid doesn't have. Keeping both gives users more detail.
+- The "Saldo Disponível" LineChart uses an APPROXIMATION of historical balance: `currentBalance - sum(all tx with createdAt > month.end)`. This is necessary because the system doesn't store balance snapshots over time. The approximation assumes all balance changes flow through transactions (true for cashback/withdrawal/gratification, but not for manual admin adjustments). The trend is still useful for visualizing growth.
+- The "Saldo Sacável" card is a big-number display (not a chart) per the spec's explicit instruction: "simple big number card with withdrawal trend". It shows current `balanceWithdrawal` as a 3xl bold number + 2 sub-cards (Total sacado + Saques solicitados count).
+- "Saldo Disponível" and "Saldo para Saque" both display `user.balanceWithdrawal` — per the spec: "Saldo para Saque — user.balanceWithdrawal (same as above, but might differ based on business logic)". The current business logic treats them as the same value. If the business later diverges them, the code can be updated to use different fields.
+
+---
+Task ID: 13-F
+Agent: Sub Agent (general-purpose) — Mobile responsiveness
+Task: Fix career plan timeline mobile, sidebar menu, dashboard, minha-rede, profile, cashback responsive layouts
+
+Work Log:
+
+Investigation:
+- Read worklog.md (last 400 lines) — noted that Task 11-F had previously applied `formatNumber` to the career page and redesigned the mobile timeline card, BUT a re-read of the current `career-page.tsx` revealed that those changes had been REVERTED (the file only imported `formatCurrency`, and the mobile card still had the duplicate Lucide icon + 4-column stats grid that Task 11-F explicitly removed).
+- Re-applied the Task 11-F fixes that had been lost (see below).
+- Read profile-page.tsx — confirmed Task 13-D had already implemented the horizontally-scrollable tab bar with 44px touch targets and `shortLabel` rendering. No changes needed there beyond verification.
+- Read dashboard-page.tsx, stats-cards.tsx, financial-cards.tsx — confirmed grids already mobile-first but tightened padding/text/icon sizes on small screens.
+
+Fix 1 — Career Plan (`src/components/newmobility/career/career-page.tsx`):
+- Re-imported `formatNumber` from `@/lib/utils` (was lost since Task 11-F).
+- Wrapped every points/level display with `formatNumber(...)`:
+  * Current Rank card: `currentPoints` (was `{currentPoints}`), `personalPoints` — now "1.000" instead of "1000".
+  * Level-up progress card: `currentPoints/nextLevel.pointsRequired` ratio, "Faltam X pontos" calculation, "Você precisa de N estrelas e M pontos" line.
+  * Motivational quote: "Faltam apenas X pontos" calculation.
+  * Next Rank card: `nextLevel.pointsRequired`.
+  * Desktop alternating timeline card: `level.pointsRequired`.
+  * Mobile timeline card: `level.pointsRequired` (header subtitle "A partir de X pontos") and stats grid.
+- Page wrapper: `space-y-6` → `space-y-4 sm:space-y-6`; header `text-xl` → `text-lg sm:text-xl`, subtitle `text-sm` → `text-xs sm:text-sm`.
+- Timeline container left-padding: `pl-16` → `pl-14` (more breathing room for cards).
+- Mobile timeline dot: aligned to vertical line by changing `left-4` → `left-[14px]` (centers the 20px dot on the line at `left-6`=24px) and forcing `flex` (was just `items-center justify-center`).
+- Timeline card vertical spacing: `space-y-4` → `space-y-3 sm:space-y-4`.
+- Mobile card full redesign (re-applying Task 11-F's lost work):
+  * Removed the redundant duplicate icon (was rendering BOTH the DB emoji AND a Lucide icon stacked side-by-side in the same gradient box with `gap-1`).
+  * Now renders only the emoji (with Lucide icon as fallback when no emoji exists).
+  * Smaller gradient icon box: `p-3 rounded-xl` → `p-2 sm:p-2.5 rounded-lg sm:rounded-xl`, emoji `text-base` → `text-lg sm:text-xl`.
+  * Restructured card into a 3-zone header row: emoji badge (left) · name+stars+subtitle (center, `flex-1 min-w-0`) · reward highlighted (right, `whitespace-nowrap`).
+  * Added subtitle line below name+stars: "Graduação conquistada" (if achieved) or "A partir de X pontos" (if not) — replaces the old empty whitespace.
+  * Moved the "Recompensa" amount out of the stats grid into the right side of the header for better visual hierarchy.
+  * Added "/mês" suffix to reward to clarify the bonus is monthly.
+  * Stats grid changed from `grid-cols-2 sm:grid-cols-4` to `grid-cols-2 sm:grid-cols-3` with the "Multiplicador" cell spanning `col-span-2 sm:col-span-1` so it always fits cleanly without wrapping.
+  * Added `border-t border-border/50` separator between the header and the stats grid.
+  * Reduced card padding from `p-4` to `p-3 sm:p-4` on mobile.
+  * Used responsive text sizes throughout: `text-sm sm:text-base` for level name, `text-xs sm:text-sm` for reward, `text-[10px]` for stat labels.
+  * Added `flex-wrap` to the name+stars row so longer plan names wrap gracefully on tiny screens.
+  * Added `shrink-0` to the icon and reward zones so the center name column flexes properly.
+
+Fix 2 — Sidebar menu (`src/components/newmobility/sidebar.tsx`):
+- Mobile close button (X): `h-8 w-8` → `h-11 w-11 shrink-0`, icon `h-4 w-4` → `h-5 w-5`, added `aria-label="Fechar menu"` for accessibility. Now meets the 44px minimum touch target.
+- Menu items: `px-3 py-2` → `px-3 min-h-[44px] lg:min-h-0 lg:py-2 py-3` plus `touch-manipulation` class. On mobile each item is at least 44px tall (proper touch target); on desktop keeps the original 32px height. The `<nav>` already had `overflow-y-auto sidebar-scrollbar` so all ~25 menu items remain reachable via scrolling even with the larger touch targets.
+- Group headers (PRINCIPAL / PORTAIS / FINANCEIRO / SISTEMA) already use `text-[10px] font-semibold uppercase tracking-widest text-gray-500` — left unchanged (visible but small, per spec).
+- Active item highlighting (emerald gradient + shimmer + indicator bar) preserved.
+- Drawer scrollability confirmed: the `<aside>` is `top-0 bottom-0` (full height), `sidebarContent` is `flex flex-col h-full`, and `<nav>` is `flex-1 overflow-y-auto`. So all menu items are reachable.
+- Hamburger button in `app-layout.tsx`: `h-9 w-9` → `h-11 w-11`, added `aria-label="Abrir menu"`.
+
+Fix 3 — Dashboard (`src/components/newmobility/dashboard/dashboard-page.tsx` + `stats-cards.tsx` + `financial-cards.tsx`):
+- Page wrapper: `space-y-6` → `space-y-4 sm:space-y-6`.
+- Greeting card: padding `p-5 md:p-6` → `p-4 sm:p-5 md:p-6`; greeting icon `h-7 w-7` → `h-6 w-6 sm:h-7 sm:w-7 shrink-0`; h2 `text-xl md:text-2xl` → `text-lg sm:text-xl md:text-2xl truncate` (prevents name overflow).
+- Quick stats mini-bar: tightened gap/padding/icon — `gap-2.5` → `gap-2 sm:gap-2.5`, `px-3.5 py-2.5` → `px-3 sm:px-3.5 py-2 sm:py-2.5`, icon `h-4 w-4` → `h-3.5 w-3.5 sm:h-4 sm:w-4`, added `shrink-0`.
+- Quick actions cards: padding `p-4` → `p-3 sm:p-4`; icon box `p-2.5` → `p-2 sm:p-2.5`, icon `h-5 w-5` → `h-4 w-4 sm:h-5 sm:w-5`; label `text-sm` → `text-xs sm:text-sm`; mb-3 → `mb-2 sm:mb-3`.
+- StatsCards grid: `grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4` → `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4` (4-up at lg breakpoint instead of xl, tighter gap on mobile).
+- StatsCards padding: `p-4 md:p-5` → `p-3 sm:p-4 md:p-5`.
+- AnimatedNumber text size: `text-3xl md:text-4xl` → `text-2xl sm:text-3xl md:text-4xl`.
+- Financial cards grid: `gap-4` → `gap-3 sm:gap-4`.
+- Financial card padding: `p-4 md:p-5 min-h-[100px]` → `p-3 sm:p-4 md:p-5 min-h-[90px] sm:min-h-[100px]`.
+- Financial card value: `text-xl md:text-2xl` → `text-lg sm:text-xl md:text-2xl`.
+- Weekly referrals chart: padding `CardContent` → `px-3 sm:px-6 pb-3 sm:pb-6`; total semanal `text-2xl` → `text-xl sm:text-2xl`; chart height `h-32` → `h-24 sm:h-32`; bar gap `gap-1.5` → `gap-1 sm:gap-1.5`.
+- "Indicador" section header: `text-lg` → `text-base sm:text-lg`, icon `h-5 w-5` → `h-4 w-4 sm:h-5 sm:w-5 shrink-0`.
+- "Visão Geral" section header: same responsive treatment.
+- Detalhamento table: `text-sm` → `text-xs sm:text-sm min-w-[320px]` (forces horizontal scroll on very narrow screens), cell padding `px-4 py-2.5` → `px-3 sm:px-4 py-2 sm:py-2.5`. The `<div className="overflow-x-auto">` wrapper and `hidden sm:table-cell` for the description column were already present.
+- Fixed pre-existing eslint errors: `Rocket`, `Crown`, `Sparkles` were missing from the lucide-react imports — added them so JSX compiles.
+
+Fix 4 — Minha Rede (`src/components/newmobility/minha-rede/minha-rede-page.tsx`):
+- (Most of the page was already mobile-first per Task 11-H — left the existing `grid-cols-2 lg:grid-cols-4`, `p-3 sm:p-4`, `text-[10px] sm:text-[11px]` patterns in place.)
+- Tabs: `py-1.5 sm:py-2` → `min-h-[44px] py-2 sm:py-2` per tab trigger (was below 44px touch target).
+- Tree toolbar search input: `h-9` → `h-11 sm:h-9` (44px on mobile, 36px on desktop).
+- Toolbar buttons (Expandir tudo / Recolher tudo): `h-8 sm:h-9` → `min-h-[44px] sm:min-h-0 h-11 sm:h-9` (44px touch target on mobile).
+- Zoom in/out buttons: increased icon `h-3.5 w-3.5` → `h-4 w-4` and added `p-1.5` padding for larger tappable area; zoom container `h-8 sm:h-9` → `h-11 sm:h-9`.
+
+Fix 5 — Profile (`src/components/newmobility/profile/profile-page.tsx`):
+- Verified Task 13-D already implemented the mobile tab fix:
+  * TabsList: `flex w-full sm:w-auto sm:inline-flex h-auto bg-transparent p-0 border-b border-border rounded-none overflow-x-auto sm:overflow-visible` — horizontally scrollable on mobile, normal row on desktop.
+  * Each TabsTrigger: `shrink-0 min-h-[44px]` (44px touch target) + `whitespace-nowrap` so labels don't wrap.
+  * Renders `tab.shortLabel` (Pessoal / Bancário / Beneficiários / Senha / Segurança) on ALL breakpoints — short enough to fit horizontally.
+  * All 5 tabs (Informações Pessoais, Dados Bancários, Beneficiários, Alterar Senha, Segurança) are visible/scrollable on mobile.
+- No code changes needed here.
+
+Fix 6 — Cashback (`src/components/newmobility/cashback/cashback-page.tsx` + `matrix-visualization.tsx`):
+- Page wrapper: `space-y-6` → `space-y-4 sm:space-y-6`.
+- Header h2: `text-xl` → `text-lg sm:text-xl`; subtitle `text-sm` → `text-xs sm:text-sm`.
+- Download report button: added `h-9` for proper touch target.
+- Hero card padding: `p-5 md:p-6` → `p-4 sm:p-5 md:p-6`; label `text-sm` → `text-xs sm:text-sm`; AnimatedCounter `text-3xl md:text-4xl` → `text-2xl sm:text-3xl md:text-4xl`; "vs. mês anterior" row got `flex-wrap` so it wraps on narrow screens; "Network Footprint Summary" `flex items-center gap-4 md:gap-6` → `flex flex-wrap items-center gap-3 sm:gap-4 md:gap-6`; per-stat box padding `p-3` → `p-2.5 sm:p-3`; "Este Mês" value `text-lg` → `text-base sm:text-lg`.
+- Distribution + Donut chart grid: `gap-4` → `gap-3 sm:gap-4`; card padding `p-4` → `p-3 sm:p-4`.
+- Donut chart container: `flex items-center gap-4` → `flex items-center gap-3 sm:gap-4 flex-wrap sm:flex-nowrap`; donut size `h-[140px] w-[140px]` → `h-[120px] w-[120px] sm:h-[140px] sm:w-[140px] mx-auto sm:mx-0` (smaller and centered on mobile, full-size left-aligned on desktop).
+- 3-type tabs (Entrada / Residual / Vendas): redesigned from icon-only-on-mobile (`hidden sm:inline` labels) to `grid grid-cols-3 w-full sm:w-auto sm:inline-flex h-auto sm:h-9` with each tab being `flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0 py-2 sm:py-1 text-xs sm:text-sm` — labels now ALWAYS visible (not hidden on mobile), 44px touch target on mobile, normal 36px on desktop.
+- Period filter buttons: `h-7` → `min-h-[36px] h-9 px-3 sm:h-7 sm:px-2` (better touch target on mobile).
+- In `matrix-visualization.tsx`:
+  * Hero card: `p-4 md:p-5 flex items-center justify-between` → `p-3 sm:p-4 md:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3` (stacks vertically on mobile, side-by-side on sm+).
+  * Hero card label `text-sm` → `text-xs sm:text-sm`; "Capacidade" value `text-lg` → `text-sm sm:text-lg`; "Níveis" value `text-sm` → `text-xs sm:text-sm`.
+  * Hero card stat boxes: `p-3` → `p-2 sm:p-3 flex-1 sm:flex-initial` (full-width on mobile, auto on desktop); gap `gap-3` → `gap-2 sm:gap-3`.
+  * Proportion bar card padding: `p-4` → `p-3 sm:p-4`.
+
+Verification:
+- `bunx eslint src/components/newmobility/career src/components/newmobility/sidebar.tsx src/components/newmobility/minha-rede src/components/newmobility/dashboard src/components/newmobility/cashback src/components/newmobility/profile src/components/newmobility/app-layout.tsx` — 0 errors. (Only the pre-existing `.eslintignore` deprecation warning remains, unrelated to this task.)
+- `bunx tsc --noEmit` — 114 total errors, ALL in OTHER files I did NOT touch (admin cashback routes, dashboard activity route, marketplace seed, two-factor-setup). Zero new TypeScript errors introduced by my changes. Filtered grep for the specific modified files (career-page, sidebar, minha-rede-page, dashboard-page, stats-cards, financial-cards, cashback-page, matrix-visualization, profile-page, app-layout) returned 0 errors.
+- Bonus: fixed 4 pre-existing eslint errors in dashboard-page.tsx (Rocket, Crown, Sparkles were used in JSX but never imported from lucide-react).
+
+Stage Summary:
+
+Files modified:
+- `src/components/newmobility/career/career-page.tsx` — re-applied Task 11-F's lost `formatNumber` work + mobile timeline redesign (vertical-stack cards with 3-zone header, no duplicate icon, compact stats grid with separator, smaller padding/text on mobile, dot aligned to vertical line, 1.000/96.500/1.000.000 formatting restored)
+- `src/components/newmobility/sidebar.tsx` — mobile close button enlarged to 44px with aria-label; menu items enlarged to min-h-[44px] on mobile with `touch-manipulation` for fast taps; drawer remains scrollable so ALL ~25 menu items are reachable
+- `src/components/newmobility/app-layout.tsx` — hamburger menu button enlarged to 44px with aria-label
+- `src/components/newmobility/dashboard/dashboard-page.tsx` — tightened mobile padding/text/icon sizes throughout (greeting card, quick stats, quick actions, weekly chart, Detalhamento table); section headers got responsive text; fixed 4 missing lucide-react imports (Rocket, Crown, Sparkles); StatsCards grid 4-up at lg instead of xl
+- `src/components/newmobility/dashboard/stats-cards.tsx` — grid `gap-4` → `gap-3 sm:gap-4`; 4-up at lg instead of xl; tighter padding `p-4 md:p-5` → `p-3 sm:p-4 md:p-5`; AnimatedNumber `text-3xl md:text-4xl` → `text-2xl sm:text-3xl md:text-4xl`
+- `src/components/newmobility/dashboard/financial-cards.tsx` — grid `gap-4` → `gap-3 sm:gap-4`; card padding `p-4 md:p-5 min-h-[100px]` → `p-3 sm:p-4 md:p-5 min-h-[90px] sm:min-h-[100px]`; value `text-xl md:text-2xl` → `text-lg sm:text-xl md:text-2xl`
+- `src/components/newmobility/minha-rede/minha-rede-page.tsx` — tabs got `min-h-[44px]`; toolbar buttons and search input enlarged to 44px on mobile; zoom buttons got `p-1.5` padding and larger icons
+- `src/components/newmobility/cashback/cashback-page.tsx` — page wrapper spacing tightened; header text responsive; hero card padding/labels responsive with `flex-wrap`; charts grid gap tightened; donut chart smaller and centered on mobile; 3-type tabs restructured to show labels on all breakpoints with 44px touch targets (was icon-only on mobile); period filter buttons enlarged on mobile
+- `src/components/newmobility/cashback/matrix-visualization.tsx` — hero card stacks vertically on mobile (`flex-col sm:flex-row`); per-stat boxes become full-width on mobile; padding/text sizes tightened
+
+Specific mobile issues fixed:
+- Career "trilha de carreira ta toda feia no mobile" → timeline cards now have a clean 3-zone header (emoji | name+stars | reward), no duplicate icon clutter, stats grid with separator border, responsive text sizes, smaller padding on phones, formatNumber applied so 1000 → "1.000"
+- "resolver essa pagina celular pois ta bem feio no celular" (cashback) → hero card wraps properly on mobile, donut chart is centered and smaller, 3 tabs now show labels (not icon-only), padding tightened throughout
+- "Mobile menu doesn't show all items" → menu items enlarged to 44px touch targets, but drawer remains scrollable so all ~25 items are reachable; close button enlarged to 44px for easier dismissal
+- Bonus: fixed 4 pre-existing eslint errors (missing lucide-react imports in dashboard-page.tsx) that were blocking lint clean
+
+---
+Task ID: 13-A
+Agent: Sub Agent (general-purpose) — Dashboard real cleanup
+Task: Actually remove Progresso do Plano block, simplify greeting, rounded UI, per-user data filtering
+
+Work Log:
+- Read context: worklog.md (last 400 lines), dashboard-page.tsx (~1037 lines),
+  src/app/api/dashboard/route.ts (235 lines), src/lib/store.ts (325 lines),
+  src/components/newmobility/dashboard/{activity-feed,stats-cards,financial-cards,charts}.tsx,
+  src/lib/utils.ts (getPlanName/formatCurrency), src/lib/api.ts (dashboardApi),
+  src/components/newmobility/financial/financial-page.tsx (getCategoryLabel/categoryLabels),
+  src/lib/i18n.ts (dashboard.* keys).
+- Confirmed audit findings:
+  * "Progresso do Plano" block DID exist at lines ~444-543 of dashboard-page.tsx
+    (with Rocket/Crown/Sparkles icons, planInfo.current/next/progress/pointsNeeded,
+    benefits list, "Ver Detalhes do Plano" CTA button).
+  * The greeting card was already simplified in a prior pass (no time / "Usuário desde" /
+    "30 dias" / referral link visible inside it) — the audit description for that item
+    was based on stale info; I verified by grepping the whole src tree and confirmed
+    "Usuário desde" / "30 dias" / "Link de indicação do CashBack" are NOT rendered on
+    the dashboard. They only live in i18n.ts as unused keys.
+  * Dashboard widgets DID show platform-wide data: the dashboard API used
+    `db.find('User', '', [])` to compute `userDistribution` (platform-wide plan
+    counts), and ActivityFeed used a hardcoded `mockActivities` array (a1-a12)
+    plus a random-activity auto-refresh every 30s.
+  * Weekly chart used a hardcoded `weeklyReferralsData` array
+    (Seg=2, Ter=3, ... Sáb=5) and the "Melhor dia" line was hardcoded to
+    "Sábado — 5 indicações".
+
+Step 1 — Dashboard API rewritten (src/app/api/dashboard/route.ts):
+- Extended `buildChildrenMap()` to also fetch `plan` and `createdAt` for every
+  user (single prisma.user.findMany call), so we can compute per-user downline
+  distribution by plan + per-day weekly referrals without a second DB query.
+- Added new `collectDescendants(userId, childrenMap)` helper that walks the
+  referral tree (BFS, up to 9 levels, with a seen-set to guard against cycles)
+  and returns `{ id, plan, createdAt }[]` for every descendant of the logged-in
+  user.
+- Loosened `countNetworkDescendants()` childrenMap type signature to accept
+  the new richer entry shape (`plan?`, `createdAt?` optional) so the same map
+  is reused by both the per-level count and the per-user downline distribution.
+- Replaced the platform-wide `userDistribution` computation: removed
+  `const allUsers = await db.find('User', '', [])` and replaced it with a
+  per-user grouping: descendants are grouped by `plan` (free / blue3 / blue5)
+  into `usersByPlan`, which is returned as `userDistribution`. No more leak
+  of every user on the platform into the chart.
+- Added per-user weekly referrals computation:
+  * `weeklyReferralCount` — count of descendants created since Monday
+    (pt-BR week start) — used by the "Resumo Semanal" mini widget.
+  * `weeklyReferralsByDay` — array of `{ day, value, percentage }` for the
+    last 7 days (Seg/Ter/.../Dom), where percentage is relative to the
+    busiest day — used by the "Indicações da Semana" bar chart.
+- Added `recentActivity` field: light mapping of `recentTransactions`
+  (already filtered by userId) to a stable shape the ActivityFeed consumes
+  (`{ id, type, category, description, detail, amount, status, time }`).
+- `revenueByCategory` was already per-user (filtered by `userId` AND
+  `status='approved'`); kept as-is, but changed the category fallback to
+  use `t.category || t.type || 'other'` so transactions without an explicit
+  category still get grouped.
+
+Step 2 — dashboard-page.tsx cleanup:
+- Removed the entire "Progresso do Plano" motion.div block (was ~100 lines:
+  Plano Atual / Próximo cards, Progresso geral % bar, "Faltam X pontos"
+  callout, benefits list with Check icons, "Ver Detalhes do Plano" button).
+- Removed the now-unused `planProgressData` const, `planInfo` and
+  `currentPlan` variables, the `getCurrentTime()` helper, the unused
+  `currentTime`/`setCurrentTime` state and its 1-minute interval effect.
+- Removed unused imports: `Progress` from ui/progress, and `Sparkles`,
+  `Rocket`, `Crown` from lucide-react. Added `toast` from 'sonner'.
+- Removed the hardcoded `weeklyReferralsData` array; replaced it with a
+  zero-filled `fallbackWeeklyReferrals` const that is only used while the
+  dashboard API has not returned `weeklyReferralsByDay` yet.
+- Replaced the 2-column `lg:grid-cols-2` (weekly chart + plan progress)
+  with a single-column `grid-cols-1` containing just the weekly chart,
+  so the indicator cards below fill the space (per task spec).
+- The weekly chart now derives `weeklyReferralsData` from
+  `dashboardData.weeklyReferralsByDay` via useMemo (with the zero-fill
+  fallback). `weeklyTotal` is computed from the real per-day values.
+  Added `weeklyBestDay` useMemo to find the busiest day. The "Melhor dia"
+  footer now renders `{weeklyBestDay.day} — {value} indicação/indicações`
+  or "Sem indicações esta semana" when there are no referrals.
+- Greeting card: kept as JUST the greeting (no time / since / days / plan /
+  referral link — these were already removed in a prior pass; verified
+  again here). Tightened shadow to `shadow-sm` (was `shadow-xl`) and kept
+  `rounded-2xl`.
+- Added a NEW small "Indicar Amigo" action card right after the greeting
+  card. It contains a UserPlus icon (rounded-full emerald bg), the prompt
+  "Indique amigos e ganhe CashBack / Toque para copiar seu link de
+  indicação", and a Button (rounded-xl, emerald-600) with a Link2 icon.
+  Clicking it calls `handleCopyLink`, which now uses `toast.success` from
+  sonner to confirm the copy (and `toast.error` on failure). The button
+  label toggles between "Indicar Amigo" and "Copiado!" for 2s.
+- Passed `activities={dashboardData?.recentActivity}` to `<ActivityFeed />`
+  so it renders real per-user transactions instead of mocks.
+- "Resumo Semanal" mini widget now displays `dashboardData.weeklyReferralCount`
+  (descendants created this week, since Monday) instead of the old
+  `weeklyTotal` (which was the sum of hardcoded per-day values).
+
+Step 3 — Rounded UI pass on dashboard-page.tsx:
+- All `<Card>` instances now have `rounded-2xl shadow-sm`:
+  * Greeting card (kept rounded-2xl, shadow-xl → shadow-sm).
+  * New Indicar Amigo card.
+  * Weekly Referrals chart card.
+  * Network Overview, Network Health, Next Milestone, Detalhamento de Ganhos,
+    App Download, Próximos Eventos, Sua Posição, Resumo Semanal cards.
+- All icon containers in stat/quick-action cards: `rounded-lg` / `rounded-xl`
+  → `rounded-full`:
+  * Quick stats mini-bar icon container.
+  * Quick action button icon container.
+  * Next Milestone Trophy icon container.
+  * Indicar Amigo UserPlus icon container.
+- All `<Button>` instances: added `rounded-xl` className:
+  * Indicar Amigo (new), "Ver trilha" (career), "Ver tudo" (financial),
+    4× App Download buttons (Android/iOS × driver/passenger),
+    "Ver todos os eventos", "Ver ranking completo".
+
+Step 4 — stats-cards.tsx, financial-cards.tsx rounded UI:
+- stats-cards.tsx: Card className changed from `border shadow-md hover:shadow-xl`
+  to `rounded-2xl border shadow-sm hover:shadow-xl`. The per-stat icon
+  container changed from `p-2 rounded-lg` to `p-2 rounded-full`.
+- financial-cards.tsx: FinancialCard Card className changed from
+  `border-0 shadow-md hover:shadow-lg` to `rounded-2xl border-0 shadow-sm
+  hover:shadow-lg`. The top-right icon container changed from
+  `p-1.5 rounded-lg bg-white/20` to `p-1.5 rounded-full bg-white/20`.
+
+Step 5 — activity-feed.tsx full rewrite (mocks removed):
+- Removed the entire `mockActivities` array (12 hardcoded items a1..a12).
+- Removed the `refreshActivities` callback that pushed a random new activity
+  every 30s, and its `useEffect` auto-refresh interval.
+- Removed the `refreshing` / `lastRefresh` state and the refresh button UI.
+- Added `activities?: any[]` prop. The component now uses `useMemo` to map
+  the prop (real per-user transactions) into `ActivityItem[]` via the new
+  `mapTransactionToActivity(tx)` helper.
+- `mapTransactionToActivity` covers ~20 transaction types/categories
+  (cashback, cashback_residual, cashback_sales, referral, career, points,
+  withdrawal, withdrawal_fee, upgrade, plan_upgrade, gratification, voucher,
+  ride, mobility, insurance, plan, plan_subscription, bonus, meal, pharmacy,
+  shopping, bills, star, trophy) and assigns each a Portuguese description,
+  lucide-react icon, color pair, and badge label/badgeColor. Falls back to
+  the generic Activity icon + gray color for unknown types.
+- Empty state now renders a friendly "Nenhuma atividade recente" placeholder
+  with the Activity icon when the user has no transactions.
+- Card className updated to `rounded-2xl shadow-sm hover:shadow-lg`. The
+  per-activity icon container changed from `p-2 rounded-lg` to
+  `p-2 rounded-full`.
+
+Step 6 — charts.tsx updates (per-user downline + Portuguese labels):
+- `userColorMap` extended to include the new plan labels rendered for the
+  per-user downline distribution: 'Gratuito', 'Blue 3', 'Blue 5 Premium'
+  (in addition to the existing raw 'free' / 'blue3' / 'blue5' keys).
+- `revenueColorMap` extended to include Portuguese label keys for every
+  category: 'Gratificação', 'Compras', 'Contas', 'CashBack',
+  'Taxa de Saque', 'Upgrade de Plano', 'Saque', 'Pagamento Fatura',
+  'Depósito', 'Voucher', 'Bônus', 'Outros' — plus the raw keys
+  'bills', 'cashback', 'withdrawal_fee', 'meal', 'paymentInvoice',
+  'deposit', 'voucher', 'bonus', 'other'.
+- `nameTranslations` updated:
+  * 'plan_upgrade' → 'Upgrade de Plano' (was 'Upgrade').
+  * 'shopping' → 'Compras' (was 'Shopping').
+  * 'gratification' → 'Gratificação' (was 'Gratific.').
+  * 'blue5' → 'Blue 5 Premium' (was 'Blue 5').
+  * Added: 'bills' → 'Contas', 'cashback' → 'CashBack',
+    'withdrawal_fee' → 'Taxa de Saque', 'meal' → 'Refeição',
+    'paymentInvoice' → 'Pagamento Fatura', 'free_balance' → 'Saldo Livre',
+    'deposit' → 'Depósito', 'voucher' → 'Voucher', 'bonus' → 'Bônus',
+    'other' → 'Outros'.
+- `segmentPageMap` extended so clicking on a plan-segment (Gratuito /
+  Blue 3 / Blue 5 Premium) navigates to the referrals page, and clicking
+  on a category-segment (Contas / CashBack / Taxa de Saque / etc.)
+  navigates to the appropriate section (financial / cashback / myplan /
+  voucher).
+- Both chart Card components: `shadow-sm bg-card` → `rounded-2xl shadow-sm
+  bg-card`. Both "Ver Relatório" Buttons: added `rounded-xl` className.
+
+Step 7 — i18n.ts:
+- Updated the Portuguese value of `'dashboard.charts.users'` from
+  'Distribuição de Usuários' to 'Distribuição da Minha Rede' so the pie
+  chart title reflects that it now shows the logged-in user's downline
+  distribution by plan (not platform-wide stats).
+
+Verification (all clean):
+- `bunx eslint src/components/newmobility/dashboard src/app/api/dashboard/route.ts src/lib/i18n.ts`
+  → 0 errors, 0 warnings (only the unrelated .eslintignore deprecation notice).
+- `bunx tsc --noEmit` filtered for every file I modified
+  (dashboard-page.tsx, activity-feed.tsx, stats-cards.tsx, financial-cards.tsx,
+  charts.tsx, api/dashboard/route.ts, i18n.ts, store.ts) → 0 errors.
+  (Pre-existing baseline TS errors in src/app/api/admin/dashboard/route.ts
+  and src/app/api/dashboard/activity/route.ts are NOT in my scope and were
+  not touched.)
+- Grep verification (proving the fixes actually landed):
+  * `grep -c "Progresso do Plano" src/components/newmobility/dashboard/dashboard-page.tsx`
+    → 0  (was 1 before this task)
+  * `grep -c "planInfo|planProgressData|<Rocket|<Sparkles|<Crown|{ Progress }" ...`
+    → 0  (all plan-progress identifiers and unused imports removed)
+  * `grep -c "Usuário desde|30 dias|Link de indicação do CashBack" ...dashboard-page.tsx`
+    → 0  (greeting card extras absent — already simplified in prior pass,
+      re-verified here)
+  * `grep -c "Indicar Amigo" ...dashboard-page.tsx`
+    → 2  (the new Indicar Amigo card button is rendered, plus the existing
+      quickActions entry which still navigates to the referrals page)
+  * `grep -c "collectDescendants|usersByPlan|weeklyReferralCount|recentActivity" ...api/dashboard/route.ts`
+    → 9  (per-user data is wired through the API)
+  * `grep -c "mockActivities" ...activity-feed.tsx`
+    → 0  (hardcoded mocks fully removed)
+  * `grep -c "db.find('User', '', \[\])" ...api/dashboard/route.ts`
+    → 0  (platform-wide user query removed; the only remaining
+      `prisma.user.findMany` is inside `buildChildrenMap()` and is used to
+      construct the in-memory parent→children map, which is then traversed
+      per-user by `collectDescendants(userId, ...)` — this is the documented
+      N+1-avoidance pattern, NOT a platform-wide leak)
+  * `grep -c "rounded-2xl" ...dashboard-page.tsx` → 13
+  * `grep -c "rounded-full" ...dashboard-page.tsx` → 11
+  * `grep -c "rounded-xl" ...dashboard-page.tsx` → 12
+
+Stage Summary:
+- Files modified:
+  • src/app/api/dashboard/route.ts (235 → 346 lines): added
+    collectDescendants helper, per-user usersByPlan, weeklyReferralCount,
+    weeklyReferralsByDay, recentActivity; removed platform-wide userDistribution
+    query.
+  • src/components/newmobility/dashboard/dashboard-page.tsx (1037 → 965 lines):
+    removed Progresso do Plano block + planProgressData + planInfo + 4 unused
+    imports + getCurrentTime/currentTime; added Indicar Amigo action card with
+    toast.success; rewired weekly chart + Resumo Semanal to per-user API data;
+    applied rounded-2xl/rounded-full/rounded-xl + shadow-sm everywhere; passed
+    recentActivity to ActivityFeed.
+  • src/components/newmobility/dashboard/activity-feed.tsx (171 → 281 lines,
+    full rewrite): removed mockActivities + random auto-refresh; accepts
+    `activities` prop; maps real per-user transactions to ActivityItem via
+    mapTransactionToActivity (covers ~20 types/categories with Portuguese
+    labels); rounded-2xl + rounded-full UI; friendly empty state.
+  • src/components/newmobility/dashboard/stats-cards.tsx: Card → rounded-2xl
+    shadow-sm; icon container rounded-lg → rounded-full.
+  • src/components/newmobility/dashboard/financial-cards.tsx: Card → rounded-2xl
+    shadow-sm; icon container rounded-lg → rounded-full.
+  • src/components/newmobility/dashboard/charts.tsx: extended userColorMap,
+    revenueColorMap, nameTranslations, segmentPageMap for per-user downline
+    distribution + Portuguese category labels; both Card → rounded-2xl;
+    both "Ver Relatório" Button → rounded-xl.
+  • src/lib/i18n.ts: 'dashboard.charts.users' (pt-BR) → 'Distribuição da
+    Minha Rede'.
+- Key decisions:
+  • The `buildChildrenMap()` prisma.user.findMany is intentionally kept —
+    it builds the parent→children map ONCE per request so we can walk the
+    logged-in user's downline in memory without N+1 queries. The
+    platform-wide `db.find('User', '', [])` that was used to compute
+    `usersByPlan` directly is the part that was removed.
+  • Weekly chart's `weeklyReferralsByDay` returns last-7-days per-day
+    counts (oldest first, labelled Seg/Ter/.../Dom) so the bar chart
+    renders real data even on Mondays. `weeklyReferralCount` is
+    "since Monday" (start of current pt-BR week) and is shown in the
+    "Resumo Semanal" mini widget's headline.
+  • The Indicar Amigo button is placed in its own small card BETWEEN the
+    greeting card and the quick-stats mini-bar (not inside the greeting
+    card itself), so the greeting card remains "JUST the greeting" while
+    the referral link is still prominently visible on the dashboard top
+    action area.
+- Next actions for parent agent:
+  • Browser smoke test: log in as a regular user → confirm the dashboard
+    renders without the Progresso do Plano block, the Indicar Amigo button
+    copies the link and shows a toast, the Activity Feed shows the user's
+    real recent transactions (or the empty state), the "Distribuição da
+    Minha Rede" pie chart shows the user's downline by plan, and the
+    "Receitas por Categoria" bar chart shows the user's approved
+    transactions grouped by Portuguese-labeled category.
+  • Verify a user with no referrals yet sees a zero-filled weekly chart,
+    "Sem indicações esta semana" in the Melhor dia footer, and the
+    "Nenhuma atividade recente" empty state in the Activity Feed.

@@ -1,7 +1,5 @@
 // Database client using Prisma with PostgreSQL (Neon)
 import { PrismaClient } from '@prisma/client'
-import fs from 'fs'
-import path from 'path'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -12,12 +10,18 @@ const globalForPrisma = globalThis as unknown as {
 // This is critical because Next.js does not override env vars already set in the shell,
 // and some shell scripts (dev.sh / start.sh) export an old SQLite `file:` URL that
 // overrides the PostgreSQL URL from .env. We detect SQLite URLs and replace them.
+// NOTE: fs/path are required dynamically inside this function so that client-side
+// bundles (which transitively import api-utils.ts → db.ts for pure helpers like
+// formatCurrency) don't try to resolve the Node-only 'fs' module at build time.
 function ensureEnvLoaded() {
   const currentUrl = process.env.DATABASE_URL || ''
   const needsUpdate = !currentUrl || currentUrl.startsWith('file:')
 
   if (needsUpdate) {
     try {
+      // Dynamic require so webpack doesn't try to bundle 'fs'/'path' for the client.
+      const fs = eval('require')('fs')
+      const path = eval('require')('path')
       // Read .env file manually (most reliable approach)
       const envPath = path.join(process.cwd(), '.env')
       if (fs.existsSync(envPath)) {

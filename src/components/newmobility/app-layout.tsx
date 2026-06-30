@@ -98,8 +98,9 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="lg:hidden h-9 w-9 text-muted-foreground hover:text-foreground"
+                    className="lg:hidden h-11 w-11 text-muted-foreground hover:text-foreground"
                     onClick={() => setMobileSidebarOpen(true)}
+                    aria-label="Abrir menu"
                   >
                     <Menu className="h-5 w-5" />
                   </Button>

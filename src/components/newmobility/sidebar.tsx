@@ -166,10 +166,11 @@ export function Sidebar() {
           <Button
             variant="ghost"
             size="icon"
-            className="lg:hidden ml-auto text-white/60 hover:text-white hover:bg-white/10 h-8 w-8"
+            className="lg:hidden ml-auto text-white/60 hover:text-white hover:bg-white/10 h-11 w-11 shrink-0"
             onClick={() => setMobileSidebarOpen(false)}
+            aria-label="Fechar menu"
           >
-            <X className="h-4 w-4" />
+            <X className="h-5 w-5" />
           </Button>
         </div>
 
@@ -269,7 +270,7 @@ export function Sidebar() {
                       key={item.key}
                       onClick={() => handleItemClick(item.key)}
                       className={cn(
-                        "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 relative group/item",
+                        "w-full flex items-center gap-3 px-3 min-h-[44px] lg:min-h-0 lg:py-2 py-3 rounded-lg text-sm font-medium transition-all duration-200 relative group/item touch-manipulation",
                         isActive
                           ? "text-white shadow-lg relative overflow-hidden"
                           : "text-white/60 hover:text-white hover:bg-white/8"

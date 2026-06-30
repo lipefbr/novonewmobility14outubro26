@@ -300,22 +300,22 @@ export function MatrixVisualization({ type, onUpgradeClick }: MatrixVisualizatio
             backgroundSize: '20px 20px',
           }} />
           <div className="absolute inset-0 animate-shimmer" />
-          <CardContent className="p-4 md:p-5 relative flex items-center justify-between">
+          <CardContent className="p-3 sm:p-4 md:p-5 relative flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <Sparkles className="h-4 w-4 text-emerald-200" />
-                <p className="text-sm text-emerald-100 font-medium">Total de Membros - {config.title}</p>
+                <p className="text-xs sm:text-sm text-emerald-100 font-medium">Total de Membros - {config.title}</p>
               </div>
               <AnimatedMemberCounter value={totalUsers} />
             </div>
-            <div className="flex items-center gap-3">
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center border border-white/10">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2 sm:p-3 text-center border border-white/10 flex-1 sm:flex-initial">
                 <p className="text-[10px] text-emerald-200 uppercase tracking-wide">Capacidade</p>
-                <p className="text-lg font-bold text-white">{totalCapacity.toLocaleString('pt-BR')}</p>
+                <p className="text-sm sm:text-lg font-bold text-white">{totalCapacity.toLocaleString('pt-BR')}</p>
               </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 text-center border border-white/10">
+              <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2 sm:p-3 text-center border border-white/10 flex-1 sm:flex-initial">
                 <p className="text-[10px] text-emerald-200 uppercase tracking-wide">Níveis</p>
-                <p className="text-sm font-bold text-white">{config.levels.length}</p>
+                <p className="text-xs sm:text-sm font-bold text-white">{config.levels.length}</p>
               </div>
             </div>
           </CardContent>
@@ -386,7 +386,7 @@ export function MatrixVisualization({ type, onUpgradeClick }: MatrixVisualizatio
             backgroundImage: `linear-gradient(rgba(0,0,0,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.1) 1px, transparent 1px)`,
             backgroundSize: '24px 24px',
           }} />
-          <CardContent className="p-4 relative">
+          <CardContent className="p-3 sm:p-4 relative">
             <p className="text-xs font-medium text-muted-foreground mb-2">Proporção de Membros por Nível</p>
             <div className="flex h-5 rounded-full overflow-hidden gap-0.5">
               {config.levels.map((lvl, i) => {

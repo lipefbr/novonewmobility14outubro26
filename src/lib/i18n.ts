@@ -26,7 +26,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'sidebar.referrals': 'Meus Indicados',
     'sidebar.minha-rede': 'Minha Rede',
     'sidebar.cashback': 'CashBack',
-    'sidebar.financial': 'Financeiro',
+    'sidebar.financial': 'Indicador',
     'sidebar.voucher': 'Voucher',
     'sidebar.support': 'Suporte',
     'sidebar.logout': 'Sair',
@@ -77,7 +77,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'dashboard.download.title': 'Download dos Apps',
     'dashboard.download.driver': 'Motorista',
     'dashboard.download.passenger': 'Passageiro',
-    'dashboard.charts.users': 'Distribuição de Usuários',
+    'dashboard.charts.users': 'Distribuição da Minha Rede',
     'dashboard.charts.revenue': 'Receitas por Categoria',
     'dashboard.charts.viewReport': 'Ver Relatório',
 
@@ -98,7 +98,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'cashback.totalEarnings': 'Total de Ganhos CashBack',
 
     // Financial
-    'financial.title': 'Financeiro',
+    'financial.title': 'Indicador',
     'financial.subtitle': 'Gerencie seus saldos e saques',
     'financial.withdraw': 'Solicitar Saque',
     'financial.balance.withdrawal': 'Saldo para Saque',
@@ -355,7 +355,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Mobile Nav
     'mobileNav.dashboard': 'Início',
     'mobileNav.cashback': 'CashBack',
-    'mobileNav.financial': 'Financeiro',
+    'mobileNav.financial': 'Indicador',
     'mobileNav.referrals': 'Indicados',
     'mobileNav.profile': 'Perfil',
 

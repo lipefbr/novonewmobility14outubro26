@@ -20,6 +20,8 @@ import { motion } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
 import { toast } from 'sonner'
 import { AsaasPaymentDialog } from '@/components/newmobility/payment/asaas-payment-dialog'
+import { Checkbox } from '@/components/ui/checkbox'
+import { getCareerRank } from '@/lib/api-utils'
 
 const mockInvoices = [
   { id: '1', type: 'plan_blue5', amount: 99900, status: 'paid', dueDate: '2025-01-05', paidAt: '2025-01-03' },
@@ -221,6 +223,57 @@ export function MyPlanPage() {
   const [asaasInitialPaymentId, setAsaasInitialPaymentId] = useState<string | undefined>(undefined)
   const [assaasCreatingInvoice, setAsaasCreatingInvoice] = useState(false)
 
+  // ─── Auto-debit opt-in (Task 13-B §4) ─────────────────────────────
+  // Local mirror of `user.autoDebitEnabled`. When toggled, persists to the
+  // User table via PUT /api/user/profile and updates the Zustand store so
+  // the preference survives page reloads. Initialized from the user store
+  // so SSR/hydration matches what the API returned at login.
+  const [autoDebitEnabled, setAutoDebitEnabled] = useState<boolean>(
+    Boolean(user?.autoDebitEnabled)
+  )
+  const [autoDebitSaving, setAutoDebitSaving] = useState(false)
+
+  // Keep local state in sync if the user store changes (e.g. after another
+  // tab toggles it). Without this, the checkbox would stay stale.
+  useEffect(() => {
+    setAutoDebitEnabled(Boolean(user?.autoDebitEnabled))
+  }, [user?.autoDebitEnabled])
+
+  const handleToggleAutoDebit = async (checked: boolean) => {
+    if (!user?.id) return
+    setAutoDebitEnabled(checked)
+    setAutoDebitSaving(true)
+    try {
+      const fresh = await userApi.updateProfile(user.id, { autoDebitEnabled: checked })
+      // Update the global store so the preference survives navigation
+      if (fresh && typeof fresh === 'object') {
+        updateUser({ autoDebitEnabled: checked })
+      }
+      toast({
+        title: checked ? 'Débito automático ativado' : 'Débito automático desativado',
+        description: checked
+          ? 'A mensalidade será descontada automaticamente do seu saldo.'
+          : 'Você precisará pagar a mensalidade manualmente.',
+      })
+    } catch (err: any) {
+      // Revert on error
+      setAutoDebitEnabled(!checked)
+      toast({
+        title: 'Erro ao salvar preferência',
+        description: err?.message || 'Tente novamente mais tarde',
+        variant: 'destructive',
+      })
+    } finally {
+      setAutoDebitSaving(false)
+    }
+  }
+
+  // ─── Dynamic graduation (Task 13-B §5) ───────────────────────────
+  // Graduation is derived from the logged-in user's career points, NOT
+  // hardcoded. Falls back to 'Associado' when the user has no points or
+  // when the user object is missing (e.g. still loading).
+  const careerRank = getCareerRank(user?.careerPoints ?? 0)
+
   // Fetch plans from the API on mount so admin edits to the Plan table
   // (prices, names, active flags) propagate to the My Plan page.
   useEffect(() => {
@@ -357,7 +410,7 @@ export function MyPlanPage() {
   // Two paths:
   //   1. "Descontar Automaticamente" — POST /api/plans/upgrade with
   //      paymentMethod: 'automatic' and walletSource: 'withdrawal' |
-  //      'paymentInvoice'. Backend deducts R$850 instantly and
+  //      'paymentInvoice'. Backend deducts R$ 850,00 instantly and
   //      unlocks entrada levels 4-5.
   //   2. "Pagar via PIX"             — POST /api/plans/upgrade with
   //      paymentMethod: 'manual'. Backend creates a pending invoice
@@ -560,6 +613,16 @@ export function MyPlanPage() {
                 </div>
                 <h3 className="text-2xl font-bold mt-1">{currentPlanData?.name}</h3>
                 <p className="text-emerald-200 text-lg">{currentPlanData?.price}</p>
+                {/* Graduação dinâmica (Task 13-B §5): derived from the
+                    logged-in user's careerPoints via getCareerRank — NOT
+                    hardcoded. Shows the jewel pin name (Associado / Safira /
+                    Rubi / Esmeralda / Diamante / Imperial). */}
+                <div className="flex items-center gap-2 mt-2">
+                  <Trophy className="h-4 w-4 text-emerald-200" />
+                  <span className="text-emerald-200 text-sm">
+                    Graduação: <strong className="text-white">{careerRank.name}</strong>
+                  </span>
+                </div>
               </div>
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2">
@@ -632,17 +695,25 @@ export function MyPlanPage() {
                     <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
                     <span>Níveis 4 e 5 da matriz Entrada desbloqueados (de 3 para 5 níveis de comissões)</span>
                   </li>
+                  {/*
+                    Potenciais dos níveis 4 e 5 (Task 13-B §1):
+                    Matriz 4-wide → Level N = 4^N posições.
+                      - Nível 4: 4^4 = 256 posições × R$ 50,00 = R$ 12.800,00
+                      - Nível 5: 4^5 = 1.024 posições × R$ 50,00 = R$ 51.200,00
+                    O valor por posição (R$ 50) reflete a comissão fixa por
+                    indicação direta no nível (configurável via MatrixLevelEarning).
+                  */}
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-                    <span>Potencial de ganhos extras no nível 4: <strong>R$ 1.920,00</strong> (256 usuários × 5% × R$150)</span>
+                    <span>Potencial de ganhos extras no nível 4: <strong>R$ 12.800,00</strong> (256 posições × R$ 50)</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-                    <span>Potencial de ganhos extras no nível 5: <strong>R$ 7.680,00</strong> (1.024 usuários × 5% × R$150)</span>
+                    <span>Potencial de ganhos extras no nível 5: <strong>R$ 51.200,00</strong> (1.024 posições × R$ 50)</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-                    <span>Custo mensal combinado: <strong>R$ 999,90</strong> (R$150 Blue 3 + R$850 Premium 5)</span>
+                    <span>Mensalidade: <strong>R$ 999,90</strong></span>
                   </li>
                   <li className="flex items-start gap-2">
                     <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
@@ -659,7 +730,7 @@ export function MyPlanPage() {
                     <p className="text-sm font-bold text-foreground">Descontar Automaticamente</p>
                   </div>
                   <p className="text-xs text-muted-foreground mb-3">
-                    Debita R$850 da carteira escolhida e ativa o Premium 5 imediatamente.
+                    Debita R$ 850,00 da carteira escolhida e ativa o upgrade imediatamente.
                   </p>
                   <Button
                     className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
@@ -676,7 +747,7 @@ export function MyPlanPage() {
                     <p className="text-sm font-bold text-foreground">Pagar via PIX</p>
                   </div>
                   <p className="text-xs text-muted-foreground mb-3">
-                    Gere uma fatura de R$850 e pague via PIX. Ativação após confirmação.
+                    Gere uma fatura de R$ 850,00 e pague via PIX. Ativação após confirmação.
                   </p>
                   <Button
                     variant="outline"
@@ -692,7 +763,7 @@ export function MyPlanPage() {
 
               <p className="text-[11px] text-muted-foreground mt-3 flex items-start gap-1.5">
                 <AlertCircle className="h-3 w-3 shrink-0 mt-0.5" />
-                Após o upgrade, as faturas de R$150 e R$850 desaparecem do backoffice. Apenas a mensalidade recorrente de R$999,90 permanece.
+                Após o upgrade, apenas a mensalidade recorrente de R$ 999,90 permanece no backoffice.
               </p>
             </CardContent>
           </Card>
@@ -716,17 +787,23 @@ export function MyPlanPage() {
                   <p className="text-xs text-muted-foreground mt-1">
                     Todos os 5 níveis da matriz Entrada estão desbloqueados. Você recebe comissões dos níveis 1 ao 5.
                   </p>
+                  {/*
+                    Potenciais dos níveis 4 e 5 — Task 13-B §1:
+                    Matriz 4-wide → Level N = 4^N posições.
+                      - Nível 4: 4^4 = 256 posições × R$ 50,00 = R$ 12.800,00
+                      - Nível 5: 4^5 = 1.024 posições × R$ 50,00 = R$ 51.200,00
+                  */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3 text-xs">
                     <div className="bg-white/70 dark:bg-black/20 rounded-lg p-2 border border-purple-100 dark:border-purple-900">
                       <p className="text-muted-foreground">Nível 4 potencial</p>
-                      <p className="font-bold text-foreground">R$ 1.920,00</p>
+                      <p className="font-bold text-foreground">R$ 12.800,00</p>
                     </div>
                     <div className="bg-white/70 dark:bg-black/20 rounded-lg p-2 border border-purple-100 dark:border-purple-900">
                       <p className="text-muted-foreground">Nível 5 potencial</p>
-                      <p className="font-bold text-foreground">R$ 7.680,00</p>
+                      <p className="font-bold text-foreground">R$ 51.200,00</p>
                     </div>
                     <div className="bg-white/70 dark:bg-black/20 rounded-lg p-2 border border-purple-100 dark:border-purple-900">
-                      <p className="text-muted-foreground">Custo mensal</p>
+                      <p className="text-muted-foreground">Mensalidade</p>
                       <p className="font-bold text-foreground">R$ 999,90</p>
                     </div>
                   </div>
@@ -737,9 +814,9 @@ export function MyPlanPage() {
         </motion.div>
       )}
 
-      {/* Recurring monthly invoice card — per client spec §1.2 the
-          combined monthly cost is R$999,90 (R$150 Blue 3 + R$850 Premium 5).
-          For users on Blue 3 only, the recurring cost is R$150. */}
+      {/* Recurring monthly invoice card — Task 13-B §2: a SINGLE charge,
+          no split breakdown. Premium 5 = R$ 999,90; Blue 3 = R$ 150,00;
+          Free = R$ 0,00. */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="shadow-sm bg-card">
           <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -749,13 +826,13 @@ export function MyPlanPage() {
               </div>
               <div>
                 <p className="text-sm font-bold text-foreground">
-                  Mensalidade Recorrente
+                  Mensalidade
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {isPremium5
-                    ? 'R$150 (Blue 3) + R$850 (Premium 5)'
+                    ? 'Mensalidade Premium 5'
                     : isBlue3
-                    ? 'R$150 (Blue 3)'
+                    ? 'Mensalidade Blue 3'
                     : 'Sem mensalidade no plano gratuito'}
                 </p>
               </div>
@@ -778,6 +855,50 @@ export function MyPlanPage() {
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* ─── Auto-debit opt-in (Task 13-B §4) ─────────────────────────
+          When checked, the system will attempt to deduct the monthly fee
+          from the user's internal balances on the due date. If no balance
+          is available, the user is prompted to transfer from another
+          internal wallet. Stored on User.autoDebitEnabled. */}
+      {(isPremium5 || isBlue3) && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <Card className="shadow-sm bg-card">
+            <CardContent className="p-5">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400 shrink-0">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div className="flex-1">
+                  <label
+                    htmlFor="auto-debit-toggle"
+                    className="flex items-start gap-3 cursor-pointer"
+                  >
+                    <Checkbox
+                      id="auto-debit-toggle"
+                      checked={autoDebitEnabled}
+                      onCheckedChange={(v) => handleToggleAutoDebit(Boolean(v))}
+                      disabled={autoDebitSaving}
+                      className="mt-0.5 data-[state=checked]:bg-emerald-600 data-[state=checked]:border-emerald-600"
+                    />
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-foreground flex items-center gap-2">
+                        Autorizar débito automático
+                        {autoDebitSaving && (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Se possuir saldo, a mensalidade será descontada automaticamente. Caso não tenha saldo, você poderá transferir de outro saldo interno para pagar.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Plan Comparison Slider */}
       <Card className="shadow-sm bg-card">
@@ -1367,7 +1488,7 @@ export function MyPlanPage() {
                   Descontar Fatura Automática
                 </p>
                 <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-1">
-                  Escolha de qual carteira debitar R$850,00. Após a confirmação, os níveis 4 e 5 da matriz Entrada serão desbloqueados imediatamente.
+                  Escolha de qual carteira debitar R$ 850,00. Após a confirmação, os níveis 4 e 5 da matriz Entrada serão desbloqueados imediatamente.
                 </p>
               </div>
 
@@ -1385,7 +1506,7 @@ export function MyPlanPage() {
                     <Wallet className="h-4 w-4 text-emerald-600 mt-0.5" />
                     <div className="flex-1">
                       <p className="text-sm font-medium text-foreground">Saldo para Saque</p>
-                      <p className="text-[11px] text-muted-foreground">Debita R$850 do seu saldo liberado para saque.</p>
+                      <p className="text-[11px] text-muted-foreground">Debita R$ 850,00 do seu saldo liberado para saque.</p>
                     </div>
                     {premium5WalletSource === 'withdrawal' && (
                       <Check className="h-4 w-4 text-emerald-600 mt-0.5" />
@@ -1402,7 +1523,7 @@ export function MyPlanPage() {
                     <FileText className="h-4 w-4 text-blue-600 mt-0.5" />
                     <div className="flex-1">
                       <p className="text-sm font-medium text-foreground">Saldo para Faturas</p>
-                      <p className="text-[11px] text-muted-foreground">Debita R$850 do seu saldo destinado a faturas.</p>
+                      <p className="text-[11px] text-muted-foreground">Debita R$ 850,00 do seu saldo destinado a faturas.</p>
                     </div>
                     {premium5WalletSource === 'paymentInvoice' && (
                       <Check className="h-4 w-4 text-emerald-600 mt-0.5" />

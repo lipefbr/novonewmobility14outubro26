@@ -4,18 +4,57 @@ import { success, error, formatTimeSince } from '@/lib/api-utils'
 // Build a parent->children map ONCE from a single DB query, then traverse
 // in-memory. This avoids N+1 DB round-trips (up to 9 queries per request)
 // which is critical for remote PostgreSQL (Neon) performance.
-async function buildChildrenMap(): Promise<Record<string, { id: string; isActive: boolean }[]>> {
+// Each child entry also carries its `plan` and `createdAt` so we can compute
+// per-user downline distribution by plan + per-day weekly referrals without
+// a second DB query.
+async function buildChildrenMap(): Promise<Record<string, { id: string; isActive: boolean; plan: string; createdAt: Date }[]>> {
   const allUsers = await prisma.user.findMany({
-    select: { id: true, referredById: true, isActive: true },
+    select: { id: true, referredById: true, isActive: true, plan: true, createdAt: true },
   })
-  const map: Record<string, { id: string; isActive: boolean }[]> = {}
+  const map: Record<string, { id: string; isActive: boolean; plan: string; createdAt: Date }[]> = {}
   for (const u of allUsers) {
     if (u.referredById) {
       if (!map[u.referredById]) map[u.referredById] = []
-      map[u.referredById].push({ id: u.id, isActive: u.isActive })
+      map[u.referredById].push({
+        id: u.id,
+        isActive: u.isActive,
+        plan: u.plan || 'free',
+        createdAt: u.createdAt,
+      })
     }
   }
   return map
+}
+
+// Walk the referral tree (BFS, up to 9 levels) collecting every descendant
+// user with their plan and createdAt. Used to compute:
+//  - the per-user "Distribuição da Minha Rede" pie chart (descendants grouped by plan)
+//  - the per-user "Indicações da Semana" / "Resumo Semanal" widgets (descendants
+//    created in the last 7 days / this week)
+async function collectDescendants(
+  userId: string,
+  childrenMap?: Record<string, { id: string; isActive: boolean; plan: string; createdAt: Date }[]>,
+): Promise<{ id: string; plan: string; createdAt: Date }[]> {
+  const map = childrenMap || await buildChildrenMap()
+  const descendants: { id: string; plan: string; createdAt: Date }[] = []
+  const seen = new Set<string>([userId])
+  let currentLevel: string[] = [userId]
+  for (let level = 1; level <= 9; level++) {
+    if (currentLevel.length === 0) break
+    const nextLevel: string[] = []
+    for (const parentId of currentLevel) {
+      const kids = map[parentId]
+      if (!kids) continue
+      for (const k of kids) {
+        if (seen.has(k.id)) continue // guard against cycles
+        seen.add(k.id)
+        descendants.push({ id: k.id, plan: k.plan, createdAt: k.createdAt })
+        nextLevel.push(k.id)
+      }
+    }
+    currentLevel = nextLevel
+  }
+  return descendants
 }
 
 // Count all descendants in the referral tree (recursive, up to 9 levels deep).
@@ -23,7 +62,7 @@ async function buildChildrenMap(): Promise<Record<string, { id: string; isActive
 // count of descendants that are currently active.
 async function countNetworkDescendants(
   userId: string,
-  childrenMap?: Record<string, { id: string; isActive: boolean }[]>
+  childrenMap?: Record<string, { id: string; isActive: boolean; plan?: string; createdAt?: Date }[]>
 ): Promise<{
   total: number
   byLevel: Record<number, number>
@@ -93,7 +132,65 @@ export async function GET(request: Request) {
     // descendants by level. This drives the Cashback matrix user counts
     // (Entrada = 5 levels, Residual = 7 levels, Vendas = 9 levels) and the
     // Visão Rede / Membros Ativos widgets.
-    const network = await countNetworkDescendants(userId)
+    // We build the children map ONCE and reuse it for both the per-level
+    // count and the per-user downline distribution by plan + weekly breakdown.
+    const childrenMap = await buildChildrenMap()
+    const network = await countNetworkDescendants(userId, childrenMap)
+    const descendants = await collectDescendants(userId, childrenMap)
+
+    // Per-user "Distribuição da Minha Rede" — descendants grouped by plan.
+    // Replaces the old platform-wide userDistribution (which leaked every
+    // user on the platform into the chart).
+    const usersByPlan: Record<string, number> = {}
+    for (const d of descendants) {
+      const plan = d.plan || 'free'
+      usersByPlan[plan] = (usersByPlan[plan] || 0) + 1
+    }
+
+    // Per-user weekly referrals — count of descendants created this week
+    // (week starts on Monday per pt-BR convention) and a per-day breakdown
+    // for the "Indicações da Semana" / "Resumo Semanal" widgets.
+    const weekDayLabels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+    const startOfWeek = (() => {
+      const d = new Date()
+      d.setHours(0, 0, 0, 0)
+      const jsDay = d.getDay() // 0=Sun..6=Sat
+      // Shift so Monday is the first day of the week
+      const diff = (jsDay + 6) % 7
+      d.setDate(d.getDate() - diff)
+      return d
+    })()
+
+    const weeklyReferralCount = descendants.filter(
+      (d) => new Date(d.createdAt) >= startOfWeek,
+    ).length
+
+    // Build per-day breakdown for the last 7 days, oldest first, labelled by
+    // the Portuguese weekday abbreviation (Seg/Ter/Qua/Qui/Sex/Sáb/Dom).
+    const weeklyReferralsByDay: { day: string; value: number; percentage: number }[] = []
+    const todayMidnight = new Date()
+    todayMidnight.setHours(0, 0, 0, 0)
+    let maxDayCount = 0
+    const rawCounts: { day: string; value: number }[] = []
+    for (let i = 6; i >= 0; i--) {
+      const dayStart = new Date(todayMidnight)
+      dayStart.setDate(dayStart.getDate() - i)
+      const dayEnd = new Date(dayStart)
+      dayEnd.setDate(dayEnd.getDate() + 1)
+      const count = descendants.filter((d) => {
+        const c = new Date(d.createdAt)
+        return c >= dayStart && c < dayEnd
+      }).length
+      rawCounts.push({ day: weekDayLabels[dayStart.getDay()], value: count })
+      if (count > maxDayCount) maxDayCount = count
+    }
+    for (const rc of rawCounts) {
+      weeklyReferralsByDay.push({
+        day: rc.day,
+        value: rc.value,
+        percentage: maxDayCount > 0 ? Math.round((rc.value / maxDayCount) * 100) : 0,
+      })
+    }
 
     const entradaLevels = [1, 2, 3, 4, 5]
     const residualLevels = [1, 2, 3, 4, 5, 6, 7]
@@ -124,7 +221,7 @@ export async function GET(request: Request) {
     const vendasRecords = await db.find('CashbackSales', '"userId" = $1', [userId])
     const totalVendasEarned = vendasRecords.reduce((sum: number, e: any) => sum + Number(e.amount || 0), 0)
 
-    // Recent transactions
+    // Recent transactions — strictly per-user (filtered by userId).
     const recentTransactions = await db.find(
       'Transaction',
       '"userId" = $1',
@@ -152,14 +249,8 @@ export async function GET(request: Request) {
       ? Math.min(((careerPoints / nextCareerPlan.minPoints) * 100), 100)
       : 100
 
-    // User distribution for chart (by plan)
-    const allUsers = await db.find('User', '', [])
-    const usersByPlan: Record<string, number> = {}
-    for (const u of allUsers) {
-      usersByPlan[u.plan] = (usersByPlan[u.plan] || 0) + 1
-    }
-
-    // Revenue by category for chart
+    // Revenue by category for chart — strictly per-user (only the logged-in
+    // user's approved transactions are summed).
     const approvedTransactions = await db.find(
       'Transaction',
       '"userId" = $1 AND "status" = $2',
@@ -167,9 +258,23 @@ export async function GET(request: Request) {
     )
     const revenueByCategory: Record<string, number> = {}
     for (const t of approvedTransactions) {
-      const cat = t.category || 'other'
-      revenueByCategory[cat] = (revenueByCategory[cat] || 0) + Number(t.amount || 0)
+      const cat = (t as any).category || (t as any).type || 'other'
+      revenueByCategory[cat] = (revenueByCategory[cat] || 0) + Number((t as any).amount || 0)
     }
+
+    // Recent activity — light mapping of recentTransactions to a stable shape
+    // the ActivityFeed component consumes. Numbers stay in cents; the UI
+    // decides whether to render them as currency or as point counts.
+    const recentActivity = (recentTransactions as any[]).map((tx) => ({
+      id: tx.id,
+      type: tx.type,
+      category: tx.category,
+      description: tx.description || tx.type || 'Atividade',
+      detail: tx.description || undefined,
+      amount: Number(tx.amount || 0),
+      status: tx.status,
+      time: tx.createdAt ? new Date(tx.createdAt).toISOString() : new Date().toISOString(),
+    }))
 
     return success({
       user: {
@@ -216,6 +321,9 @@ export async function GET(request: Request) {
         gratification: user.balanceGratification || 0,
       },
       recentTransactions,
+      recentActivity,
+      weeklyReferralCount,
+      weeklyReferralsByDay,
       career: {
         currentRank: currentCareerPlan?.name ?? 'Associado',
         stars: currentCareerPlan?.sortOrder ?? 0,
@@ -225,6 +333,8 @@ export async function GET(request: Request) {
           : null,
         progress: careerProgress,
       },
+      // Per-user: descendants of the logged-in user grouped by plan
+      // (Gratuito / Blue 3 / Blue 5 Premium). No longer platform-wide.
       userDistribution: usersByPlan,
       revenueByCategory,
     })
