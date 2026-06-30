@@ -71,6 +71,17 @@ export function timeSince(dateString: string): string {
 }
 
 /**
+ * Returns the total number of days since a given date (rounded down).
+ * Example: a date 2 months and 5 days ago returns ~65 (total days).
+ */
+export function totalDaysSince(dateString: string): number {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)))
+}
+
+/**
  * Get plan name in Portuguese
  */
 export function getPlanName(plan: string): string {

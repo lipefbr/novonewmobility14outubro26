@@ -3,7 +3,7 @@
 import { useStore, type UserData } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { dashboardApi, ApiError } from '@/lib/api'
-import { timeSince, formatDate, getPlanName, cn } from '@/lib/utils'
+import { timeSince, totalDaysSince, formatDate, getPlanName, cn } from '@/lib/utils'
 import { StatsCards } from './stats-cards'
 import { FinancialCards } from './financial-cards'
 import { DashboardCharts } from './charts'
@@ -262,8 +262,8 @@ export function DashboardPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: 'easeOut' }}
       >
-        <Card className="border-0 shadow-sm overflow-hidden rounded-2xl">
-          <div className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 relative">
+        <Card className="border-0 shadow-sm overflow-hidden rounded-none sm:rounded-b-3xl">
+          <div className="bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 relative rounded-b-3xl sm:rounded-b-3xl">
             {/* Decorative pattern */}
             <div className="absolute inset-0 opacity-10" style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
@@ -282,36 +282,65 @@ export function DashboardPage() {
                   {greeting.text}, {user?.name?.split(' ')[0] || 'Usuário'}!
                 </h2>
               </div>
+              {/* Account creation info — small text at the bottom */}
+              {user?.createdAt && (
+                <div className="mt-3 pt-3 border-t border-white/20 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] sm:text-xs text-white/80">
+                  <span className="flex items-center gap-1.5">
+                    <CalendarIcon className="h-3.5 w-3.5" />
+                    Conta criada em: <strong className="font-semibold text-white">{formatDate(user.createdAt)}</strong>
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5" />
+                    <strong className="font-semibold text-white">{totalDaysSince(user.createdAt)}</strong> {totalDaysSince(user.createdAt) === 1 ? 'dia' : 'dias'} de conta
+                  </span>
+                </div>
+              )}
             </CardContent>
           </div>
         </Card>
       </motion.div>
 
-      {/* ===== INDICAR AMIGO small action card (referral link button) ===== */}
+      {/* ===== INDICAR AMIGO small action card (referral link EXPOSED) ===== */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1, duration: 0.35 }}
       >
         <Card className="rounded-2xl shadow-sm border border-emerald-100/50 dark:border-emerald-900/30">
-          <CardContent className="p-3 md:p-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="p-2 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 shrink-0">
-                <UserPlus className="h-4 w-4" />
+          <CardContent className="p-3 md:p-4 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 shrink-0">
+                  <UserPlus className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground truncate">Indique amigos e ganhe CashBack</p>
+                  <p className="text-[11px] text-muted-foreground truncate">Seu link de indicação:</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground truncate">Indique amigos e ganhe CashBack</p>
-                <p className="text-[11px] text-muted-foreground truncate">Toque para copiar seu link de indicação</p>
-              </div>
+              <Button
+                size="sm"
+                onClick={handleCopyLink}
+                className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+              >
+                {copied ? <Check className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
+                <span className="hidden sm:inline">{copied ? 'Copiado!' : 'Indicar Amigo'}</span>
+              </Button>
             </div>
-            <Button
-              size="sm"
-              onClick={handleCopyLink}
-              className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
-            >
-              {copied ? <Check className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
-              <span className="hidden sm:inline">{copied ? 'Copiado!' : 'Indicar Amigo'}</span>
-            </Button>
+            {/* Link exposto e visível para o usuário */}
+            <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-xl px-3 py-2">
+              <Link2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <p className="text-xs sm:text-sm font-mono text-emerald-800 dark:text-emerald-200 truncate flex-1 select-all">
+                {referralLink}
+              </p>
+              <button
+                onClick={handleCopyLink}
+                title="Copiar link"
+                className="p-1 rounded-md hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 transition-colors shrink-0"
+              >
+                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+            </div>
           </CardContent>
         </Card>
       </motion.div>
