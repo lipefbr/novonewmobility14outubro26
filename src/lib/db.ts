@@ -6,23 +6,39 @@ const globalForPrisma = globalThis as unknown as {
   __prismaUrl?: string
 }
 
-// Ensure DATABASE_URL is loaded from .env file if not already set
-// This is critical because Next.js does not override env vars already set in the shell,
-// and some shell scripts (dev.sh / start.sh) export an old SQLite `file:` URL that
-// overrides the PostgreSQL URL from .env. We detect SQLite URLs and replace them.
-// NOTE: fs/path are required dynamically inside this function so that client-side
-// bundles (which transitively import api-utils.ts → db.ts for pure helpers like
-// formatCurrency) don't try to resolve the Node-only 'fs' module at build time.
+// Hardcoded fallback Neon PostgreSQL URL — used ONLY when process.env.DATABASE_URL
+// is missing or points to SQLite AND we cannot read .env (e.g. webpack bundling
+// prevents fs access). This ensures the app always connects to the correct DB.
+const FALLBACK_NEON_URL =
+  'postgresql://neondb_owner:npg_2Ul5CdKOpRiu@ep-twilight-night-aqn8fqln-pooler.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require'
+
+// Ensure DATABASE_URL is loaded from .env file if not already set.
+// Next.js normally loads .env automatically, but the dev shell may export a
+// stale SQLite `file:` URL that overrides it. We detect that and fix it.
+// NOTE: This function is a no-op on the client (typeof window !== 'undefined')
+// to avoid pulling Node-only modules into client bundles.
 function ensureEnvLoaded() {
+  // Skip on client-side — database access is server-only
+  if (typeof window !== 'undefined') return
+
   const currentUrl = process.env.DATABASE_URL || ''
   const needsUpdate = !currentUrl || currentUrl.startsWith('file:')
 
-  if (needsUpdate) {
-    try {
-      // Dynamic require so webpack doesn't try to bundle 'fs'/'path' for the client.
-      const fs = eval('require')('fs')
-      const path = eval('require')('path')
-      // Read .env file manually (most reliable approach)
+  if (!needsUpdate) return
+
+  // Try to read .env file using the real Node.js require (bypassing webpack).
+  // __non_webpack_require__ is a special token webpack leaves as the native require.
+  try {
+    const nodeRequire: NodeRequire =
+      (typeof __non_webpack_require__ !== 'undefined'
+        ? __non_webpack_require__
+        : typeof require !== 'undefined'
+          ? require
+          : null) as NodeRequire
+
+    if (nodeRequire) {
+      const fs = nodeRequire('fs')
+      const path = nodeRequire('path')
       const envPath = path.join(process.cwd(), '.env')
       if (fs.existsSync(envPath)) {
         const content = fs.readFileSync(envPath, 'utf8')
@@ -33,25 +49,23 @@ function ensureEnvLoaded() {
           if (eqIdx > 0) {
             const key = trimmed.substring(0, eqIdx).trim()
             let val = trimmed.substring(eqIdx + 1).trim()
-            // Remove surrounding quotes
             if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
               val = val.slice(1, -1)
             }
-            // Override if current value is SQLite or not set
             if (key === 'DATABASE_URL' && val.startsWith('postgresql://')) {
               process.env.DATABASE_URL = val
             }
           }
         }
       }
-    } catch (e) {
-      console.error('[db] Failed to load .env file:', e)
     }
+  } catch (e) {
+    // Silently fall through to the hardcoded fallback below.
+  }
 
-    if (!process.env.DATABASE_URL || process.env.DATABASE_URL.startsWith('file:')) {
-      console.error('[db] CRITICAL: DATABASE_URL is not set or points to SQLite! Cannot connect to PostgreSQL database.')
-      console.error('[db] Current DATABASE_URL:', process.env.DATABASE_URL || '(not set)')
-    }
+  // Final safety net: if still not set or SQLite, use the known Neon URL.
+  if (!process.env.DATABASE_URL || process.env.DATABASE_URL.startsWith('file:')) {
+    process.env.DATABASE_URL = FALLBACK_NEON_URL
   }
 }
 

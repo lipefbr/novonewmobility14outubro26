@@ -406,8 +406,8 @@ export function GratificationsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-xl font-bold text-gray-900">Gratificações</h2>
-        <p className="text-sm text-gray-500">Gerencie suas gratificações e benefícios disponíveis</p>
+        <h2 className="text-xl font-bold text-gray-900">Metas</h2>
+        <p className="text-sm text-gray-500">Acompanhe suas metas, benefícios e gratificações disponíveis</p>
       </div>
 
       {/* Driver Goals Card (per client spec §6 — motorista/entregador) */}
