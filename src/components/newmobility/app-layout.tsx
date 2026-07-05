@@ -9,6 +9,7 @@ import { NotificationPanel } from './notifications/notification-panel'
 import { WelcomeModal } from './onboarding/welcome-modal'
 import { SubscriptionBlocker } from './onboarding/subscription-blocker'
 import { BackToTopButton, LastUpdated } from './ui/global-enhancements'
+import { ImpersonationBanner } from './admin/impersonation-banner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -19,7 +20,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 const languages: { code: Language; label: string; name: string }[] = [
   { code: 'pt', label: 'PT', name: 'Português' },
@@ -80,6 +81,21 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   const isAdmin = user?.role === 'admin'
 
+  // Task 18-C: Restore impersonation flag on mount (page-refresh case).
+  // The `isImpersonating`/`originalAdminId` store fields are intentionally
+  // NOT persisted to localStorage (see partialize in store.ts), so a page
+  // refresh resets them. The handleLoginAs handler writes the admin id to
+  // sessionStorage as a backup — if we see it on mount, we know the admin
+  // was mid-impersonation and we re-apply the flag so the
+  // ImpersonationBanner continues to render.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const storedAdminId = sessionStorage.getItem('newmobility_admin_impersonating')
+    if (storedAdminId) {
+      useStore.getState().setImpersonating(true, storedAdminId)
+    }
+  }, [])
+
   const handleBackToAdmin = () => {
     setAdminViewAsUser(false)
   }
@@ -87,6 +103,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <WelcomeModal />
+      {/* Impersonation banner — sticky at the very top, above the navbar.
+          Renders null when isImpersonating is false. */}
+      <ImpersonationBanner />
       <div className="flex flex-1 min-h-0">
         <Sidebar />
 

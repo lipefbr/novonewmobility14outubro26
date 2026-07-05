@@ -275,6 +275,10 @@ const withdrawalStatusConfig: Record<string, { label: string; icon: React.Elemen
 
 export function FinancialPage() {
   const { user, updateUser } = useStore()
+  // Task 18-C: Block withdraw / transfer while an admin is impersonating
+  // this user — these are sensitive actions that must never be performed on
+  // behalf of another user.
+  const isImpersonating = useStore((s) => s.isImpersonating)
   const { t } = useTranslation()
   const [filterType, setFilterType] = useState<string>('all')
   const [withdrawOpen, setWithdrawOpen] = useState(false)
@@ -696,6 +700,10 @@ export function FinancialPage() {
   const netAmountCents = amountCents - feeAmountCents
 
   const handleTransfer = async () => {
+    if (isImpersonating) {
+      toast.error('Não é possível realizar esta ação enquanto visualiza como outro usuário.')
+      return
+    }
     if (!user?.id || !transferAmount || !transferSource || !transferDestination) return
     if (transferSource === transferDestination) { toast.error(t('transfer.sameBalance')); return }
     if (transferDestination === 'withdrawal') {
@@ -887,6 +895,10 @@ export function FinancialPage() {
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                   disabled={withdrawSubmitting || !withdrawAmount || Number(withdrawAmount) <= 0}
                   onClick={async () => {
+                    if (isImpersonating) {
+                      toast.error('Não é possível realizar esta ação enquanto visualiza como outro usuário.')
+                      return
+                    }
                     if (!user?.id || !withdrawAmount || Number(withdrawAmount) <= 0) return
                     const withdrawReais = Number(withdrawAmount)
                     const withdrawCents = Math.round(withdrawReais * 100)

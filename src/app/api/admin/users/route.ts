@@ -13,6 +13,10 @@ export async function GET(req: NextRequest) {
     const search = req.nextUrl.searchParams.get('search') || ''
     const plan = req.nextUrl.searchParams.get('plan') || 'all'
     const status = req.nextUrl.searchParams.get('status') || 'all'
+    // Bug #7 fix (Task 18-C): the admin panel sends a `userType` filter but
+    // the GET handler previously ignored it — making the "Tipo de usuário"
+    // dropdown in admin-users-panel.tsx do nothing.
+    const userType = req.nextUrl.searchParams.get('userType') || 'all'
     const includeMatrix = req.nextUrl.searchParams.get('includeMatrix') === 'true'
     const includeBets = req.nextUrl.searchParams.get('includeBets') === 'true'
     const page = parseInt(req.nextUrl.searchParams.get('page') || '1')
@@ -34,6 +38,9 @@ export async function GET(req: NextRequest) {
     }
     if (status !== 'all') {
       where.isActive = status === 'active'
+    }
+    if (userType !== 'all') {
+      where.userType = userType
     }
 
     let users: any[] = []

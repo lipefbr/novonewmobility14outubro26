@@ -136,6 +136,14 @@ interface AppState {
   // Notifications
   notifications: Notification[]
 
+  // Impersonation (admin "Login as user" feature — Task 18-C)
+  // isImpersonating is true while an admin is browsing as another user.
+  // originalAdminId holds the admin's real user id so we can swap back.
+  // These are NEVER persisted (see partialize below) — on a page refresh
+  // we restore them from sessionStorage via the AppLayout mount effect.
+  isImpersonating: boolean
+  originalAdminId: string | null
+
   // Actions
   login: (user: UserData) => void
   logout: () => void
@@ -153,6 +161,7 @@ interface AppState {
   markAsRead: (id: string) => void
   markAllAsRead: () => void
   unreadCount: () => number
+  setImpersonating: (isImpersonating: boolean, originalAdminId: string | null) => void
 }
 
 export const useStore = create<AppState>()(
@@ -179,6 +188,11 @@ export const useStore = create<AppState>()(
 
       // Notifications - start empty, will be loaded from API per user
       notifications: [],
+
+      // Impersonation defaults — Task 18-C. Always starts false/null.
+      // Restored from sessionStorage on mount in AppLayout (see app-layout.tsx).
+      isImpersonating: false,
+      originalAdminId: null,
 
       // Actions
       login: (user) => {
@@ -276,6 +290,9 @@ export const useStore = create<AppState>()(
       unreadCount: () => {
         return get().notifications.filter(n => !n.read).length
       },
+
+      setImpersonating: (isImpersonating, originalAdminId) =>
+        set({ isImpersonating, originalAdminId }),
     }),
     {
       name: 'newmobility-auth',
@@ -295,6 +312,11 @@ export const useStore = create<AppState>()(
         if (state) {
           // Always reset notifications on rehydration to prevent cross-user leakage
           state.notifications = []
+          // Impersonation flags are never persisted — always reset on rehydrate.
+          // The AppLayout mount effect re-applies them from sessionStorage if the
+          // admin was mid-impersonation when the page refreshed.
+          state.isImpersonating = false
+          state.originalAdminId = null
         }
       },
     }

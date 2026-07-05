@@ -26,7 +26,7 @@ import { motion } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
 import { TwoFactorSetup } from './two-factor-setup'
 import { PersonalDataSection } from './personal-data-section'
-import { userApi, apiFetch } from '@/lib/api'
+import { userApi, apiFetch, ApiError } from '@/lib/api'
 import { toast as sonnerToast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -323,6 +323,10 @@ interface PersonalInfo {
 export function ProfilePage() {
   const { t } = useTranslation()
   const { user, updateUser } = useStore()
+  // Task 18-C: Block password change while an admin is impersonating this
+  // user — sensitive credential changes must never be performed on behalf
+  // of another user.
+  const isImpersonating = useStore((s) => s.isImpersonating)
   const { toast } = useToast()
   const [saving, setSaving] = useState(false)
   const [copiedCode, setCopiedCode] = useState(false)
@@ -407,6 +411,64 @@ export function ProfilePage() {
         sponsorId: u.sponsorId ?? '',
         qualification: u.qualification ?? '',
       })
+    }
+  }, [user?.id])
+
+  // Bug #2 fix: The Zustand `user` store does not carry extended personal
+  // fields (address/city/state/birthDate/rg/maritalStatus/gender/education/
+  // zipCode/sponsorId/qualification) because they are not declared on the
+  // UserData interface. The useEffect above only rehydrates from the
+  // store, so those fields default to '' — and when handleSavePersonal
+  // runs it sends those empty strings to PUT /api/user/profile, wiping
+  // previously-saved data. This second effect fetches the authoritative
+  // profile from the API (the response includes ALL User columns via
+  // sanitizeUser) and overwrites the state with the real DB values so
+  // that the "Salvar Alterações" button re-sends the actual stored
+  // values instead of empty defaults. Mirrors the fetchProfile pattern
+  // used in personal-data-section.tsx (lines 134-171).
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelled = false
+    userApi
+      .getProfile(user.id)
+      .then((profile: any) => {
+        if (cancelled || !profile) return
+        setPersonalInfo({
+          name: profile.name ?? '',
+          email: profile.email ?? '',
+          phone: profile.phone ?? '',
+          cpf: profile.cpf ?? '',
+          address: profile.address ?? '',
+          city: profile.city ?? '',
+          state: profile.state ?? '',
+          birthDate: profile.birthDate ? String(profile.birthDate) : '',
+          rg: profile.rg ?? '',
+          maritalStatus: profile.maritalStatus ?? '',
+          gender: profile.gender ?? '',
+          education: profile.education ?? '',
+          zipCode: profile.zipCode ?? '',
+          sponsorId: profile.sponsorId ?? '',
+          qualification: profile.qualification ?? '',
+        })
+        setBankInfo({
+          bankCode: profile.bankCode ?? '',
+          bankAgency: profile.bankAgency ?? '',
+          bankAccount: profile.bankAccount ?? '',
+          bankType: profile.bankType || 'cc',
+          pixKey: profile.pixKey ?? '',
+          pixEnabled: profile.pixEnabled ?? true,
+        })
+        setEmergencyContact({
+          name: profile.emergencyName ?? '',
+          phone: profile.emergencyPhone ?? '',
+          relationship: profile.emergencyRelation ?? '',
+        })
+      })
+      .catch((err: unknown) => {
+        console.error('Failed to fetch profile for personal info hydration:', err)
+      })
+    return () => {
+      cancelled = true
     }
   }, [user?.id])
 
@@ -626,10 +688,16 @@ export function ProfilePage() {
           qualification: personalInfo.qualification || null,
         }),
       })
-      // Update the local store with the latest data from the server
+      // Update the local store with the latest data from the server.
+      // Bug #5 fix: also sync address/city/state — previously these were
+      // sent in the PUT body but not propagated back to the Zustand store,
+      // so the useEffect above would rehydrate them as '' on next mount.
       updateUser({
         name: updated.name ?? personalInfo.name,
         phone: updated.phone ?? personalInfo.phone,
+        address: updated.address ?? personalInfo.address,
+        city: updated.city ?? personalInfo.city,
+        state: updated.state ?? personalInfo.state,
         // Persist extra personal fields to the store too so that on
         // navigation away/back the useEffect rehydrates from fresh data
         // instead of stale defaults.
@@ -801,7 +869,22 @@ export function ProfilePage() {
     }
   }
 
-  const handleChangePassword = () => {
+  // Bug #4 fix: replace the previous fake `setTimeout` mock with a real
+  // PUT /api/user/password call. The API route verifies currentPassword
+  // against the stored sha256 hash and writes the new hash on success,
+  // returning 401 for an incorrect current password or 500 for server
+  // errors. userApi.changePassword throws ApiError on non-2xx so we can
+  // surface a precise message to the user.
+  const handleChangePassword = async () => {
+    if (isImpersonating) {
+      toast({
+        title: 'Ação bloqueada',
+        description: 'Não é possível realizar esta ação enquanto visualiza como outro usuário.',
+        variant: 'destructive',
+      })
+      return
+    }
+    if (!user?.id) return
     if (passwordInfo.newPassword !== passwordInfo.confirmPassword) {
       toast({
         title: 'Erro',
@@ -810,15 +893,36 @@ export function ProfilePage() {
       })
       return
     }
+    if (passwordInfo.newPassword.length < 6) {
+      toast({
+        title: 'Senha muito curta',
+        description: 'Mínimo 6 caracteres.',
+        variant: 'destructive',
+      })
+      return
+    }
     setSaving(true)
-    setTimeout(() => {
-      setSaving(false)
-      setPasswordInfo({ currentPassword: '', newPassword: '', confirmPassword: '' })
+    try {
+      await userApi.changePassword(
+        user.id,
+        passwordInfo.currentPassword,
+        passwordInfo.newPassword,
+      )
       toast({
         title: 'Senha alterada',
-        description: 'Sua senha foi alterada com sucesso.',
+        description: 'Sua senha foi atualizada com sucesso.',
       })
-    }, 800)
+      setPasswordInfo({ currentPassword: '', newPassword: '', confirmPassword: '' })
+    } catch (err: unknown) {
+      const msg = err instanceof ApiError ? err.message : 'Erro ao alterar senha.'
+      toast({
+        title: 'Erro',
+        description: msg,
+        variant: 'destructive',
+      })
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleCopyCode = () => {
@@ -1152,10 +1256,18 @@ export function ProfilePage() {
                 <Separator />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <InlineField label="Nome Completo" value={personalInfo.name} onChange={(v) => setPersonalInfo((p) => ({ ...p, name: v }))} icon={User} />
-                  <InlineField label="E-mail" value={personalInfo.email} onChange={(v) => setPersonalInfo((p) => ({ ...p, email: v }))} icon={Mail} type="email" />
+                  {/* Bug #3 fix: email is editable but never sent in the
+                      PUT body of handleSavePersonal (email changes require
+                      a verification flow). Disable the field to prevent
+                      users from editing a value that would silently be
+                      dropped on save. */}
+                  <InlineField label="E-mail" value={personalInfo.email} onChange={() => {}} icon={Mail} type="email" disabled />
                   <InlineField label="Telefone" value={personalInfo.phone} onChange={(v) => setPersonalInfo((p) => ({ ...p, phone: v }))} icon={Phone} />
                   <InlineField label="CPF" value={personalInfo.cpf} onChange={() => {}} icon={Shield} disabled />
                 </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Para alterar o e-mail, entre em contato com o suporte.
+                </p>
 
                 <Separator />
 

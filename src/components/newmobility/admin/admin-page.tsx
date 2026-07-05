@@ -28,6 +28,7 @@ import {
   ArrowUpDown, Receipt, PieChart, Filter, Download, Calendar,
   MessageSquare, Send, Gift, Ticket, Gamepad2, Network, Percent,
   TreePine, Coins, Trophy, AlertCircle, Heart, UsersRound, Layers,
+  LogIn, Loader2,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -380,7 +381,7 @@ const adminPageToTab: Record<string, string> = {
 
 export function AdminPage() {
   const { t } = useTranslation()
-  const { user, adminActivePage, setAdminActivePage } = useStore()
+  const { user, adminActivePage, setAdminActivePage, login, setImpersonating } = useStore()
   // Internal sub-tab for the financial admin page (overview / withdrawals / cashback)
   const [financialSubTab, setFinancialSubTab] = useState<'financial' | 'withdrawals' | 'cashback'>('financial')
   // Derive the active tab from the admin sidebar selection. The financial admin page
@@ -432,6 +433,10 @@ export function AdminPage() {
 
   // Withdrawal action
   const [processingWithdrawal, setProcessingWithdrawal] = useState<string | null>(null)
+
+  // Admin impersonation ("Entrar" button) — per-row loading spinner state.
+  // Holds the user id of the row currently being impersonated, or null when idle.
+  const [impersonatingTargetId, setImpersonatingTargetId] = useState<string | null>(null)
 
   // Manual cashback dialog
   const [addCashbackDialogOpen, setAddCashbackDialogOpen] = useState(false)
@@ -1605,6 +1610,53 @@ export function AdminPage() {
     }
   }
 
+  // ---------- User Impersonation ("Entrar") ----------
+  // Mirrors the handleLoginAs flow in admin-users-panel.tsx: calls POST /api/admin/users/[id]/login-as,
+  // writes the admin id to sessionStorage (so app-layout.tsx can restore the isImpersonating flag
+  // after a page refresh), flips the store's isImpersonating flag BEFORE calling login() so the
+  // ImpersonationBanner renders immediately, then swaps the session in zustand to the impersonated
+  // user and hard-navigates to their backoffice root.
+  const handleLoginAs = async (u: AdminUser) => {
+    if (!user?.id) return
+    if (u.role === 'admin') {
+      toast.error('Não é possível acessar como outro administrador.')
+      return
+    }
+    setImpersonatingTargetId(u.id)
+    try {
+      const res = await apiFetch<{
+        user: Record<string, unknown>
+        adminId: string
+        adminName: string
+        redirectUrl: string
+        message: string
+      }>(`/admin/users/${u.id}/login-as`, {
+        method: 'POST',
+        body: JSON.stringify({ userId: user.id }),
+      })
+      toast.success(res.message || `Agora acessando como ${u.name}`)
+      // Remember admin id in sessionStorage so the user can return to admin mode
+      // (also restored on page refresh by the mount effect in app-layout.tsx).
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('newmobility_admin_impersonating', res.adminId)
+        sessionStorage.setItem('newmobility_admin_name', res.adminName)
+      }
+      // Mark the store as impersonating BEFORE calling login() so the
+      // ImpersonationBanner (mounted in app-layout.tsx) renders immediately
+      // when the new (impersonated) session boots. login() does a partial
+      // Zustand set, so it does not clear these flags.
+      setImpersonating(true, res.adminId)
+      // Swap the current session in zustand to the impersonated user.
+      login(res.user as never)
+      // Hard navigate to the user backoffice root.
+      window.location.href = res.redirectUrl || '/'
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao entrar como usuário')
+    } finally {
+      setImpersonatingTargetId(null)
+    }
+  }
+
   // ---------- User View ----------
   const handleOpenViewUser = async (u: AdminUser) => {
     setViewUserDialogOpen(true)
@@ -2395,6 +2447,21 @@ export function AdminPage() {
                         </td>
                         <td className="p-3 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 gap-1 text-amber-600 hover:text-amber-700 disabled:opacity-50"
+                              disabled={u.role === 'admin' || impersonatingTargetId === u.id}
+                              onClick={() => handleLoginAs(u)}
+                              title={u.role === 'admin' ? 'Não é possível entrar como administrador' : 'Entrar como este usuário'}
+                            >
+                              {impersonatingTargetId === u.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <LogIn className="h-3.5 w-3.5" />
+                              )}
+                              <span className="hidden sm:inline">Entrar</span>
+                            </Button>
                             <Button variant="ghost" size="sm" className="h-7 gap-1 text-blue-600 hover:text-blue-700" onClick={() => handleOpenViewUser(u)}>
                               <Eye className="h-3.5 w-3.5" />
                               <span className="hidden sm:inline">Ver</span>

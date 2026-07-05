@@ -21,6 +21,8 @@ type Step = 'intro' | 'setup' | 'verify' | 'backup' | 'complete'
 export function TwoFactorSetup() {
   const { t } = useTranslation()
   const { user } = useStore()
+  // Task 18-C: Block 2FA disable while an admin is impersonating this user.
+  const isImpersonating = useStore((s) => s.isImpersonating)
   const [step, setStep] = useState<Step>('intro')
   const [enabled, setEnabled] = useState(false)
   const [verifyCode, setVerifyCode] = useState(['', '', '', '', '', ''])
@@ -115,6 +117,10 @@ export function TwoFactorSetup() {
   }
 
   const handleDisable = async () => {
+    if (isImpersonating) {
+      toast.error('Não é possível realizar esta ação enquanto visualiza como outro usuário.')
+      return
+    }
     if (!user?.id) return
     if (!showDisablePassword) {
       setShowDisablePassword(true)

@@ -201,7 +201,7 @@ const EMPTY_EDIT: EditFormData = {
 }
 
 export function AdminUsersPanel() {
-  const { user, login } = useStore()
+  const { user, login, setImpersonating: setStoreImpersonating } = useStore()
 
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -330,6 +330,13 @@ export function AdminUsersPanel() {
         sessionStorage.setItem('newmobility_admin_impersonating', res.adminId)
         sessionStorage.setItem('newmobility_admin_name', res.adminName)
       }
+      // Mark the store as impersonating BEFORE calling login() so the
+      // ImpersonationBanner (mounted in app-layout.tsx) renders immediately
+      // when the new (impersonated) session boots. login() does a partial
+      // Zustand set, so it does not clear these flags. The sessionStorage
+      // values above act as a backup for the page-refresh case (handled by
+      // the mount effect in app-layout.tsx).
+      setStoreImpersonating(true, res.adminId)
       // Swap the current session in zustand to the impersonated user.
       login(res.user as never)
       // Hard navigate to the user backoffice root.
