@@ -507,3 +507,27 @@ export const marketplaceApi = {
       body: JSON.stringify({ userId, items, shippingAddress, paymentMethod }),
     }),
 }
+
+// TalkMobi plans admin CRUD. The GET endpoint is public (no userId needed),
+// but POST/PUT/DELETE require an admin userId in the body/query.
+export const talkMobiApi = {
+  getPlans: (_userId?: string) =>
+    apiFetch<{ plans: any[] }>('/talkmobi/plans'),
+
+  createPlan: (userId: string, plan: Record<string, unknown>) =>
+    apiFetch<any>('/talkmobi/plans', {
+      method: 'POST',
+      body: JSON.stringify({ userId, ...plan }),
+    }),
+
+  updatePlan: (userId: string, planId: string, updates: Record<string, unknown>) =>
+    apiFetch<any>(`/talkmobi/plans?id=${encodeURIComponent(planId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ userId, ...updates }),
+    }),
+
+  deletePlan: (userId: string, planId: string) =>
+    apiFetch<any>(`/talkmobi/plans?id=${encodeURIComponent(planId)}&userId=${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+    }),
+}

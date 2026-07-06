@@ -32,6 +32,7 @@ export type PageKey =
   | 'minha-rede'
   | 'billing'
   | 'kyc'
+  | 'talkmobi'
 
 export type AuthView = 'login' | 'register'
 
@@ -60,6 +61,8 @@ export type AdminPageKey =
   | 'audit'
   | 'permissions'
   | 'challenges'
+  | 'talkmobi'
+  | 'telemedicina'
 
 export interface UserData {
   id: string

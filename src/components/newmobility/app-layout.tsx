@@ -59,6 +59,7 @@ const sidebarLabelKeys: Record<PageKey, string> = {
   'admin': 'sidebar.admin',
   'billing': 'sidebar.billing',
   'kyc': 'sidebar.kyc',
+  'talkmobi': 'sidebar.talkmobi',
 }
 
 // Mobile bottom navigation items

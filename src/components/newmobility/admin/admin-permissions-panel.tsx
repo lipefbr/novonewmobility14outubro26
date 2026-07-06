@@ -58,6 +58,8 @@ const ADMIN_PAGES: PageMeta[] = [
   { key: 'streak-rewards', label: 'Recompensas de Sequência', description: 'Sequências' },
   { key: 'events', label: 'Eventos', description: 'Eventos e promoções' },
   { key: 'faq', label: 'FAQ', description: 'Perguntas frequentes' },
+  { key: 'talkmobi', label: 'Planos TalkMobi', description: 'Editar planos TalkMobi' },
+  { key: 'telemedicina', label: 'Telemedicina', description: 'Aprovar ativações' },
 ]
 
 // Default permission set for new roles (admin/support are always present).

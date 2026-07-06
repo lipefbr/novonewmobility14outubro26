@@ -40,6 +40,8 @@ import { AdminAuditPanel } from '@/components/newmobility/admin/admin-audit-pane
 import { AdminPermissionsPanel } from '@/components/newmobility/admin/admin-permissions-panel'
 import { AdminChallengesPanel } from '@/components/newmobility/admin/admin-challenges-panel'
 import { AdminUsersPanel } from '@/components/newmobility/admin/admin-users-panel'
+import { TalkMobiManager } from '@/components/newmobility/admin/talkmobi-manager'
+import { AdminTelemedicinaPanel } from '@/components/newmobility/admin/admin-telemedicina-panel'
 
 // ---------- Interfaces ----------
 
@@ -377,6 +379,8 @@ const adminPageToTab: Record<string, string> = {
   audit: 'audit',
   permissions: 'permissions',
   challenges: 'challenges',
+  talkmobi: 'talkmobi',
+  telemedicina: 'telemedicina',
 }
 
 export function AdminPage() {
@@ -5138,6 +5142,16 @@ export function AdminPage() {
         {/* Challenges Tab — Task 14-G */}
         <TabsContent value="challenges" className="mt-4 space-y-4">
           <AdminChallengesPanel />
+        </TabsContent>
+
+        {/* TalkMobi Plans Tab — admin editor for the TalkMobi plan catalogue */}
+        <TabsContent value="talkmobi" className="mt-4 space-y-4">
+          <TalkMobiManager />
+        </TabsContent>
+
+        {/* Telemedicina Tab — admin approval panel for activation requests */}
+        <TabsContent value="telemedicina" className="mt-4 space-y-4">
+          <AdminTelemedicinaPanel />
         </TabsContent>
       </Tabs>
 

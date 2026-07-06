@@ -35,6 +35,7 @@ import { MinhaRedePage } from '@/components/newmobility/minha-rede/minha-rede-pa
 import { BillingPage } from '@/components/newmobility/billing/billing-page'
 import KycPage from '@/components/newmobility/kyc/kyc-page'
 import { TalkMobiPage } from '@/components/newmobility/talkmobi/talkmobi-page'
+import { AppsPage } from '@/components/newmobility/portals/apps-page'
 
 function PageContent() {
   const { activePage, user, setActivePage } = useStore()
@@ -67,7 +68,10 @@ function PageContent() {
     case 'dashboard':
       return <DashboardPage />
     case 'apps':
-      // Apps tab renders the TalkMobi + Telemedicina plans page
+      // Apps tab shows the actual apps download page (motorista/passageiro apps)
+      return <AppsPage />
+    case 'talkmobi':
+      // TalkMobi + Telemedicina dedicated page (plans + telemedicine activation)
       return <TalkMobiPage />
     case 'bank':
       return <BankPage />

@@ -6953,3 +6953,83 @@ Stage Summary:
 - ✅ agent-browser verified end-to-end: Entrar button appears on non-admin rows, is DISABLED on admin rows, clicking it triggers the impersonation flow (API call + store swap + sessionStorage write + hard navigate to /), the ImpersonationBanner appears with the correct text, and "Voltar para Admin" correctly restores the admin session (URL → /?admin=1, store user → admin, sessionStorage cleared, banner disappears).
 - Files changed: 1 (src/components/newmobility/admin/admin-page.tsx only — exactly as instructed). Plus worklog.md (this entry).
 - Test admin `cmpskrkr50000o8bubki2cgqw` ("Zanutim New Mobility") and test target user `cmqxdkvchx2wdff79edh4o8yz` ("Test User") left in clean state — impersonation fully restored to admin session, no test residue.
+
+---
+Task ID: 20
+Agent: Main (Z.ai Code)
+Task: Add referral link to dashboard, TalkMobi + Telemedicina to the sidebar menu, restore the apps page, build the Telemedicina post-activation flow (form + admin approval + activation link delivery), and wire up the admin TalkMobi plans editor.
+
+Work Log:
+- Read worklog.md recent entries (Tasks 18-A through 18-D: KYC compound-unique fix, profile bugs, impersonation feature, admin Entrar button) to understand prior context. Confirmed the user-facing changes requested in this round are NEW work on top of those.
+- Added `'talkmobi'` to the `PageKey` union in `src/lib/store.ts` (the user-facing sidebar page key) and added `'talkmobi'` + `'telemedicina'` to the `AdminPageKey` union (admin sidebar page keys).
+- Added a new "TalkMobi + Telemedicina" entry to `allMenuItems` in `src/components/newmobility/sidebar.tsx` using the `Wifi` icon (added to the lucide-react imports), placed immediately after "Acesso aos Apps" in the main group, flagged `isNew: true` so a NOVO badge appears.
+- Added i18n labels for `sidebar.talkmobi` in all 5 supported languages (pt-BR: "TalkMobi + Telemedicina", en: "TalkMobi + Telemedicine", es: "TalkMobi + Telemedicina", fr: "TalkMobi + Télémédecine", it: "TalkMobi + Telemedicina") in `src/lib/i18n.ts`.
+- Added `'talkmobi': 'sidebar.talkmobi'` to `sidebarLabelKeys` in `src/components/newmobility/app-layout.tsx` so the header breadcrumb shows the right label.
+- Updated `src/app/page.tsx`:
+  * Imported `AppsPage` from `@/components/newmobility/portals/apps-page` (was not imported — the `apps` route was rendering `<TalkMobiPage />` instead of the actual apps download page).
+  * Changed `case 'apps'` to render `<AppsPage />` (the motorista/passageiro apps download page is back).
+  * Added `case 'talkmobi': return <TalkMobiPage />` so the dedicated TalkMobi + Telemedicina page is reachable from the new menu item.
+- Added a prominent referral link card to the dashboard (`src/components/newmobility/dashboard/dashboard-page.tsx`):
+  * Added `Copy`, `Link2`, `Share2`, `MessageCircle`, `Gift`, `Send` to the lucide-react imports.
+  * Imported `toast` from `sonner` for copy feedback.
+  * Inserted a new "Seu Link de Indicação" card between the Quick Actions and Stats Cards sections. The card has an emerald gradient background matching the greeting card, shows the user's `referralCode` in a monospace badge, displays the full referral link (`${window.location.origin}/?ref=${referralCode}`), and has three buttons: "Copiar" (copies link to clipboard with success toast), "WhatsApp" (opens wa.me share with a PT-BR invite message), and "Indicar" (navigates to the referrals page). Responsive: labels hidden on mobile, icons always visible.
+- Created the `TelemedicinaRequest` Prisma model in `prisma/schema.prisma` (fields: id, userId, fullName, cpf, birthDate, phone, email, dependents JSON string, notes, status, adminNotes, activationLink, approvedById, approvedAt, rejectedAt, createdAt, updatedAt; indexes on userId/status/createdAt). Added the back-relation `telemedicinaRequests TelemedicinaRequest[]` on the User model. Ran `bun run db:push` against Neon (DATABASE_URL passed explicitly because the .env loader had a quirk) — schema applied successfully in 9.21s.
+- Created the Telemedicina API routes:
+  * `src/app/api/telemedicina/request/route.ts` — GET (fetch user's most recent request) + POST (create or update a pending request). Body: userId, fullName, cpf, birthDate, phone, email, dependents[], notes. Pre-fills with store data when no prior request exists. Returns serialized request DTO.
+  * `src/app/api/admin/telemedicina/route.ts` — GET (admin lists all requests with status filter + pagination + user join).
+  * `src/app/api/admin/telemedicina/[id]/approve/route.ts` — POST (admin approves; stores activationLink + adminNotes; sets approvedById/approvedAt; creates in-app Notification for the user).
+  * `src/app/api/admin/telemedicina/[id]/reject/route.ts` — POST (admin rejects; stores adminNotes as the reason; sets rejectedAt; creates in-app Notification).
+- Rewrote the Telemedicina section in `src/components/newmobility/talkmobi/talkmobi-page.tsx`:
+  * Added `useStore` to get the user, plus state for `telemedRequest`, `telemedLoading`, `submitting`, the activation form (`fullName/cpf/birthDate/phone/email/notes`), and `dependents[]`.
+  * Added a useEffect that fetches `GET /api/telemedicina/request?userId=X` on mount and pre-fills the form with the existing request data (or with the user's store data for convenience).
+  * Replaced the single static "Saiba Mais" card with status-aware cards:
+    - **Approved**: emerald card with "Telemedicina ativada! 🎉" + the activationLink (clickable `<a>` with ExternalLink icon) + adminNotes.
+    - **Pending**: amber card with "Pedido em análise" + "Editar Pedido" button.
+    - **Rejected**: rose card with the adminNotes reason + "Solicitar Novamente" button.
+    - **Default (no request)**: marketing card with "Quero Ativar" + "Saiba Mais" buttons.
+  * Added a status Badge next to the section heading (Ativado/Em análise/Recusado/Cancelado) with the appropriate icon and color.
+  * Kept the original "Saiba Mais" details dialog (now controlled by `telemedDetailsOpen`).
+  * Added a NEW activation form dialog (`telemedOpen`) with: titular fields (fullName*, cpf*, birthDate, phone*, email*), dynamic dependents list (Add/Remove rows with name/kinship/birthDate), optional notes textarea, and a submit button that POSTs to `/api/telemedicina/request`. Shows a Loader2 spinner while submitting.
+  * Added `Plus, Trash2, Loader2, ExternalLink, User, Users, CheckCircle2, XCircle, Clock` icons. Added `Input, Label, Textarea` shadcn imports.
+- Wired up the admin TalkMobi plans editor:
+  * Added `Smartphone, HeartPulse` icons to the imports in `src/components/newmobility/admin/admin-layout.tsx`.
+  * Added two new nav items in `adminNavItems`: `{ key: 'talkmobi', label: 'Planos TalkMobi', icon: Smartphone, ... }` and `{ key: 'telemedicina', label: 'Telemedicina', icon: HeartPulse, ... }` in the 'main' group, right after 'kyc'.
+  * Added `talkmobi: 'talkmobi'` and `telemedicina: 'telemedicina'` to `adminPageToTab` in `src/components/newmobility/admin/admin-page.tsx`.
+  * Imported `TalkMobiManager` from `@/components/newmobility/admin/talkmobi-manager` and `AdminTelemedicinaPanel` (newly created).
+  * Added two new `<TabsContent>` blocks for `value="talkmobi"` (renders `<TalkMobiManager />`) and `value="telemedicina"` (renders `<AdminTelemedicinaPanel />`).
+- Added the missing `talkMobiApi` export to `src/lib/api.ts` (the talkmobi-manager.tsx was importing it but it didn't exist — pre-existing "Attempted import error" in dev.log). Implemented `getPlans`, `createPlan`, `updatePlan`, `deletePlan` calling the existing `/api/talkmobi/plans` endpoints.
+- Added `talkmobi` and `telemedicina` to the `ADMIN_PAGES` list in `src/components/newmobility/admin/admin-permissions-panel.tsx` so sub-admin roles can be granted/revoked access to them via the permissions matrix.
+- Created `src/components/newmobility/admin/admin-telemedicina-panel.tsx` (NEW, ~470 lines):
+  * Stats row (Pendentes/Aprovados/Recusados counts).
+  * Search input + status filter Select (all/pending/approved/rejected/cancelled).
+  * Request cards list — each card shows: holder name + status badge + dependents count, contact info (email/phone/CPF/birthDate), linked user account info, notes (if any), activationLink (if approved) or rejection reason (if rejected), creation timestamp.
+  * Per-card actions: "Ver" (opens read-only details dialog with full holder + dependents info), "Aprovar" (opens approve dialog), "Recusar" (opens reject dialog). Approved/Rejected cards show "Reenviar"/"Reativar" buttons instead.
+  * Approve dialog: activationLink input (required) + adminNotes textarea (optional) → POST `/api/admin/telemedicina/[id]/approve`.
+  * Reject dialog: adminNotes textarea (required) → POST `/api/admin/telemedicina/[id]/reject`.
+  * Read-only details dialog with all fields + dependents list + admin notes + activation link.
+  * All API calls show sonner toasts on success/error. Auto-refreshes the list after each action.
+- Lint: `bun run lint` returns 13 errors — ALL pre-existing in root-level .js utility files (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js). Zero errors in `src/`. Identical to the Task 18-A/B/C/D baseline.
+- agent-browser end-to-end verification:
+  * **User side**: Logged in as João Pedro Almeida → confirmed the new "TalkMobi + Telemedicina" item appears in the sidebar between "Acesso aos Apps" and "Acesso ao Banco" with a NOVO badge. Clicked it → the TalkMobi + Telemedicina page rendered with "Planos TalkMobi" (4 plan cards loaded from /api/talkmobi/plans) and "Telemedicina" sections. Clicked "Quero Ativar" → the activation form dialog opened with all fields (Nome completo*, CPF*, Data de nascimento, Telefone/WhatsApp*, E-mail*, Dependentes add/remove, Observações). Filled the form and submitted → POST /api/telemedicina/request returned 201. The Telemedicina section immediately switched from the marketing card to the "Pedido em análise" amber pending card with an "Editar Pedido" button.
+  * **Dashboard referral card**: Verified the "Seu Link de Indicação" card renders on the dashboard between Quick Actions and Stats Cards. The card shows João's referral code "JOÃOPEDR0004" in a monospace badge, displays the full link `http://localhost:3000/?ref=JOÃOPEDR0004`, and has "Copiar", "WhatsApp", and "Indicar" buttons.
+  * **Apps page restored**: Clicked "Acesso aos Apps" → confirmed it now renders the AppsPage with "App Motorista" and "App Passageiro" sections (the TalkMobi page no longer hijacks the apps tab).
+  * **Admin side**: Logged in as admin → confirmed the admin sidebar now shows "Planos TalkMobi" (Smartphone icon) and "Telemedicina" (HeartPulse icon) between "Aprovação KYC" and "Desafios". Clicked "Planos TalkMobi" → the TalkMobiManager rendered with "TalkMobi — Planos" title, "Gerencie os planos de telefonia 4G/5G" subtitle, "Atualizar"/"Novo Plano" buttons, stats (Total 4, Populares 1, Recomendados 1), and the 4 plan cards (Plano 10 GB, 20 GB, 50 GB, Ilimitado). Clicked "Telemedicina" → the AdminTelemedicinaPanel rendered with "Pedidos de Telemedicina" h2, stats cards (Pendentes 1, Aprovados 0, Recusados 0), and João's request card showing his name, e-mail, phone, CPF, and "Aprovar"/"Recusar"/"Ver" buttons.
+  * **Admin approval flow**: Clicked "Aprovar" on João's request → approve dialog opened with "Link de ativação / credencial *" input + "Observações (opcional)" textarea. Filled `https://telemedicina.newmobility.com.br/acesso?code=JOAO2024XYZ` and clicked "Aprovar e Notificar" → POST /api/admin/telemedicina/{id}/approve returned 200. The list refreshed (GET /api/admin/telemedicina?status=pending returned 0 pending). An in-app Notification was created for João.
+  * **User sees approved status**: Used the admin "Entrar" (login-as) button on João's user row to impersonate him. The ImpersonationBanner appeared. Navigated to TalkMobi + Telemedicina → the section now shows "Ativado" badge (emerald) and the "Telemedicina ativada! 🎉" emerald card with the activation link `https://telemedicina.newmobility.com.br/acesso?code=JOAO2024XYZ` rendered as a clickable `<a>` (verified via `document.querySelector('a[href*=telemedicina]')` — present). End-to-end flow confirmed.
+
+Stage Summary:
+- ✅ Dashboard now has a prominent "Seu Link de Indicação" card with the user's referral code, copyable link, WhatsApp share, and "Indicar" CTA. (src/components/newmobility/dashboard/dashboard-page.tsx)
+- ✅ TalkMobi + Telemedicina is a dedicated sidebar menu item (Wifi icon, NOVO badge) in the main group, between "Acesso aos Apps" and "Acesso ao Banco". i18n labels added in all 5 languages. (src/components/newmobility/sidebar.tsx, src/lib/i18n.ts, src/components/newmobility/app-layout.tsx)
+- ✅ "Acesso aos Apps" tab restored to render the actual AppsPage (motorista/passageiro app downloads). TalkMobi + Telemedicina page now renders on its own dedicated `talkmobi` route. (src/app/page.tsx)
+- ✅ Telemedicina post-activation flow fully implemented:
+  * Prisma `TelemedicinaRequest` model (id, userId, fullName, cpf, birthDate, phone, email, dependents JSON, notes, status, adminNotes, activationLink, approvedById, approvedAt, rejectedAt, timestamps). (prisma/schema.prisma + db push to Neon)
+  * User-facing activation form dialog: titular info + dynamic dependents list + optional notes → POST /api/telemedicina/request (creates or updates pending request). (src/components/newmobility/talkmobi/talkmobi-page.tsx)
+  * Status-aware Telemedicina section: shows marketing card (no request) / amber "Em análise" card (pending, with "Editar Pedido") / emerald "Telemedicina ativada!" card with clickable activation link (approved) / rose "Pedido não aprovado" card with rejection reason (rejected, with "Solicitar Novamente"). (src/components/newmobility/talkmobi/talkmobi-page.tsx)
+  * Admin approval flow: AdminTelemedicinaPanel with stats, search, status filter, request cards, approve dialog (activationLink + adminNotes), reject dialog (reason), read-only details dialog. Approve/reject creates in-app Notifications for the user. (src/components/newmobility/admin/admin-telemedicina-panel.tsx — NEW)
+  * 4 API routes: GET/POST /api/telemedicina/request, GET /api/admin/telemedicina, POST /api/admin/telemedicina/[id]/approve, POST /api/admin/telemedicina/[id]/reject. (4 new route.ts files)
+- ✅ Admin can now edit the TalkMobi plans screen: TalkMobiManager (pre-existing but never wired up) is now mounted in the admin panel under the "Planos TalkMobi" sidebar item. Added the missing `talkMobiApi` export to src/lib/api.ts so the manager's GET/POST/PUT/DELETE calls work. (src/components/newmobility/admin/admin-layout.tsx, src/components/newmobility/admin/admin-page.tsx, src/lib/api.ts)
+- ✅ Added 'talkmobi' and 'telemedicina' to the admin permissions matrix (ADMIN_PAGES list) so sub-admin roles can be granted/revoked access. (src/components/newmobility/admin/admin-permissions-panel.tsx)
+- ✅ Lint clean for src/ (13 pre-existing errors in root .js files only, unchanged from Task 18 baseline).
+- ✅ agent-browser verified the full end-to-end flow: user submits request → admin approves with activation link → user sees "Telemedicina ativada!" card with the clickable link. Also verified the dashboard referral card renders with copy/WhatsApp/Indicar buttons, the apps page is restored, and both new admin menu items render their respective panels.
+- Files changed: 11 modified (src/lib/store.ts, src/lib/i18n.ts, src/lib/api.ts, src/app/page.tsx, src/components/newmobility/sidebar.tsx, src/components/newmobility/app-layout.tsx, src/components/newmobility/dashboard/dashboard-page.tsx, src/components/newmobility/talkmobi/talkmobi-page.tsx, src/components/newmobility/admin/admin-layout.tsx, src/components/newmobility/admin/admin-page.tsx, src/components/newmobility/admin/admin-permissions-panel.tsx, prisma/schema.prisma), 5 created (src/components/newmobility/admin/admin-telemedicina-panel.tsx, src/app/api/telemedicina/request/route.ts, src/app/api/admin/telemedicina/route.ts, src/app/api/admin/telemedicina/[id]/approve/route.ts, src/app/api/admin/telemedicina/[id]/reject/route.ts). Plus worklog.md (this entry).
+- Test request from João Pedro Almeida (id cmpskrrfb000po8buqr8m2rqj) was approved with activation link `https://telemedicina.newmobility.com.br/acesso?code=JOAO2024XYZ` — left in place as a valid test record (admin can re-approve or it can be ignored).

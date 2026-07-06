@@ -35,6 +35,8 @@ import {
   ScrollText,
   Lock,
   Target,
+  Smartphone,
+  HeartPulse,
 } from 'lucide-react'
 import { useStore, type AdminPageKey } from '@/lib/store'
 import { useAdminPermissions } from '@/lib/admin-permissions'
@@ -72,6 +74,8 @@ const adminNavItems: AdminNavItem[] = [
   { key: 'matrices', label: 'Matrizes MMN', icon: Network, description: 'Visualizar matrizes de indicações', group: 'main' },
   { key: 'support', label: 'Tickets de Suporte', icon: Headphones, description: 'Atendimento ao cliente', group: 'main' },
   { key: 'kyc', label: 'Aprovação KYC', icon: ShieldCheck, description: 'Validar documentos de usuários', group: 'main' },
+  { key: 'talkmobi', label: 'Planos TalkMobi', icon: Smartphone, description: 'Editar planos de celular TalkMobi', group: 'main' },
+  { key: 'telemedicina', label: 'Telemedicina', icon: HeartPulse, description: 'Aprovar pedidos de ativação', group: 'main' },
   { key: 'challenges', label: 'Desafios', icon: Target, description: 'Criar desafios semanais e mensais', group: 'main' },
   { key: 'announcements', label: 'Anúncios', icon: Megaphone, description: 'Comunicados da plataforma', group: 'system' },
   { key: 'reports', label: 'Relatórios', icon: BarChart3, description: 'Analytics e relatórios', group: 'system' },

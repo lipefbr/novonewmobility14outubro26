@@ -42,10 +42,17 @@ import {
   ShoppingCart,
   ChevronRight,
   BarChart3,
+  Copy,
+  Link2,
+  Share2,
+  MessageCircle,
+  Gift,
+  Send,
 } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import { DashboardSkeleton } from '../ui/loading-skeletons'
 import { ResponsiveContainer, LineChart, Line, XAxis, Tooltip as RechartsTooltip } from 'recharts'
+import { toast } from 'sonner'
 
 interface DashboardData {
   user: any
@@ -359,6 +366,105 @@ export function DashboardPage() {
             )
           })}
         </div>
+      </motion.div>
+
+      {/* ===== REFERRAL LINK CARD (link de indicação) =====
+          Prominent card showing the user's referral code + copyable link
+          + WhatsApp share. Data is strictly the logged-in user's own
+          referralCode from the store — no global data. */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.18, duration: 0.35 }}
+      >
+        <Card className="rounded-3xl shadow-sm overflow-hidden border-0">
+          <div className="bg-gradient-to-br from-emerald-600 via-emerald-500 to-teal-500 relative">
+            {/* Decorative pattern */}
+            <div className="absolute inset-0 opacity-10" style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M20 18a2 2 0 100 4 2 2 0 000-4zm-8-2a4 4 0 114 4 4 4 0 01-4-4zm16 0a4 4 0 11-4 4 4 4 0 014-4z'/%3E%3C/g%3E%3C/svg%3E")`,
+            }} />
+            <CardContent className="p-4 sm:p-5 md:p-6 relative">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
+                {/* Icon + Heading */}
+                <div className="flex items-center gap-3 text-white shrink-0">
+                  <div className="p-2.5 rounded-xl bg-white/20 backdrop-blur-sm shadow-md">
+                    <Gift className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm sm:text-base font-bold text-white">
+                      Seu Link de Indicação
+                    </h3>
+                    <p className="text-[11px] sm:text-xs text-emerald-50/90">
+                      Convide amigos e ganhe CashBack
+                    </p>
+                  </div>
+                </div>
+
+                {/* Referral code + link */}
+                <div className="flex-1 min-w-0 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] uppercase tracking-wider text-emerald-50/80 font-semibold shrink-0">Código</span>
+                    <div className="px-3 py-1 rounded-lg bg-white/15 backdrop-blur-sm border border-white/20 text-white font-mono font-bold text-sm tracking-wider">
+                      {user?.referralCode || '—'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2 rounded-lg bg-white/15 backdrop-blur-sm border border-white/20 text-white text-xs sm:text-sm font-medium truncate">
+                      <Link2 className="h-3.5 w-3.5 text-emerald-100 shrink-0" />
+                      <span className="truncate">
+                        {typeof window !== 'undefined' ? `${window.location.origin}/?ref=${user?.referralCode || ''}` : `newmobility.com.br/?ref=${user?.referralCode || ''}`}
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={async () => {
+                        const link = `${window.location.origin}/?ref=${user?.referralCode || ''}`
+                        try {
+                          await navigator.clipboard.writeText(link)
+                          toast.success('Link copiado!', { description: 'Cole onde quiser e convide seus amigos.' })
+                        } catch {
+                          toast.error('Não foi possível copiar o link.')
+                        }
+                      }}
+                      className="bg-white text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 shrink-0 gap-1.5 shadow-md"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Copiar</span>
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Share buttons */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => {
+                      const link = `${window.location.origin}/?ref=${user?.referralCode || ''}`
+                      const text = `Olá! Entre na NewMobility com meu link e ganhe benefícios exclusivos: ${link}`
+                      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
+                    }}
+                    className="bg-emerald-700/40 hover:bg-emerald-700/60 text-white border border-white/20 backdrop-blur-sm gap-1.5"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">WhatsApp</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setActivePage('referrals')}
+                    className="bg-white/10 text-white border-white/30 hover:bg-white/20 hover:text-white gap-1.5"
+                  >
+                    <Share2 className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Indicar</span>
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </div>
+        </Card>
       </motion.div>
 
       {/* Visual separator */}
