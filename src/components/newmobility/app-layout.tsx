@@ -65,7 +65,7 @@ const sidebarLabelKeys: Record<PageKey, string> = {
 const mobileNavItems: { key: PageKey; icon: React.ElementType; label: string }[] = [
   { key: 'dashboard', icon: Home, label: 'Início' },
   { key: 'cashback', icon: DollarSign, label: 'CashBack' },
-  { key: 'financial', icon: Wallet, label: 'Finanças' },
+  { key: 'financial', icon: Wallet, label: 'Indicador' },
   { key: 'referrals', icon: Users, label: 'Rede' },
   { key: 'profile', icon: UserCircle, label: 'Perfil' },
 ]

@@ -63,7 +63,7 @@ interface AdminNavItem {
 const adminNavItems: AdminNavItem[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, description: 'Visão geral e estatísticas', group: 'main' },
   { key: 'users', label: 'Usuários', icon: Users, description: 'Gerenciamento de usuários', group: 'main' },
-  { key: 'financial', label: 'Financeiro', icon: Wallet, description: 'Transações, saques e cashback', group: 'main' },
+  { key: 'financial', label: 'Indicador', icon: Wallet, description: 'Transações, saques e cashback', group: 'main' },
   { key: 'withdrawals-asaas', label: 'Saques Asaas', icon: Banknote, description: 'Aprovar saques via Asaas (PIX/TED)', group: 'main' },
   { key: 'plans', label: 'Planos & Preços', icon: CreditCard, description: 'Planos e matrizes', group: 'main' },
   { key: 'gratifications', label: 'Gratificações', icon: Gift, description: 'Saldos de gratificação', group: 'main' },
@@ -553,7 +553,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           {[
             { key: 'dashboard' as AdminPageKey, icon: LayoutDashboard, label: 'Início' },
             { key: 'users' as AdminPageKey, icon: Users, label: 'Usuários' },
-            { key: 'financial' as AdminPageKey, icon: Wallet, label: 'Financeiro' },
+            { key: 'financial' as AdminPageKey, icon: Wallet, label: 'Indicador' },
             { key: 'settings' as AdminPageKey, icon: Settings, label: 'Config' },
           ].filter((item) => canAccess(item.key)).map((item) => {
             const Icon = item.icon

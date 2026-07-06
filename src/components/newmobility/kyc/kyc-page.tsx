@@ -29,6 +29,7 @@ import {
   ShieldCheck,
   Eye,
   RefreshCw,
+  Camera,
 } from 'lucide-react'
 
 // ---------- Types ----------
@@ -101,6 +102,12 @@ const DOC_METAS: DocMeta[] = [
     title: 'Comprovante de Endereço',
     description: 'Conta de água/luz/telefone com CEP (últimos 90 dias)',
     Icon: MapPin,
+  },
+  {
+    type: 'selfie',
+    title: 'Selfie com Documento',
+    description: 'Foto segurando o documento de identificação ao lado do rosto',
+    Icon: Camera,
   },
 ]
 
