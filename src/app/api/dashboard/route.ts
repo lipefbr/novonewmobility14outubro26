@@ -262,6 +262,78 @@ export async function GET(request: Request) {
       revenueByCategory[cat] = (revenueByCategory[cat] || 0) + Number((t as any).amount || 0)
     }
 
+    // ----- Per-user comparison stats (this month vs last month) -----
+    // Drives the 4 indicator cards at the top of the dashboard:
+    //   • Ganhos CashBack   — count of cashback-type transactions
+    //   • Novas Indicações  — direct referrals created this month vs last
+    //   • Pontos Ganhos     — career/points transactions this month vs last
+    //   • Saques            — withdrawal transactions this month vs last
+    // All counts are strictly scoped to the logged-in user. NO global data.
+    const allUserTransactions = await db.find(
+      'Transaction',
+      '"userId" = $1',
+      [userId],
+    )
+
+    const now = new Date()
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const endOfLastMonth = startOfThisMonth // exclusive upper bound
+
+    const inRange = (dateVal: any, start: Date, end: Date) => {
+      if (!dateVal) return false
+      const d = new Date(dateVal)
+      return d >= start && d < end
+    }
+
+    const isCashbackTx = (t: any) => {
+      const type = t?.type || ''
+      const category = t?.category || ''
+      return (
+        type === 'cashback' ||
+        type === 'cashback_entry' ||
+        type === 'cashback_residual' ||
+        type === 'cashback_sales' ||
+        category === 'cashback' ||
+        category === 'cashback_residual' ||
+        category === 'cashback_sales'
+      )
+    }
+    const isWithdrawalTx = (t: any) => {
+      const type = t?.type || ''
+      const category = t?.category || ''
+      return (
+        type === 'withdrawal' ||
+        type === 'withdrawal_fee' ||
+        category === 'withdrawal' ||
+        category === 'withdrawal_fee'
+      )
+    }
+    const isPointsTx = (t: any) => {
+      const type = t?.type || ''
+      return type === 'career' || type === 'points'
+    }
+
+    const cashbackThisMonth = allUserTransactions.filter((t: any) => isCashbackTx(t) && inRange(t.createdAt, startOfThisMonth, now)).length
+    const cashbackLastMonth = allUserTransactions.filter((t: any) => isCashbackTx(t) && inRange(t.createdAt, startOfLastMonth, endOfLastMonth)).length
+
+    const withdrawalsThisMonth = allUserTransactions.filter((t: any) => isWithdrawalTx(t) && inRange(t.createdAt, startOfThisMonth, now)).length
+    const withdrawalsLastMonth = allUserTransactions.filter((t: any) => isWithdrawalTx(t) && inRange(t.createdAt, startOfLastMonth, endOfLastMonth)).length
+
+    const pointsThisMonth = allUserTransactions.filter((t: any) => isPointsTx(t) && inRange(t.createdAt, startOfThisMonth, now)).length
+    const pointsLastMonth = allUserTransactions.filter((t: any) => isPointsTx(t) && inRange(t.createdAt, startOfLastMonth, endOfLastMonth)).length
+
+    // Direct referrals created this month vs last month
+    const referralsThisMonth = directReferrals.filter((r) => inRange(r.createdAt, startOfThisMonth, now)).length
+    const referralsLastMonth = directReferrals.filter((r) => inRange(r.createdAt, startOfLastMonth, endOfLastMonth)).length
+
+    const comparisonStats = {
+      cashbackEarnings: { current: cashbackThisMonth, previous: cashbackLastMonth },
+      newReferrals: { current: referralsThisMonth, previous: referralsLastMonth },
+      pointsEarned: { current: pointsThisMonth, previous: pointsLastMonth },
+      withdrawals: { current: withdrawalsThisMonth, previous: withdrawalsLastMonth },
+    }
+
     // Recent activity — light mapping of recentTransactions to a stable shape
     // the ActivityFeed component consumes. Numbers stay in cents; the UI
     // decides whether to render them as currency or as point counts.
@@ -337,6 +409,10 @@ export async function GET(request: Request) {
       // (Gratuito / Blue 3 / Blue 5 Premium). No longer platform-wide.
       userDistribution: usersByPlan,
       revenueByCategory,
+      // Per-user this-month vs last-month counts for the 4 indicator cards
+      // at the top of the dashboard. NO global data — every count is scoped
+      // to the logged-in user's own transactions + direct referrals.
+      comparisonStats,
     })
   } catch (err) {
     console.error('Dashboard error:', err)

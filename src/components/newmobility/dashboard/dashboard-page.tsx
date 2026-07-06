@@ -14,18 +14,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { motion } from 'framer-motion'
-import { toast } from 'sonner'
 import {
-  Copy,
-  Link2,
   Smartphone,
   Apple,
   Check,
-  Share2,
   UserPlus,
   FileText,
   ArrowDownToLine,
-  Ticket,
   Clock,
   DollarSign,
   Users,
@@ -34,7 +29,6 @@ import {
   Zap,
   Eye,
   Star,
-  Gift,
   Sun,
   Moon,
   CloudSun,
@@ -42,12 +36,10 @@ import {
   Trophy,
   ArrowRight,
   Play,
-  Shield,
   Globe,
   Lock,
   CalendarIcon,
   ShoppingCart,
-  CreditCard,
   ChevronRight,
   BarChart3,
 } from 'lucide-react'
@@ -72,6 +64,15 @@ interface DashboardData {
   // Per-user downline distribution by plan (e.g. { free: 3, blue3: 5, blue5: 2 })
   userDistribution: any
   revenueByCategory: any
+  // Per-user this-month vs last-month counts for the 4 indicator cards
+  // (Ganhos CashBack, Novas Indicações, Pontos Ganhos, Saques). Strictly
+  // scoped to the logged-in user — NO global data.
+  comparisonStats?: {
+    cashbackEarnings?: { current: number; previous: number }
+    newReferrals?: { current: number; previous: number }
+    pointsEarned?: { current: number; previous: number }
+    withdrawals?: { current: number; previous: number }
+  }
 }
 
 // Greeting based on time of day
@@ -110,7 +111,6 @@ const fallbackWeeklyReferrals = [
 export function DashboardPage() {
   const { user, logout, setActivePage, updateUser } = useStore()
   const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -173,36 +173,6 @@ export function DashboardPage() {
       console.error('Failed to load dashboard:', err)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const referralLink = `${typeof window !== 'undefined' ? window.location.origin : ''}/?ref=${user?.referralCode || 'USER'}`
-
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(referralLink).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-      toast.success('Link de indicação copiado!', {
-        description: 'Compartilhe com seus amigos e ganhe CashBack.',
-      })
-    }).catch(() => {
-      toast.error('Não foi possível copiar o link. Tente novamente.')
-    })
-  }
-
-  const handleShareLink = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: 'NewMobility - CashBack',
-          text: `Use meu link de indicação e ganhe CashBack!`,
-          url: referralLink,
-        })
-      } catch {
-        handleCopyLink()
-      }
-    } else {
-      handleCopyLink()
     }
   }
 
@@ -300,49 +270,16 @@ export function DashboardPage() {
         </Card>
       </motion.div>
 
-      {/* ===== INDICAR AMIGO small action card (referral link EXPOSED) ===== */}
+      {/* ===== 4 INDICATOR CARDS (Ganhos CashBack, Novas Indicações, Pontos Ganhos, Saques) =====
+          Moved to the TOP of the dashboard per user request. All counts are
+          strictly per-user (this month vs last month) from the dashboard API
+          `comparisonStats` field — NO global/mock data. */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1, duration: 0.35 }}
       >
-        <Card className="rounded-2xl shadow-sm border border-emerald-100/50 dark:border-emerald-900/30">
-          <CardContent className="p-3 md:p-4 space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="p-2 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 shrink-0">
-                  <UserPlus className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-foreground truncate">Indique amigos e ganhe CashBack</p>
-                  <p className="text-[11px] text-muted-foreground truncate">Seu link de indicação:</p>
-                </div>
-              </div>
-              <Button
-                size="sm"
-                onClick={handleCopyLink}
-                className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
-              >
-                {copied ? <Check className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
-                <span className="hidden sm:inline">{copied ? 'Copiado!' : 'Indicar Amigo'}</span>
-              </Button>
-            </div>
-            {/* Link exposto e visível para o usuário */}
-            <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-xl px-3 py-2">
-              <Link2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <p className="text-xs sm:text-sm font-mono text-emerald-800 dark:text-emerald-200 truncate flex-1 select-all">
-                {referralLink}
-              </p>
-              <button
-                onClick={handleCopyLink}
-                title="Copiar link"
-                className="p-1 rounded-md hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 transition-colors shrink-0"
-              >
-                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-              </button>
-            </div>
-          </CardContent>
-        </Card>
+        <ComparisonWidget stats={dashboardData?.comparisonStats} />
       </motion.div>
 
       {/* ===== QUICK STATS MINI-BAR with animation ===== */}
@@ -500,11 +437,10 @@ export function DashboardPage() {
         </motion.div>
       </div>
 
-      {/* ===== DATA COMPARISON WIDGET ===== */}
-      <ComparisonWidget />
-
-      {/* ===== NETWORK OVERVIEW + NETWORK HEALTH + NEXT MILESTONE ===== */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* ===== NETWORK OVERVIEW + NETWORK HEALTH =====
+          Next Milestone ("Progresso do Plano") card REMOVED per user request.
+          Grid changed from 3 cols to 2 cols since only 2 cards remain. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Network Overview */}
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -514,7 +450,9 @@ export function DashboardPage() {
           <Card className="rounded-2xl shadow-sm hover:shadow-lg transition-shadow duration-300 h-full bg-card border border-emerald-100/50 dark:border-emerald-900/30">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
-                <Activity className="h-5 w-5 text-emerald-600" />
+                <span className="p-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 shrink-0">
+                  <Activity className="h-4 w-4" />
+                </span>
                 {t('dashboard.network.title')}
               </CardTitle>
             </CardHeader>
@@ -549,7 +487,9 @@ export function DashboardPage() {
           <Card className="rounded-2xl shadow-sm hover:shadow-lg transition-shadow duration-300 h-full bg-card border border-emerald-100/50 dark:border-emerald-900/30">
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-emerald-600" />
+                <span className="p-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 shrink-0">
+                  <TrendingUp className="h-4 w-4" />
+                </span>
                 Saúde da Rede
               </CardTitle>
             </CardHeader>
@@ -583,62 +523,8 @@ export function DashboardPage() {
           </Card>
         </motion.div>
 
-        {/* Next Milestone Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.35 }}
-        >
-          <Card className="rounded-2xl shadow-sm hover:shadow-lg transition-shadow duration-300 h-full bg-gradient-to-br from-gray-900 to-gray-800 border-0 overflow-hidden relative">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full -translate-y-1/2 translate-x-1/2" />
-            <CardContent className="p-4 flex flex-col justify-between h-full relative">
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="p-2 rounded-full bg-emerald-500/20">
-                    <Trophy className="h-5 w-5 text-emerald-400" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-400 font-semibold uppercase tracking-wide">Próximo Marco</p>
-                    <p className="text-base font-bold text-white">{dashboardData?.career?.nextRank?.name ?? 'Safira'}</p>
-                  </div>
-                </div>
-                <div className="mt-2">
-                  <div className="flex justify-between text-xs text-gray-400 mb-1.5">
-                    <span>Progresso</span>
-                    <span className="text-emerald-400 font-bold">{(dashboardData?.career?.progress ?? 75).toFixed(0)}%</span>
-                  </div>
-                  <div className="h-3 bg-gray-700 rounded-full overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${(dashboardData?.career?.progress ?? 75).toFixed(0)}%` }}
-                      transition={{ delay: 0.5, duration: 1.2, ease: 'easeOut' }}
-                      className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full relative"
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
-                    </motion.div>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-3 pt-3 border-t border-gray-700 flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <Target className="h-3.5 w-3.5 text-emerald-400" />
-                  <p className="text-xs text-emerald-400 font-medium">
-                    Faltam {dashboardData?.career?.nextRank?.pointsNeeded ?? 8} pontos
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="rounded-xl h-7 px-2 text-xs text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 gap-1"
-                  onClick={() => setActivePage('career')}
-                >
-                  Ver trilha
-                  <ArrowRight className="h-3 w-3" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+        {/* Next Milestone ("Progresso do Plano") card REMOVED per user request —
+            indicator cards moved to the top of the dashboard instead. */}
       </div>
 
       {/* Visual separator */}

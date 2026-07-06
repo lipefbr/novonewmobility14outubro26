@@ -30,7 +30,25 @@ import { userApi, apiFetch, ApiError } from '@/lib/api'
 import { toast as sonnerToast } from 'sonner'
 import { cn } from '@/lib/utils'
 
-// Inline Editable Field component
+// Inline Editable Field component.
+//
+// Task 19-A: This component previously kept an internal `tempValue` draft
+// and only propagated to the parent via `onChange` when the user clicked
+// the green check (or pressed Enter). That meant a user who typed a new
+// value and then clicked "Salvar Alterações" WITHOUT first clicking the
+// green check would silently send the OLD value to the API — the typed
+// text was discarded because `tempValue` was never committed. This was
+// the root cause of the "profile saving doesn't work in the browser"
+// bug reported by the user (the API itself worked fine via curl).
+//
+// Fix: the Input is now controlled directly by the parent's `value` /
+// `onChange` — every keystroke propagates immediately, so the parent's
+// personalInfo / bankInfo / emergencyContact state is always up-to-date
+// when the Save button fires. The pencil/edit-mode UI is preserved for
+// visual consistency, but there is no longer a "commit" step. The green
+// check now simply exits edit mode (the value is already saved). onBlur
+// also exits edit mode, and `onMouseDown preventDefault` on the check
+// button prevents blur from unmounting it before the click fires.
 function InlineField({ label, value, onChange, icon: Icon, type = 'text', disabled = false }: {
   label: string
   value: string
@@ -40,17 +58,6 @@ function InlineField({ label, value, onChange, icon: Icon, type = 'text', disabl
   disabled?: boolean
 }) {
   const [editing, setEditing] = useState(false)
-  const [tempValue, setTempValue] = useState(value)
-
-  const handleSave = () => {
-    onChange(tempValue)
-    setEditing(false)
-  }
-
-  const handleCancel = () => {
-    setTempValue(value)
-    setEditing(false)
-  }
 
   return (
     <div className="group space-y-1.5">
@@ -62,13 +69,23 @@ function InlineField({ label, value, onChange, icon: Icon, type = 'text', disabl
         <div className="flex items-center gap-2">
           <Input
             type={type}
-            value={tempValue}
-            onChange={(e) => setTempValue(e.target.value)}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
             className="h-8 text-sm"
             autoFocus
-            onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') handleCancel() }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') setEditing(false)
+              if (e.key === 'Escape') setEditing(false)
+            }}
+            onBlur={() => setEditing(false)}
           />
-          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-emerald-600 hover:text-emerald-700" onClick={handleSave}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0 text-emerald-600 hover:text-emerald-700"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setEditing(false)}
+          >
             <Check className="h-3.5 w-3.5" />
           </Button>
         </div>
@@ -79,10 +96,12 @@ function InlineField({ label, value, onChange, icon: Icon, type = 'text', disabl
           </p>
           {!disabled && (
             <button
-              onClick={() => { setTempValue(value); setEditing(true) }}
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted text-muted-foreground hover:text-emerald-600"
+              type="button"
+              onClick={() => setEditing(true)}
+              aria-label={`Editar ${label}`}
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-emerald-600 transition-colors opacity-60 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
             >
-              <Pencil className="h-3 w-3" />
+              <Pencil className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
@@ -665,27 +684,28 @@ export function ProfilePage() {
     if (!user?.id) return
     setSaving(true)
     try {
+      // Task 19-A: This handler ONLY sends the fields managed by the
+      // InlineField section above (name, phone, address, city, state).
+      // It deliberately does NOT send the extended personal fields
+      // (birthDate, rg, maritalStatus, gender, education, zipCode,
+      // sponsorId, qualification) because those are owned by the
+      // <PersonalDataSection /> child component, which has its own
+      // "Salvar Dados" button and its own draft state. Sending them
+      // here would overwrite the child's edits with stale values
+      // whenever the user clicks "Salvar Alterações" after editing
+      // extended fields via PersonalDataSection. The PUT /api/user/profile
+      // route only updates fields that are explicitly present in the
+      // request body, so omitting them is safe — they are left untouched
+      // in the DB.
       const updated = await apiFetch<any>('/user/profile', {
         method: 'PUT',
         body: JSON.stringify({
           userId: user.id,
-          // Core contact fields (managed by the InlineField section above)
           name: personalInfo.name,
           phone: personalInfo.phone,
           address: personalInfo.address,
           city: personalInfo.city,
           state: personalInfo.state,
-          // Extra personal fields — these are also edited through the
-          // PersonalDataSection below, but we re-send them on every save
-          // so this handler does not wipe them out with empty values.
-          birthDate: personalInfo.birthDate || null,
-          rg: personalInfo.rg || null,
-          maritalStatus: personalInfo.maritalStatus || null,
-          gender: personalInfo.gender || null,
-          education: personalInfo.education || null,
-          zipCode: personalInfo.zipCode || null,
-          sponsorId: personalInfo.sponsorId || null,
-          qualification: personalInfo.qualification || null,
         }),
       })
       // Update the local store with the latest data from the server.
@@ -698,17 +718,6 @@ export function ProfilePage() {
         address: updated.address ?? personalInfo.address,
         city: updated.city ?? personalInfo.city,
         state: updated.state ?? personalInfo.state,
-        // Persist extra personal fields to the store too so that on
-        // navigation away/back the useEffect rehydrates from fresh data
-        // instead of stale defaults.
-        birthDate: updated.birthDate ?? personalInfo.birthDate,
-        rg: updated.rg ?? personalInfo.rg,
-        maritalStatus: updated.maritalStatus ?? personalInfo.maritalStatus,
-        gender: updated.gender ?? personalInfo.gender,
-        education: updated.education ?? personalInfo.education,
-        zipCode: updated.zipCode ?? personalInfo.zipCode,
-        sponsorId: updated.sponsorId ?? personalInfo.sponsorId,
-        qualification: updated.qualification ?? personalInfo.qualification,
       } as any)
       toast({
         title: 'Dados atualizados',

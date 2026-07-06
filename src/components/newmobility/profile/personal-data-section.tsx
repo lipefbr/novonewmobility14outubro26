@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/select'
 import {
   Calendar, IdCard, Heart, Users, GraduationCap, MapPin, Award, User,
-  Pencil, Check, X, Loader2, Siren, Phone,
+  Pencil, Check, X, Loader2,
 } from 'lucide-react'
 import { userApi } from '@/lib/api'
 import { toast } from 'sonner'
@@ -87,6 +87,14 @@ function getQualificationLabel(value: string | null | undefined): string {
 
 // ---------- Types ----------
 
+// Task 19-A: Emergency contact fields (emergencyName / emergencyPhone /
+// emergencyRelation) were previously duplicated here AND in the parent
+// profile-page.tsx Emergency Contact card. Both components read/wrote the
+// same DB columns via PUT /api/user/profile, so saving one would silently
+// overwrite the other's edits with stale state. The emergency contact
+// UI has been removed from this component — it is owned exclusively by
+// the parent profile-page.tsx. This component only manages the extended
+// personal fields below (birthDate, rg, maritalStatus, etc.).
 interface PersonalData {
   birthDate: string | null
   rg: string | null
@@ -96,9 +104,6 @@ interface PersonalData {
   zipCode: string | null
   sponsorId: string | null
   qualification: string | null
-  emergencyName: string | null
-  emergencyPhone: string | null
-  emergencyRelation: string | null
 }
 
 interface SponsorInfo {
@@ -122,9 +127,6 @@ export function PersonalDataSection({ userId }: { userId: string }) {
     zipCode: null,
     sponsorId: null,
     qualification: null,
-    emergencyName: null,
-    emergencyPhone: null,
-    emergencyRelation: null,
   })
 
   // Editable copy while in edit mode
@@ -144,9 +146,6 @@ export function PersonalDataSection({ userId }: { userId: string }) {
         zipCode: profile.zipCode ?? null,
         sponsorId: profile.sponsorId ?? null,
         qualification: profile.qualification ?? null,
-        emergencyName: profile.emergencyName ?? null,
-        emergencyPhone: profile.emergencyPhone ?? null,
-        emergencyRelation: profile.emergencyRelation ?? null,
       }
       setData(next)
       setDraft(next)
@@ -189,6 +188,13 @@ export function PersonalDataSection({ userId }: { userId: string }) {
   const handleSave = async () => {
     setSaving(true)
     try {
+      // Task 19-A: Only send the extended personal fields this component
+      // manages. Emergency contact fields are intentionally NOT sent —
+      // they are owned by the parent profile-page.tsx Emergency Contact
+      // card. Sending them here would overwrite the parent's edits with
+      // stale state from this component's draft. The PUT /api/user/profile
+      // route only updates fields that are explicitly present in the body,
+      // so omitting emergencyName/Phone/Relation is safe.
       await userApi.updateProfile(userId, {
         birthDate: draft.birthDate || null,
         rg: draft.rg || null,
@@ -198,9 +204,6 @@ export function PersonalDataSection({ userId }: { userId: string }) {
         zipCode: draft.zipCode || null,
         sponsorId: draft.sponsorId || null,
         qualification: draft.qualification || null,
-        emergencyName: draft.emergencyName || null,
-        emergencyPhone: draft.emergencyPhone || null,
-        emergencyRelation: draft.emergencyRelation || null,
       })
       toast.success('Dados pessoais salvos com sucesso!')
       setEditing(false)
@@ -455,44 +458,11 @@ export function PersonalDataSection({ userId }: { userId: string }) {
               </div>
             </div>
 
-            {/* Emergency Contact Section */}
-            <div className="pt-3 border-t border-border">
-              <div className="flex items-center gap-2 mb-3">
-                <Siren className="h-4 w-4 text-red-500" />
-                <h4 className="text-sm font-semibold text-foreground">
-                  Contato de Emergência
-                </h4>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Nome</Label>
-                  <Input
-                    value={draft.emergencyName || ''}
-                    onChange={(e) => setField('emergencyName', e.target.value)}
-                    placeholder="Nome do contato"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Phone className="h-3 w-3" />
-                    Telefone
-                  </Label>
-                  <Input
-                    value={draft.emergencyPhone || ''}
-                    onChange={(e) => setField('emergencyPhone', e.target.value)}
-                    placeholder="(11) 99999-9999"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Relação</Label>
-                  <Input
-                    value={draft.emergencyRelation || ''}
-                    onChange={(e) => setField('emergencyRelation', e.target.value)}
-                    placeholder="Ex: Cônjuge, Pai, Mãe..."
-                  />
-                </div>
-              </div>
-            </div>
+            {/* Task 19-A: Emergency Contact section removed from here —
+                it was a duplicate of the parent profile-page.tsx Emergency
+                Contact card, and the two were overwriting each other's
+                saves. The parent card is the canonical UI for emergency
+                contact. */}
 
             {/* Action buttons */}
             <div className="flex justify-end gap-2 pt-3">
