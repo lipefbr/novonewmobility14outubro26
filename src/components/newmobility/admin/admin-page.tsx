@@ -276,6 +276,9 @@ interface CareerPlanItem {
   description?: string | null;
   minPoints: number;
   bonusCents: number;
+  // 'real' = bonusCents is BRL (rendered as R$). 'points' = bonusCents is a
+  // point count (rendered as "X pts"). Admin chooses per plan.
+  rewardType: string;
   color?: string | null;
   icon?: string | null;
   isActive: boolean;
@@ -562,6 +565,7 @@ export function AdminPage() {
   const [editingCareerPlan, setEditingCareerPlan] = useState<CareerPlanItem | null>(null)
   const [careerPlanForm, setCareerPlanForm] = useState({
     code: '', name: '', description: '', minPoints: 0, bonusCents: 0,
+    rewardType: 'real' as 'real' | 'points',
     color: '#6b7280', icon: '🏅', isActive: true, sortOrder: 99,
   })
   const [careerPlanSaving, setCareerPlanSaving] = useState(false)
@@ -1171,6 +1175,7 @@ export function AdminPage() {
     setEditingCareerPlan(null)
     setCareerPlanForm({
       code: '', name: '', description: '', minPoints: 0, bonusCents: 0,
+      rewardType: 'real',
       color: '#6b7280', icon: '🏅', isActive: true, sortOrder: 99,
     })
     setCareerPlanDialogOpen(true)
@@ -1184,6 +1189,7 @@ export function AdminPage() {
       description: c.description || '',
       minPoints: c.minPoints,
       bonusCents: c.bonusCents,
+      rewardType: c.rewardType === 'points' ? 'points' : 'real',
       color: c.color || '#6b7280',
       icon: c.icon || '🏅',
       isActive: c.isActive,
@@ -1206,6 +1212,7 @@ export function AdminPage() {
         description: careerPlanForm.description || undefined,
         minPoints: Number(careerPlanForm.minPoints) || 0,
         bonusCents: Number(careerPlanForm.bonusCents) || 0,
+        rewardType: careerPlanForm.rewardType,
         color: careerPlanForm.color || undefined,
         icon: careerPlanForm.icon || undefined,
         isActive: Boolean(careerPlanForm.isActive),
@@ -4876,8 +4883,14 @@ export function AdminPage() {
                         <p className="text-sm font-bold text-foreground">{c.minPoints}</p>
                       </div>
                       <div className="p-2 bg-muted/50 rounded-lg">
-                        <p className="text-[10px] text-muted-foreground">Bônus Mensal</p>
-                        <p className="text-sm font-bold text-emerald-600">{formatCurrency(c.bonusCents)}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {c.rewardType === 'points' ? 'Recompensa (Pontos)' : 'Bônus Mensal'}
+                        </p>
+                        <p className="text-sm font-bold text-emerald-600">
+                          {c.rewardType === 'points'
+                            ? `${c.bonusCents.toLocaleString('pt-BR')} pts`
+                            : formatCurrency(c.bonusCents)}
+                        </p>
                       </div>
                     </div>
                     <div className="flex items-center justify-end gap-1 mt-3 border-t border-border pt-2">
@@ -5318,8 +5331,32 @@ export function AdminPage() {
                 <Input type="number" value={careerPlanForm.minPoints} onChange={(e) => setCareerPlanForm(f => ({ ...f, minPoints: Number(e.target.value) }))} className="h-9 text-sm" />
               </div>
               <div>
-                <Label className="text-xs">Bônus Mensal (R$)</Label>
-                <Input type="number" step="0.01" value={careerPlanForm.bonusCents / 100} onChange={(e) => setCareerPlanForm(f => ({ ...f, bonusCents: Math.round((Number(e.target.value) || 0) * 100) }))} className="h-9 text-sm" />
+                <Label className="text-xs">Tipo de Recompensa</Label>
+                <select
+                  value={careerPlanForm.rewardType}
+                  onChange={(e) => setCareerPlanForm(f => ({ ...f, rewardType: e.target.value as 'real' | 'points' }))}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="real">Real (R$)</option>
+                  <option value="points">Pontos</option>
+                </select>
+              </div>
+              <div>
+                <Label className="text-xs">
+                  {careerPlanForm.rewardType === 'points' ? 'Quantidade de Pontos' : 'Bônus Mensal (R$)'}
+                </Label>
+                <Input
+                  type="number"
+                  step={careerPlanForm.rewardType === 'points' ? '1' : '0.01'}
+                  value={careerPlanForm.rewardType === 'points' ? careerPlanForm.bonusCents : careerPlanForm.bonusCents / 100}
+                  onChange={(e) => setCareerPlanForm(f => ({
+                    ...f,
+                    bonusCents: f.rewardType === 'points'
+                      ? Math.round(Number(e.target.value) || 0)
+                      : Math.round((Number(e.target.value) || 0) * 100),
+                  }))}
+                  className="h-9 text-sm"
+                />
               </div>
               <div>
                 <Label className="text-xs">Ícone (emoji)</Label>

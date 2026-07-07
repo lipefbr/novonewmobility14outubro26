@@ -11,6 +11,7 @@ function mapPlan(plan: {
   description: string | null
   minPoints: number
   bonusCents: number
+  rewardType: string
   color: string | null
   icon: string | null
   isActive: boolean
@@ -30,6 +31,9 @@ function mapPlan(plan: {
     description: plan.description,
     minPoints: plan.minPoints,
     bonusCents: plan.bonusCents,
+    // rewardType: 'real' (BRL) or 'points'. Default to 'real' for safety
+    // in case an old row predates the column (db push backfills NULL).
+    rewardType: plan.rewardType === 'points' ? 'points' : 'real',
     color: plan.color,
     icon: plan.icon,
     sortOrder: plan.sortOrder,
@@ -110,6 +114,7 @@ export async function GET(request: Request) {
             icon: nextPlan.icon,
             color: nextPlan.color,
             bonusCents: nextPlan.bonusCents,
+            rewardType: nextPlan.rewardType,
           }
         : null,
       progress,

@@ -29,12 +29,30 @@ interface CareerLevel {
   // the admin can edit the color in the admin panel and see it reflected.
   color: string
   reward: number
+  // 'real' = reward is BRL cents (rendered as R$). 'points' = reward is a
+  // point count (rendered as "X pts"). Sourced from CareerPlan.rewardType.
+  rewardType: 'real' | 'points'
   cashbackMultiplier: string
   achieved: boolean
   benefits: string[]
   nextReward: string
   nextRewardIcon: string
   sortOrder: number
+}
+
+/**
+ * Render a career plan reward according to its rewardType.
+ * - 'real'  → "R$ 2.000,00"  (BRL, pt-BR locale)
+ * - 'points'→ "2.000 pts"    (raw number + "pts" suffix)
+ *
+ * Used everywhere a reward is displayed so the UI never shows "R$ 2.000"
+ * for a plan whose admin configured it as a points reward.
+ */
+function formatReward(reward: number, rewardType: 'real' | 'points'): string {
+  if (rewardType === 'points') {
+    return `${Number(reward || 0).toLocaleString('pt-BR')} pts`
+  }
+  return formatCurrency(reward)
 }
 
 // Lucide icons cycled based on sortOrder so each plan gets a distinctive
@@ -64,6 +82,7 @@ const careerLevels: CareerLevel[] = [
     pointsRequired: 100,
     color: '#7DD3FC',
     reward: 200000, // R$ 2.000/mês
+    rewardType: 'real',
     cashbackMultiplier: '1.0x',
     achieved: false,
     benefits: ['PIN Safira - Categoria 3', 'Bônus mensal: R$ 2.000/mês', 'Pago todo mês ao manter a graduação'],
@@ -81,6 +100,7 @@ const careerLevels: CareerLevel[] = [
     pointsRequired: 250,
     color: '#F87171',
     reward: 300000, // R$ 3.000/mês
+    rewardType: 'real',
     cashbackMultiplier: '1.2x',
     achieved: false,
     benefits: ['PIN Rubi - Categoria 2', 'Bônus mensal: R$ 3.000/mês', 'Pago todo mês ao manter a graduação'],
@@ -98,6 +118,7 @@ const careerLevels: CareerLevel[] = [
     pointsRequired: 500,
     color: '#34D399',
     reward: 400000, // R$ 4.000/mês
+    rewardType: 'real',
     cashbackMultiplier: '1.5x',
     achieved: false,
     benefits: ['PIN Esmeralda - Categoria 1', 'Bônus mensal: R$ 4.000/mês', 'Pago todo mês ao manter a graduação'],
@@ -115,6 +136,7 @@ const careerLevels: CareerLevel[] = [
     pointsRequired: 1000,
     color: '#A78BFA',
     reward: 500000, // R$ 5.000/mês
+    rewardType: 'real',
     cashbackMultiplier: '2.0x',
     achieved: false,
     benefits: ['PIN Diamante - Categoria 4', 'Bônus mensal: R$ 5.000/mês', 'Pago todo mês ao manter a graduação'],
@@ -132,6 +154,7 @@ const careerLevels: CareerLevel[] = [
     pointsRequired: 2500,
     color: '#FBBF24',
     reward: 600000, // R$ 6.000/mês
+    rewardType: 'real',
     cashbackMultiplier: '2.5x',
     achieved: false,
     benefits: ['PIN Imperial - Categoria 5', 'Bônus mensal: R$ 6.000/mês', 'Graduação máxima - Pago todo mês'],
@@ -283,6 +306,7 @@ export function CareerPage() {
               pointsRequired: p.minPoints,
               color: p.color || '#10b981',
               reward: p.bonusCents || 0,
+              rewardType: (p as any).rewardType === 'points' ? 'points' : 'real',
               cashbackMultiplier: cashbackMultiplierFor(p.sortOrder),
               achieved: isAchieved,
               benefits: Array.isArray(p.benefits) && p.benefits.length > 0
@@ -326,6 +350,7 @@ export function CareerPage() {
     pointsRequired: 0,
     color: '#6b7280',
     reward: 0,
+    rewardType: 'real',
     cashbackMultiplier: '1.0x',
     achieved: true,
     benefits: ['Acesso básico ao aplicativo'],
@@ -384,26 +409,15 @@ export function CareerPage() {
                   ao manter a categoria conquistada. PAGOS TODOS OS MESES AO ATINGIR CADA PINO E A CATEGORIA QUE ELE SE ENCONTRA.
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
-                  <div className="bg-white/60 dark:bg-emerald-950/40 rounded-md p-2 text-center border border-emerald-100 dark:border-emerald-900/50">
-                    <p className="text-[10px] text-muted-foreground">Safira · Cat. 3</p>
-                    <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">R$ 2.000/mês</p>
-                  </div>
-                  <div className="bg-white/60 dark:bg-emerald-950/40 rounded-md p-2 text-center border border-emerald-100 dark:border-emerald-900/50">
-                    <p className="text-[10px] text-muted-foreground">Rubi · Cat. 2</p>
-                    <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">R$ 3.000/mês</p>
-                  </div>
-                  <div className="bg-white/60 dark:bg-emerald-950/40 rounded-md p-2 text-center border border-emerald-100 dark:border-emerald-900/50">
-                    <p className="text-[10px] text-muted-foreground">Esmeralda · Cat. 1</p>
-                    <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">R$ 4.000/mês</p>
-                  </div>
-                  <div className="bg-white/60 dark:bg-emerald-950/40 rounded-md p-2 text-center border border-emerald-100 dark:border-emerald-900/50">
-                    <p className="text-[10px] text-muted-foreground">Diamante · Cat. 4</p>
-                    <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">R$ 5.000/mês</p>
-                  </div>
-                  <div className="bg-white/60 dark:bg-emerald-950/40 rounded-md p-2 text-center border border-emerald-100 dark:border-emerald-900/50">
-                    <p className="text-[10px] text-muted-foreground">Imperial · Cat. 5</p>
-                    <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">R$ 6.000/mês</p>
-                  </div>
+                  {levels.filter(l => l.code !== 'associado').slice(0, 6).map((lvl) => (
+                    <div key={lvl.id} className="bg-white/60 dark:bg-emerald-950/40 rounded-md p-2 text-center border border-emerald-100 dark:border-emerald-900/50">
+                      <p className="text-[10px] text-muted-foreground">{lvl.name}</p>
+                      <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
+                        {formatReward(lvl.reward, lvl.rewardType)}
+                        {lvl.rewardType === 'real' && <span className="text-[10px] text-muted-foreground">/mês</span>}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -632,7 +646,7 @@ export function CareerPage() {
                   </div>
                   <div className="text-right hidden sm:block">
                     <p className="text-[10px] text-muted-foreground">Recompensa</p>
-                    <p className="text-sm font-bold text-emerald-600">{formatCurrency(nextLevel.reward)}</p>
+                    <p className="text-sm font-bold text-emerald-600">{formatReward(nextLevel.reward, nextLevel.rewardType)}</p>
                   </div>
                 </div>
               </CardContent>
@@ -670,7 +684,7 @@ export function CareerPage() {
                     </div>
                     <div>
                       <span className="text-muted-foreground">Recompensa</span>
-                      <p className="font-semibold text-emerald-600">{formatCurrency(nextLevel.reward)}</p>
+                      <p className="font-semibold text-emerald-600">{formatReward(nextLevel.reward, nextLevel.rewardType)}</p>
                     </div>
                   </div>
                 </div>
@@ -941,8 +955,8 @@ export function CareerPage() {
                           </div>
                           <div className="text-right shrink-0">
                             <p className="text-[9px] sm:text-[10px] text-muted-foreground uppercase tracking-wide">Recompensa</p>
-                            <p className="text-xs sm:text-sm font-bold text-emerald-600 whitespace-nowrap">{formatCurrency(level.reward)}</p>
-                            <p className="text-[9px] text-muted-foreground">/mês</p>
+                            <p className="text-xs sm:text-sm font-bold text-emerald-600 whitespace-nowrap">{formatReward(level.reward, level.rewardType)}</p>
+                            <p className="text-[9px] text-muted-foreground">{level.rewardType === 'points' ? '' : '/mês'}</p>
                           </div>
                         </div>
 

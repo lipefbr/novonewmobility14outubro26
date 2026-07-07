@@ -12,12 +12,13 @@ import { success, error } from '@/lib/api-utils'
 //   - PIN DIAMANTE  — Categoria 4 — R$ 5.000/mês (minPoints: 1000)
 //   - PIN IMPERIAL  — Categoria 5 — R$ 6.000/mês (minPoints: 2500)
 // Note: sortOrder matches the natural progression by minPoints (1..5).
+// Note: rewardType defaults to "real" (BRL). Admin can switch to "points".
 const DEFAULT_CAREER_PLANS = [
-  { code: 'safira',    name: 'Safira',    description: 'PIN Safira - Categoria 3 - R$ 2.000/mês ao bater meta mensal', minPoints: 100,  bonusCents: 200000, color: '#7DD3FC', icon: '🔷', sortOrder: 1 },
-  { code: 'rubi',      name: 'Rubi',      description: 'PIN Rubi - Categoria 2 - R$ 3.000/mês ao bater meta mensal',     minPoints: 250,  bonusCents: 300000, color: '#F87171', icon: '❤️', sortOrder: 2 },
-  { code: 'esmeralda', name: 'Esmeralda', description: 'PIN Esmeralda - Categoria 1 - R$ 4.000/mês ao bater meta mensal', minPoints: 500,  bonusCents: 400000, color: '#34D399', icon: '💚', sortOrder: 3 },
-  { code: 'diamante',  name: 'Diamante',  description: 'PIN Diamante - Categoria 4 - R$ 5.000/mês ao bater meta mensal',  minPoints: 1000, bonusCents: 500000, color: '#A78BFA', icon: '💎', sortOrder: 4 },
-  { code: 'imperial',  name: 'Imperial',  description: 'PIN Imperial - Categoria 5 - R$ 6.000/mês ao bater meta mensal',  minPoints: 2500, bonusCents: 600000, color: '#FBBF24', icon: '👑', sortOrder: 5 },
+  { code: 'safira',    name: 'Safira',    description: 'PIN Safira - Categoria 3 - R$ 2.000/mês ao bater meta mensal', minPoints: 100,  bonusCents: 200000, rewardType: 'real', color: '#7DD3FC', icon: '🔷', sortOrder: 1 },
+  { code: 'rubi',      name: 'Rubi',      description: 'PIN Rubi - Categoria 2 - R$ 3.000/mês ao bater meta mensal',     minPoints: 250,  bonusCents: 300000, rewardType: 'real', color: '#F87171', icon: '❤️', sortOrder: 2 },
+  { code: 'esmeralda', name: 'Esmeralda', description: 'PIN Esmeralda - Categoria 1 - R$ 4.000/mês ao bater meta mensal', minPoints: 500,  bonusCents: 400000, rewardType: 'real', color: '#34D399', icon: '💚', sortOrder: 3 },
+  { code: 'diamante',  name: 'Diamante',  description: 'PIN Diamante - Categoria 4 - R$ 5.000/mês ao bater meta mensal',  minPoints: 1000, bonusCents: 500000, rewardType: 'real', color: '#A78BFA', icon: '💎', sortOrder: 4 },
+  { code: 'imperial',  name: 'Imperial',  description: 'PIN Imperial - Categoria 5 - R$ 6.000/mês ao bater meta mensal',  minPoints: 2500, bonusCents: 600000, rewardType: 'real', color: '#FBBF24', icon: '👑', sortOrder: 5 },
 ]
 
 async function seedDefaultCareerPlansIfEmpty() {
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest) {
       description,
       minPoints = 0,
       bonusCents = 0,
+      rewardType = 'real',
       color,
       icon,
       isActive = true,
@@ -73,6 +75,9 @@ export async function POST(req: NextRequest) {
 
     if (!code || !name) return error('code and name are required', 400)
 
+    // Validate rewardType — only 'real' or 'points' allowed.
+    const validRewardType = rewardType === 'points' ? 'points' : 'real'
+
     const existing = await prisma.careerPlan.findUnique({ where: { code } })
     if (existing) return error('Já existe um plano de carreira com este código', 400)
 
@@ -83,6 +88,7 @@ export async function POST(req: NextRequest) {
         description: description || null,
         minPoints: Number(minPoints) || 0,
         bonusCents: Number(bonusCents) || 0,
+        rewardType: validRewardType,
         color: color || null,
         icon: icon || null,
         isActive: Boolean(isActive),

@@ -632,6 +632,9 @@ model CareerPlan {
   description  String?
   minPoints    Int      @default(0)
   bonusCents   Int      @default(0)
+  /// "real" = bonusCents is treated as BRL cents (R$). "points" = treated as a point count.
+  /// Admin chooses per plan. UI renders accordingly so we never show "R$ 2.000" for a points reward.
+  rewardType   String   @default("real")
   color        String?
   icon         String?
   isActive     Boolean  @default(true)

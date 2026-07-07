@@ -16,6 +16,7 @@ export async function PUT(
       description,
       minPoints,
       bonusCents,
+      rewardType,
       color,
       icon,
       isActive,
@@ -34,6 +35,11 @@ export async function PUT(
     if (description !== undefined) data.description = description || null
     if (minPoints !== undefined) data.minPoints = Number(minPoints) || 0
     if (bonusCents !== undefined) data.bonusCents = Number(bonusCents) || 0
+    // rewardType — admin chooses 'real' (BRL) or 'points'. Invalid values
+    // fall back to 'real' so we never store garbage in the column.
+    if (rewardType !== undefined) {
+      data.rewardType = rewardType === 'points' ? 'points' : 'real'
+    }
     if (color !== undefined) data.color = color || null
     if (icon !== undefined) data.icon = icon || null
     if (isActive !== undefined) data.isActive = Boolean(isActive)
