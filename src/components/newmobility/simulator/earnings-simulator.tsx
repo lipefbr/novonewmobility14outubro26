@@ -124,7 +124,13 @@ const PLAN_OPTIONS: PlanOption[] = [
 ]
 
 // ---------------------------------------------------------------------------
-// Matrix level percentages (per task spec)
+// Matrix level percentages — MUST match the DEFAULT_*_LEVELS in
+// `src/lib/api-utils.ts` (which the /api/cashback/{type} routes serve to the
+// CashBack page). Keeping these in sync means the simulator's projection
+// matches the real cashback percentages the user will see on their matrix.
+//   Entrada 4x5 : 5 / 10 / 10 / 5 / 5                       (total 35%)
+//   Residual 4x7: 10 / 9 / 5 / 5 / 4 / 3 / 2                (total 38%)
+//   Vendas 4x9  : 0.10 × 9 levels                          (total 0.90%)
 // ---------------------------------------------------------------------------
 
 interface MatrixLevel {
@@ -135,32 +141,32 @@ interface MatrixLevel {
 
 const ENTRADA_LEVELS: MatrixLevel[] = [
   { level: 1, pct: 5 },
-  { level: 2, pct: 3 },
-  { level: 3, pct: 2 },
-  { level: 4, pct: 1 },
-  { level: 5, pct: 0.5 },
+  { level: 2, pct: 10 },
+  { level: 3, pct: 10 },
+  { level: 4, pct: 5 },
+  { level: 5, pct: 5 },
 ]
 
 const RESIDUAL_LEVELS: MatrixLevel[] = [
-  { level: 1, pct: 3 },
-  { level: 2, pct: 2 },
-  { level: 3, pct: 1 },
-  { level: 4, pct: 1 },
-  { level: 5, pct: 0.5 },
-  { level: 6, pct: 0.5 },
-  { level: 7, pct: 0.25 },
+  { level: 1, pct: 10 },
+  { level: 2, pct: 9 },
+  { level: 3, pct: 5 },
+  { level: 4, pct: 5 },
+  { level: 5, pct: 4 },
+  { level: 6, pct: 3 },
+  { level: 7, pct: 2 },
 ]
 
 const VENDAS_LEVELS: MatrixLevel[] = [
-  { level: 1, pct: 2 },
-  { level: 2, pct: 1 },
-  { level: 3, pct: 0.5 },
-  { level: 4, pct: 0.5 },
-  { level: 5, pct: 0.25 },
-  { level: 6, pct: 0.25 },
+  { level: 1, pct: 0.1 },
+  { level: 2, pct: 0.1 },
+  { level: 3, pct: 0.1 },
+  { level: 4, pct: 0.1 },
+  { level: 5, pct: 0.1 },
+  { level: 6, pct: 0.1 },
   { level: 7, pct: 0.1 },
   { level: 8, pct: 0.1 },
-  { level: 9, pct: 0.05 },
+  { level: 9, pct: 0.1 },
 ]
 
 // Matrix structural width — 4-wide per the "4x5/4x7/4x9" client spec.

@@ -8,9 +8,20 @@ export function cn(...inputs: ClassValue[]) {
 /**
  * Format a number as Brazilian currency (R$ X.XXX,XX)
  * @param valueInCents - Value in cents (e.g., 3258000 = R$ 32.580,00)
+ *
+ * Safe: any non-numeric input (undefined, null, NaN, Infinity, strings)
+ * renders as "R$ 0,00" instead of "R$ NaN". This matches the behaviour of
+ * `formatBRL` in `@/lib/format` so vouchers, balances, withdrawals and
+ * transactions never display "R$ NaN" to the user.
  */
 export function formatCurrency(valueInCents: number): string {
-  const value = valueInCents / 100
+  const safe =
+    typeof valueInCents === 'number' &&
+    !isNaN(valueInCents) &&
+    isFinite(valueInCents)
+      ? valueInCents
+      : 0
+  const value = safe / 100
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',

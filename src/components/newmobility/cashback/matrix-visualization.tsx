@@ -499,7 +499,6 @@ export function MatrixVisualization({ type, onUpgradeClick }: MatrixVisualizatio
               <TableBody>
                 {config.levels.map((lvl, i) => {
                   const fillPct = Math.round((lvl.filled / lvl.positions) * 100)
-                  const membersPct = maxMembers > 0 ? Math.round((lvl.filled / maxMembers) * 100) : 0
                   return (
                     <TableRow
                       key={lvl.level}
@@ -528,9 +527,6 @@ export function MatrixVisualization({ type, onUpgradeClick }: MatrixVisualizatio
                         )}
                       >
                         {lvl.filled.toLocaleString('pt-BR')}
-                        <span className="block text-[10px] font-normal text-muted-foreground">
-                          {lvl.locked ? 'bloqueado' : `${membersPct}% do máximo`}
-                        </span>
                       </TableCell>
                       <TableCell className="text-right hidden sm:table-cell text-muted-foreground">
                         {lvl.percentage}

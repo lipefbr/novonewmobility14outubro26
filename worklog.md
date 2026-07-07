@@ -7033,3 +7033,115 @@ Stage Summary:
 - ✅ agent-browser verified the full end-to-end flow: user submits request → admin approves with activation link → user sees "Telemedicina ativada!" card with the clickable link. Also verified the dashboard referral card renders with copy/WhatsApp/Indicar buttons, the apps page is restored, and both new admin menu items render their respective panels.
 - Files changed: 11 modified (src/lib/store.ts, src/lib/i18n.ts, src/lib/api.ts, src/app/page.tsx, src/components/newmobility/sidebar.tsx, src/components/newmobility/app-layout.tsx, src/components/newmobility/dashboard/dashboard-page.tsx, src/components/newmobility/talkmobi/talkmobi-page.tsx, src/components/newmobility/admin/admin-layout.tsx, src/components/newmobility/admin/admin-page.tsx, src/components/newmobility/admin/admin-permissions-panel.tsx, prisma/schema.prisma), 5 created (src/components/newmobility/admin/admin-telemedicina-panel.tsx, src/app/api/telemedicina/request/route.ts, src/app/api/admin/telemedicina/route.ts, src/app/api/admin/telemedicina/[id]/approve/route.ts, src/app/api/admin/telemedicina/[id]/reject/route.ts). Plus worklog.md (this entry).
 - Test request from João Pedro Almeida (id cmpskrrfb000po8buqr8m2rqj) was approved with activation link `https://telemedicina.newmobility.com.br/acesso?code=JOAO2024XYZ` — left in place as a valid test record (admin can re-approve or it can be ignored).
+
+---
+Task ID: 19-A
+Agent: Profile Save Deep-Fix
+Task: Deep-fix profile saving bug
+
+Work Log:
+- Read worklog.md tail for context. Found that a previous session had already started Task 19-A — profile-page.tsx had uncommitted working-tree changes referencing "Task 19-A (deep-fix)" with always-visible Inputs, dirty refs, sonner toasts, and PUT-response sync. Verified those fixes ARE loaded by the dev server and ARE working end-to-end via agent-browser.
+- Read the 5 required files: src/components/newmobility/profile/profile-page.tsx (1977→2043 lines), src/app/api/user/profile/route.ts (143 lines), src/lib/api.ts (533 lines, apiFetch at line 31), src/lib/store.ts (358 lines), src/components/newmobility/profile/personal-data-section.tsx (508 lines).
+
+Investigation (agent-browser, logged in as admin@newmobility.com):
+- Logged in as admin → clicked "Voltar para Usuário" → clicked "Dados Pessoais" → verified the InlineField card now uses always-visible <Input> elements (no edit-on-click pencil).
+- TEST 1 (personal info): Filled Endereço with "Rua Test 19A 999999" → clicked "Salvar Alterações" → PUT /api/user/profile 200 → reloaded → Endereço shows "Rua Test 19A 999999" ✅
+- TEST 2 (bank info): Filled Banco="001" and Conta="987654-3" → clicked "Salvar Dados Bancários e PIX" → PUT 200 → reloaded → Conta="987654-3" persisted ✅
+- TEST 3 (emergency contact): Filled Nome="Claudio Emergency Test" → clicked "Salvar Contato de Emergência" → PUT 200 → reloaded → Nome="Claudio Emergency Test" persisted ✅
+- TEST 4 (PersonalDataSection): Clicked "Editar" → filled RG="12.345.678-9" and CEP="01310-100" → clicked "Salvar Dados" → PUT 200 + GET 200 (refetch) → reloaded → RG and CEP persisted ✅
+- TEST 5 (password change): Filled currentPassword="123456", newPassword="123456", confirmPassword="123456" → clicked "Alterar Senha" → PUT /api/user/password 200 ✅
+- TEST 6 (photo upload): Used agent-browser upload on the hidden file input with /tmp/test_profile.png → POST /api/user/profile/image 200 → image displayed via /uploads/profiles/...png?t=... ✅
+
+Root cause of "still broken" complaint:
+- While all 6 save flows DO work in the current working tree, the browser console showed: "Failed to fetch profile for personal info hydration: ApiTimeoutError: A requisição expirou após 10s."
+- Root cause: The mount-time GET /api/user/profile (used to hydrate personalInfo/bankInfo/emergencyContact with the DB values for fields not on the Zustand UserData interface — address/city/state/birthDate/rg/etc.) uses userApi.getProfile() which calls apiFetch with the DEFAULT 10s timeout.
+- The /api/user/profile route can take 5-15s on the first compile (dev.log shows "GET /api/user/profile 200 in 5.1s (compile: 2.7s, render: 2.4s)" — and that was after a warm-ish cache). On a cold first-compile the GET can EXCEED 10s.
+- When the GET times out, the personalInfo state stays at its initial values: name/phone/email/cpf come from the Zustand store (they ARE on UserData), but address/city/state/birthDate/etc. default to '' (because they're NOT on UserData).
+- If the user then clicks "Salvar Alterações" before the GET completes (or after it timed out), the PUT sends address='', city='', state='' — silently WIPING any previously-saved DB values for those fields. The user sees the Save succeed, but on next reload the address is gone — they perceive this as "saving doesn't work".
+
+Fixes applied (src/components/newmobility/profile/profile-page.tsx only):
+1. Increased GET /api/user/profile timeout from 10s (default) to 30s — matches the timeout already used by /api/referrals (lib/api.ts line 139). Replaced the userApi.getProfile(user.id) call with a direct apiFetch(`/user/profile?userId=${user.id}`, { timeoutMs: 30_000 }) so the timeout can be overridden (the userApi.getProfile helper doesn't accept a timeoutMs param).
+2. Added a `profileHydrating` useState (initialized to true) that's set to false in the .finally() block of the GET promise. Tracks whether the hydration fetch is still in-flight (or has failed).
+3. Added a user-visible sonner error toast on hydration failure: "Não foi possível carregar seus dados. Recarregue a página antes de salvar." so the user knows the form may be stale.
+4. Added defensive guards in handleSavePersonal, handleSaveBank, and handleSaveEmergencyContact: refuse to save while `profileHydrating` is true, with a sonner.warning toast "Aguarde o carregamento dos seus dados antes de salvar." This is the safety net — even if the UI disabling (next bullet) fails, the handler itself refuses to send a PUT that would wipe DB fields.
+5. Updated all 3 Save buttons to be disabled while `profileHydrating` is true: `disabled={saving || profileHydrating}` for personal and bank, `disabled={emergencySaving || profileHydrating || !emergencyContact.name || !emergencyContact.phone}` for emergency. The button label switches to "Carregando dados..." with a Loader2 spinner during hydration so the user gets clear visual feedback that the form isn't ready yet. (The password Save button does NOT need this — passwordInfo is pure user input and doesn't depend on the GET.)
+6. Replaced the old `<span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />` spinner on the personal/bank Save buttons with the standard `<Loader2 className="h-4 w-4 animate-spin" />` for consistency with the rest of the file.
+
+Verification (agent-browser, after fixes):
+- Reload-and-poll test: Reloaded the profile page and polled the Save button text every 300ms. Captured: t=300-1200ms → "Carregando dados..." (button disabled), t=1500ms+ → "Salvar Alterações" (button enabled). Confirms the profileHydrating state correctly disables the Save button during the GET request.
+- TEST 1 REDONE (personal info): Filled Endereço="Final Test 888 Persisted" → clicked "Salvar Alterações" → PUT /api/user/profile 200 → reloaded → Endereço shows "Final Test 888 Persisted" ✅
+- Lint: `bun run lint` returns 13 errors — ALL pre-existing in root-level .js utility files (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js). Zero errors in src/. Identical to the Task 18-A/B/C/D baseline.
+- TypeScript: `bunx tsc --noEmit | grep -E "profile-page|personal-data-section"` → 0 lines of output (zero TS errors in my modified files).
+
+Files modified:
+- /home/z/my-project/src/components/newmobility/profile/profile-page.tsx — 1 file. Added the profileHydrating state + 30s timeout + defensive guards + Save-button disabling + Loader2 spinner swap. File grew from 1977 → 2043 lines (+66 lines). All changes are in the profile-page.tsx file only — no API or store changes needed (the PUT /api/user/profile route was already correct from a previous task).
+
+Stage Summary:
+- ✅ Verified end-to-end via agent-browser that ALL 6 profile save flows work in the current working tree: personal info, bank info, emergency contact, PersonalDataSection (extended fields), password change, photo upload.
+- ✅ Identified the REAL root cause of the "still broken" complaint: the mount-time GET /api/user/profile was using the default 10s apiFetch timeout, which can time out on first-compile, leaving the form un-hydrated. A subsequent Save would send empty strings for address/city/state, silently WIPING the DB values.
+- ✅ Fixed the root cause: increased GET timeout to 30s, added profileHydrating state that disables all 3 Save buttons during hydration, added defensive guards in the 3 save handlers that refuse to save during hydration, added a user-visible error toast on hydration failure, and updated the Save button labels to "Carregando dados..." with a spinner during hydration.
+- ✅ Verified via agent-browser: the loading state is correctly visible (300-1200ms after reload, button shows "Carregando dados..." and is disabled), and the save+reload+persist flow works for personal info.
+- ✅ Lint clean for src/ (13 pre-existing errors in root .js files only, unchanged from baseline). No new TypeScript errors.
+- Test admin cmpskrkr50000o8bubki2cgqw ("Zanutim New Mobility") left with: Endereço="Final Test 888 Persisted", Conta="987654-3", RG="12.345.678-9", CEP="01310-100", Emergency contact Nome="Claudio Emergency Test", password unchanged (changed to "123456" → "123456" same value). Photo uploaded to /uploads/profiles/cmpskrkr50000o8bubki2cgqw-1783398631270.png.
+
+---
+Task ID: 19-QA
+Agent: Main Orchestrator (Finalize Pending Work)
+Task: Finalize unfinished items — verify profile save, dashboard, cashback, voucher, simulator, ranking, career page
+
+Work Log:
+- Started the dev server with a robust double-fork watchdog (/tmp/watchdog-dev.sh) that auto-restarts on crash. Server stable on 0.0.0.0:3000.
+- Performed comprehensive agent-browser QA:
+  * Login as admin (admin@newmobility.com / 123456) → success
+  * Dashboard: verified "Seu Link de Indicação" card with code ADMIN2025, copy/WhatsApp/Indicar buttons. No "Progresso do Plano" block (removed per user request). No search icon. Stats cards at top. ✅
+  * Sidebar: verified "Metas" (renamed from Gratificação), "Indicador" (renamed from Financeiro), "TalkMobi + Telemedicina" (NOVO badge), "Pagar Faturas" (NOVO badge) all present. ✅
+  * Profile (Dados Pessoais): InlineField edit-on-click replaced with ALWAYS-VISIBLE inputs (11 text/email/tel inputs). Tested end-to-end: edited Endereço → "Rua QA Teste 456" → clicked Salvar Alterações → PUT /api/user/profile returned 200 → reloaded page → value PERSISTED. ✅
+  * Cashback: "Sacar" + "Baixar Relatório" buttons at TOP. No "pico 53%" or similar peak badge. Matrix data shown. ✅
+  * Voucher: No "R$ NaN" anywhere (safeNum guards in place). "Adicionar Voucher" + "Comprar Voucher" buttons at top. Auto-generation via generateClientVoucherCode(). ✅
+  * Simulador: All 6 plans (Gratuito, Premium 1-5) selectable. Clicked "Simular" with Premium 2 → detailed breakdown rendered (Entrada 4x5, Residual 4x7, Vendas 4x9) with correct pt-BR formatting. ✅
+  * Leaderboard (Ranking): "Ganhos" column removed per user request. Shows only Referrals + Points. ✅
+  * Plano de Carreira: 6 graduações (Safira/Rubi/Esmeralda/Diamante/Imperial) with R$ rewards. Bônus Motorista/Entregador section present. ✅
+- Ran `bun run lint`: 13 errors, ALL pre-existing in root .js files (keep-alive.js, persistent-server.js, etc.). ZERO errors in src/. ✅
+
+Stage Summary:
+- ✅ Profile save FIXED (Task 19-A): Root cause was GET /api/user/profile timing out at 10s on first compile, leaving personalInfo fields empty → PUT sent empty values → wiped DB. Fix: increased timeout to 30s, added profileHydrating state, disabled Save buttons during hydration, defensive guards in save handlers. InlineField replaced with always-visible inputs. Verified end-to-end via agent-browser.
+- ✅ Dashboard referral link: present and functional (copy/WhatsApp/Indicar buttons).
+- ✅ TalkMobi + Telemedicina in sidebar menu: confirmed with NOVO badge.
+- ✅ Admin can edit TalkMobi plans: TalkMobiManager wired into admin panel under "Planos TalkMobi".
+- ✅ Cashback: buttons at top, no "pico 53%".
+- ✅ Voucher: no R$ NaN, auto-generation works.
+- ✅ Simulator: all plans work, calculations correct, pt-BR formatting.
+- ✅ Ranking: Ganhos column removed.
+- ✅ Financeiro → Indicador rename: confirmed in sidebar.
+- ✅ Gratificação → Metas rename: confirmed in sidebar.
+- ✅ Pagar Faturas menu item: present with NOVO badge.
+- Files changed in this session: none (verification-only). Profile fix was applied by Task 19-A subagent.
+- Dev server: stable on 0.0.0.0:3000 via /tmp/watchdog-dev.sh double-fork daemon.
+
+---
+Task ID: 19-FINAL
+Agent: Main Orchestrator (Final Verification + Cron Setup)
+Task: Final verification and 15-minute recurring cron job creation
+
+Work Log:
+- Verified dev server stability: next-server (PID 21180) running on 0.0.0.0:3000 via /tmp/watchdog-dev.sh double-fork daemon. HTTP 200 confirmed.
+- Final agent-browser QA on dashboard:
+  * "Seu Link de Indicação" card: PRESENT ✅ (hasReferral: true)
+  * "Progresso do Plano" block: ABSENT ✅ (hasProgressoDoPlano: false)
+  * Greeting "Bom dia, Zanutim!" with account age (37 dias)
+  * Stats cards (Ganhos CashBack, Novas Indicações, Pontos Ganhos, Saques)
+  * Ações Rápidas (Comprar Voucher, Indicar Amigo, Ver Extrato, Solicitar Saque)
+- Created recurring cron job (ID 256857, fixed_rate 900s = 15 minutes, tz America/Sao_Paulo, kind webDevReview) for continuous QA + autonomous development. The job will: read worklog, assess status, run agent-browser QA, fix bugs or propose new features, update worklog.
+
+Stage Summary:
+- ✅ All user-requested items from latest message verified working:
+  1. Dashboard referral link ("Seu Link de Indicação") — present with copy/WhatsApp/Indicar
+  2. TalkMobi + Telemedicina in sidebar menu — present with NOVO badge
+  3. Admin can edit TalkMobi plans screen — TalkMobiManager wired into admin panel
+  4. Telemedicina — full activation-request flow implemented (user requests → admin approves → user sees activation link)
+- ✅ Profile save bug FIXED (Task 19-A): root cause was GET /api/user/profile 10s timeout on first compile leaving fields empty → PUT wiped DB. Fix: 30s timeout + hydration state + always-visible inputs. Verified end-to-end.
+- ✅ All previously-complained items verified fixed: no "pico 53%", no "R$ NaN", no "Progresso do Plano", no search icon, Ganhos column removed, buttons at top.
+- ✅ Lint clean for src/ (13 pre-existing errors in root .js files only).
+- ✅ Dev server stable via double-fork watchdog daemon.
+- ✅ 15-minute recurring webDevReview cron job created for continuous autonomous development.
+- Remaining items for future rounds (will be picked up by the cron job): Asaas payment integration, admin advanced features (user-types/permissions/audit/withdrawal-release), notifications 5-day auto-reminder, anúncios segmentation, mobile responsiveness polish.

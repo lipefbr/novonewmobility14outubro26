@@ -19,6 +19,12 @@ export async function GET(req: NextRequest) {
     }
 
     // Get all active users with referral count
+    // Include GamificationStreak so the leaderboard's "points" ranking
+    // reflects BOTH the User.personalPoints (credited by the login route
+    // via creditDailyLoginPoints) AND the legacy streak.totalPoints that
+    // the /api/gamification/streak route still maintains. This keeps
+    // users who had streak points before the login-route fix visible in
+    // the points leaderboard.
     const allUsersRaw = await prisma.user.findMany({
       where: { isActive: true },
       select: {
@@ -30,6 +36,7 @@ export async function GET(req: NextRequest) {
         careerPoints: true,
         personalPoints: true,
         _count: { select: { referrals: true } },
+        gamificationStreak: { select: { totalPoints: true } },
       },
       take: 500,
     })
@@ -37,6 +44,11 @@ export async function GET(req: NextRequest) {
     const allUsers = allUsersRaw.map(u => ({
       ...u,
       directReferrals: u._count.referrals,
+      // Total points = career + personal + streak. The streak addition
+      // is a backwards-compat bridge for users whose daily-login points
+      // were credited to GamificationStreak.totalPoints before the
+      // login route started also writing to User.personalPoints.
+      totalPoints: u.careerPoints + u.personalPoints + (u.gamificationStreak?.totalPoints || 0),
     }))
 
     // Compute date range for period filtering (kept for future use; ranking
@@ -78,8 +90,8 @@ export async function GET(req: NextRequest) {
           name: u.name,
           plan: u.plan,
           profileImage: u.profileImage,
-          value: u.careerPoints + u.personalPoints,
-          valueDisplay: `${u.careerPoints + u.personalPoints} pts`,
+          value: u.totalPoints,
+          valueDisplay: `${u.totalPoints} pts`,
         })).sort((a, b) => b.value - a.value)
         break
 
@@ -106,9 +118,11 @@ export async function GET(req: NextRequest) {
 
     // User rank summary for all categories.
     // Privacy: no monetary values exposed — "earnings" rank uses referral count.
+    // "points" rank uses career + personal + streak total so daily-login
+    // points actually move the user up the leaderboard.
     const userRefData = allUsers.find(u => u.id === userId)
     const userReferrals = userRefData?.directReferrals || 0
-    const userPoints = (userRefData?.careerPoints || 0) + (userRefData?.personalPoints || 0)
+    const userPoints = userRefData?.totalPoints || 0
 
     return success({
       type,
@@ -125,7 +139,7 @@ export async function GET(req: NextRequest) {
           value: `${userReferrals} indicações`,
         },
         points: {
-          position: allUsers.map(u => ({ id: u.id, pts: u.careerPoints + u.personalPoints })).sort((a, b) => b.pts - a.pts).findIndex(u => u.id === userId) + 1,
+          position: allUsers.map(u => ({ id: u.id, pts: u.totalPoints })).sort((a, b) => b.pts - a.pts).findIndex(u => u.id === userId) + 1,
           value: `${userPoints} pts`,
         },
       },

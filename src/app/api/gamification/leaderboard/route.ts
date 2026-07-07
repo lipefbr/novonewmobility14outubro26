@@ -8,6 +8,9 @@ export async function GET(req: NextRequest) {
 
     // Privacy-aware leaderboard: rank by referral count and career points
     // (no monetary values are exposed across users).
+    // Include GamificationStreak.totalPoints so daily-login streak points
+    // (which the login route credits to BOTH User.personalPoints and
+    // GamificationStreak.totalPoints) are reflected in the ranking.
     const topUsersRaw = await prisma.user.findMany({
       where: { isActive: true },
       select: {
@@ -18,6 +21,7 @@ export async function GET(req: NextRequest) {
         careerPoints: true,
         personalPoints: true,
         _count: { select: { referrals: true } },
+        gamificationStreak: { select: { totalPoints: true } },
       },
       orderBy: { careerPoints: 'desc' },
       take: 20,
@@ -28,7 +32,7 @@ export async function GET(req: NextRequest) {
       id: user.id,
       name: user.name,
       plan: user.plan,
-      careerPoints: user.careerPoints + user.personalPoints,
+      careerPoints: user.careerPoints + user.personalPoints + (user.gamificationStreak?.totalPoints || 0),
       directReferrals: user._count.referrals,
       badge: index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : null,
     }))

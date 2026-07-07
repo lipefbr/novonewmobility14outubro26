@@ -8,7 +8,7 @@ import { MatrixVisualization } from './matrix-visualization'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
-import { DollarSign, TrendingUp, ShoppingBag, ArrowDownRight, Download, TrendingDown, Users, Layers, BarChart3, Activity, ChevronRight, Lightbulb, Sparkles, ArrowUpRight, Zap } from 'lucide-react'
+import { DollarSign, TrendingUp, ShoppingBag, ArrowDownRight, Download, TrendingDown, Users, Layers, BarChart3, Activity, Wallet } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { EmptyState } from '../ui/empty-states'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -319,9 +319,6 @@ export function CashbackPage() {
   const totalMembers = cashbackSummary.entrada.total + cashbackSummary.residual.total + cashbackSummary.vendas.total
   const totalUsers = cashbackSummary.entrada.totalUsers + cashbackSummary.residual.totalUsers + cashbackSummary.vendas.totalUsers
   const lastMonthTotal = cashbackSummary.entrada.lastMonth + cashbackSummary.residual.lastMonth + cashbackSummary.vendas.lastMonth
-  // Previously hardcoded to 8.5 — that was fictitious data. Set to 0
-  // until the API exposes a real month-over-month change metric.
-  const percentChange = 0
 
   const getFilteredSummary = (type: 'entrada' | 'residual' | 'vendas') => {
     const s = cashbackSummary[type]
@@ -357,10 +354,25 @@ export function CashbackPage() {
           <h2 className="text-lg sm:text-xl font-bold text-foreground">{t('cashback.title')}</h2>
           <p className="text-xs sm:text-sm text-muted-foreground">{t('cashback.subtitle')}</p>
         </div>
-        <Button variant="outline" size="sm" className="gap-2 text-xs w-fit h-9">
-          <Download className="h-3.5 w-3.5" />
-          {t('cashback.downloadReport')}
-        </Button>
+        {/* Action buttons live at the TOP so users can act on their cashback
+            balance immediately, instead of hunting for them at the bottom of
+            a long page. "Sacar" routes to the Financial page where the
+            withdrawal flow lives; "Baixar Relatório" is kept for parity. */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="default"
+            size="sm"
+            className="gap-2 text-xs w-fit h-9 bg-emerald-600 hover:bg-emerald-700 text-white"
+            onClick={() => setActivePage('financial')}
+          >
+            <Wallet className="h-3.5 w-3.5" />
+            Sacar
+          </Button>
+          <Button variant="outline" size="sm" className="gap-2 text-xs w-fit h-9">
+            <Download className="h-3.5 w-3.5" />
+            {t('cashback.downloadReport')}
+          </Button>
+        </div>
       </div>
 
       {/* Total Members Hero Card with large animated number */}
@@ -380,10 +392,6 @@ export function CashbackPage() {
                 <p className="text-xs sm:text-sm text-emerald-100 font-medium">Total de Membros na Rede</p>
                 <AnimatedCounter value={totalMembers} className="text-2xl sm:text-3xl md:text-4xl text-white mt-1" />
                 <div className="flex items-center gap-2 mt-2 flex-wrap">
-                  <div className="flex items-center gap-1 bg-white/15 rounded-full px-2.5 py-1">
-                    <TrendingUp className="h-3.5 w-3.5 text-emerald-200" />
-                    <span className="text-xs font-bold text-white">+{percentChange}%</span>
-                  </div>
                   <span className="text-xs text-emerald-200">vs. mês anterior</span>
                 </div>
               </div>
@@ -392,10 +400,6 @@ export function CashbackPage() {
                 <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2.5 sm:p-3 text-center border border-white/10">
                   <p className="text-[10px] text-emerald-200 uppercase tracking-wide">Este Mês</p>
                   <p className="text-base sm:text-lg font-bold text-white">{lastMonthTotal.toLocaleString('pt-BR')}</p>
-                  <div className="flex items-center justify-center gap-1 mt-0.5">
-                    <ArrowDownRight className="h-3 w-3 text-emerald-300" />
-                    <span className="text-[10px] text-emerald-300">+{percentChange}%</span>
-                  </div>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Users className="h-3.5 w-3.5 text-emerald-200" />
@@ -556,35 +560,6 @@ export function CashbackPage() {
         </Card>
       </motion.div>
 
-      {/* Monthly Member Growth Mini Banner */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
-        <Card className="shadow-sm bg-card overflow-hidden">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
-                  <Zap className="h-4 w-4" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground font-medium">Tendência Mensal</p>
-                  <p className="text-sm font-bold text-foreground">Sua rede está crescendo</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="text-right">
-                  <p className="text-[10px] text-muted-foreground">Este mês</p>
-                  <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{lastMonthTotal.toLocaleString('pt-BR')} membros</p>
-                </div>
-                <div className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30">
-                  <ArrowUpRight className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">+{percentChange}%</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-
       {/* Tabs with animated slide indicator */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid grid-cols-3 w-full sm:w-auto sm:inline-flex h-auto sm:h-9 gap-1 p-1">
@@ -611,9 +586,9 @@ export function CashbackPage() {
               transition={{ duration: 0.25 }}
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" trend={0} level="high" progressPct={undefined} />
-                <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.entrada.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" trend={0} level="medium" progressPct={undefined} />
-                <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.entrada.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" trend={0} level="medium" progressPct={undefined} />
+                <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" level="high" progressPct={undefined} />
+                <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.entrada.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" level="medium" progressPct={undefined} />
+                <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.entrada.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" level="medium" progressPct={undefined} />
                 <SummaryCard label={t('cashback.pending')} value={cashbackSummary.entrada.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} level="low" progressPct={undefined} />
               </div>
             </motion.div>
@@ -628,9 +603,9 @@ export function CashbackPage() {
               transition={{ duration: 0.25 }}
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" trend={0} level="high" progressPct={undefined} />
-                <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.residual.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" trend={0} level="medium" progressPct={undefined} />
-                <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.residual.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" trend={0} level="medium" progressPct={undefined} />
+                <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" level="high" progressPct={undefined} />
+                <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.residual.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" level="medium" progressPct={undefined} />
+                <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.residual.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" level="medium" progressPct={undefined} />
                 <SummaryCard label={t('cashback.pending')} value={cashbackSummary.residual.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} level="low" progressPct={undefined} />
               </div>
             </motion.div>
@@ -645,9 +620,9 @@ export function CashbackPage() {
               transition={{ duration: 0.25 }}
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" trend={0} level="high" progressPct={undefined} />
-                <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.vendas.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" trend={0} level="high" progressPct={undefined} />
-                <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.vendas.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" trend={0} level="medium" progressPct={undefined} />
+                <SummaryCard label={t('cashback.totalAccumulated')} value={currentSummary.total} icon={DollarSign} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" level="high" progressPct={undefined} />
+                <SummaryCard label={t('cashback.lastMonth')} value={cashbackSummary.vendas.lastMonth} icon={ArrowDownRight} color="bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" level="high" progressPct={undefined} />
+                <SummaryCard label={t('cashback.lastWeek')} value={cashbackSummary.vendas.lastWeek} icon={ArrowDownRight} color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" level="medium" progressPct={undefined} />
                 <SummaryCard label={t('cashback.pending')} value={cashbackSummary.vendas.pending} icon={DollarSign} color="bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" animate={false} level="low" progressPct={undefined} />
               </div>
             </motion.div>

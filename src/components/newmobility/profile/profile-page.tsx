@@ -17,7 +17,7 @@ import { useTranslation } from '@/lib/i18n'
 import {
   User, Building2, Lock, Save, Camera, Shield, Calendar,
   CreditCard, Users, DollarSign, Copy, Check as CheckIcon, Check, ArrowUpRight, Link2, Award,
-  Verified, Mail, Phone, MapPin, Pencil, Eye, EyeOff, Smartphone, Globe, Key,
+  Verified, Mail, Phone, MapPin, Eye, EyeOff, Smartphone, Globe, Key,
   ShieldCheck, ShieldAlert, ShieldX, Chrome, Apple, Send, FileCheck, Hash,
   AlertTriangle, HelpCircle, Heart, Plus, Trash2, Edit3, X,
   Siren, Cake, Loader2,
@@ -30,82 +30,55 @@ import { userApi, apiFetch, ApiError } from '@/lib/api'
 import { toast as sonnerToast } from 'sonner'
 import { cn } from '@/lib/utils'
 
-// Inline Editable Field component.
+// Always-visible Editable Field component.
 //
-// Task 19-A: This component previously kept an internal `tempValue` draft
-// and only propagated to the parent via `onChange` when the user clicked
-// the green check (or pressed Enter). That meant a user who typed a new
-// value and then clicked "Salvar Alterações" WITHOUT first clicking the
-// green check would silently send the OLD value to the API — the typed
-// text was discarded because `tempValue` was never committed. This was
-// the root cause of the "profile saving doesn't work in the browser"
-// bug reported by the user (the API itself worked fine via curl).
+// Task 19-A (deep-fix): The previous InlineField used an edit-on-click
+// pattern (text + hidden pencil → click pencil → input appears → type →
+// click check or blur → exits edit mode). This caused TWO real bugs:
 //
-// Fix: the Input is now controlled directly by the parent's `value` /
-// `onChange` — every keystroke propagates immediately, so the parent's
-// personalInfo / bankInfo / emergencyContact state is always up-to-date
-// when the Save button fires. The pencil/edit-mode UI is preserved for
-// visual consistency, but there is no longer a "commit" step. The green
-// check now simply exits edit mode (the value is already saved). onBlur
-// also exits edit mode, and `onMouseDown preventDefault` on the check
-// button prevents blur from unmounting it before the click fires.
-function InlineField({ label, value, onChange, icon: Icon, type = 'text', disabled = false }: {
+//   1. UX confusion: on desktop the pencil icon was `opacity-0` until
+//      `group-hover`, so users had no visual cue that fields were
+//      editable. They would change a field's text mentally, click
+//      "Salvar Alterações" without ever entering edit mode, and the
+//      OLD value was sent to the API. From the user's perspective
+//      "saving doesn't work" — even though the API was fine.
+//
+//   2. Race condition with the mount-time GET /api/user/profile: that
+//      fetch (which can take 8+ s on first compile) resolves by calling
+//      setPersonalInfo(...) and OVERWRITES whatever the user had typed
+//      in the inline Input while the request was in flight. The user's
+//      edits silently vanished, and the subsequent Save sent the stale
+//      DB value. (Fixed separately below via personalDirtyRef etc.)
+//
+// Fix: the field is now an always-visible Input. No edit toggle, no
+// hidden pencil, no blur-loses-edits footgun. Every keystroke still
+// propagates to the parent's state via `onChange` (controlled input),
+// so the Save button always reads the latest typed value. `disabled`
+// fields (E-mail, CPF) render as a read-only Input so the layout is
+// consistent and the user can see they are not editable.
+function InlineField({ label, value, onChange, icon: Icon, type = 'text', disabled = false, placeholder }: {
   label: string
   value: string
   onChange: (val: string) => void
   icon?: React.ElementType
   type?: string
   disabled?: boolean
+  placeholder?: string
 }) {
-  const [editing, setEditing] = useState(false)
-
   return (
-    <div className="group space-y-1.5">
+    <div className="space-y-1.5">
       <Label className="text-xs text-muted-foreground flex items-center gap-1">
         {Icon && <Icon className="h-3 w-3" />}
         {label}
       </Label>
-      {editing ? (
-        <div className="flex items-center gap-2">
-          <Input
-            type={type}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            className="h-8 text-sm"
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') setEditing(false)
-              if (e.key === 'Escape') setEditing(false)
-            }}
-            onBlur={() => setEditing(false)}
-          />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0 text-emerald-600 hover:text-emerald-700"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => setEditing(false)}
-          >
-            <Check className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      ) : (
-        <div className="flex items-center gap-1.5">
-          <p className={`text-sm font-medium ${disabled ? 'text-muted-foreground' : 'text-foreground'}`}>
-            {type === 'password' ? '••••••' : value || '-'}
-          </p>
-          {!disabled && (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              aria-label={`Editar ${label}`}
-              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-emerald-600 transition-colors opacity-60 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-      )}
+      <Input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        placeholder={placeholder}
+        className="h-9 text-sm"
+      />
     </div>
   )
 }
@@ -390,8 +363,67 @@ export function ProfilePage() {
     pixEnabled: true,
   })
 
+  // Task 19-A (deep-fix): Dirty refs that track whether the user has
+  // typed into any field of each section. The mount-time GET
+  // /api/user/profile (which can take 8+ s on first compile) resolves
+  // by calling setPersonalInfo / setBankInfo / setEmergencyContact
+  // with the DB values — WITHOUT these guards, a late-arriving GET
+  // response would OVERWRITE the user's unsaved edits, causing the
+  // subsequent "Salvar Alterações" to silently send the stale DB value
+  // instead of the typed value. This was the REAL root cause of the
+  // "profile saving doesn't work in the browser" complaint: the API
+  // itself worked fine via curl, but in the browser the GET response
+  // arrived after the user typed and clobbered their edits.
+  //
+  // Each ref is set to true on the FIRST keystroke in any field of the
+  // corresponding section, and the GET response handler below skips
+  // the setState for any section already marked dirty. The refs are
+  // reset to false only when the user id changes (new login).
+  const personalDirtyRef = useRef(false)
+  const bankDirtyRef = useRef(false)
+  const emergencyDirtyRef = useRef(false)
+
+  // Task 19-A (deep-fix, round 2): The mount-time GET /api/user/profile
+  // uses the default 10s apiFetch timeout. On first-compile (or any slow
+  // network) this can EXCEED 10s, causing an ApiTimeoutError — observed
+  // in the browser console:
+  //   "Failed to fetch profile for personal info hydration: ApiTimeoutError"
+  // When that happens, personalInfo stays at the initial state which is
+  // populated from the Zustand `user` store for name/phone/email/cpf
+  // (those fields ARE on UserData), but address/city/state/birthDate/etc.
+  // default to '' (because they're NOT on UserData). If the user then
+  // clicks "Salvar Alterações", the PUT sends address='', city='',
+  // state='' — silently WIPING any previously-saved DB values.
+  //
+  // Fix: track an explicit `profileHydrating` flag (true while the GET
+  // is in-flight OR has failed). The Save buttons are disabled while
+  // this is true, with a "Carregando dados..." label so the user knows
+  // to wait. The flag is reset to false on success OR failure, with a
+  // console.warn if it timed out so the issue is visible.
+  const [profileHydrating, setProfileHydrating] = useState(true)
+
+  // Wrapped setters that flip the dirty ref. Use these in the onChange
+  // handlers below so we don't have to repeat the ref assignment.
+  const updatePersonalField = <K extends keyof PersonalInfo>(key: K, value: PersonalInfo[K]) => {
+    personalDirtyRef.current = true
+    setPersonalInfo((p) => ({ ...p, [key]: value }))
+  }
+  const updateBankField = <K extends keyof typeof bankInfo>(key: K, value: (typeof bankInfo)[K]) => {
+    bankDirtyRef.current = true
+    setBankInfo((p) => ({ ...p, [key]: value }))
+  }
+  const updateEmergencyField = <K extends keyof typeof emergencyContact>(key: K, value: (typeof emergencyContact)[K]) => {
+    emergencyDirtyRef.current = true
+    setEmergencyContact((p) => ({ ...p, [key]: value }))
+  }
+
   // Sync bank info from user data on mount or when user changes
   useEffect(() => {
+    // Reset dirty refs on user change so the new user's GET response
+    // is allowed to hydrate the form fields.
+    personalDirtyRef.current = false
+    bankDirtyRef.current = false
+    emergencyDirtyRef.current = false
     if (user) {
       setBankInfo({
         bankCode: user.bankCode || '',
@@ -448,43 +480,72 @@ export function ProfilePage() {
   useEffect(() => {
     if (!user?.id) return
     let cancelled = false
-    userApi
-      .getProfile(user.id)
+    setProfileHydrating(true)
+    // Task 19-A (deep-fix, round 2): Bump the timeout from the default
+    // 10s to 30s. The /api/user/profile route can take 8-15s on the
+    // first compile (the dev.log shows "GET /api/user/profile 200 in
+    // 5.1s (compile: 2.7s, render: 2.4s)" — and that was after a
+    // warm-ish cache). On a cold first-compile the GET can exceed 10s,
+    // which previously caused an ApiTimeoutError and left the form
+    // un-hydrated, which in turn caused the Save button to send empty
+    // strings for address/city/state/birthDate and silently wipe the
+    // DB. 30s matches the timeout already used by /api/referrals (see
+    // referralsApi.getList in lib/api.ts line 139).
+    apiFetch<any>(`/user/profile?userId=${user.id}`, { timeoutMs: 30_000 })
       .then((profile: any) => {
         if (cancelled || !profile) return
-        setPersonalInfo({
-          name: profile.name ?? '',
-          email: profile.email ?? '',
-          phone: profile.phone ?? '',
-          cpf: profile.cpf ?? '',
-          address: profile.address ?? '',
-          city: profile.city ?? '',
-          state: profile.state ?? '',
-          birthDate: profile.birthDate ? String(profile.birthDate) : '',
-          rg: profile.rg ?? '',
-          maritalStatus: profile.maritalStatus ?? '',
-          gender: profile.gender ?? '',
-          education: profile.education ?? '',
-          zipCode: profile.zipCode ?? '',
-          sponsorId: profile.sponsorId ?? '',
-          qualification: profile.qualification ?? '',
-        })
-        setBankInfo({
-          bankCode: profile.bankCode ?? '',
-          bankAgency: profile.bankAgency ?? '',
-          bankAccount: profile.bankAccount ?? '',
-          bankType: profile.bankType || 'cc',
-          pixKey: profile.pixKey ?? '',
-          pixEnabled: profile.pixEnabled ?? true,
-        })
-        setEmergencyContact({
-          name: profile.emergencyName ?? '',
-          phone: profile.emergencyPhone ?? '',
-          relationship: profile.emergencyRelation ?? '',
-        })
+        // Task 19-A (deep-fix): Only apply the API response for sections
+        // the user has NOT yet edited. This prevents a late-arriving GET
+        // (e.g. 8s on first compile, or any slow network) from clobbering
+        // the user's unsaved edits in any of the three sections.
+        if (!personalDirtyRef.current) {
+          setPersonalInfo({
+            name: profile.name ?? '',
+            email: profile.email ?? '',
+            phone: profile.phone ?? '',
+            cpf: profile.cpf ?? '',
+            address: profile.address ?? '',
+            city: profile.city ?? '',
+            state: profile.state ?? '',
+            birthDate: profile.birthDate ? String(profile.birthDate) : '',
+            rg: profile.rg ?? '',
+            maritalStatus: profile.maritalStatus ?? '',
+            gender: profile.gender ?? '',
+            education: profile.education ?? '',
+            zipCode: profile.zipCode ?? '',
+            sponsorId: profile.sponsorId ?? '',
+            qualification: profile.qualification ?? '',
+          })
+        }
+        if (!bankDirtyRef.current) {
+          setBankInfo({
+            bankCode: profile.bankCode ?? '',
+            bankAgency: profile.bankAgency ?? '',
+            bankAccount: profile.bankAccount ?? '',
+            bankType: profile.bankType || 'cc',
+            pixKey: profile.pixKey ?? '',
+            pixEnabled: profile.pixEnabled ?? true,
+          })
+        }
+        if (!emergencyDirtyRef.current) {
+          setEmergencyContact({
+            name: profile.emergencyName ?? '',
+            phone: profile.emergencyPhone ?? '',
+            relationship: profile.emergencyRelation ?? '',
+          })
+        }
       })
       .catch((err: unknown) => {
         console.error('Failed to fetch profile for personal info hydration:', err)
+        // Task 19-A (deep-fix, round 2): Surface a user-visible toast on
+        // hydration failure so the user knows the form may be stale and
+        // that clicking Save could wipe un-hydrated fields. The Save
+        // buttons are also disabled while `profileHydrating` is true
+        // (set back to false below) to prevent the data-loss path.
+        sonnerToast.error('Não foi possível carregar seus dados. Recarregue a página antes de salvar.')
+      })
+      .finally(() => {
+        if (!cancelled) setProfileHydrating(false)
       })
     return () => {
       cancelled = true
@@ -682,6 +743,17 @@ export function ProfilePage() {
 
   const handleSavePersonal = async () => {
     if (!user?.id) return
+    // Task 19-A (deep-fix, round 2): Refuse to save while the form is
+    // still hydrating from the GET /api/user/profile. If we allowed the
+    // save, the PUT would send address='', city='', state='' (the
+    // initial empty defaults for fields not on the Zustand UserData
+    // interface), silently WIPING any previously-saved DB values. The
+    // Save button is also disabled in the UI, but this guard is the
+    // safety net.
+    if (profileHydrating) {
+      sonnerToast.warning('Aguarde o carregamento dos seus dados antes de salvar.')
+      return
+    }
     setSaving(true)
     try {
       // Task 19-A: This handler ONLY sends the fields managed by the
@@ -708,6 +780,19 @@ export function ProfilePage() {
           state: personalInfo.state,
         }),
       })
+      // Task 19-A (deep-fix): Update the local personalInfo state from
+      // the PUT response so the UI reflects exactly what the server
+      // stored. Uses the raw setPersonalInfo (NOT updatePersonalField)
+      // so we don't re-mark the section dirty — the user's edits have
+      // already been persisted.
+      setPersonalInfo((p) => ({
+        ...p,
+        name: updated.name ?? p.name,
+        phone: updated.phone ?? p.phone,
+        address: updated.address ?? p.address,
+        city: updated.city ?? p.city,
+        state: updated.state ?? p.state,
+      }))
       // Update the local store with the latest data from the server.
       // Bug #5 fix: also sync address/city/state — previously these were
       // sent in the PUT body but not propagated back to the Zustand store,
@@ -719,11 +804,13 @@ export function ProfilePage() {
         city: updated.city ?? personalInfo.city,
         state: updated.state ?? personalInfo.state,
       } as any)
+      sonnerToast.success('Dados pessoais salvos com sucesso!')
       toast({
         title: 'Dados atualizados',
         description: 'Suas informações pessoais foram salvas com sucesso.',
       })
     } catch (err: any) {
+      sonnerToast.error(err.message || 'Erro ao salvar dados pessoais.')
       toast({
         title: 'Erro ao salvar dados',
         description: err.message || 'Tente novamente mais tarde.',
@@ -736,7 +823,14 @@ export function ProfilePage() {
 
   const handleSaveEmergencyContact = async () => {
     if (!user?.id) return
+    // Task 19-A (deep-fix, round 2): Block save while the form is
+    // still hydrating (see handleSavePersonal for the full rationale).
+    if (profileHydrating) {
+      sonnerToast.warning('Aguarde o carregamento dos seus dados antes de salvar.')
+      return
+    }
     if (!emergencyContact.name || !emergencyContact.phone) {
+      sonnerToast.error('Preencha pelo menos o nome e o telefone do contato de emergência.')
       toast({
         title: 'Campos obrigatórios',
         description: 'Preencha pelo menos o nome e o telefone do contato de emergência.',
@@ -746,7 +840,7 @@ export function ProfilePage() {
     }
     setEmergencySaving(true)
     try {
-      await apiFetch<any>('/user/profile', {
+      const updated = await apiFetch<any>('/user/profile', {
         method: 'PUT',
         body: JSON.stringify({
           userId: user.id,
@@ -754,6 +848,12 @@ export function ProfilePage() {
           emergencyPhone: emergencyContact.phone,
           emergencyRelation: emergencyContact.relationship || null,
         }),
+      })
+      // Task 19-A (deep-fix): Sync local state from PUT response.
+      setEmergencyContact({
+        name: updated.emergencyName ?? emergencyContact.name,
+        phone: updated.emergencyPhone ?? emergencyContact.phone,
+        relationship: updated.emergencyRelation ?? emergencyContact.relationship,
       })
       // Sync to the user store so the data persists across navigation.
       // These fields are not declared on the UserData interface, so we
@@ -764,11 +864,13 @@ export function ProfilePage() {
         emergencyPhone: emergencyContact.phone,
         emergencyRelation: emergencyContact.relationship || null,
       } as any)
+      sonnerToast.success('Contato de emergência salvo com sucesso!')
       toast({
         title: 'Contato de emergência salvo',
         description: 'As informações do contato de emergência foram atualizadas com sucesso.',
       })
     } catch (err: any) {
+      sonnerToast.error(err.message || 'Erro ao salvar contato de emergência.')
       toast({
         title: 'Erro ao salvar contato',
         description: err.message || 'Tente novamente mais tarde.',
@@ -818,12 +920,14 @@ export function ProfilePage() {
       const data = await res.json()
       if (data.profileImage) {
         updateUser({ profileImage: data.profileImage })
+        sonnerToast.success('Foto de perfil atualizada com sucesso!')
         toast({
           title: 'Foto atualizada',
           description: 'Sua foto de perfil foi atualizada com sucesso.',
         })
       }
     } catch (err: any) {
+      sonnerToast.error(err.message || 'Erro ao enviar foto.')
       toast({
         title: 'Erro ao enviar foto',
         description: err.message || 'Tente novamente mais tarde.',
@@ -840,6 +944,17 @@ export function ProfilePage() {
 
   const handleSaveBank = async () => {
     if (!user?.id) return
+    // Task 19-A (deep-fix, round 2): Block save while the form is still
+    // hydrating. Without this guard, a save during hydration would send
+    // bankCode=null / bankAgency=null / bankAccount=null / pixKey=null
+    // (because the form's initial state defaults all of these to '' and
+    // the handler coerces '' to null), silently wiping any previously-
+    // saved bank details. The Save button is also disabled in the UI
+    // while `profileHydrating` is true.
+    if (profileHydrating) {
+      sonnerToast.warning('Aguarde o carregamento dos seus dados antes de salvar.')
+      return
+    }
     setSaving(true)
     try {
       const updated = await apiFetch<any>('/user/profile', {
@@ -854,6 +969,16 @@ export function ProfilePage() {
           pixEnabled: bankInfo.pixEnabled,
         }),
       })
+      // Task 19-A (deep-fix): Sync local bankInfo state from PUT response.
+      setBankInfo((p) => ({
+        ...p,
+        bankCode: updated.bankCode ?? p.bankCode,
+        bankAgency: updated.bankAgency ?? p.bankAgency,
+        bankAccount: updated.bankAccount ?? p.bankAccount,
+        bankType: updated.bankType ?? p.bankType,
+        pixKey: updated.pixKey ?? p.pixKey,
+        pixEnabled: updated.pixEnabled ?? p.pixEnabled,
+      }))
       // Update the store with new PIX/bank data
       updateUser({
         pixKey: updated.pixKey ?? bankInfo.pixKey,
@@ -863,11 +988,13 @@ export function ProfilePage() {
         bankAccount: updated.bankAccount ?? bankInfo.bankAccount,
         bankType: updated.bankType ?? bankInfo.bankType,
       })
+      sonnerToast.success('Dados bancários salvos com sucesso!')
       toast({
         title: 'Dados bancários atualizados',
         description: 'Suas informações bancárias e chave PIX foram salvas com sucesso.',
       })
     } catch (err: any) {
+      sonnerToast.error(err.message || 'Erro ao salvar dados bancários.')
       toast({
         title: 'Erro ao salvar dados',
         description: err.message || 'Tente novamente mais tarde.',
@@ -917,6 +1044,7 @@ export function ProfilePage() {
         passwordInfo.currentPassword,
         passwordInfo.newPassword,
       )
+      sonnerToast.success('Senha alterada com sucesso!')
       toast({
         title: 'Senha alterada',
         description: 'Sua senha foi atualizada com sucesso.',
@@ -924,6 +1052,7 @@ export function ProfilePage() {
       setPasswordInfo({ currentPassword: '', newPassword: '', confirmPassword: '' })
     } catch (err: unknown) {
       const msg = err instanceof ApiError ? err.message : 'Erro ao alterar senha.'
+      sonnerToast.error(msg)
       toast({
         title: 'Erro',
         description: msg,
@@ -1264,14 +1393,14 @@ export function ProfilePage() {
               <CardContent className="space-y-4">
                 <Separator />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <InlineField label="Nome Completo" value={personalInfo.name} onChange={(v) => setPersonalInfo((p) => ({ ...p, name: v }))} icon={User} />
+                  <InlineField label="Nome Completo" value={personalInfo.name} onChange={(v) => updatePersonalField('name', v)} icon={User} placeholder="Seu nome completo" />
                   {/* Bug #3 fix: email is editable but never sent in the
                       PUT body of handleSavePersonal (email changes require
                       a verification flow). Disable the field to prevent
                       users from editing a value that would silently be
                       dropped on save. */}
                   <InlineField label="E-mail" value={personalInfo.email} onChange={() => {}} icon={Mail} type="email" disabled />
-                  <InlineField label="Telefone" value={personalInfo.phone} onChange={(v) => setPersonalInfo((p) => ({ ...p, phone: v }))} icon={Phone} />
+                  <InlineField label="Telefone" value={personalInfo.phone} onChange={(v) => updatePersonalField('phone', v)} icon={Phone} placeholder="(11) 99999-9999" />
                   <InlineField label="CPF" value={personalInfo.cpf} onChange={() => {}} icon={Shield} disabled />
                 </div>
                 <p className="text-[11px] text-muted-foreground">
@@ -1282,23 +1411,23 @@ export function ProfilePage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2 sm:col-span-2">
-                    <InlineField label="Endereço" value={personalInfo.address} onChange={(v) => setPersonalInfo((p) => ({ ...p, address: v }))} icon={MapPin} />
+                    <InlineField label="Endereço" value={personalInfo.address} onChange={(v) => updatePersonalField('address', v)} icon={MapPin} placeholder="Rua, número, complemento" />
                   </div>
-                  <InlineField label="Cidade" value={personalInfo.city} onChange={(v) => setPersonalInfo((p) => ({ ...p, city: v }))} />
-                  <InlineField label="Estado" value={personalInfo.state} onChange={(v) => setPersonalInfo((p) => ({ ...p, state: v }))} />
+                  <InlineField label="Cidade" value={personalInfo.city} onChange={(v) => updatePersonalField('city', v)} placeholder="São Paulo" />
+                  <InlineField label="Estado" value={personalInfo.state} onChange={(v) => updatePersonalField('state', v)} placeholder="SP" />
                 </div>
 
                 <Button
                   className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
                   onClick={handleSavePersonal}
-                  disabled={saving}
+                  disabled={saving || profileHydrating}
                 >
-                  {saving ? (
-                    <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  {saving || profileHydrating ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <Save className="h-4 w-4" />
                   )}
-                  Salvar Alterações
+                  {profileHydrating ? 'Carregando dados...' : 'Salvar Alterações'}
                 </Button>
               </CardContent>
             </Card>
@@ -1322,33 +1451,36 @@ export function ProfilePage() {
                   <InlineField
                     label="Nome do Contato"
                     value={emergencyContact.name}
-                    onChange={(v) => setEmergencyContact((p) => ({ ...p, name: v }))}
+                    onChange={(v) => updateEmergencyField('name', v)}
                     icon={User}
+                    placeholder="Nome completo"
                   />
                   <InlineField
                     label="Telefone"
                     value={emergencyContact.phone}
-                    onChange={(v) => setEmergencyContact((p) => ({ ...p, phone: v }))}
+                    onChange={(v) => updateEmergencyField('phone', v)}
                     icon={Phone}
+                    placeholder="(11) 99999-9999"
                   />
                   <InlineField
                     label="Relação"
                     value={emergencyContact.relationship}
-                    onChange={(v) => setEmergencyContact((p) => ({ ...p, relationship: v }))}
+                    onChange={(v) => updateEmergencyField('relationship', v)}
                     icon={Heart}
+                    placeholder="Cônjuge, pai, irmão..."
                   />
                 </div>
                 <Button
                   className="bg-red-600 hover:bg-red-700 text-white gap-2"
                   onClick={handleSaveEmergencyContact}
-                  disabled={emergencySaving || !emergencyContact.name || !emergencyContact.phone}
+                  disabled={emergencySaving || profileHydrating || !emergencyContact.name || !emergencyContact.phone}
                 >
-                  {emergencySaving ? (
+                  {emergencySaving || profileHydrating ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <Save className="h-4 w-4" />
                   )}
-                  Salvar Contato de Emergência
+                  {profileHydrating ? 'Carregando dados...' : 'Salvar Contato de Emergência'}
                 </Button>
               </CardContent>
             </Card>
@@ -1391,7 +1523,7 @@ export function ProfilePage() {
                       <input
                         type="checkbox"
                         checked={bankInfo.pixEnabled}
-                        onChange={(e) => setBankInfo((p) => ({ ...p, pixEnabled: e.target.checked }))}
+                        onChange={(e) => updateBankField('pixEnabled', e.target.checked)}
                         className="accent-emerald-600"
                       />
                       <span className="text-xs text-muted-foreground">PIX ativo</span>
@@ -1402,7 +1534,7 @@ export function ProfilePage() {
                     <Input
                       placeholder="Ex: 000.000.000-00, +5511999999999, seu@email.com"
                       value={bankInfo.pixKey}
-                      onChange={(e) => setBankInfo((p) => ({ ...p, pixKey: e.target.value }))}
+                      onChange={(e) => updateBankField('pixKey', e.target.value)}
                       className="font-mono text-sm"
                     />
                     <p className="text-[11px] text-muted-foreground">
@@ -1413,26 +1545,26 @@ export function ProfilePage() {
 
                 <Separator />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <InlineField label="Banco" value={bankInfo.bankCode} onChange={(v) => setBankInfo((p) => ({ ...p, bankCode: v }))} />
+                  <InlineField label="Banco" value={bankInfo.bankCode} onChange={(v) => updateBankField('bankCode', v)} placeholder="001" />
                   <div className="space-y-2">
                     <Label>Tipo de Conta</Label>
                     <div className="flex gap-3 mt-1">
                       <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="radio" name="bankType" value="cc" checked={bankInfo.bankType === 'cc'} onChange={(e) => setBankInfo((p) => ({ ...p, bankType: e.target.value }))} className="accent-emerald-600" />
+                        <input type="radio" name="bankType" value="cc" checked={bankInfo.bankType === 'cc'} onChange={(e) => updateBankField('bankType', e.target.value)} className="accent-emerald-600" />
                         <span className="text-sm">Conta Corrente</span>
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="radio" name="bankType" value="cp" checked={bankInfo.bankType === 'cp'} onChange={(e) => setBankInfo((p) => ({ ...p, bankType: e.target.value }))} className="accent-emerald-600" />
+                        <input type="radio" name="bankType" value="cp" checked={bankInfo.bankType === 'cp'} onChange={(e) => updateBankField('bankType', e.target.value)} className="accent-emerald-600" />
                         <span className="text-sm">Conta Poupança</span>
                       </label>
                     </div>
                   </div>
-                  <InlineField label="Agência" value={bankInfo.bankAgency} onChange={(v) => setBankInfo((p) => ({ ...p, bankAgency: v }))} />
-                  <InlineField label="Conta" value={bankInfo.bankAccount} onChange={(v) => setBankInfo((p) => ({ ...p, bankAccount: v }))} />
+                  <InlineField label="Agência" value={bankInfo.bankAgency} onChange={(v) => updateBankField('bankAgency', v)} placeholder="1234" />
+                  <InlineField label="Conta" value={bankInfo.bankAccount} onChange={(v) => updateBankField('bankAccount', v)} placeholder="56789-0" />
                 </div>
-                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleSaveBank} disabled={saving}>
-                  {saving ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="h-4 w-4" />}
-                  Salvar Dados Bancários e PIX
+                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleSaveBank} disabled={saving || profileHydrating}>
+                  {saving || profileHydrating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {profileHydrating ? 'Carregando dados...' : 'Salvar Dados Bancários e PIX'}
                 </Button>
               </CardContent>
             </Card>

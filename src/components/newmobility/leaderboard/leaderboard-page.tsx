@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -14,15 +14,9 @@ import { leaderboardApi } from '@/lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Trophy,
-  Medal,
   Users,
   Star,
-  TrendingUp,
-  BarChart3,
   Crown,
-  ChevronUp,
-  Zap,
-  Award,
   Target,
 } from 'lucide-react'
 
@@ -54,10 +48,13 @@ interface LeaderboardData {
 // Animated number counter
 function AnimatedNumber({ value, prefix = '', suffix = '', duration = 1500 }: { value: number; prefix?: string; suffix?: string; duration?: number }) {
   const [display, setDisplay] = useState(0)
-  const hasAnimated = useRef(false)
+
   useEffect(() => {
-    if (hasAnimated.current) return
-    hasAnimated.current = true
+    // Re-animate whenever `value` changes — without this, switching tabs
+    // (e.g. from Indicações to Pontos) would freeze the displayed number
+    // at the previous tab's value because the `hasAnimated` ref blocked
+    // every subsequent run. We removed the ref so the counter always
+    // animates from 0 → value on every tab switch.
     const steps = 50
     const increment = value / steps
     let current = 0
@@ -199,13 +196,17 @@ function PodiumDisplay({ top3, activeTab }: { top3: LeaderboardUser[]; activeTab
 export function LeaderboardPage() {
   const { user } = useStore()
   const { t } = useTranslation()
-  const [activeTab, setActiveTab] = useState('earnings')
+  const [activeTab, setActiveTab] = useState('referrals')
   const [period, setPeriod] = useState('monthly')
   const [data, setData] = useState<LeaderboardData | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     loadData()
+    // Default to 'referrals' tab on first mount so the leaderboard never
+    // opens on the removed 'earnings' tab (which would show an empty
+    // dataset because the API now treats 'earnings' as a privacy-safe
+    // alias for 'referrals').
   }, [user?.id, activeTab, period])
 
   const loadData = async () => {
@@ -227,7 +228,6 @@ export function LeaderboardPage() {
   }
 
   const tabConfig = [
-    { key: 'earnings', label: t('leaderboard.earnings'), icon: TrendingUp },
     { key: 'referrals', label: t('leaderboard.referrals'), icon: Users },
     { key: 'points', label: t('leaderboard.points'), icon: Star },
   ]
@@ -307,15 +307,10 @@ export function LeaderboardPage() {
                 <Target className="h-5 w-5 text-emerald-600" />
                 <h3 className="font-bold text-foreground">{t('leaderboard.yourRank')}</h3>
               </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="text-center">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <TrendingUp className="h-3.5 w-3.5 text-emerald-600" />
-                    <span className="text-xs text-muted-foreground font-medium">{t('leaderboard.earnings')}</span>
-                  </div>
-                  <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">#{data.userRank.earnings.position}</p>
-                  <p className="text-[10px] text-muted-foreground">{data.userRank.earnings.value}</p>
-                </div>
+              {/* Two-column rank summary — "Ganhos" column intentionally
+                  removed per user request (privacy: no R$ earnings on
+                  user-facing pages). Shows only Referrals and Points. */}
+              <div className="grid grid-cols-2 gap-4">
                 <div className="text-center">
                   <div className="flex items-center justify-center gap-1 mb-1">
                     <Users className="h-3.5 w-3.5 text-teal-600" />
@@ -347,7 +342,7 @@ export function LeaderboardPage() {
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <TabsList className="grid w-full grid-cols-3 max-w-md">
+          <TabsList className="grid w-full grid-cols-2 max-w-md">
             {tabConfig.map(tab => {
               const TabIcon = tab.icon
               return (

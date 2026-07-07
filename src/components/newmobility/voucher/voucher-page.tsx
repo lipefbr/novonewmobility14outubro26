@@ -60,6 +60,46 @@ function deriveStatus(v: { isUsed: boolean; expiresAt: string | null }): Voucher
 
 const mockVouchers: Voucher[] = []
 
+/**
+ * Coerce any value (number | null | undefined | NaN | string) into a
+ * finite, non-negative number. Used wherever a voucher amount or balance
+ * is rendered via formatBRL so we NEVER display "R$ NaN" to the user.
+ *
+ *   safeNum(3258)        -> 3258
+ *   safeNum(undefined)   -> 0
+ *   safeNum(NaN)         -> 0
+ *   safeNum(Infinity)    -> 0
+ *   safeNum('1234')      -> 0  (strings rejected — API must send numbers)
+ */
+function safeNum(n: unknown): number {
+  return typeof n === 'number' && !isNaN(n) && isFinite(n) ? n : 0
+}
+
+/**
+ * Generate a voucher code in the `VOUCHER-XXXX-XXXX` format using an
+ * unambiguous alphabet (no O/0/I/1) — the same alphabet `lib/voucher.ts`
+ * uses for admin-issued vouchers, so client-side previews look identical to
+ * real voucher codes.
+ */
+const VOUCHER_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+function generateClientVoucherCode(): string {
+  const block = (n: number) =>
+    Array.from({ length: n }, () => VOUCHER_ALPHABET[Math.floor(Math.random() * VOUCHER_ALPHABET.length)]).join('')
+  return `VOUCHER-${block(4)}-${block(4)}`
+}
+
+/**
+ * Normalise a user-supplied voucher code: uppercase + trim. Returns null
+ * if the input is empty/whitespace so callers can fall back to
+ * auto-generation. Non-printable / control characters are stripped so a
+ * pasted code with a stray newline still validates.
+ */
+function normaliseUserCode(raw: string): string | null {
+  if (!raw) return null
+  const cleaned = String(raw).toUpperCase().replace(/[\s\u200B-\u200D\uFEFF\x00-\x1F]/g, '').trim()
+  return cleaned.length > 0 ? cleaned : null
+}
+
 const categoryConfig: Record<VoucherCategory, { label: string; icon: React.ElementType; color: string; bgGradient: string; darkBg: string }> = {
   mobility: { label: 'Mobilidade', icon: Car, color: 'text-blue-600 dark:text-blue-400', bgGradient: 'from-blue-500 to-blue-600', darkBg: 'dark:from-blue-800 dark:to-blue-900' },
   pharmacy: { label: 'Farmácia', icon: Pill, color: 'text-rose-600 dark:text-rose-400', bgGradient: 'from-rose-500 to-rose-600', darkBg: 'dark:from-rose-800 dark:to-rose-900' },
@@ -177,6 +217,11 @@ export function VoucherPage() {
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
   const [purchaseStep, setPurchaseStep] = useState<'category' | 'amount' | 'confirm'>('category')
   const [isPurchasing, setIsPurchasing] = useState(false)
+  // Optional user-supplied voucher code. If left blank, the client
+  // auto-generates a `VOUCHER-XXXX-XXXX` code (see
+  // `generateClientVoucherCode`). This satisfies the spec: "Auto-generate
+  // voucher codes if user doesn't provide one".
+  const [customCode, setCustomCode] = useState('')
 
   // Redeem (Adicionar Voucher) dialog state
   const [redeemDialogOpen, setRedeemDialogOpen] = useState(false)
@@ -200,7 +245,7 @@ export function VoucherPage() {
       const mapRow = (r: any, status: VoucherStatus): Voucher => ({
         id: r.id,
         code: r.code,
-        amount: typeof r.amount === 'number' ? r.amount : 0,
+        amount: safeNum(r.amount),
         type: r.type,
         category: typeToCategory(r.type),
         expiresAt: r.expiresAt || '',
@@ -266,6 +311,7 @@ export function VoucherPage() {
   const handleBuyVoucher = () => {
     setSelectedCategory(null)
     setSelectedAmount(null)
+    setCustomCode('')
     setPurchaseStep('category')
     setPurchaseDialogOpen(true)
   }
@@ -287,7 +333,7 @@ export function VoucherPage() {
       const result = await vouchersApi.redeem(user.id, code)
       toast({
         title: 'Voucher resgatado! 🎉',
-        description: `${formatBRL(result?.creditedAmount || 0)} creditado em ${result?.balanceName || 'sua conta'}.`,
+        description: `${formatBRL(safeNum(result?.creditedAmount))} creditado em ${result?.balanceName || 'sua conta'}.`,
       })
       setRedeemDialogOpen(false)
       setRedeemCode('')
@@ -332,18 +378,18 @@ export function VoucherPage() {
     // Simulate purchase delay
     await new Promise(resolve => setTimeout(resolve, 1000))
 
-    // Generate a voucher code
-    const categoryPrefixes: Record<VoucherCategory, string> = {
-      mobility: 'MOB', pharmacy: 'FAR', food: 'REF', shopping: 'SHO',
-    }
-    const prefix = categoryPrefixes[selectedCategory]
-    const code = `NM-${prefix}-2025-${String(Math.floor(100 + Math.random() * 900))}`
+    // Voucher code: prefer the user-supplied code (normalised), otherwise
+    // auto-generate a `VOUCHER-XXXX-XXXX` code. This satisfies the spec:
+    // "Auto-generate voucher codes if user doesn't provide one".
+    const userCode = normaliseUserCode(customCode)
+    const code = userCode ?? generateClientVoucherCode()
+    const safeAmount = safeNum(selectedAmount)
     const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
     const newVoucher: Voucher = {
       id: String(Date.now()),
       code,
-      amount: selectedAmount,
+      amount: safeAmount,
       category: selectedCategory,
       expiresAt,
       status: 'active',
@@ -354,15 +400,16 @@ export function VoucherPage() {
     setVouchers(prev => [newVoucher, ...prev])
     setIsPurchasing(false)
     setPurchaseDialogOpen(false)
+    setCustomCode('')
 
     toast({
-      title: 'Voucher comprado com sucesso! 🎉',
-      description: `Voucher ${categoryConfig[selectedCategory].label} de ${formatBRL(selectedAmount)} adicionado à sua conta. Código: ${code}`,
+      title: 'Voucher simulado adicionado! 🎉',
+      description: `Voucher ${categoryConfig[selectedCategory].label} de ${formatBRL(safeAmount)} exibido localmente. Para vouchers resgatáveis em outros apps, peça ao administrador. Código: ${code}`,
     })
   }
 
   const handleShareVoucher = (code: string, amount: number) => {
-    const text = `🎁 Voucher NewMobility: ${formatBRL(amount)} - Código: ${code}`
+    const text = `🎁 Voucher NewMobility: ${formatBRL(safeNum(amount))} - Código: ${code}`
     if (navigator.share) {
       navigator.share({ title: 'Voucher NewMobility', text })
     } else {
@@ -387,7 +434,7 @@ export function VoucherPage() {
       const result = await vouchersApi.redeemById(user.id, voucherId)
       toast({
         title: 'Voucher resgatado! 🎉',
-        description: `${formatBRL(result?.creditedAmount || 0)} creditado em ${result?.balanceName || 'Saldo Compras'}.`,
+        description: `${formatBRL(safeNum(result?.creditedAmount))} creditado em ${result?.balanceName || 'Saldo Compras'}.`,
       })
       // Refresh voucher list so the redeemed voucher moves to "used".
       fetchVouchers()
@@ -749,7 +796,7 @@ export function VoucherPage() {
                   <span className="text-sm text-muted-foreground">Valor</span>
                 </div>
                 <span className="text-xl font-bold text-foreground">
-                  {formatBRL(selectedAmount)}
+                  {formatBRL(safeNum(selectedAmount))}
                 </span>
               </div>
 
@@ -765,6 +812,27 @@ export function VoucherPage() {
                 <Info className="h-4 w-4 text-amber-600 shrink-0" />
                 <p className="text-xs text-amber-700 dark:text-amber-400">
                   O voucher será creditado na categoria {categoryConfig[selectedCategory].label} e válido por 90 dias.
+                </p>
+              </div>
+
+              {/* Optional custom voucher code. If left blank, the client
+                  auto-generates a `VOUCHER-XXXX-XXXX` code on confirm. */}
+              <div className="space-y-1.5">
+                <label htmlFor="voucher-custom-code" className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <Ticket className="h-3 w-3" />
+                  Código personalizado (opcional)
+                </label>
+                <Input
+                  id="voucher-custom-code"
+                  placeholder="Em branco = gerar automaticamente (VOUCHER-XXXX-XXXX)"
+                  value={customCode}
+                  onChange={(e) => setCustomCode(e.target.value)}
+                  className="font-mono uppercase text-sm"
+                  disabled={isPurchasing}
+                  maxLength={32}
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Deixe em branco para gerar um código automaticamente. Se preenchido, será usado como código do voucher.
                 </p>
               </div>
 
@@ -804,7 +872,7 @@ export function VoucherPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           { icon: Ticket, label: 'TOTAL', value: vouchers.length, color: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
-          { icon: Check, label: 'ATIVOS', value: activeVouchers.length, color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400', sub: formatBRL(totalActiveValue) },
+          { icon: Check, label: 'ATIVOS', value: activeVouchers.length, color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400', sub: formatBRL(safeNum(totalActiveValue)) },
           { icon: Clock, label: 'USADOS', value: usedVouchers.length, color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' },
           { icon: Filter, label: 'EXPIRADOS', value: expiredVouchers.length, color: 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400' },
         ].map((stat, i) => (
@@ -889,7 +957,7 @@ export function VoucherPage() {
                 {renderQRPattern(featuredVoucher.id, featuredVoucher.category, true)}
                 <div className="flex-1">
                   <p className="text-xs text-muted-foreground font-medium">Maior Voucher Ativo</p>
-                  <p className="text-3xl font-bold text-foreground mt-1">{formatBRL(featuredVoucher.amount)}</p>
+                  <p className="text-3xl font-bold text-foreground mt-1">{formatBRL(safeNum(featuredVoucher.amount))}</p>
                   <p className="text-sm font-mono text-muted-foreground mt-1">{featuredVoucher.code}</p>
                   <div className="flex items-center gap-3 mt-2">
                     <Badge variant="outline" className="text-[10px] gap-1">
@@ -898,21 +966,21 @@ export function VoucherPage() {
                     <CountdownTimer expiresAt={featuredVoucher.expiresAt} />
                   </div>
                   {/* Usage Progress Bar */}
-                  {featuredVoucher.usedAmount > 0 && (
+                  {safeNum(featuredVoucher.usedAmount) > 0 && (
                     <div className="mt-3">
                       <div className="flex items-center justify-between text-[10px] mb-1">
                         <span className="text-muted-foreground">Valor utilizado</span>
-                        <span className="font-medium text-foreground">{formatBRL(featuredVoucher.usedAmount)} / {formatBRL(featuredVoucher.amount)}</span>
+                        <span className="font-medium text-foreground">{formatBRL(safeNum(featuredVoucher.usedAmount))} / {formatBRL(safeNum(featuredVoucher.amount))}</span>
                       </div>
                       <div className="h-2 bg-muted rounded-full overflow-hidden">
                         <motion.div
                           className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600"
                           initial={{ width: 0 }}
-                          animate={{ width: `${Math.round((featuredVoucher.usedAmount / featuredVoucher.amount) * 100)}%` }}
+                          animate={{ width: `${safeNum(featuredVoucher.amount) > 0 ? Math.min(Math.round((safeNum(featuredVoucher.usedAmount) / safeNum(featuredVoucher.amount)) * 100), 100) : 0}%` }}
                           transition={{ delay: 0.5, duration: 0.8, ease: 'easeOut' }}
                         />
                       </div>
-                      <p className="text-[9px] text-muted-foreground mt-0.5">{Math.round((featuredVoucher.usedAmount / featuredVoucher.amount) * 100)}% utilizado</p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">{safeNum(featuredVoucher.amount) > 0 ? Math.round((safeNum(featuredVoucher.usedAmount) / safeNum(featuredVoucher.amount)) * 100) : 0}% utilizado</p>
                     </div>
                   )}
                 </div>
@@ -1104,7 +1172,7 @@ export function VoucherPage() {
             const Icon = config.icon
             const isActive = voucher.status === 'active'
             const isExpired = voucher.status === 'expired'
-            const usagePercent = voucher.amount > 0 ? Math.round((voucher.usedAmount / voucher.amount) * 100) : 0
+            const usagePercent = safeNum(voucher.amount) > 0 ? Math.round((safeNum(voucher.usedAmount) / safeNum(voucher.amount)) * 100) : 0
 
             return (
               <motion.div
@@ -1164,7 +1232,7 @@ export function VoucherPage() {
                           )}
                         </div>
 
-                        <p className="text-lg font-bold text-foreground">{formatBRL(voucher.amount)}</p>
+                        <p className="text-lg font-bold text-foreground">{formatBRL(safeNum(voucher.amount))}</p>
                         <p className="text-xs font-mono text-muted-foreground mt-0.5">{voucher.code}</p>
                         <div className="flex items-center justify-between mt-1">
                           <p className="text-[10px] text-muted-foreground">
@@ -1184,7 +1252,7 @@ export function VoucherPage() {
                           <div className="mt-2">
                             <div className="flex items-center justify-between text-[9px] mb-0.5">
                               <span className="text-muted-foreground">Utilizado</span>
-                              <span className="font-medium text-foreground">{formatBRL(voucher.usedAmount)}</span>
+                              <span className="font-medium text-foreground">{formatBRL(safeNum(voucher.usedAmount))}</span>
                             </div>
                             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                               <motion.div
