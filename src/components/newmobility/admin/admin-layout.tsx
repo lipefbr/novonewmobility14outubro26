@@ -37,6 +37,7 @@ import {
   Target,
   Smartphone,
   HeartPulse,
+  ClipboardCheck,
 } from 'lucide-react'
 import { useStore, type AdminPageKey } from '@/lib/store'
 import { useAdminPermissions } from '@/lib/admin-permissions'
@@ -75,6 +76,7 @@ const adminNavItems: AdminNavItem[] = [
   { key: 'support', label: 'Tickets de Suporte', icon: Headphones, description: 'Atendimento ao cliente', group: 'main' },
   { key: 'kyc', label: 'Aprovação KYC', icon: ShieldCheck, description: 'Validar documentos de usuários', group: 'main' },
   { key: 'talkmobi', label: 'Planos TalkMobi', icon: Smartphone, description: 'Editar planos de celular TalkMobi', group: 'main' },
+  { key: 'talkmobi-subscriptions', label: 'Assinaturas TalkMobi', icon: ClipboardCheck, description: 'Receber e aprovar pedidos de assinatura', group: 'main' },
   { key: 'telemedicina', label: 'Telemedicina', icon: HeartPulse, description: 'Aprovar pedidos de ativação', group: 'main' },
   { key: 'challenges', label: 'Desafios', icon: Target, description: 'Criar desafios semanais e mensais', group: 'main' },
   { key: 'announcements', label: 'Anúncios', icon: Megaphone, description: 'Comunicados da plataforma', group: 'system' },

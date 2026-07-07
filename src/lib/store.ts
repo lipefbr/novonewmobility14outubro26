@@ -62,6 +62,7 @@ export type AdminPageKey =
   | 'permissions'
   | 'challenges'
   | 'talkmobi'
+  | 'talkmobi-subscriptions'
   | 'telemedicina'
 
 export interface UserData {

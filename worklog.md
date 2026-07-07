@@ -7145,3 +7145,47 @@ Stage Summary:
 - ✅ Dev server stable via double-fork watchdog daemon.
 - ✅ 15-minute recurring webDevReview cron job created for continuous autonomous development.
 - Remaining items for future rounds (will be picked up by the cron job): Asaas payment integration, admin advanced features (user-types/permissions/audit/withdrawal-release), notifications 5-day auto-reminder, anúncios segmentation, mobile responsiveness polish.
+
+---
+Task ID: talkmobi-subscriptions
+Agent: main
+Task: Fix TalkMobi+ subscription that was not working (handleSubscribe was just a "coming soon" toast) and add an admin area to receive and approve TalkMobi subscription requests in a dedicated menu tab.
+
+Work Log:
+- Root cause of broken subscription: `handleSubscribe` in src/components/newmobility/talkmobi/talkmobi-page.tsx only showed `toast.success('Em breve: assinatura...')` — it never called any API.
+- Designed a full subscription-request flow mirroring the existing Telemedicina approval flow:
+  1. User clicks "Assinar" → opens a subscription form dialog (holder info + shipping address for the SIM chip + notes).
+  2. POST /api/talkmobi/subscribe creates a TalkMobiSubscription row (status=pending), snapshots the plan price/cashback/points at request time, notifies all admins in-app.
+  3. Admin opens the new "Assinaturas TalkMobi" tab in the admin sidebar, sees the pending request with Aprovar/Recusar buttons + Ver (details) dialog.
+  4. Admin approves → attaches activation link / ICCID / eSIM QR + optional notes → user is notified in-app.
+  5. Admin rejects → must provide a reason → user is notified and can resubmit.
+  6. User side shows status banners: pending (amber, "em análise"), approved (emerald, with the activation link), rejected (rose, with the reason + "Solicitar Novamente" button).
+- Added `TalkMobiSubscription` model to prisma/schema.prisma (id, userId, planId + snapshot fields, holder info, shipping address, status, adminNotes, activationLink, approvedById, approvedAt, rejectedAt, timestamps) + relation on User.
+- Ran `prisma db push` + `prisma generate` against the Neon PostgreSQL database (DATABASE_URL is overridden to the Neon URL because .env points to a stale SQLite file path).
+- Created API routes:
+  - src/app/api/talkmobi/subscribe/route.ts (GET my latest request, POST create/update pending request)
+  - src/app/api/admin/talkmobi-subscriptions/route.ts (admin GET list with status filter + pagination)
+  - src/app/api/admin/talkmobi-subscriptions/[id]/approve/route.ts (admin approve with activationLink + adminNotes)
+  - src/app/api/admin/talkmobi-subscriptions/[id]/reject/route.ts (admin reject with reason)
+- Added `talkmobi-subscriptions` to the AdminPageKey union type in src/lib/store.ts.
+- Added the "Assinaturas TalkMobi" nav item (ClipboardCheck icon) to the admin sidebar in src/components/newmobility/admin/admin-layout.tsx.
+- Created src/components/newmobility/admin/admin-talkmobi-subscriptions-panel.tsx — full admin panel with stats cards (Pendentes/Aprovados/Recusados), search + status filter, request cards with Aprovar/Recusar/Ver buttons, approve dialog (activation link + notes), reject dialog (reason), and a read-only details dialog.
+- Wired the new panel into src/components/newmobility/admin/admin-page.tsx (import + adminPageToTab mapping + TabsContent).
+- Updated src/components/newmobility/talkmobi/talkmobi-page.tsx:
+  - Replaced the stub `handleSubscribe` with a real implementation that opens a subscription form dialog pre-filled with the user's store data (or the existing pending request for the same plan).
+  - Added `handleSubmitSubscribe` that POSTs to /api/talkmobi/subscribe, refreshes the local state, shows a success toast, and closes the dialog.
+  - Added a subscription status banner section (pending/approved/rejected) mirroring the Telemedicina status cards.
+  - Added a Badge next to "Planos TalkMobi" showing the latest request status.
+  - Added the full subscription form Dialog (holder info + shipping address + notes + price summary).
+- Fixed a PrismaClientValidationError: the initial `create()` call was missing `userId` in the data payload (Prisma's "checked" input type requires either `userId` for the unchecked input or a nested `user: { connect }` — adding `userId` to the data fixed it).
+- Verified end-to-end with agent-browser:
+  - User clicks Assinar → form opens, submits → 201 Created → pending banner shows.
+  - Admin panel shows the request in Pendentes=1 with Aprovar/Recusar buttons.
+  - Admin approves with activation link → request moves to Aprovados=1, user is notified.
+  - User side shows green "Plano 6 GB ativado! 🎉" banner with the activation link.
+
+Stage Summary:
+- TalkMobi subscription is now fully functional (was a stub before).
+- Admin has a dedicated "Assinaturas TalkMobi" menu tab to receive and approve/reject all subscription requests from clients.
+- The flow mirrors the existing Telemedicina approval pattern for consistency.
+- All lint clean, dev server running, verified in browser.

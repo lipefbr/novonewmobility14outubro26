@@ -84,6 +84,7 @@ model User {
   kycDocuments          KycDocument[]
   auditLogs             AuditLog[]
   telemedicinaRequests  TelemedicinaRequest[]
+  talkMobiSubscriptions TalkMobiSubscription[]
   beneficiaries         Beneficiary[]
   bets                  Bet[]
   careerMilestones      CareerMilestone[]
@@ -766,5 +767,55 @@ model TelemedicinaRequest {
 
   @@index([userId])
   @@index([status])
+  @@index([createdAt])
+}
+
+/// Subscription requests for TalkMobi mobile plans.
+/// Mirrors the TelemedicinaRequest approval flow: a user picks a plan,
+/// an admin reviews the request in the admin panel and approves / rejects it.
+/// On approval, the admin can attach an activation link / SIM ICCID / instructions.
+model TalkMobiSubscription {
+  id              String   @id @default(cuid())
+  userId          String
+  // Snapshot of the plan the user requested, in case the plan is later edited
+  // or deleted by the admin. We never look up TalkMobiPlan at request time.
+  planId          String
+  planName        String
+  dataAmount      String
+  priceCents      Int
+  cashbackCents   Int      @default(0)
+  rewardPoints    Int      @default(0)
+  // Holder (titular) info captured at request time, may differ from account
+  fullName        String
+  cpf             String
+  birthDate       String?
+  phone           String
+  email           String
+  // Shipping address for the SIM chip (optional — digital plans may skip it)
+  zipCode         String?
+  street          String?
+  number          String?
+  complement      String?
+  district        String?
+  city            String?
+  state           String?
+  // Free-form notes from the user (e.g. preferred activation date)
+  notes           String?
+  // Status: 'pending' | 'approved' | 'rejected' | 'cancelled'
+  status          String   @default("pending")
+  // Admin fields (filled on approval / rejection)
+  adminNotes      String?
+  activationLink  String?  // SIM ICCID, eSIM QR link, or activation URL sent to user
+  approvedById    String?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([planId])
   @@index([createdAt])
 }

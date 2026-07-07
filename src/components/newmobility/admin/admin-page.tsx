@@ -42,6 +42,7 @@ import { AdminChallengesPanel } from '@/components/newmobility/admin/admin-chall
 import { AdminUsersPanel } from '@/components/newmobility/admin/admin-users-panel'
 import { TalkMobiManager } from '@/components/newmobility/admin/talkmobi-manager'
 import { AdminTelemedicinaPanel } from '@/components/newmobility/admin/admin-telemedicina-panel'
+import { AdminTalkMobiSubscriptionsPanel } from '@/components/newmobility/admin/admin-talkmobi-subscriptions-panel'
 
 // ---------- Interfaces ----------
 
@@ -383,6 +384,7 @@ const adminPageToTab: Record<string, string> = {
   permissions: 'permissions',
   challenges: 'challenges',
   talkmobi: 'talkmobi',
+  'talkmobi-subscriptions': 'talkmobi-subscriptions',
   telemedicina: 'telemedicina',
 }
 
@@ -5160,6 +5162,11 @@ export function AdminPage() {
         {/* TalkMobi Plans Tab — admin editor for the TalkMobi plan catalogue */}
         <TabsContent value="talkmobi" className="mt-4 space-y-4">
           <TalkMobiManager />
+        </TabsContent>
+
+        {/* TalkMobi Subscriptions Tab — admin approval panel for subscription requests */}
+        <TabsContent value="talkmobi-subscriptions" className="mt-4 space-y-4">
+          <AdminTalkMobiSubscriptionsPanel />
         </TabsContent>
 
         {/* Telemedicina Tab — admin approval panel for activation requests */}
