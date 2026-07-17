@@ -7695,3 +7695,63 @@ Stage Summary:
 - Files changed: 7 modified + 1 created. Modified: src/app/api/admin/career-plans/route.ts, src/app/api/admin/career-plans/[id]/route.ts, src/app/api/career/route.ts, src/components/newmobility/admin/admin-page.tsx, src/components/newmobility/career/career-page.tsx, src/components/newmobility/points/achievements-section.tsx, src/app/api/achievements/route.ts. Created: src/app/api/career/claim/route.ts.
 - Did NOT modify prisma/schema.prisma (handled by the task preamble — the new CareerPlan columns were already added).
 - No test files created.
+
+---
+Task ID: FINAL-BATCH-FIX
+Agent: Main Orchestrator
+Task: Fix 13 backoffice + 7 admin issues reported by user, then push to git
+
+Work Log:
+- Read user's detailed bug report (13 backoffice + 7 admin issues)
+- Explored codebase structure via Explore agent to locate all relevant files
+- Updated prisma/schema.prisma:
+  * CareerPlan: added rewardWithdrawalCents, rewardShoppingCents, rewardPoints, gratification fields
+  * Gratification: added targetQualification field (motorista/entregador/ambos)
+- Ran prisma db push to sync schema with Neon PostgreSQL
+- Launched 7 parallel subagents (AGENT-A through AGENT-G) to fix issues in parallel:
+  * AGENT-A: bank-page.tsx (editable bank fields), cashback Dica card layout, voucher Boas-Vindas redemption
+  * AGENT-B: myplan comparison (Blue3=3 níveis, synced prices), simulator (fixed CB bases 999/1399/199.90)
+  * AGENT-C: telemedicina activation (price + payment method), billing payment dialog, referrals real activity
+  * AGENT-D: gratifications Metas visibility (motorista/entregador only), admin user edit qualification field
+  * AGENT-E: career plan new schema (separate reward fields), achievements PONTOS not R$
+  * AGENT-F: admin category labels PT-BR, gratifications button fix, achievements variable hints, streak rewardType
+  * AGENT-G: admin create user dialog, streak rewards display, telemedicina admin price display
+- Fixed syntax error in bank-page.tsx (?? operator mixing with || without parens)
+- Verified all APIs return correct data:
+  * /api/dashboard returns balances with paymentInvoice
+  * /api/career returns new reward fields
+  * /api/referrals/activity returns real activity (not mock)
+  * /api/gratifications returns driverGoals null for non-drivers
+  * /api/gamification/streak returns rewardType + amount
+  * /api/voucher/generate-signup-bonus works
+- Lint clean (13 pre-existing errors in root .js files, 0 in src/)
+- Dev server stable on port 3000 via setsid daemon
+- Committed and pushed to origin/main (commit 671c6a8)
+
+Stage Summary:
+- ✅ ALL 13 backoffice issues fixed:
+  1. Dashboard Detalhamento shows R$ balances + Valor Total column
+  2. Telemedicina activation shows price + payment method selector
+  3. Acesso ao Banco: editable fields + working save button
+  4. Admin Editar Usuário: qualification field (6 types) + role field
+  5. Pagar Faturas: payment method dialog before marking paid
+  6. Meu Plano: Blue3=3 níveis, synced prices, all potencial níveis, cashback vendas bloqueado
+  7. Metas: visible only for motorista/entregador + admin config
+  8. Pontuações: career shows PONTOS not R$
+  9. Plano de Carreira: 4 separate reward fields + Gratificações Desbloqueadas
+  10. Meus Indicados: real activity data from API
+  11. Cashback: fixed figure/text layout
+  12. Voucher Boas-Vindas: correct amount + redemption flow
+  13. Simulador: fixed cashback base values
+- ✅ ALL 7 admin issues fixed:
+  1. Indicador: PT-BR category labels
+  2. Gratificações: PT-BR + working search button
+  3. Telemedicina: price + payment method in admin
+  4. Permissões: Create User dialog + login flow explanation
+  5. Conquistas: variable hints help box
+  6. Plano de Carreira: new separate reward fields
+  7. Recompensa Sequência: correct cashback vs points display
+- New API routes: /api/admin/gratifications-config, /api/career/claim, /api/referrals/activity, /api/voucher/generate-signup-bonus
+- New component: payment-method-dialog.tsx
+- Schema changes: CareerPlan + Gratification models updated
+- Commit 671c6a8 pushed to origin/main
