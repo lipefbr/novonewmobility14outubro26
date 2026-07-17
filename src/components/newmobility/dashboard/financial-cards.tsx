@@ -49,6 +49,7 @@ function FinancialCard({
   gradient,
   delay = 0,
   change,
+  displayMode = 'count',
 }: {
   title: string
   value: number
@@ -57,7 +58,17 @@ function FinancialCard({
   gradient: string
   delay?: number
   change: number
+  displayMode?: 'count' | 'currency'
 }) {
+  // Item 1 — mostra R$ quando displayMode='currency' (saldo de carteira),
+  // caso contrário mostra contagem simples.
+  const formatted =
+    displayMode === 'currency'
+      ? new Intl.NumberFormat('pt-BR', {
+          style: 'currency',
+          currency: 'BRL',
+        }).format(Number.isFinite(value) ? value / 100 : 0)
+      : (Number.isFinite(value) ? value : 0).toLocaleString('pt-BR')
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
@@ -87,7 +98,9 @@ function FinancialCard({
                   </div>
                 </div>
               </div>
-              <AnimatedCount value={value} className="text-lg sm:text-xl md:text-2xl font-bold text-white" />
+              <span className="text-lg sm:text-xl md:text-2xl font-bold text-white">
+                {formatted}
+              </span>
               <p className="text-[10px] text-white/70 font-medium mt-0.5 uppercase tracking-wide">
                 {subtitle}
               </p>
@@ -111,6 +124,13 @@ export function FinancialCards({ data }: FinancialCardsProps) {
   const directReferrals = data?.directReferralCount ?? data?.directReferrals ?? 0
   const careerPoints = data?.career?.points ?? data?.user?.careerPoints ?? 0
   const networkSize = data?.network?.totalSize ?? directReferrals
+  // Item 1 — saldo real das carteiras do usuário (mostra R$ ao invés de pontos)
+  const balancePharmacy = data?.balances?.pharmacy ?? 0
+  const balanceFood = data?.balances?.food ?? 0
+  const balanceShopping = data?.balances?.shopping ?? 0
+  const balanceMobility = data?.balances?.mobility ?? 0
+  const balanceGratification = data?.balances?.gratification ?? 0
+  const balancePaymentInvoice = data?.balances?.paymentInvoice ?? 0
 
   const cards = [
     {
@@ -131,43 +151,48 @@ export function FinancialCards({ data }: FinancialCardsProps) {
     },
     {
       title: t('dashboard.financial.gratifications'),
-      value: directReferrals,
-      subtitle: 'Indicações',
+      value: balanceGratification,
+      subtitle: 'Saldo R$',
       icon: Gift,
       gradient: 'from-amber-500 to-amber-600',
       change: 12,
+      displayMode: 'currency',
     },
     {
       title: t('dashboard.financial.mobility'),
-      value: cashbackVendasUsers,
-      subtitle: 'Membros',
+      value: balanceMobility,
+      subtitle: 'Saldo R$',
       icon: Car,
       gradient: 'from-blue-500 to-blue-600',
       change: -2,
+      displayMode: 'currency',
     },
     {
       title: t('dashboard.financial.pharmacy'),
-      value: careerPoints,
-      subtitle: 'Pontos',
+      value: balancePharmacy,
+      subtitle: 'Saldo R$',
       icon: Pill,
       gradient: 'from-rose-500 to-rose-600',
       change: 8,
+      displayMode: 'currency',
     },
     {
       title: t('dashboard.financial.meal'),
-      value: careerPoints,
-      subtitle: 'Pontos',
+      value: balanceFood,
+      subtitle: 'Saldo R$',
       icon: UtensilsCrossed,
       gradient: 'from-orange-500 to-orange-600',
       change: 6,
+      displayMode: 'currency',
     },
     {
       title: t('dashboard.financial.shopping'),
-      value: directReferrals,
-      subtitle: 'Indicações',
+      value: balanceShopping,
+      subtitle: 'Saldo R$',
       icon: ShoppingBag,
       gradient: 'from-purple-500 to-purple-600',
       change: 15,
+      displayMode: 'currency',
     },
     {
       title: t('dashboard.financial.revenue'),
@@ -179,14 +204,13 @@ export function FinancialCards({ data }: FinancialCardsProps) {
     },
     {
       // Client spec §18 — 7th wallet: Saldo Pagamento Fatura (balancePaymentInvoice).
-      // This card mirrors the privacy-safe pattern of the other cards:
-      // it shows a count (direct referrals), never a R$ amount.
       title: t('dashboard.financial.paymentInvoice'),
-      value: directReferrals,
-      subtitle: 'Indicações',
+      value: balancePaymentInvoice,
+      subtitle: 'Saldo R$',
       icon: FileText,
       gradient: 'from-cyan-500 to-cyan-600',
       change: 4,
+      displayMode: 'currency',
     },
   ]
 

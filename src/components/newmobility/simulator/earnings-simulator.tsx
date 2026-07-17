@@ -20,9 +20,14 @@
 //     0 / 99 / 299 / 499 / 999 / 1.999 BRL.
 //   • Each matrix (Entrada 4x5, Residual 4x7, Vendas 4x9) is simulated
 //     with the exact level percentages from the spec:
-//       Entrada  : 5 / 3 / 2 / 1 / 0.5
-//       Residual : 3 / 2 / 1 / 1 / 0.5 / 0.5 / 0.25
-//       Vendas   : 2 / 1 / 0.5 / 0.5 / 0.25 / 0.25 / 0.1 / 0.1 / 0.05
+//       Entrada  : 5 / 10 / 10 / 5 / 5
+//       Residual : 10 / 9 / 5 / 5 / 4 / 3 / 2
+//       Vendas   : 0.10 × 9 levels
+//   • Each matrix's earnings use a FIXED CashBack base value (NOT the
+//     plan price):
+//       CashBack Entrada  : R$ 999,00   → each level's earning = 999 × pct
+//       CashBack Residual : R$ 1.399,00 → each level's earning = 1399 × pct
+//       CashBack Vendas   : R$ 199,90   → each level's earning = 199,90 × pct
 //   • Inputs:
 //       - plan (select)
 //       - directReferrals (1-1000, default 4)
@@ -169,6 +174,18 @@ const VENDAS_LEVELS: MatrixLevel[] = [
   { level: 9, pct: 0.1 },
 ]
 
+// ---------------------------------------------------------------------------
+// Fixed CashBack base values (BACK-13). These are the POOL each matrix pays
+// out from — independent of the user's selected plan tier. Each level's
+// earning = baseCents × (levelPct / 100).
+//   CashBack Entrada  : R$ 999,00   (99900 cents)
+//   CashBack Residual : R$ 1.399,00 (139900 cents)
+//   CashBack Vendas   : R$ 199,90   (19990 cents)
+// ---------------------------------------------------------------------------
+const CB_ENTRADA_BASE_CENTS = 99900
+const CB_RESIDUAL_BASE_CENTS = 139900
+const CB_VENDAS_BASE_CENTS = 19990
+
 // Matrix structural width — 4-wide per the "4x5/4x7/4x9" client spec.
 const MATRIX_WIDTH = 4
 
@@ -279,9 +296,12 @@ function simulate(params: {
   const directReferralCashback =
     safeDirectReferrals * Math.round((planPriceCents * DIRECT_REFERRAL_CASHBACK_PCT) / 100)
 
-  const entradaMonthly = projectMatrix(ENTRADA_LEVELS, planPriceCents, safeFill)
-  const residualMonthly = projectMatrix(RESIDUAL_LEVELS, planPriceCents, safeFill)
-  const vendasMonthly = projectMatrix(VENDAS_LEVELS, safeAvgSpend, safeFill)
+  // BACK-13: each matrix uses a FIXED CashBack base — NOT the plan price
+  // nor the user's avg monthly spend. Earnings are independent of plan
+  // tier; the plan only affects the direct-referral cashback below.
+  const entradaMonthly = projectMatrix(ENTRADA_LEVELS, CB_ENTRADA_BASE_CENTS, safeFill)
+  const residualMonthly = projectMatrix(RESIDUAL_LEVELS, CB_RESIDUAL_BASE_CENTS, safeFill)
+  const vendasMonthly = projectMatrix(VENDAS_LEVELS, CB_VENDAS_BASE_CENTS, safeFill)
 
   const totalMonthly = entradaMonthly.total + residualMonthly.total + vendasMonthly.total
   const totalAnnual = totalMonthly * 12
@@ -525,7 +545,7 @@ export function EarningsSimulator() {
               50,
               Wallet,
               (v) => formatBRL(Math.round(v * 100)),
-              'Quanto cada indicação gasta em média por mês no Marketplace (usado para a matriz de Vendas).'
+              'Quanto cada indicação gasta em média por mês no Marketplace (informativo — as matrizes usam bases fixas de CashBack).'
             )}
             {renderSlider(
               'Preenchimento da Matriz',
@@ -650,7 +670,7 @@ export function EarningsSimulator() {
                     <span className="text-sm font-medium text-muted-foreground">/mês</span>
                   </p>
                   <p className="text-[11px] text-muted-foreground mt-1">
-                    {result.entradaMonthly.levels.reduce((s, l) => s + l.filledPositions, 0).toLocaleString('pt-BR')} vagas preenchidas no total
+                    CashBack Entrada: {formatBRL(CB_ENTRADA_BASE_CENTS)} × % por nível
                   </p>
                 </CardContent>
               </Card>
@@ -674,7 +694,7 @@ export function EarningsSimulator() {
                     <span className="text-sm font-medium text-muted-foreground">/mês</span>
                   </p>
                   <p className="text-[11px] text-muted-foreground mt-1">
-                    {result.residualMonthly.levels.reduce((s, l) => s + l.filledPositions, 0).toLocaleString('pt-BR')} vagas preenchidas no total
+                    CashBack Residual: {formatBRL(CB_RESIDUAL_BASE_CENTS)} × % por nível
                   </p>
                 </CardContent>
               </Card>
@@ -690,7 +710,7 @@ export function EarningsSimulator() {
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                         Ganhos Vendas
                       </p>
-                      <p className="text-[10px] text-muted-foreground">Matriz 4x9 · 9 níveis · sobre consumo</p>
+                      <p className="text-[10px] text-muted-foreground">Matriz 4x9 · 9 níveis</p>
                     </div>
                   </div>
                   <p className="text-2xl font-bold text-foreground tabular-nums">
@@ -698,7 +718,7 @@ export function EarningsSimulator() {
                     <span className="text-sm font-medium text-muted-foreground">/mês</span>
                   </p>
                   <p className="text-[11px] text-muted-foreground mt-1">
-                    Gasto médio: <span className="font-medium text-foreground">{formatBRL(result.avgMonthlySpendCents)}</span>/indicação
+                    CashBack Vendas: {formatBRL(CB_VENDAS_BASE_CENTS)} × % por nível
                   </p>
                 </CardContent>
               </Card>
@@ -709,17 +729,17 @@ export function EarningsSimulator() {
               {renderMatrixTable(
                 'Entrada 4x5',
                 result.entradaMonthly,
-                `preço do plano (${formatBRL(result.planPriceCents)})`
+                `CashBack Entrada fixo (${formatBRL(CB_ENTRADA_BASE_CENTS)}) × %`
               )}
               {renderMatrixTable(
                 'Residual 4x7',
                 result.residualMonthly,
-                `preço do plano (${formatBRL(result.planPriceCents)})`
+                `CashBack Residual fixo (${formatBRL(CB_RESIDUAL_BASE_CENTS)}) × %`
               )}
               {renderMatrixTable(
                 'Vendas 4x9',
                 result.vendasMonthly,
-                `gasto médio mensal (${formatBRL(result.avgMonthlySpendCents)})`
+                `CashBack Vendas fixo (${formatBRL(CB_VENDAS_BASE_CENTS)}) × %`
               )}
             </div>
           </motion.div>

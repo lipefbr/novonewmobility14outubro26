@@ -17,6 +17,11 @@ export async function PUT(
       minPoints,
       bonusCents,
       rewardType,
+      // BACK-9 — separate reward fields. All amounts in cents.
+      rewardWithdrawalCents,
+      rewardShoppingCents,
+      rewardPoints,
+      gratification,
       color,
       icon,
       isActive,
@@ -34,11 +39,33 @@ export async function PUT(
     if (name !== undefined) data.name = name
     if (description !== undefined) data.description = description || null
     if (minPoints !== undefined) data.minPoints = Number(minPoints) || 0
-    if (bonusCents !== undefined) data.bonusCents = Number(bonusCents) || 0
-    // rewardType — admin chooses 'real' (BRL) or 'points'. Invalid values
-    // fall back to 'real' so we never store garbage in the column.
-    if (rewardType !== undefined) {
-      data.rewardType = rewardType === 'points' ? 'points' : 'real'
+
+    // BACK-9 — new separated reward fields. Each is optional on the request
+    // body so a partial update (e.g. just toggling isActive) doesn't wipe the
+    // other fields.
+    if (rewardWithdrawalCents !== undefined) {
+      const wCents = Number(rewardWithdrawalCents) || 0
+      data.rewardWithdrawalCents = wCents
+      // Mirror into legacy fields for backward compat when a withdrawal value
+      // is provided (so older code paths reading bonusCents/rewardType still
+      // see a sensible value).
+      data.bonusCents = wCents
+      data.rewardType = wCents > 0 ? 'real' : (rewardType === 'points' ? 'points' : 'real')
+    } else {
+      // Keep legacy fields in sync if explicitly provided.
+      if (bonusCents !== undefined) data.bonusCents = Number(bonusCents) || 0
+      if (rewardType !== undefined) {
+        data.rewardType = rewardType === 'points' ? 'points' : 'real'
+      }
+    }
+    if (rewardShoppingCents !== undefined) {
+      data.rewardShoppingCents = Number(rewardShoppingCents) || 0
+    }
+    if (rewardPoints !== undefined) {
+      data.rewardPoints = Number(rewardPoints) || 0
+    }
+    if (gratification !== undefined) {
+      data.gratification = gratification || null
     }
     if (color !== undefined) data.color = color || null
     if (icon !== undefined) data.icon = icon || null

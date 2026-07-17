@@ -16,6 +16,11 @@ import {
 } from '@/lib/billing'
 import { AsaasPaymentDialog } from '@/components/newmobility/payment/asaas-payment-dialog'
 import {
+  PaymentMethodDialog,
+  paymentMethodLabel,
+  type PaymentMethod,
+} from '@/components/newmobility/billing/payment-method-dialog'
+import {
   AlertCircle,
   AlertTriangle,
   Calendar,
@@ -132,10 +137,18 @@ export function BillingPage() {
   const [payingId, setPayingId] = useState<string | null>(null)
 
   // AsaasPaymentDialog state — opened by the "Pagar" button when the invoice
-  // already has an `asaasPaymentId` (otherwise we call /api/billing/pay/[id]
-  // directly to mark it as paid manually).
+  // already has an `asaasPaymentId` (otherwise we open the PaymentMethodDialog
+  // below to collect PIX/Boleto/Cartão BEFORE marking it as paid).
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [paymentInvoice, setPaymentInvoice] = useState<BillingInvoice | null>(null)
+
+  // PaymentMethodDialog state — per BACK-5, clicking "Pagar" on an invoice
+  // without an `asaasPaymentId` no longer marks it paid instantly. Instead
+  // we open this dialog so the user picks a method + reviews the amount/due
+  // date before confirming.
+  const [methodDialogOpen, setMethodDialogOpen] = useState(false)
+  const [methodDialogInvoice, setMethodDialogInvoice] = useState<BillingInvoice | null>(null)
+  const [methodDialogLoading, setMethodDialogLoading] = useState(false)
 
   // --------------------------------------------------------------------------
   // Data loading
@@ -181,7 +194,9 @@ export function BillingPage() {
   }, [user?.id])
 
   // --------------------------------------------------------------------------
-  // Pay handler
+  // Pay handler — per BACK-5, this now opens the PaymentMethodDialog BEFORE
+  // marking the invoice as paid. The actual mark-as-paid call is performed
+  // by `handleConfirmPayment` once the user picks PIX/Boleto/Cartão.
   // --------------------------------------------------------------------------
   const handlePay = useCallback(
     async (invoice: BillingInvoice) => {
@@ -193,18 +208,35 @@ export function BillingPage() {
         return
       }
 
-      // Otherwise, mark it as paid manually via the billing pay endpoint.
-      // This is the "manual mark as paid" path; real Asaas payments are
-      // confirmed via webhook elsewhere.
+      // Otherwise open the payment-method selection dialog. The user must
+      // explicitly confirm a method before the invoice is marked as paid.
+      setMethodDialogInvoice(invoice)
+      setMethodDialogOpen(true)
+    },
+    []
+  )
+
+  // Called by PaymentMethodDialog when the user confirms a payment method.
+  // Calls POST /api/billing/pay/[id] with the chosen paymentMethod in the
+  // body. The API marks the invoice as paid AND stores paymentMethod on the
+  // Invoice record (the schema already has that column).
+  const handleConfirmPayment = useCallback(
+    async (method: PaymentMethod) => {
+      const invoice = methodDialogInvoice
+      if (!invoice) return
+      setMethodDialogLoading(true)
       setPayingId(invoice.id)
       try {
         await apiFetch(`/billing/pay/${invoice.id}`, {
           method: 'POST',
-          body: JSON.stringify({ userId: user?.id }),
+          body: JSON.stringify({ userId: user?.id, paymentMethod: method }),
         })
-        toast.success('Pagamento confirmado', {
+        const methodLbl = paymentMethodLabel(method) ?? method
+        toast.success(`Pagamento de ${formatBRL(Number(invoice.amount) || 0)} confirmado via ${methodLbl}`, {
           description: `Fatura de ${bucketLabel(invoice.bucket)} marcada como paga.`,
         })
+        setMethodDialogOpen(false)
+        setMethodDialogInvoice(null)
         await refresh()
       } catch (err) {
         console.error('Failed to mark invoice as paid', err)
@@ -212,10 +244,11 @@ export function BillingPage() {
           description: err instanceof Error ? err.message : 'Tente novamente.',
         })
       } finally {
+        setMethodDialogLoading(false)
         setPayingId(null)
       }
     },
-    [user?.id, refresh]
+    [methodDialogInvoice, user?.id, refresh]
   )
 
   const handlePaymentCreated = useCallback(() => {
@@ -369,6 +402,20 @@ export function BillingPage() {
         initialAsaasPaymentId={paymentInvoice?.asaasPaymentId || undefined}
         onPaymentCreated={handlePaymentCreated}
       />
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Payment-method selection dialog (BACK-5)                         */}
+      {/* Opens for invoices without an `asaasPaymentId`. The user must    */}
+      {/* pick PIX / Boleto / Cartão before the invoice is marked as paid. */}
+      {/* ---------------------------------------------------------------- */}
+      <PaymentMethodDialog
+        open={methodDialogOpen}
+        onOpenChange={setMethodDialogOpen}
+        invoice={methodDialogInvoice}
+        bucketLabel={methodDialogInvoice ? bucketLabel(methodDialogInvoice.bucket) : undefined}
+        onConfirm={handleConfirmPayment}
+        loading={methodDialogLoading}
+      />
     </div>
   )
 }
@@ -486,11 +533,24 @@ function InvoiceCard({
   const Icon = cfg.icon
 
   const status = invoice.computedStatus
+  const paymentMethodLbl = paymentMethodLabel(invoice.paymentMethod)
   const statusBadge =
     status === 'paid' ? (
-      <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 hover:bg-emerald-100">
-        Pago
-      </Badge>
+      <div className="flex flex-col items-end gap-1">
+        <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 hover:bg-emerald-100">
+          Pago
+        </Badge>
+        {paymentMethodLbl && (
+          <Badge
+            variant="outline"
+            className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800 text-[10px] gap-1"
+            title="Forma de pagamento utilizada"
+          >
+            <CreditCard className="h-3 w-3" />
+            Pago via {paymentMethodLbl}
+          </Badge>
+        )}
+      </div>
     ) : status === 'overdue' ? (
       <Badge className="bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300 hover:bg-rose-100">
         Vencido

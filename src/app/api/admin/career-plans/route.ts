@@ -63,6 +63,11 @@ export async function POST(req: NextRequest) {
       minPoints = 0,
       bonusCents = 0,
       rewardType = 'real',
+      // BACK-9 — separate reward fields. All amounts are stored in cents.
+      rewardWithdrawalCents = 0,
+      rewardShoppingCents = 0,
+      rewardPoints = 0,
+      gratification = null,
       color,
       icon,
       isActive = true,
@@ -78,6 +83,17 @@ export async function POST(req: NextRequest) {
     // Validate rewardType — only 'real' or 'points' allowed.
     const validRewardType = rewardType === 'points' ? 'points' : 'real'
 
+    // BACK-9 — when a withdrawal reward (Carteira Saque) is set, also mirror it
+    // into the legacy `bonusCents` + `rewardType='real'` fields so older code
+    // paths that still read those columns keep working.
+    const withdrawalCentsNum = Number(rewardWithdrawalCents) || 0
+    const legacyBonusCents =
+      withdrawalCentsNum > 0
+        ? withdrawalCentsNum
+        : Number(bonusCents) || 0
+    const legacyRewardType =
+      withdrawalCentsNum > 0 ? 'real' : validRewardType
+
     const existing = await prisma.careerPlan.findUnique({ where: { code } })
     if (existing) return error('Já existe um plano de carreira com este código', 400)
 
@@ -87,8 +103,14 @@ export async function POST(req: NextRequest) {
         name,
         description: description || null,
         minPoints: Number(minPoints) || 0,
-        bonusCents: Number(bonusCents) || 0,
-        rewardType: validRewardType,
+        // BACK-9 — new separated reward fields.
+        rewardWithdrawalCents: withdrawalCentsNum,
+        rewardShoppingCents: Number(rewardShoppingCents) || 0,
+        rewardPoints: Number(rewardPoints) || 0,
+        gratification: gratification || null,
+        // Legacy fields kept in sync for backward compat.
+        bonusCents: legacyBonusCents,
+        rewardType: legacyRewardType,
         color: color || null,
         icon: icon || null,
         isActive: Boolean(isActive),

@@ -391,6 +391,7 @@ export async function GET(request: Request) {
         food: user.balanceFood || 0,
         pharmacy: user.balancePharmacy || 0,
         gratification: user.balanceGratification || 0,
+        paymentInvoice: user.balancePaymentInvoice || 0,
       },
       recentTransactions,
       recentActivity,

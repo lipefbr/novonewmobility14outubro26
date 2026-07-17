@@ -359,6 +359,26 @@ export const adminApi = {
   // User tree (referral tree)
   getUserTree: (userId: string, targetUserId: string) =>
     apiFetch<any>(`/admin/users/${targetUserId}/tree?userId=${userId}`),
+
+  // ADM-4 — Create a new user with email + password. The created user can
+  // immediately log in via /api/auth/login. Optional `role` ('admin' |
+  // 'support' | any custom role) grants admin panel access limited by the
+  // Permissões tab matrix.
+  createUser: (userId: string, data: {
+    name: string
+    email: string
+    password: string
+    phone?: string
+    cpf?: string
+    plan?: string
+    role?: string
+    userType?: string
+    referredByCode?: string
+  }) =>
+    apiFetch<any>('/admin/users/create', {
+      method: 'POST',
+      body: JSON.stringify({ userId, ...data }),
+    }),
 }
 
 // Notifications

@@ -58,20 +58,31 @@ export async function GET(req: NextRequest) {
     }
 
     // Streak rewards — read from the admin-managed StreakReward table so
-    // admin edits propagate here. Mirrors the shape the UI expects:
-    // { days, points, claimed }.
+    // admin edits propagate here. The shape the UI expects:
+    //   { days, points, amount, rewardType, claimed }
+    // - `rewardType`: 'points' | 'cashback'
+    // - `amount`: the raw rewardAmount integer. For 'points' it is the number
+    //   of career points to credit. For 'cashback' it is the value in cents
+    //   to credit to balanceWithdrawal.
+    // - `points` is kept as an alias of `amount` for backwards compatibility
+    //   with older UI builds that read `reward.points` directly.
     const currentStreakValue = (streak as any).currentStreak
     const rewardRows = await prisma.streakReward.findMany({
       where: { isActive: true },
       orderBy: [{ streakDays: 'asc' }],
     })
-    const streakRewards = rewardRows.map((r) => ({
-      days: r.streakDays,
-      points: r.rewardAmount,
-      description: r.description,
-      rewardType: r.rewardType,
-      claimed: currentStreakValue >= r.streakDays,
-    }))
+    const streakRewards = rewardRows.map((r) => {
+      const rewardType: 'points' | 'cashback' =
+        r.rewardType === 'cashback' ? 'cashback' : 'points'
+      return {
+        days: r.streakDays,
+        points: r.rewardAmount,
+        amount: r.rewardAmount,
+        description: r.description,
+        rewardType,
+        claimed: currentStreakValue >= r.streakDays,
+      }
+    })
 
     return success({
       currentStreak: currentStreakValue,

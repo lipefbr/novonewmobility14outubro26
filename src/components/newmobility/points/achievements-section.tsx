@@ -124,11 +124,13 @@ export function AchievementsSection() {
   const lockedAchievements = achievements.filter((a) => !a.earned)
 
   const formatProgress = (a: Achievement) => {
-    if (a.targetValue >= 100000) {
-      // Cashback values are stored in cents — format as BRL.
-      return `R$ ${(a.progress / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / R$ ${(a.targetValue / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    }
-    return `${a.progress} / ${a.targetValue}`
+    // BACK-8 — always show PONTOS, never R$. Previously this branch formatted
+    // the progress / target as BRL currency (R$ X / R$ 5.000,00) for any
+    // achievement whose targetValue was >= 100000 (treated as cashback cents).
+    // That mixed unit (cents) with the rest of the achievements which are in
+    // raw point counts, producing confusing displays like "R$ 5.000,00" for a
+    // cashback achievement. Now every achievement shows points uniformly.
+    return `${a.progress.toLocaleString('pt-BR')} / ${a.targetValue.toLocaleString('pt-BR')} pts`
   }
 
   const renderIcon = (iconStr: string | null, className?: string) => {

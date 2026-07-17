@@ -110,8 +110,8 @@ export function getPlanName(plan: string): string {
 export function getPlanPrice(plan: string): string {
   const prices: Record<string, string> = {
     free: 'Grátis',
-    blue3: 'R$ 200,00',
-    blue5: 'R$ 999,00',
+    blue3: 'R$ 149,00',
+    blue5: 'R$ 999,90',
   }
   return prices[plan] || '-'
 }
@@ -156,4 +156,35 @@ export function getStatusLabel(status: string): string {
     cancelled: 'Cancelado',
   }
   return labels[status] || status
+}
+
+/**
+ * Portuguese labels for the Transaction.category / financial breakdown
+ * category strings used across the platform (admin + user).
+ *
+ * Used by:
+ *  - admin-page.tsx "Resumo por Categoria" / "Distribuição por Categoria" panels
+ *  - admin-reports-panel.tsx "Por Categoria" card and transactions table
+ *
+ * Falls back to the raw key if unknown so we never show empty strings.
+ */
+export const CATEGORY_LABELS: Record<string, string> = {
+  withdrawal: 'Saque',
+  mobility: 'Mobilidade',
+  shopping: 'Compras',
+  food: 'Refeição',
+  pharmacy: 'Farmácia',
+  gratification: 'Gratificação',
+  marketplace: 'Marketplace',
+  other: 'Outros',
+}
+
+/**
+ * Returns the Portuguese label for a category key.
+ * Falls back to the original key (capitalised) when no mapping exists,
+ * so unknown categories still render something readable.
+ */
+export function categoryLabel(key: string | null | undefined): string {
+  if (!key) return 'Outros'
+  return CATEGORY_LABELS[key] || key
 }

@@ -37,12 +37,40 @@ import {
   Users,
   MapPin,
   RefreshCw,
+  CreditCard,
+  Receipt,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { apiFetch } from '@/lib/api'
 import { useStore } from '@/lib/store'
 import { EmptyState } from '../ui/empty-states'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+
+// Telemedicina monthly price (in BRL cents). Kept in sync with
+// /api/telemedicina/request/route.ts `TELEMEDICINA_PRICE_CENTS` so the UI
+// and the (admin-side) review show the same number. Mirrored here as a
+// constant — the API does not currently expose a GET for the price.
+const TELEMEDICINA_PRICE_CENTS = 4990
+
+const TELEMEDICINA_PRICE_BRL = (TELEMEDICINA_PRICE_CENTS / 100).toLocaleString('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+})
+
+type TelemedPaymentMethod = 'pix' | 'boleto' | 'credit_card'
+
+const PAYMENT_METHOD_OPTIONS: { value: TelemedPaymentMethod; label: string; description: string; icon: typeof CreditCard }[] = [
+  { value: 'pix', label: 'PIX', description: 'Aprovação imediata após pagamento', icon: CreditCard },
+  { value: 'boleto', label: 'Boleto', description: 'Vence em 3 dias úteis', icon: Receipt },
+  { value: 'credit_card', label: 'Cartão de Crédito', description: 'Cobrança automática mensal', icon: CreditCard },
+]
+
+function paymentMethodLabel(method: string | null): string | null {
+  if (!method) return null
+  const opt = PAYMENT_METHOD_OPTIONS.find((o) => o.value === method)
+  return opt?.label ?? method
+}
 
 interface TalkMobiPlanDTO {
   id: string
@@ -81,6 +109,8 @@ interface TelemedicinaRequestDTO {
   email: string
   dependents: TelemedicinaDependent[]
   notes: string | null
+  paymentMethod: string | null
+  paymentMethodLabel: string | null
   status: 'pending' | 'approved' | 'rejected' | 'cancelled'
   adminNotes: string | null
   activationLink: string | null
@@ -265,6 +295,9 @@ export function TalkMobiPage() {
     notes: '',
   })
   const [dependents, setDependents] = useState<TelemedicinaDependent[]>([])
+  // Payment-method selection — required to submit. Defaults to `pix` for
+  // convenience (the most common choice), but the user can change it.
+  const [paymentMethod, setPaymentMethod] = useState<TelemedPaymentMethod>('pix')
 
   // TalkMobi subscription form state — holder + shipping address for the SIM chip
   const [subForm, setSubForm] = useState({
@@ -337,6 +370,11 @@ export function TalkMobiPage() {
             notes: data.request.notes || '',
           })
           setDependents(Array.isArray(data.request.dependents) ? data.request.dependents : [])
+          // Restore the previously chosen payment method (if any).
+          const restored = data.request.paymentMethod as TelemedPaymentMethod | null
+          if (restored === 'pix' || restored === 'boleto' || restored === 'credit_card') {
+            setPaymentMethod(restored)
+          }
         } else if (user) {
           // Pre-fill with the user's store data for convenience
           setForm((f) => ({
@@ -520,6 +558,10 @@ export function TalkMobiPage() {
       toast.error('Preencha todos os campos obrigatórios.')
       return
     }
+    if (!paymentMethod) {
+      toast.error('Selecione a forma de pagamento.')
+      return
+    }
     setSubmitting(true)
     try {
       const res = await apiFetch<{ request: TelemedicinaRequestDTO; message?: string }>('/telemedicina/request', {
@@ -533,11 +575,21 @@ export function TalkMobiPage() {
           email: form.email,
           dependents,
           notes: form.notes || undefined,
+          paymentMethod,
         }),
       })
       setTelemedRequest(res.request)
       setTelemedOpen(false)
-      toast.success(res.message || 'Pedido enviado com sucesso!')
+      // Per BACK-2: the admin will approve and then send the actual
+      // payment link (PIX / Boleto / Cartão) to the user.
+      const methodLabel = paymentMethodLabel(paymentMethod) ?? paymentMethod
+      toast.success(
+        res.message ||
+          `Pedido enviado! Após aprovação do admin, você receberá o link de pagamento ${methodLabel}.`,
+        {
+          description: `Pagamento via ${methodLabel} · ${TELEMEDICINA_PRICE_BRL}/mês`,
+        },
+      )
     } catch (err: any) {
       toast.error(err?.message || 'Falha ao enviar pedido. Tente novamente.')
     } finally {
@@ -945,6 +997,17 @@ export function TalkMobiPage() {
                       {telemedRequest.dependents.length} dependente{telemedRequest.dependents.length === 1 ? '' : 's'} incluído{telemedRequest.dependents.length === 1 ? '' : 's'}
                     </p>
                   )}
+                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-white/60 dark:bg-white/5 border border-amber-200 dark:border-amber-800 px-2 py-0.5 text-amber-800 dark:text-amber-300 font-medium">
+                      <CreditCard className="h-3 w-3" />
+                      {TELEMEDICINA_PRICE_BRL}/mês
+                    </span>
+                    {telemedRequest.paymentMethodLabel && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white/60 dark:bg-white/5 border border-amber-200 dark:border-amber-800 px-2 py-0.5 text-amber-800 dark:text-amber-300 font-medium">
+                        Pagamento via {telemedRequest.paymentMethodLabel}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <Button
                   type="button"
@@ -1106,6 +1169,29 @@ export function TalkMobiPage() {
           </DialogHeader>
 
           <div className="space-y-4 py-2">
+            {/* ===== Price banner =====
+                Per BACK-2: the user must see the price and choose a payment
+                method BEFORE submitting the activation request. */}
+            <div className="rounded-2xl border border-emerald-200 dark:border-emerald-800/60 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30 p-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400 shrink-0">
+                  <HeartPulse className="h-5 w-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] uppercase tracking-wider font-semibold text-emerald-700 dark:text-emerald-300">
+                    Valor da ativação
+                  </p>
+                  <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100 leading-tight">
+                    {TELEMEDICINA_PRICE_BRL}
+                    <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300 ml-1">/mês</span>
+                  </p>
+                  <p className="text-[11px] text-emerald-700/80 dark:text-emerald-300/80 mt-0.5">
+                    Cobrança mensal recorrente · Cancele quando quiser
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Holder info */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -1248,6 +1334,66 @@ export function TalkMobiPage() {
                 className="text-sm min-h-[70px] resize-y"
               />
             </div>
+
+            {/* ===== Payment method selector (BACK-2) ===== */}
+            <div className="space-y-2 pt-2 border-t border-border">
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <CreditCard className="h-4 w-4 text-emerald-600" />
+                Forma de Pagamento *
+              </div>
+              <p className="text-[11px] text-muted-foreground -mt-1">
+                Após aprovação do admin, você receberá o link de pagamento pela forma escolhida.
+              </p>
+              <RadioGroup
+                value={paymentMethod}
+                onValueChange={(v) => setPaymentMethod(v as TelemedPaymentMethod)}
+                className="grid gap-2"
+              >
+                {PAYMENT_METHOD_OPTIONS.map((opt) => {
+                  const Icon = opt.icon
+                  const checked = paymentMethod === opt.value
+                  return (
+                    <Label
+                      key={opt.value}
+                      htmlFor={`telemed-pay-${opt.value}`}
+                      className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+                        checked
+                          ? 'border-emerald-400 bg-emerald-50 dark:border-emerald-600 dark:bg-emerald-950/30'
+                          : 'border-border hover:bg-muted/40'
+                      }`}
+                    >
+                      <RadioGroupItem
+                        id={`telemed-pay-${opt.value}`}
+                        value={opt.value}
+                        className="mt-0.5 data-[state=checked]:border-emerald-600 data-[state=checked]:text-emerald-600"
+                      />
+                      <Icon className={`h-4 w-4 mt-0.5 shrink-0 ${checked ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-foreground">{opt.label}</p>
+                        <p className="text-[11px] text-muted-foreground">{opt.description}</p>
+                      </div>
+                    </Label>
+                  )
+                })}
+              </RadioGroup>
+            </div>
+
+            {/* ===== Summary (BACK-2) ===== */}
+            <div className="rounded-xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/60 dark:bg-emerald-950/20 p-3 space-y-1">
+              <p className="text-[10px] uppercase tracking-wider font-semibold text-emerald-700 dark:text-emerald-300">
+                Resumo
+              </p>
+              <p className="text-xs text-foreground">
+                <span className="font-semibold">Ativação Telemedicina</span>
+                <span className="mx-1.5 text-muted-foreground">·</span>
+                <span className="font-semibold text-emerald-700 dark:text-emerald-400">{TELEMEDICINA_PRICE_BRL}/mês</span>
+                <span className="mx-1.5 text-muted-foreground">·</span>
+                <span>Pagamento via <span className="font-semibold">{paymentMethodLabel(paymentMethod)}</span></span>
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Você será notificado quando o admin aprovar e enviar o link de pagamento.
+              </p>
+            </div>
           </div>
 
           <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2">
@@ -1255,7 +1401,7 @@ export function TalkMobiPage() {
               Cancelar
             </Button>
             <Button
-              className="bg-rose-600 hover:bg-rose-700 text-white w-full sm:w-auto gap-2"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white w-full sm:w-auto gap-2"
               onClick={handleSubmitTelemed}
               disabled={submitting}
             >
@@ -1267,7 +1413,7 @@ export function TalkMobiPage() {
               ) : (
                 <>
                   <Check className="h-4 w-4" />
-                  {telemedRequest?.status === 'pending' ? 'Atualizar Pedido' : 'Enviar Pedido'}
+                  Confirmar e Pagar
                 </>
               )}
             </Button>

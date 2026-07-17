@@ -64,6 +64,9 @@ export async function GET(req: NextRequest) {
           bankCode: true, bankAgency: true, bankAccount: true, bankType: true,
           pixKey: true, pixEnabled: true,
           isDriver: true, isDelivery: true, role: true, userType: true,
+          // BACK-4 — qualification is needed by the admin Edit User dialog to
+          // pre-populate the Qualificação dropdown.
+          qualification: true,
           createdAt: true,
           _count: { select: { referrals: true } },
         },

@@ -3,14 +3,15 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { formatDate, getStatusLabel, getStatusVariant, getPlanName } from '@/lib/utils'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
-import { referralsApi } from '@/lib/api'
+import { referralsApi, apiFetch } from '@/lib/api'
 import { ReferralsSkeleton } from '../ui/loading-skeletons'
 import { EmptyState } from '../ui/empty-states'
 import { ShareOptions } from './share-options'
@@ -23,6 +24,28 @@ import {
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ResponsiveContainer, LineChart, Line, XAxis, Tooltip as RechartsTooltip } from 'recharts'
+import { toast } from 'sonner'
+
+// ----------------------------------------------------------------------------
+// Activity feed types (mirrors /api/referrals/activity response)
+// ----------------------------------------------------------------------------
+
+interface ActivityEntry {
+  id: string
+  type: 'join' | 'active' | 'cashback'
+  name: string
+  action: string
+  time: string
+  isoTime: string | null
+  plan: string
+  avatar: string | null
+  amount?: number
+}
+
+interface ActivityResponse {
+  activity: ActivityEntry[]
+  total: number
+}
 
 // Referrals are loaded from the API - no mock data to prevent data leakage
 
@@ -52,6 +75,12 @@ export function ReferralsPage() {
   const [planFilter, setPlanFilter] = useState<string>('all')
   const [statusFilterVal, setStatusFilterVal] = useState<string>('all')
   const [referrals, setReferrals] = useState<any[]>([])
+
+  // Recent activity feed (BACK-10). Replaces the 3 hardcoded mock entries
+  // (Thiago Nascimento / Carla Ferreira / Marcos Ribeiro) with real data
+  // from /api/referrals/activity — recent referrals + cashback earned.
+  const [activity, setActivity] = useState<ActivityEntry[]>([])
+  const [activityLoading, setActivityLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -158,6 +187,36 @@ export function ReferralsPage() {
       cancelled = true
       if (safetyTimer) clearTimeout(safetyTimer)
     }
+  }, [user?.id])
+
+  // Fetch the real recent activity feed (BACK-10). Loaded in parallel with
+  // the referrals list — its own loading state drives the skeleton so the
+  // rest of the page can render as soon as the referrals list resolves.
+  useEffect(() => {
+    let cancelled = false
+    async function fetchActivity() {
+      if (!user?.id) {
+        setActivityLoading(false)
+        return
+      }
+      try {
+        const data = await apiFetch<ActivityResponse>(`/referrals/activity?userId=${user.id}`)
+        if (cancelled || !data) return
+        setActivity(Array.isArray(data.activity) ? data.activity : [])
+      } catch (err) {
+        if (cancelled) return
+        console.error('Failed to fetch referral activity:', err)
+        // Non-fatal — the rest of the page still works. Show empty state.
+        setActivity([])
+        toast.error('Não foi possível carregar a atividade recente.', {
+          description: err instanceof Error ? err.message : undefined,
+        })
+      } finally {
+        if (!cancelled) setActivityLoading(false)
+      }
+    }
+    fetchActivity()
+    return () => { cancelled = true }
   }, [user?.id])
 
   if (loading) {
@@ -320,25 +379,50 @@ export function ReferralsPage() {
               <h4 className="text-sm font-bold text-foreground">Atividade Recente</h4>
             </div>
             <div className="space-y-2">
-              {[
-                { name: 'Thiago Nascimento', action: 'Entrou na rede', time: '3h atrás', plan: 'blue3' },
-                { name: 'Carla Ferreira', action: 'Upgrade para Blue 5', time: '1 dia', plan: 'blue5' },
-                { name: 'Marcos Ribeiro', action: 'Entrou na rede', time: '3 dias', plan: 'blue3' },
-              ].map((item, i) => (
-                <div key={i} className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg">
-                  <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 flex items-center justify-center text-[10px] font-bold shrink-0">
-                    {item.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
+              {activityLoading ? (
+                // Skeleton — mirrors the shape of the real entries.
+                [0, 1, 2].map((i) => (
+                  <div key={i} className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg animate-pulse">
+                    <div className="w-7 h-7 rounded-full bg-muted shrink-0" />
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <Skeleton className="h-3 w-32" />
+                      <Skeleton className="h-2.5 w-24" />
+                    </div>
+                    <Skeleton className="h-4 w-12" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-foreground truncate">{item.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{item.action}</p>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <Badge className={`text-[8px] border ${planBadgeColor(item.plan)}`}>{getPlanName(item.plan)}</Badge>
-                    <span className="text-[10px] text-muted-foreground">{item.time}</span>
-                  </div>
+                ))
+              ) : activity.length === 0 ? (
+                <div className="py-6 text-center">
+                  <Activity className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+                  <p className="text-xs text-muted-foreground">Nenhuma atividade recente</p>
+                  <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+                    Compartilhe seu link para começar a construir sua rede.
+                  </p>
                 </div>
-              ))}
+              ) : (
+                activity.map((item) => (
+                  <div key={item.id} className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg">
+                    <Avatar className="w-7 h-7 border border-emerald-100 dark:border-emerald-900 shrink-0">
+                      {item.avatar ? (
+                        <AvatarImage src={item.avatar} alt={item.name} />
+                      ) : null}
+                      <AvatarFallback className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 text-[10px] font-bold">
+                        {item.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">{item.name}</p>
+                      <p className={`text-[10px] truncate ${item.type === 'cashback' ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-muted-foreground'}`}>
+                        {item.action}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Badge className={`text-[8px] border ${planBadgeColor(item.plan)}`}>{getPlanName(item.plan)}</Badge>
+                      <span className="text-[10px] text-muted-foreground">{item.time}</span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </CardContent>
         </Card>

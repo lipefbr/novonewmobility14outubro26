@@ -54,6 +54,7 @@ export async function PUT(
       bankCode, bankAgency, bankAccount, bankType,
       pixKey, pixEnabled,
       isDriver, isDelivery,
+      qualification,
       role,
     } = body
 
@@ -109,6 +110,11 @@ export async function PUT(
     // Driver / delivery
     if (isDriver !== undefined) updateData.isDriver = isDriver
     if (isDelivery !== undefined) updateData.isDelivery = isDelivery
+
+    // BACK-4 — qualification (one of: motorista | passageiro | passageiro_60 |
+    // passageiro_pcd | comercio | entregador). Mirrors the registration
+    // dropdown. Allow clearing by sending an empty string.
+    if (qualification !== undefined) updateData.qualification = qualification || null
 
     // Role
     if (role !== undefined) updateData.role = role

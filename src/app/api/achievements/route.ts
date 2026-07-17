@@ -48,12 +48,19 @@ interface UserStats {
 
 // Fallback list used when the Achievement table is empty (e.g. before task 7-d
 // seeds the admin-managed achievements). Matches the previous hardcoded UI list.
+//
+// BACK-8 — cashback achievements now use POINT-based targetValues (and names)
+// instead of BRL-cents targetValues. Previously `fb_cashback_5000` had
+// targetValue=500000 (representing R$5.000 in cents), which forced the UI to
+// render progress as "R$ X / R$ 5.000,00". Now both targetValue and progress
+// are in points (1 pt = R$1 of cashback earned) so the display uniformly shows
+// "X / 5.000 pts". The matching conversion lives in progressForCode() below.
 const FALLBACK_ACHIEVEMENTS: RawAchievement[] = [
   { id: 'fb_first_referral', code: 'first_referral', name: 'Primeira Indicação', description: 'Faça sua primeira indicação ativa', icon: 'Users', category: 'referral', pointsReward: 1, targetValue: 1, isActive: true, sortOrder: 1 },
   { id: 'fb_ten_referrals', code: 'ten_referrals', name: '10 Indicações', description: 'Conquiste 10 indicações ativas', icon: 'Users', category: 'referral', pointsReward: 5, targetValue: 10, isActive: true, sortOrder: 2 },
   { id: 'fb_fifty_referrals', code: 'fifty_referrals', name: '50 Indicações', description: 'Conquiste 50 indicações ativas', icon: 'Crown', category: 'referral', pointsReward: 25, targetValue: 50, isActive: true, sortOrder: 3 },
-  { id: 'fb_cashback_1000', code: 'cashback_1000', name: 'R$ 1.000 em CashBack', description: 'Acumule R$ 1.000 em CashBack', icon: 'DollarSign', category: 'financial', pointsReward: 10, targetValue: 100000, isActive: true, sortOrder: 4 },
-  { id: 'fb_cashback_5000', code: 'cashback_5000', name: 'R$ 5.000 em CashBack', description: 'Acumule R$ 5.000 em CashBack', icon: 'DollarSign', category: 'financial', pointsReward: 50, targetValue: 500000, isActive: true, sortOrder: 5 },
+  { id: 'fb_cashback_1000', code: 'cashback_1000', name: '1.000 pts em CashBack', description: 'Acumule 1.000 pontos em CashBack', icon: 'DollarSign', category: 'financial', pointsReward: 10, targetValue: 1000, isActive: true, sortOrder: 4 },
+  { id: 'fb_cashback_5000', code: 'cashback_5000', name: '5.000 pts em CashBack', description: 'Acumule 5.000 pontos em CashBack', icon: 'DollarSign', category: 'financial', pointsReward: 50, targetValue: 5000, isActive: true, sortOrder: 5 },
   { id: 'fb_first_withdrawal', code: 'first_withdrawal', name: 'Primeiro Saque', description: 'Solicite seu primeiro saque', icon: 'ArrowDownToLine', category: 'financial', pointsReward: 2, targetValue: 1, isActive: true, sortOrder: 6 },
   { id: 'fb_weekly_active', code: 'weekly_active', name: 'Ativo por 4 Semanas', description: 'Seja ativo por 4 semanas consecutivas', icon: 'Flame', category: 'engagement', pointsReward: 5, targetValue: 4, isActive: true, sortOrder: 7 },
   { id: 'fb_first_voucher', code: 'first_voucher', name: 'Primeiro Voucher', description: 'Compre seu primeiro voucher', icon: 'Gift', category: 'engagement', pointsReward: 2, targetValue: 1, isActive: true, sortOrder: 8 },
@@ -82,10 +89,19 @@ function monthsSince(date: Date): number {
 // Map an achievement code to the user's current progress value.
 // Uses substring matching to handle both snake_case and numeric-prefix variants
 // (e.g. "ten_referrals" vs "10_referrals" vs "100_referrals").
+//
+// BACK-8 — cashback achievements now report progress in POINTS (1 pt = R$1 of
+// cashback earned) rather than raw BRL cents. This matches the point-based
+// targetValues used in FALLBACK_ACHIEVEMENTS so the UI displays "X / 5.000 pts"
+// instead of mixing cents with point targets.
 function progressForCode(code: string, stats: UserStats): number {
   const c = code.toLowerCase()
   // Order matters: more specific checks first.
-  if (c.includes('cashback')) return stats.cashbackTotalCents
+  if (c.includes('cashback')) {
+    // Convert cents → points (R$1 = 1 pt). Floor so partial-real progress
+    // doesn't get rounded up.
+    return Math.floor((stats.cashbackTotalCents ?? 0) / 100)
+  }
   if (c.includes('withdraw') || c.includes('saque')) return stats.withdrawalsCount
   if (c.includes('voucher')) return stats.voucherCount
   if (c.includes('plan_upgrade') || c.includes('upgrade') || c.includes('plan'))

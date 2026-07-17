@@ -3,14 +3,16 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
+import { Button } from '@/components/ui/button'
 import { useStore } from '@/lib/store'
 import { formatCurrency, formatNumber } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
 import { careerApi } from '@/lib/api'
+import { toast } from 'sonner'
 import {
   Trophy, Star, TrendingUp, Award, Target, Crown,
   Zap, Shield, Percent, Gift, CheckCircle2, ArrowRight, Sparkles, Lock, Unlock,
-  Car
+  Car, Loader2
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
@@ -28,6 +30,16 @@ interface CareerLevel {
   // Hex color from the DB (`CareerPlan.color`). Used via inline styles so
   // the admin can edit the color in the admin panel and see it reflected.
   color: string
+  // BACK-9 — separate reward fields. All money values are stored in BRL
+  // cents; `rewardPoints` is an integer point count. `gratification` is a
+  // free-text bonus description shown as the card subtitle.
+  rewardWithdrawalCents: number  // 9.1 — Carteira Saque (R$ cents)
+  rewardShoppingCents: number    // 9.2 — Carteira Compras (R$ cents)
+  rewardPoints: number           // 9.3 — Pontos
+  gratification: string | null   // 9.4 — Texto livre do bônus
+  // Legacy combined reward (kept for backward-compat with the fallback UI
+  // rendering of the "reward" cell in some legacy code paths). Derived from
+  // rewardWithdrawalCents when set.
   reward: number
   // 'real' = reward is BRL cents (rendered as R$). 'points' = reward is a
   // point count (rendered as "X pts"). Sourced from CareerPlan.rewardType.
@@ -41,18 +53,50 @@ interface CareerLevel {
 }
 
 /**
- * Render a career plan reward according to its rewardType.
- * - 'real'  → "R$ 2.000,00"  (BRL, pt-BR locale)
- * - 'points'→ "2.000 pts"    (raw number + "pts" suffix)
- *
- * Used everywhere a reward is displayed so the UI never shows "R$ 2.000"
- * for a plan whose admin configured it as a points reward.
+ * Format a BRL cents value as a pt-BR currency string.
  */
-function formatReward(reward: number, rewardType: 'real' | 'points'): string {
+function formatBRLFromCents(cents: number): string {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format((cents || 0) / 100)
+}
+
+/**
+ * Build a comma-separated string listing ALL reward types configured on a
+ * career level. Returns each non-zero reward formatted appropriately:
+ *   - "Saque: R$ 2.000,00"  (when rewardWithdrawalCents > 0)
+ *   - "Compras: R$ 500,00"  (when rewardShoppingCents > 0)
+ *   - "1.000 pts"           (when rewardPoints > 0)
+ * If no rewards are configured, returns "—".
+ *
+ * Replaces the old formatReward(reward, rewardType) helper which only knew
+ * how to render a single combined reward.
+ */
+function formatReward(level: Pick<CareerLevel, 'rewardWithdrawalCents' | 'rewardShoppingCents' | 'rewardPoints'>): string {
+  const parts: string[] = []
+  if ((level.rewardWithdrawalCents ?? 0) > 0) {
+    parts.push(`Saque: ${formatBRLFromCents(level.rewardWithdrawalCents)}`)
+  }
+  if ((level.rewardShoppingCents ?? 0) > 0) {
+    parts.push(`Compras: ${formatBRLFromCents(level.rewardShoppingCents)}`)
+  }
+  if ((level.rewardPoints ?? 0) > 0) {
+    parts.push(`${Number(level.rewardPoints).toLocaleString('pt-BR')} pts`)
+  }
+  return parts.length > 0 ? parts.join(' · ') : '—'
+}
+
+/**
+ * Legacy single-reward formatter — kept for any callers that still pass a
+ * (reward, rewardType) pair (e.g. fallback level arrays). Prefer
+ * formatReward(level) for new code.
+ */
+function formatLegacyReward(reward: number, rewardType: 'real' | 'points'): string {
   if (rewardType === 'points') {
     return `${Number(reward || 0).toLocaleString('pt-BR')} pts`
   }
-  return formatCurrency(reward)
+  return formatBRLFromCents(reward)
 }
 
 // Lucide icons cycled based on sortOrder so each plan gets a distinctive
@@ -71,6 +115,8 @@ function cashbackMultiplierFor(sortOrder: number): string {
 // bonus paid every month as long as the user maintains that graduation:
 //   Safira R$2.000 / Rubi R$3.000 / Esmeralda R$4.000
 //   Diamante R$5.000 / Imperial R$6.000
+// BACK-9 — fallback now uses the SEPARATE reward fields:
+//   rewardWithdrawalCents / rewardShoppingCents / rewardPoints / gratification
 const careerLevels: CareerLevel[] = [
   {
     id: 'safira',
@@ -81,7 +127,11 @@ const careerLevels: CareerLevel[] = [
     starsRequired: 1,
     pointsRequired: 100,
     color: '#7DD3FC',
-    reward: 200000, // R$ 2.000/mês
+    rewardWithdrawalCents: 200000, // R$ 2.000/mês
+    rewardShoppingCents: 0,
+    rewardPoints: 0,
+    gratification: 'Bônus de Safira ao atingir 100 pontos',
+    reward: 200000, // legacy
     rewardType: 'real',
     cashbackMultiplier: '1.0x',
     achieved: false,
@@ -99,7 +149,11 @@ const careerLevels: CareerLevel[] = [
     starsRequired: 2,
     pointsRequired: 250,
     color: '#F87171',
-    reward: 300000, // R$ 3.000/mês
+    rewardWithdrawalCents: 300000, // R$ 3.000/mês
+    rewardShoppingCents: 0,
+    rewardPoints: 0,
+    gratification: 'Bônus de Rubi ao atingir 250 pontos',
+    reward: 300000, // legacy
     rewardType: 'real',
     cashbackMultiplier: '1.2x',
     achieved: false,
@@ -117,7 +171,11 @@ const careerLevels: CareerLevel[] = [
     starsRequired: 3,
     pointsRequired: 500,
     color: '#34D399',
-    reward: 400000, // R$ 4.000/mês
+    rewardWithdrawalCents: 400000, // R$ 4.000/mês
+    rewardShoppingCents: 0,
+    rewardPoints: 0,
+    gratification: 'Bônus de Esmeralda ao atingir 500 pontos',
+    reward: 400000, // legacy
     rewardType: 'real',
     cashbackMultiplier: '1.5x',
     achieved: false,
@@ -135,7 +193,11 @@ const careerLevels: CareerLevel[] = [
     starsRequired: 4,
     pointsRequired: 1000,
     color: '#A78BFA',
-    reward: 500000, // R$ 5.000/mês
+    rewardWithdrawalCents: 500000, // R$ 5.000/mês
+    rewardShoppingCents: 0,
+    rewardPoints: 0,
+    gratification: 'Bônus de Diamante ao atingir 1.000 pontos',
+    reward: 500000, // legacy
     rewardType: 'real',
     cashbackMultiplier: '2.0x',
     achieved: false,
@@ -153,7 +215,11 @@ const careerLevels: CareerLevel[] = [
     starsRequired: 5,
     pointsRequired: 2500,
     color: '#FBBF24',
-    reward: 600000, // R$ 6.000/mês
+    rewardWithdrawalCents: 600000, // R$ 6.000/mês
+    rewardShoppingCents: 0,
+    rewardPoints: 0,
+    gratification: 'Bônus de Imperial ao atingir 2.500 pontos',
+    reward: 600000, // legacy
     rewardType: 'real',
     cashbackMultiplier: '2.5x',
     achieved: false,
@@ -274,6 +340,13 @@ export function CareerPage() {
   const [levels, setLevels] = useState<CareerLevel[]>(careerLevels)
   const [apiCurrentRank, setApiCurrentRank] = useState<string | null>(null)
 
+  // BACK-9 — claimed-gratification tracking. Maps planId → claimedAt ISO
+  // string for every career plan the user has already claimed. Populated
+  // from GET /api/career/claim on mount. Drives the "Reivindicar
+  // Gratificação" / "Reivindicada" button state on each plan card.
+  const [claimedPlanIds, setClaimedPlanIds] = useState<Record<string, string>>({})
+  const [claimingPlanId, setClaimingPlanId] = useState<string | null>(null)
+
   useEffect(() => {
     let cancelled = false
     async function loadCareer() {
@@ -296,6 +369,24 @@ export function CareerPage() {
             const isAchieved = typeof p.achieved === 'boolean'
               ? p.achieved
               : apiTotalPoints >= p.minPoints
+            // BACK-9 — read the new separate reward fields from the API
+            // response. Fall back to the legacy combined `bonusCents` /
+            // `rewardType` columns when the API response predates the
+            // BACK-9 migration (defensive: older cached responses).
+            const rewardWithdrawalCents =
+              typeof p.rewardWithdrawalCents === 'number'
+                ? p.rewardWithdrawalCents
+                : (p.bonusCents || 0)
+            const rewardShoppingCents =
+              typeof p.rewardShoppingCents === 'number'
+                ? p.rewardShoppingCents
+                : 0
+            const rewardPoints =
+              typeof p.rewardPoints === 'number' ? p.rewardPoints : 0
+            const gratification =
+              typeof p.gratification === 'string' ? p.gratification : null
+            const rewardType =
+              p.rewardType === 'points' ? 'points' : 'real'
             return {
               id: p.id,
               code: p.code,
@@ -305,8 +396,14 @@ export function CareerPage() {
               starsRequired: p.sortOrder,
               pointsRequired: p.minPoints,
               color: p.color || '#10b981',
-              reward: p.bonusCents || 0,
-              rewardType: (p as any).rewardType === 'points' ? 'points' : 'real',
+              rewardWithdrawalCents,
+              rewardShoppingCents,
+              rewardPoints,
+              gratification,
+              // Legacy combined reward — derived from rewardWithdrawalCents
+              // for backward-compat with code paths that still read `reward`.
+              reward: rewardWithdrawalCents,
+              rewardType,
               cashbackMultiplier: cashbackMultiplierFor(p.sortOrder),
               achieved: isAchieved,
               benefits: Array.isArray(p.benefits) && p.benefits.length > 0
@@ -335,6 +432,136 @@ export function CareerPage() {
     return () => { cancelled = true }
   }, [user?.id, currentPoints])
 
+  // BACK-9 — load the list of career-claim gratifications the user has
+  // already claimed, so we can disable the "Reivindicar Gratificação" button
+  // on plans that were already credited.
+  useEffect(() => {
+    let cancelled = false
+    async function loadClaims() {
+      if (!user?.id) return
+      try {
+        const res = await fetch(
+          `/api/career/claim?userId=${encodeURIComponent(user.id)}`,
+          { cache: 'no-store' }
+        )
+        if (!res.ok) return
+        const data = await res.json()
+        if (cancelled || !data) return
+        const claimed: Record<string, string> = {}
+        const list = Array.isArray(data?.claimed) ? data.claimed : []
+        for (const c of list) {
+          if (c?.planId) {
+            claimed[c.planId] = c.claimedAt ?? new Date().toISOString()
+          }
+        }
+        setClaimedPlanIds(claimed)
+      } catch (err) {
+        console.error('Failed to load career claims:', err)
+      }
+    }
+    loadClaims()
+    return () => { cancelled = true }
+  }, [user?.id])
+
+  // BACK-9 — claim a career plan's gratification. Calls POST /api/career/claim
+  // and updates the local claimed state on success.
+  const handleClaimGratification = async (planId: string, planName: string) => {
+    if (!user?.id) return
+    if (claimingPlanId) return // prevent double-clicks
+    setClaimingPlanId(planId)
+    try {
+      const res = await fetch('/api/career/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, planId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const msg = (data as any)?.error || 'Erro ao reivindicar gratificação'
+        toast.error(msg)
+        return
+      }
+      const credited = (data as any)?.credited
+      const parts: string[] = []
+      if (credited?.rewardWithdrawalCents > 0) {
+        parts.push(`Saque: ${formatBRLFromCents(credited.rewardWithdrawalCents)}`)
+      }
+      if (credited?.rewardShoppingCents > 0) {
+        parts.push(`Compras: ${formatBRLFromCents(credited.rewardShoppingCents)}`)
+      }
+      if (credited?.rewardPoints > 0) {
+        parts.push(`${Number(credited.rewardPoints).toLocaleString('pt-BR')} pts`)
+      }
+      toast.success(
+        `Gratificação de ${planName} reivindicada!${parts.length > 0 ? ` (+${parts.join(' · ')})` : ''}`
+      )
+      setClaimedPlanIds((prev) => ({
+        ...prev,
+        [planId]: new Date().toISOString(),
+      }))
+      // If the plan credited career points, the user's careerPoints may now
+      // be enough to unlock the next plan — refresh the levels list so the
+      // new "achieved" flag propagates.
+      try {
+        const data2 = await careerApi.getData(user.id)
+        if (data2?.plans && Array.isArray(data2.plans)) {
+          const apiTotalPoints = typeof data2.totalPoints === 'number' ? data2.totalPoints : currentPoints
+          const mapped: CareerLevel[] = data2.plans.map((p: any, idx: number) => {
+            const nextPlan = data2.plans[idx + 1] as any | undefined
+            const isAchieved = typeof p.achieved === 'boolean'
+              ? p.achieved
+              : apiTotalPoints >= p.minPoints
+            const rewardWithdrawalCents =
+              typeof p.rewardWithdrawalCents === 'number'
+                ? p.rewardWithdrawalCents
+                : (p.bonusCents || 0)
+            const rewardShoppingCents =
+              typeof p.rewardShoppingCents === 'number' ? p.rewardShoppingCents : 0
+            const rewardPoints =
+              typeof p.rewardPoints === 'number' ? p.rewardPoints : 0
+            const gratification =
+              typeof p.gratification === 'string' ? p.gratification : null
+            return {
+              id: p.id,
+              code: p.code,
+              name: p.name,
+              icon: ICON_CYCLE[idx % ICON_CYCLE.length],
+              iconEmoji: p.icon || '⭐',
+              starsRequired: p.sortOrder,
+              pointsRequired: p.minPoints,
+              color: p.color || '#10b981',
+              rewardWithdrawalCents,
+              rewardShoppingCents,
+              rewardPoints,
+              gratification,
+              reward: rewardWithdrawalCents,
+              rewardType: p.rewardType === 'points' ? 'points' : 'real',
+              cashbackMultiplier: cashbackMultiplierFor(p.sortOrder),
+              achieved: isAchieved,
+              benefits: Array.isArray(p.benefits) && p.benefits.length > 0
+                ? p.benefits
+                : (p.description ? [p.description] : []),
+              nextReward: nextPlan?.name || 'Benefícios Exclusivos VIP',
+              nextRewardIcon: nextPlan?.icon || '👑',
+              sortOrder: p.sortOrder,
+            }
+          })
+          setLevels(mapped)
+          if (typeof apiTotalPoints === 'number' && apiTotalPoints !== currentPoints) {
+            setCurrentPoints(apiTotalPoints)
+          }
+        }
+      } catch {
+        // non-critical refresh — ignore
+      }
+    } catch (err) {
+      console.error('Claim error:', err)
+      toast.error('Erro de conexão ao reivindicar gratificação')
+    } finally {
+      setClaimingPlanId(null)
+    }
+  }
+
   // When the user hasn't achieved any plan yet (careerPoints below the lowest
   // plan's minPoints), the API returns "Associado" as the current rank. We
   // synthesize a virtual "Associado" level so the UI shows the correct rank
@@ -349,6 +576,11 @@ export function CareerPage() {
     starsRequired: 0,
     pointsRequired: 0,
     color: '#6b7280',
+    // BACK-9 — Associado has no rewards.
+    rewardWithdrawalCents: 0,
+    rewardShoppingCents: 0,
+    rewardPoints: 0,
+    gratification: null,
     reward: 0,
     rewardType: 'real',
     cashbackMultiplier: '1.0x',
@@ -413,8 +645,8 @@ export function CareerPage() {
                     <div key={lvl.id} className="bg-white/60 dark:bg-emerald-950/40 rounded-md p-2 text-center border border-emerald-100 dark:border-emerald-900/50">
                       <p className="text-[10px] text-muted-foreground">{lvl.name}</p>
                       <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
-                        {formatReward(lvl.reward, lvl.rewardType)}
-                        {lvl.rewardType === 'real' && <span className="text-[10px] text-muted-foreground">/mês</span>}
+                        {formatReward(lvl)}
+                        {(lvl.rewardWithdrawalCents > 0 || lvl.rewardShoppingCents > 0) && <span className="text-[10px] text-muted-foreground">/mês</span>}
                       </p>
                     </div>
                   ))}
@@ -646,7 +878,7 @@ export function CareerPage() {
                   </div>
                   <div className="text-right hidden sm:block">
                     <p className="text-[10px] text-muted-foreground">Recompensa</p>
-                    <p className="text-sm font-bold text-emerald-600">{formatReward(nextLevel.reward, nextLevel.rewardType)}</p>
+                    <p className="text-sm font-bold text-emerald-600">{formatReward(nextLevel)}</p>
                   </div>
                 </div>
               </CardContent>
@@ -684,7 +916,7 @@ export function CareerPage() {
                     </div>
                     <div>
                       <span className="text-muted-foreground">Recompensa</span>
-                      <p className="font-semibold text-emerald-600">{formatReward(nextLevel.reward, nextLevel.rewardType)}</p>
+                      <p className="font-semibold text-emerald-600">{formatReward(nextLevel)}</p>
                     </div>
                   </div>
                 </div>
@@ -768,6 +1000,105 @@ export function CareerPage() {
                 </motion.div>
               ))}
             </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* BACK-9 — Gratificações Desbloqueadas (career claim section).
+          Lists every plan the user has reached (careerPoints >= plan.minPoints)
+          and shows a "Reivindicar Gratificação" button that calls
+          POST /api/career/claim. Plans already claimed show a success badge
+          + the claim date instead of the button. */}
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}>
+        <Card className="shadow-sm bg-card">
+          <CardHeader>
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Gift className="h-4 w-4 text-emerald-600" />
+              Gratificações Desbloqueadas
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {levels.filter((l) =>
+              l.code !== 'associado' &&
+              currentPoints >= l.pointsRequired
+            ).length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-6 gap-2 text-center">
+                <Lock className="h-8 w-8 text-muted-foreground/40" />
+                <p className="text-sm text-muted-foreground">
+                  Nenhuma gratificação desbloqueada ainda.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Acumule pontos de carreira para desbloquear e reivindicar gratificações.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {levels
+                  .filter((l) =>
+                    l.code !== 'associado' &&
+                    currentPoints >= l.pointsRequired
+                  )
+                  .map((level, i) => {
+                    const isClaimed = !!claimedPlanIds[level.id]
+                    const isClaiming = claimingPlanId === level.id
+                    return (
+                      <motion.div
+                        key={level.id}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.3 + i * 0.05 }}
+                        className={`flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-lg border ${
+                          isClaimed
+                            ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800'
+                            : 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <span className="text-xl shrink-0" aria-hidden>{level.iconEmoji || '🎁'}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-sm font-bold text-foreground">{level.name}</p>
+                              <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[10px]">
+                                {formatNumber(level.pointsRequired)} pts
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Recompensa: <span className="font-semibold text-foreground">{formatReward(level)}</span>
+                            </p>
+                            {level.gratification && (
+                              <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5 line-clamp-2">
+                                {level.gratification}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="shrink-0">
+                          {isClaimed ? (
+                            <Badge className="bg-emerald-600 text-white text-xs gap-1 px-3 py-1.5">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Reivindicada
+                            </Badge>
+                          ) : (
+                            <Button
+                              size="sm"
+                              className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
+                              onClick={() => handleClaimGratification(level.id, level.name)}
+                              disabled={isClaiming}
+                            >
+                              {isClaiming ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Gift className="h-3.5 w-3.5" />
+                              )}
+                              Reivindicar Gratificação
+                            </Button>
+                          )}
+                        </div>
+                      </motion.div>
+                    )
+                  })}
+              </div>
+            )}
           </CardContent>
         </Card>
       </motion.div>
@@ -955,8 +1286,8 @@ export function CareerPage() {
                           </div>
                           <div className="text-right shrink-0">
                             <p className="text-[9px] sm:text-[10px] text-muted-foreground uppercase tracking-wide">Recompensa</p>
-                            <p className="text-xs sm:text-sm font-bold text-emerald-600 whitespace-nowrap">{formatReward(level.reward, level.rewardType)}</p>
-                            <p className="text-[9px] text-muted-foreground">{level.rewardType === 'points' ? '' : '/mês'}</p>
+                            <p className="text-xs sm:text-sm font-bold text-emerald-600 whitespace-nowrap">{formatReward(level)}</p>
+                            <p className="text-[9px] text-muted-foreground">{(level.rewardWithdrawalCents > 0 || level.rewardShoppingCents > 0) ? '/mês' : ''}</p>
                           </div>
                         </div>
 

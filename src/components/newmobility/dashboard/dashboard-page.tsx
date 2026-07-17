@@ -649,22 +649,28 @@ export function DashboardPage() {
                   <tr className="border-b border-border bg-muted/30">
                     <th className="text-left font-semibold text-muted-foreground px-3 sm:px-4 py-2 sm:py-2.5">Tipo</th>
                     <th className="text-right font-semibold text-muted-foreground px-3 sm:px-4 py-2 sm:py-2.5">Quantidade</th>
-                    <th className="text-left font-semibold text-muted-foreground px-3 sm:px-4 py-2 sm:py-2.5 hidden sm:table-cell">Descrição</th>
+                    <th className="text-right font-semibold text-muted-foreground px-3 sm:px-4 py-2 sm:py-2.5 hidden sm:table-cell">Valor Total</th>
+                    <th className="text-left font-semibold text-muted-foreground px-3 sm:px-4 py-2 sm:py-2.5 hidden md:table-cell">Descrição</th>
                   </tr>
                 </thead>
                 <tbody>
                   {[
-                    { tipo: 'CashBack Entrada', qtd: dashboardData?.cashbackEntrada?.totalUsers ?? 0, desc: 'Membros na matriz de entrada (4×5)', cor: 'text-emerald-600' },
-                    { tipo: 'CashBack Residual', qtd: dashboardData?.cashbackResidual?.totalUsers ?? 0, desc: 'Membros na matriz residual (4×7)', cor: 'text-teal-600' },
-                    { tipo: 'CashBack Vendas', qtd: dashboardData?.cashbackVendas?.totalUsers ?? 0, desc: 'Membros na matriz de vendas (4×9)', cor: 'text-amber-600' },
-                    { tipo: 'Indicações Diretas', qtd: dashboardData?.directReferralCount ?? 0, desc: 'Pessoas indicadas diretamente por você', cor: 'text-emerald-600' },
-                    { tipo: 'Pontos de Carreira', qtd: dashboardData?.career?.points ?? user?.careerPoints ?? 0, desc: 'Pontos acumulados no plano de carreira', cor: 'text-amber-600' },
-                    { tipo: 'Rede Total', qtd: dashboardData?.network?.totalSize ?? 0, desc: 'Tamanho total da sua rede (todos os níveis)', cor: 'text-emerald-600' },
+                    { tipo: 'CashBack Entrada', qtd: dashboardData?.cashbackEntrada?.totalUsers ?? 0, valor: dashboardData?.cashbackEntrada?.totalEarned ?? 0, desc: 'Membros na matriz de entrada (4×5)', cor: 'text-emerald-600', isCurrency: true },
+                    { tipo: 'CashBack Residual', qtd: dashboardData?.cashbackResidual?.totalUsers ?? 0, valor: dashboardData?.cashbackResidual?.totalEarned ?? 0, desc: 'Membros na matriz residual (4×7)', cor: 'text-teal-600', isCurrency: true },
+                    { tipo: 'CashBack Vendas', qtd: dashboardData?.cashbackVendas?.totalUsers ?? 0, valor: dashboardData?.cashbackVendas?.totalEarned ?? 0, desc: 'Membros na matriz de vendas (4×9)', cor: 'text-amber-600', isCurrency: true },
+                    { tipo: 'Indicações Diretas', qtd: dashboardData?.directReferralCount ?? 0, valor: 0, desc: 'Pessoas indicadas diretamente por você', cor: 'text-emerald-600', isCurrency: false },
+                    { tipo: 'Pontos de Carreira', qtd: dashboardData?.career?.points ?? user?.careerPoints ?? 0, valor: 0, desc: 'Pontos acumulados no plano de carreira', cor: 'text-amber-600', isCurrency: false },
+                    { tipo: 'Rede Total', qtd: dashboardData?.network?.totalSize ?? 0, valor: 0, desc: 'Tamanho total da sua rede (todos os níveis)', cor: 'text-emerald-600', isCurrency: false },
                   ].map((row, i) => (
                     <tr key={i} className={i % 2 === 0 ? 'bg-transparent' : 'bg-muted/20'}>
                       <td className="px-3 sm:px-4 py-2 sm:py-2.5 font-medium text-foreground">{row.tipo}</td>
                       <td className={`px-3 sm:px-4 py-2 sm:py-2.5 text-right font-bold ${row.cor}`}>{row.qtd.toLocaleString('pt-BR')}</td>
-                      <td className="px-3 sm:px-4 py-2 sm:py-2.5 text-muted-foreground text-xs hidden sm:table-cell">{row.desc}</td>
+                      <td className="px-3 sm:px-4 py-2 sm:py-2.5 text-right font-semibold text-emerald-700 dark:text-emerald-400 hidden sm:table-cell">
+                        {row.isCurrency
+                          ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(row.valor / 100)
+                          : '—'}
+                      </td>
+                      <td className="px-3 sm:px-4 py-2 sm:py-2.5 text-muted-foreground text-xs hidden md:table-cell">{row.desc}</td>
                     </tr>
                   ))}
                 </tbody>

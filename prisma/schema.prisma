@@ -295,6 +295,9 @@ model Gratification {
   qualification String?  
   targetValue  Int?      
   currentValue Int?      
+  // Item 7 — Para qual tipo de usuário o benefício se aplica:
+  // 'motorista' | 'entregador' | 'ambos' | null (todos). Usado pelo módulo Metas.
+  targetQualification String?
   user         User      @relation(fields: [userId], references: [id])
 }
 
@@ -631,10 +634,18 @@ model CareerPlan {
   code         String   @unique
   name         String
   description  String?
+  // Pontos mínimos para desbloquear esta graduação (único, obrigatório)
   minPoints    Int      @default(0)
+  // 9.1 — Recompensa em CARTEIRA SAQUE (R$ em cents). 0 = sem recompensa nesta carteira.
+  rewardWithdrawalCents Int @default(0)
+  // 9.2 — Recompensa em CARTEIRA COMPRAS (R$ em cents). 0 = sem recompensa nesta carteira.
+  rewardShoppingCents   Int @default(0)
+  // 9.3 — Recompensa em PONTOS. 0 = sem recompensa em pontos.
+  rewardPoints          Int @default(0)
+  // 9.4 — Texto livre da gratificação (bônus descritivo que aparece no card).
+  gratification         String?
+  // Legado: mantido para compatibilidade (migrado para rewardWithdrawalCents quando > 0).
   bonusCents   Int      @default(0)
-  /// "real" = bonusCents is treated as BRL cents (R$). "points" = treated as a point count.
-  /// Admin chooses per plan. UI renders accordingly so we never show "R$ 2.000" for a points reward.
   rewardType   String   @default("real")
   color        String?
   icon         String?

@@ -21,6 +21,8 @@ import {
   CheckCircle2,
   Plus,
   Trash2,
+  Info,
+  KeyRound,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useStore } from '@/lib/store'
@@ -170,6 +172,31 @@ export function AdminPermissionsPanel() {
 
   return (
     <div className="space-y-4">
+      {/* ADM-4 — Info box: explains how login + roles + permissions work together */}
+      <Card className="border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/20">
+        <CardContent className="p-4">
+          <div className="flex gap-3">
+            <div className="p-2 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 shrink-0">
+              <Info className="h-4 w-4" />
+            </div>
+            <div className="space-y-1.5 min-w-0">
+              <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                <KeyRound className="h-3.5 w-3.5 text-emerald-600" />
+                Como funciona o login
+              </p>
+              <p className="text-xs text-foreground/80 leading-relaxed">
+                Cada usuário criado no sistema tem seu próprio <strong>email</strong> e <strong>senha</strong>.
+                Usuários com role <code className="px-1 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">admin</code> ou{' '}
+                <code className="px-1 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">support</code>{' '}
+                (ou roles customizados) podem acessar o painel admin, limitado às páginas permitidas abaixo. Para criar
+                um novo usuário com acesso ao painel, vá na aba <strong>Usuários</strong> e clique em{' '}
+                <strong>&quot;Criar Usuário&quot;</strong>.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Header card */}
       <Card className="rounded-2xl shadow-sm">
         <CardHeader className="pb-3">

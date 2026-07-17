@@ -76,12 +76,12 @@ const FALLBACK_PLANS = [
     id: 'blue3',
     code: 'blue3',
     name: 'Blue 3',
-    price: 'R$ 97,00/mês',
-    priceCents: 9700,
+    price: 'R$ 149,00/mês',
+    priceCents: 14900,
     color: 'from-teal-400 to-teal-500',
-    cashbackEntrada: '5 níveis',
+    cashbackEntrada: '3 níveis',
     cashbackResidual: '7 níveis',
-    cashbackSales: '-',
+    cashbackSales: 'Bloqueado',
     features: [
       { icon: Smartphone, label: 'App Mobilidade', included: true },
       { icon: Gift, label: 'Voucher Bem-Vindo', included: true },
@@ -99,8 +99,8 @@ const FALLBACK_PLANS = [
     id: 'blue5',
     code: 'blue5',
     name: 'Blue 5 Premium',
-    price: 'R$ 147,00/mês',
-    priceCents: 14700,
+    price: 'R$ 999,90/mês',
+    priceCents: 99990,
     color: 'from-emerald-600 to-emerald-700',
     popular: true,
     cashbackEntrada: '5 níveis',
@@ -770,8 +770,19 @@ export function MyPlanPage() {
         </motion.div>
       )}
 
-      {/* Premium 5 active confirmation card — shown when user is on Premium 5 */}
-      {isPremium5 && (
+      {/* Plan active confirmation card — shown when user is on Blue 3 or
+          Premium 5. Lists the unlocked entrada levels and the monthly fee.
+          For Blue 3 only levels 1-3 are unlocked; for Premium 5 all five
+          levels are unlocked. Per-level potentials:
+            Nível 1: 4^1 = 4 posições × R$ 50   = R$ 200,00
+            Nível 2: 4^2 = 16 posições × R$ 100  = R$ 1.600,00
+            Nível 3: 4^3 = 64 posições × R$ 100  = R$ 6.400,00
+            Nível 4: 4^4 = 256 posições × R$ 50  = R$ 12.800,00 (Premium 5)
+            Nível 5: 4^5 = 1.024 posições × R$ 50 = R$ 51.200,00 (Premium 5)
+          Mensalidade is sourced from the API-fetched plan price
+          (Blue 3 = R$ 149,00; Premium 5 = R$ 999,90) so admin edits
+          propagate automatically. */}
+      {(isBlue3 || isPremium5) && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <Card className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30 border-purple-200 dark:border-purple-800 shadow-md">
             <CardContent className="p-5">
@@ -781,30 +792,48 @@ export function MyPlanPage() {
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-base font-bold text-foreground">Plano Premium 5 Ativo</h3>
-                    <Badge className="bg-purple-500 text-white border-0">5 níveis desbloqueados</Badge>
+                    <h3 className="text-base font-bold text-foreground">
+                      {isPremium5 ? 'Plano Premium 5 Ativo' : 'Plano Blue 3 Ativo'}
+                    </h3>
+                    <Badge className="bg-purple-500 text-white border-0">
+                      {isPremium5 ? '5 níveis desbloqueados' : '3 níveis desbloqueados'}
+                    </Badge>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Todos os 5 níveis da matriz Entrada estão desbloqueados. Você recebe comissões dos níveis 1 ao 5.
+                    {isPremium5
+                      ? 'Todos os 5 níveis da matriz Entrada estão desbloqueados. Você recebe comissões dos níveis 1 ao 5.'
+                      : 'Todos os 3 níveis da matriz Entrada estão desbloqueados. Você recebe comissões dos níveis 1 ao 3.'}
                   </p>
-                  {/*
-                    Potenciais dos níveis 4 e 5 — Task 13-B §1:
-                    Matriz 4-wide → Level N = 4^N posições.
-                      - Nível 4: 4^4 = 256 posições × R$ 50,00 = R$ 12.800,00
-                      - Nível 5: 4^5 = 1.024 posições × R$ 50,00 = R$ 51.200,00
-                  */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3 text-xs">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3 text-xs">
                     <div className="bg-white/70 dark:bg-black/20 rounded-lg p-2 border border-purple-100 dark:border-purple-900">
-                      <p className="text-muted-foreground">Nível 4 potencial</p>
-                      <p className="font-bold text-foreground">R$ 12.800,00</p>
+                      <p className="text-muted-foreground">Nível 1 potencial</p>
+                      <p className="font-bold text-foreground">R$ 200,00</p>
                     </div>
                     <div className="bg-white/70 dark:bg-black/20 rounded-lg p-2 border border-purple-100 dark:border-purple-900">
-                      <p className="text-muted-foreground">Nível 5 potencial</p>
-                      <p className="font-bold text-foreground">R$ 51.200,00</p>
+                      <p className="text-muted-foreground">Nível 2 potencial</p>
+                      <p className="font-bold text-foreground">R$ 1.600,00</p>
                     </div>
+                    <div className="bg-white/70 dark:bg-black/20 rounded-lg p-2 border border-purple-100 dark:border-purple-900">
+                      <p className="text-muted-foreground">Nível 3 potencial</p>
+                      <p className="font-bold text-foreground">R$ 6.400,00</p>
+                    </div>
+                    {isPremium5 && (
+                      <>
+                        <div className="bg-white/70 dark:bg-black/20 rounded-lg p-2 border border-purple-100 dark:border-purple-900">
+                          <p className="text-muted-foreground">Nível 4 potencial</p>
+                          <p className="font-bold text-foreground">R$ 12.800,00</p>
+                        </div>
+                        <div className="bg-white/70 dark:bg-black/20 rounded-lg p-2 border border-purple-100 dark:border-purple-900">
+                          <p className="text-muted-foreground">Nível 5 potencial</p>
+                          <p className="font-bold text-foreground">R$ 51.200,00</p>
+                        </div>
+                      </>
+                    )}
                     <div className="bg-white/70 dark:bg-black/20 rounded-lg p-2 border border-purple-100 dark:border-purple-900">
                       <p className="text-muted-foreground">Mensalidade</p>
-                      <p className="font-bold text-foreground">R$ 999,90</p>
+                      <p className="font-bold text-foreground">
+                        {formatCurrency(currentPlanData?.priceCents || 0)}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -815,8 +844,9 @@ export function MyPlanPage() {
       )}
 
       {/* Recurring monthly invoice card — Task 13-B §2: a SINGLE charge,
-          no split breakdown. Premium 5 = R$ 999,90; Blue 3 = R$ 150,00;
-          Free = R$ 0,00. */}
+          no split breakdown. The price is sourced from the API-fetched
+          plan (Blue 3 = R$ 149,00; Premium 5 = R$ 999,90; Free = R$ 0,00)
+          so admin edits propagate automatically. */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="shadow-sm bg-card">
           <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -829,10 +859,8 @@ export function MyPlanPage() {
                   Mensalidade
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {isPremium5
-                    ? 'Mensalidade Premium 5'
-                    : isBlue3
-                    ? 'Mensalidade Blue 3'
+                  {(isPremium5 || isBlue3)
+                    ? `Mensalidade ${currentPlanData?.name ?? ''}`.trim()
                     : 'Sem mensalidade no plano gratuito'}
                 </p>
               </div>
@@ -841,7 +869,7 @@ export function MyPlanPage() {
               <div className="text-right">
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Valor</p>
                 <p className="text-lg font-bold text-foreground">
-                  {isPremium5 ? 'R$ 999,90' : isBlue3 ? 'R$ 150,00' : 'R$ 0,00'}
+                  {formatCurrency(currentPlanData?.priceCents || 0)}
                 </p>
               </div>
               <div className="text-right">
@@ -1116,7 +1144,19 @@ export function MyPlanPage() {
                     <td className="p-3 text-muted-foreground font-medium text-xs">CashBack Vendas</td>
                     {plans.map((plan) => (
                       <td key={plan.id} className="p-3 text-center text-xs font-medium">
-                        {plan.cashbackSales === '-' ? <span className="text-muted-foreground/30">—</span> : <span className="text-emerald-600">{plan.cashbackSales}</span>}
+                        {plan.cashbackSales === '-' ? (
+                          <span className="text-muted-foreground/30">—</span>
+                        ) : plan.cashbackSales === 'Bloqueado' ? (
+                          <span
+                            className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"
+                            title="Liberado após pagar sua fatura"
+                          >
+                            <Lock className="h-3 w-3" />
+                            Bloqueado
+                          </span>
+                        ) : (
+                          <span className="text-emerald-600">{plan.cashbackSales}</span>
+                        )}
                       </td>
                     ))}
                   </tr>

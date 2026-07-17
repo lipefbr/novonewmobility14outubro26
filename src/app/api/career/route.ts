@@ -11,6 +11,10 @@ function mapPlan(plan: {
   description: string | null
   minPoints: number
   bonusCents: number
+  rewardWithdrawalCents: number
+  rewardShoppingCents: number
+  rewardPoints: number
+  gratification: string | null
   rewardType: string
   color: string | null
   icon: string | null
@@ -34,6 +38,11 @@ function mapPlan(plan: {
     // rewardType: 'real' (BRL) or 'points'. Default to 'real' for safety
     // in case an old row predates the column (db push backfills NULL).
     rewardType: plan.rewardType === 'points' ? 'points' : 'real',
+    // BACK-9 — separate reward fields.
+    rewardWithdrawalCents: plan.rewardWithdrawalCents ?? 0,
+    rewardShoppingCents: plan.rewardShoppingCents ?? 0,
+    rewardPoints: plan.rewardPoints ?? 0,
+    gratification: plan.gratification ?? null,
     color: plan.color,
     icon: plan.icon,
     sortOrder: plan.sortOrder,
@@ -115,6 +124,11 @@ export async function GET(request: Request) {
             color: nextPlan.color,
             bonusCents: nextPlan.bonusCents,
             rewardType: nextPlan.rewardType,
+            // BACK-9 — separate reward fields.
+            rewardWithdrawalCents: nextPlan.rewardWithdrawalCents ?? 0,
+            rewardShoppingCents: nextPlan.rewardShoppingCents ?? 0,
+            rewardPoints: nextPlan.rewardPoints ?? 0,
+            gratification: nextPlan.gratification ?? null,
           }
         : null,
       progress,

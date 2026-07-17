@@ -19,8 +19,34 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
 import { useStore } from '@/lib/store'
-import { vouchersApi } from '@/lib/api'
+import { vouchersApi, apiFetch, ApiError } from '@/lib/api'
 import { EmptyState } from '../ui/empty-states'
+
+/**
+ * Welcome-voucher amount (BRL cents) keyed by User.userType.
+ *
+ * Mirrors `VOUCHER_AMOUNTS_BY_USER_TYPE` in `src/lib/voucher.ts` so the
+ * banner can show the correct amount for the current user WITHOUT
+ * importing the server-only `voucher.ts` module (it transitively imports
+ * Prisma, which can't run in the browser). The values MUST stay in sync
+ * with the server-side table — when one changes, update the other.
+ */
+const WELCOME_VOUCHER_AMOUNTS_BY_USER_TYPE: Record<string, number> = {
+  gratuito: 500,    // R$ 5,00
+  usuario: 1000,    // R$ 10,00
+  motorista: 2000,  // R$ 20,00
+  entregador: 2000, // R$ 20,00
+  loja: 5000,       // R$ 50,00
+  parceiro: 3000,   // R$ 30,00
+  empresa: 10000,   // R$ 100,00
+  afiliado: 1500,   // R$ 15,00
+}
+const DEFAULT_WELCOME_VOUCHER_CENTS = 500 // R$ 5,00
+
+function getWelcomeAmountForUserType(userType: string | null | undefined): number {
+  if (!userType) return DEFAULT_WELCOME_VOUCHER_CENTS
+  return WELCOME_VOUCHER_AMOUNTS_BY_USER_TYPE[userType] ?? DEFAULT_WELCOME_VOUCHER_CENTS
+}
 
 type VoucherStatus = 'active' | 'used' | 'expired'
 type VoucherCategory = 'mobility' | 'pharmacy' | 'food' | 'shopping'
@@ -228,6 +254,25 @@ export function VoucherPage() {
   const [redeemCode, setRedeemCode] = useState('')
   const [isRedeeming, setIsRedeeming] = useState(false)
 
+  // Welcome (signup_bonus) voucher state — BACK-12 fix.
+  // The banner previously advertised a flat "R$ 30" welcome voucher with no
+  // way to redeem it. Now we:
+  //   - look up the user's existing UNUSED signup_bonus voucher on mount
+  //     (GET /api/voucher/generate-signup-bonus)
+  //   - if none exists, the "Resgatar Agora" button POSTs to the same
+  //     endpoint to create one sized to the user's userType
+  //   - the banner shows the CORRECT amount for the user's userType
+  //     (gratuito=R$5, usuario=R$10, motorista/entregador=R$20, ...)
+  const [welcomeVoucher, setWelcomeVoucher] = useState<{
+    id: string
+    code: string
+    amount: number
+    expiresAt: string | null
+  } | null>(null)
+  const [welcomeVoucherLoading, setWelcomeVoucherLoading] = useState(true)
+  const [welcomeVoucherGenerating, setWelcomeVoucherGenerating] = useState(false)
+  const [welcomeCodeCopied, setWelcomeCodeCopied] = useState(false)
+
   // Track which voucher is currently being redeemed via the "Resgatar"
   // (redeem-by-id) button on each active voucher card.
   const [redeemingVoucherId, setRedeemingVoucherId] = useState<string | null>(null)
@@ -284,6 +329,121 @@ export function VoucherPage() {
   useEffect(() => {
     fetchVouchers()
   }, [fetchVouchers])
+
+  /**
+   * Look up the user's existing UNUSED signup_bonus voucher (if any) so
+   * the welcome banner can show its code + "Aplicar" button instead of
+   * the static "R$ 30" placeholder text. Called on mount and after a
+   * successful generate call.
+   */
+  const refreshWelcomeVoucher = useCallback(async () => {
+    if (!user?.id) {
+      setWelcomeVoucherLoading(false)
+      return
+    }
+    setWelcomeVoucherLoading(true)
+    try {
+      const data = await apiFetch<any>(
+        `/voucher/generate-signup-bonus?userId=${user.id}`
+      )
+      const v = data?.voucher
+      if (v && v.code) {
+        setWelcomeVoucher({
+          id: v.id,
+          code: v.code,
+          amount: safeNum(v.amount),
+          expiresAt: v.expiresAt || null,
+        })
+      } else {
+        setWelcomeVoucher(null)
+      }
+    } catch (err) {
+      // Non-fatal — the banner will fall back to the informational copy
+      // with the "Resgatar Agora" CTA.
+      console.error('Failed to fetch welcome voucher:', err)
+      setWelcomeVoucher(null)
+    } finally {
+      setWelcomeVoucherLoading(false)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    refreshWelcomeVoucher()
+  }, [refreshWelcomeVoucher])
+
+  const handleGenerateWelcomeVoucher = async () => {
+    if (!user?.id) return
+    setWelcomeVoucherGenerating(true)
+    try {
+      const data = await apiFetch<any>('/voucher/generate-signup-bonus', {
+        method: 'POST',
+        body: JSON.stringify({ userId: user.id }),
+      })
+      const v = data?.voucher
+      if (v && v.code) {
+        setWelcomeVoucher({
+          id: v.id,
+          code: v.code,
+          amount: safeNum(v.amount),
+          expiresAt: v.expiresAt || null,
+        })
+        toast({
+          title: 'Voucher de boas-vindas gerado! 🎁',
+          description: `Código ${v.code} no valor de ${formatBRL(safeNum(v.amount))}. Toque em "Aplicar" para resgatar.`,
+        })
+        // Refresh the main voucher list so the new voucher appears there too.
+        fetchVouchers()
+      } else {
+        toast({
+          title: 'Não foi possível gerar o voucher',
+          description: 'Tente novamente em alguns instantes.',
+        })
+      }
+    } catch (err: unknown) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Tente novamente em alguns instantes.'
+      toast({
+        title: 'Erro ao gerar voucher de boas-vindas',
+        description: message,
+      })
+    } finally {
+      setWelcomeVoucherGenerating(false)
+    }
+  }
+
+  const handleCopyWelcomeCode = () => {
+    if (!welcomeVoucher?.code) return
+    navigator.clipboard
+      .writeText(welcomeVoucher.code)
+      .then(() => {
+        setWelcomeCodeCopied(true)
+        setTimeout(() => setWelcomeCodeCopied(false), 2000)
+        toast({
+          title: 'Código copiado!',
+          description: welcomeVoucher.code,
+        })
+      })
+      .catch(() => {
+        toast({
+          title: 'Não foi possível copiar',
+          description: 'Copie manualmente: ' + welcomeVoucher.code,
+        })
+      })
+  }
+
+  /**
+   * Auto-fill the redeem dialog with the welcome voucher's code and open
+   * the dialog so the user can confirm redemption with one click.
+   */
+  const handleApplyWelcomeVoucher = () => {
+    if (!welcomeVoucher?.code) return
+    setRedeemCode(welcomeVoucher.code)
+    setRedeemDialogOpen(true)
+  }
 
   const filtered = vouchers.filter((v) => {
     const matchesStatus = statusFilter === 'all' || v.status === statusFilter
@@ -536,29 +696,116 @@ export function VoucherPage() {
         </div>
       </div>
 
-      {/* Welcome Voucher Banner (client spec §7:
-          vouchers are "SOMENTE PARA USO - NÃO PODE SER SACADO".
-          New users receive a R$30 mobility voucher on registration.) */}
+      {/* Welcome Voucher Banner — BACK-12 fix.
+          Previously hardcoded "R$ 30" for everyone with no redeem path.
+          Now: shows the CORRECT welcome amount for the current user's
+          userType (gratuito=R$5, usuario=R$10, motorista/entregador=R$20,
+          parceiro=R$30, loja=R$50, empresa=R$100, afiliado=R$15). If the
+          user already has an UNUSED signup_bonus voucher, the banner
+          exposes its code + "Copiar" + "Aplicar" buttons; otherwise it
+          offers a "Resgatar Agora" CTA that POSTs to
+          /api/voucher/generate-signup-bonus to create one.
+          Vouchers remain "SOMENTE PARA USO - NÃO PODE SER SACADO" (spec §7). */}
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-        <Card className="border-0 shadow-md overflow-hidden relative bg-gradient-to-r from-blue-500 via-blue-600 to-cyan-600">
+        <Card className="border-0 shadow-md overflow-hidden relative bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600">
           <div className="absolute inset-0 opacity-10 pointer-events-none" style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Ccircle cx='20' cy='20' r='2'/%3E%3C/g%3E%3C/svg%3E")`,
           }} />
           <CardContent className="p-4 md:p-5 relative flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="p-3 rounded-xl bg-white/15 backdrop-blur-sm border border-white/20 shrink-0">
-              <Car className="h-6 w-6 text-white" />
+              <Gift className="h-6 w-6 text-white" />
             </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <Sparkles className="h-3.5 w-3.5 text-blue-100" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <Sparkles className="h-3.5 w-3.5 text-emerald-100" />
                 <p className="text-sm font-bold text-white">Voucher de Boas-Vindas</p>
-                <Badge className="bg-white/20 text-white text-[9px] border-white/30">R$ 30</Badge>
+                <Badge className="bg-white/20 text-white text-[10px] border-white/30">
+                  {formatBRL(
+                    welcomeVoucher?.amount ??
+                      getWelcomeAmountForUserType(user?.userType)
+                  )}
+                </Badge>
               </div>
-              <p className="text-xs text-blue-50">
-                Todo novo usuário recebe <strong>R$ 30,00 em Mobilidade</strong> ao se cadastrar.
-                Use em corridas e viagens no app parceiro.
+              <p className="text-xs text-emerald-50">
+                Todo novo usuário recebe{' '}
+                <strong>
+                  {formatBRL(
+                    welcomeVoucher?.amount ??
+                      getWelcomeAmountForUserType(user?.userType)
+                  )}{' '}
+                  em Mobilidade
+                </strong>{' '}
+                ao se cadastrar. Use em corridas e viagens no app parceiro.
               </p>
-              <p className="text-[10px] text-blue-100/80 mt-1.5 flex items-center gap-1">
+
+              {/* Existing welcome voucher: show code + actions */}
+              {welcomeVoucher ? (
+                <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                  <div className="inline-flex items-center gap-2 rounded-lg bg-white/15 backdrop-blur-sm border border-white/20 px-3 py-1.5">
+                    <Ticket className="h-3.5 w-3.5 text-emerald-100 shrink-0" />
+                    <code className="text-sm font-mono font-semibold text-white tracking-wider">
+                      {welcomeVoucher.code}
+                    </code>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="h-8 gap-1.5 bg-white/15 text-white border-white/20 hover:bg-white/25 hover:text-white"
+                      onClick={handleCopyWelcomeCode}
+                    >
+                      {welcomeCodeCopied ? (
+                        <>
+                          <CheckIcon className="h-3.5 w-3.5" />
+                          Copiado
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3.5 w-3.5" />
+                          Copiar
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-8 gap-1.5 bg-white text-emerald-700 hover:bg-emerald-50 font-semibold"
+                      onClick={handleApplyWelcomeVoucher}
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      Aplicar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                /* No welcome voucher yet: offer the "Resgatar Agora" CTA */
+                <div className="mt-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 gap-1.5 bg-white text-emerald-700 hover:bg-emerald-50 font-semibold"
+                    onClick={handleGenerateWelcomeVoucher}
+                    disabled={
+                      welcomeVoucherGenerating || welcomeVoucherLoading
+                    }
+                  >
+                    {welcomeVoucherGenerating ? (
+                      <>
+                        <span className="h-3.5 w-3.5 border-2 border-emerald-700/30 border-t-emerald-700 rounded-full animate-spin" />
+                        Gerando...
+                      </>
+                    ) : (
+                      <>
+                        <Gift className="h-3.5 w-3.5" />
+                        Resgatar Agora
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              <p className="text-[10px] text-emerald-100/80 mt-1.5 flex items-center gap-1">
                 <Info className="h-3 w-3" />
                 SOMENTE PARA USO — NÃO PODE SER SACADO.
               </p>

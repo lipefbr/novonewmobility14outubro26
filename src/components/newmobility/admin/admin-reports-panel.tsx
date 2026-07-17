@@ -48,6 +48,7 @@ import { toast } from 'sonner'
 import { apiFetch, ApiError } from '@/lib/api'
 import { useStore } from '@/lib/store'
 import { formatBRL } from '@/lib/format'
+import { categoryLabel } from '@/lib/utils'
 import {
   ResponsiveContainer,
   BarChart,
@@ -706,8 +707,8 @@ export function AdminReportsPanel() {
                     className="flex items-center justify-between gap-2 p-2 rounded-lg bg-muted/40"
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate capitalize">
-                        {c.category}
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {categoryLabel(c.category)}
                       </p>
                       <p className="text-[10px] text-muted-foreground">
                         {c.count} transaç{c.count === 1 ? 'ão' : 'ões'}
@@ -868,8 +869,8 @@ export function AdminReportsPanel() {
                             <TableCell className="text-xs">
                               {typeLabel(t.type)}
                             </TableCell>
-                            <TableCell className="text-xs capitalize">
-                              {t.category}
+                            <TableCell className="text-xs">
+                              {categoryLabel(t.category)}
                             </TableCell>
                             <TableCell className="text-xs max-w-[180px] truncate">
                               {t.description || '—'}

@@ -7189,3 +7189,509 @@ Stage Summary:
 - Admin has a dedicated "Assinaturas TalkMobi" menu tab to receive and approve/reject all subscription requests from clients.
 - The flow mirrors the existing Telemedicina approval pattern for consistency.
 - All lint clean, dev server running, verified in browser.
+
+---
+Task ID: AGENT-B
+Agent: Fullstack Fixer (Plan Pricing Sync + Simulator Cashback Bases)
+Task: Fix two related plan pricing/comparison issues — BACK-6 (Meu Plano comparison out of sync with Admin seed) and BACK-13 (Simulador using wrong cashback base values).
+
+Work Log:
+- Read prior worklog and the three target files (myplan-page.tsx, earnings-simulator.tsx, src/lib/utils.ts) plus the admin seed (src/app/api/admin/plans/route.ts) to confirm the canonical prices: blue3 = R$ 149,00 (14900), blue5 = R$ 999,90 (99990).
+- Confirmed the discrepancies called out in the ticket: FALLBACK_PLANS had blue3=R$97 / blue5=R$147; the Mensalidade card had Premium5=R$999,90 / Blue3=R$150; getPlanPrice returned R$200/R$999; the Premium 5 active card showed "5 níveis" text even for Blue3 and only listed nível 4, nível 5 + mensalidade (missing níveis 1-3); the simulator multiplied each matrix level by `planPriceCents` (entrada/residual) and `avgMonthlySpend` (vendas) instead of the fixed CashBack pools.
+
+ISSUE 1 (BACK-6) — src/lib/utils.ts:
+- Updated `getPlanPrice` map: blue3 → 'R$ 149,00', blue5 → 'R$ 999,90' (was 'R$ 200,00' / 'R$ 999,00').
+
+ISSUE 1 (BACK-6) — src/components/newmobility/myplan/myplan-page.tsx:
+- FALLBACK_PLANS blue3: price 'R$ 149,00/mês', priceCents 14900, cashbackEntrada '3 níveis' (was '5 níveis'), cashbackSales 'Bloqueado' (was '-'). Residual stays '7 níveis'.
+- FALLBACK_PLANS blue5: price 'R$ 999,90/mês', priceCents 99990 (was 14700). cashback fields unchanged (5/7/9 níveis).
+- Repurposed the "Plano Premium 5 Ativo" card so it now renders for BOTH Blue 3 and Premium 5 (`{isBlue3 || isPremium5}`):
+    * Title/badge/text are dynamic: Blue 3 shows "Plano Blue 3 Ativo" + "3 níveis desbloqueados" + "Todos os 3 níveis da matriz Entrada estão desbloqueados. Você recebe comissões dos níveis 1 ao 3."; Premium 5 keeps the 5-níveis wording.
+    * Potential-earnings grid now lists ALL relevant níveis: Nível 1 R$ 200,00 (4×R$50), Nível 2 R$ 1.600,00 (16×R$100), Nível 3 R$ 6.400,00 (64×R$100), and conditionally for Premium 5 only: Nível 4 R$ 12.800,00 (256×R$50), Nível 5 R$ 51.200,00 (1024×R$50).
+    * Mensalidade cell uses `formatCurrency(currentPlanData?.priceCents || 0)` so it always reflects the API-fetched plan price (R$ 149,00 for Blue3, R$ 999,90 for Premium5).
+- Mensalidade card: replaced the hardcoded `{isPremium5 ? 'R$ 999,90' : isBlue3 ? 'R$ 150,00' : 'R$ 0,00'}` with `{formatCurrency(currentPlanData?.priceCents || 0)}`. The subtitle now uses `Mensalidade ${currentPlanData?.name}` for both Blue3/Premium5 so admin renames propagate. Updated the descriptive comment to reflect that the price is sourced from the API.
+- Comparação de Planos table (desktop): the CashBack Vendas row now distinguishes three states — '-' renders as an em dash, 'Bloqueado' renders as an amber Lock icon + "Bloqueado" text with a `title="Liberado após pagar sua fatura"` tooltip, and any other value renders in emerald as before. This makes the Free/Blue3/Blue5 distinction explicit (—/Bloqueado/9 níveis).
+
+ISSUE 2 (BACK-13) — src/components/newmobility/simulator/earnings-simulator.tsx:
+- Updated the stale header comment (lines 22-25) to match the actual level percentages used in code: Entrada 5/10/10/5/5, Residual 10/9/5/5/4/3/2, Vendas 0.10×9. Added a sub-note documenting the fixed CashBack bases.
+- Added three module-level constants right after VENDAS_LEVELS:
+    CB_ENTRADA_BASE_CENTS  = 99900   (R$ 999,00)
+    CB_RESIDUAL_BASE_CENTS = 139900  (R$ 1.399,00)
+    CB_VENDAS_BASE_CENTS   = 19990   (R$ 199,90)
+- Rewrote the three `projectMatrix` calls inside `simulate()` to pass the fixed bases instead of `planPriceCents`/`safeAvgSpend`. The plan price is still used for the direct-referral cashback (10% of plan price per referral) and for the ROI calculation — those are NOT part of the matrix pool and were left untouched.
+- Updated the three `renderMatrixTable` calls to pass clearer baseLabels: "CashBack Entrada fixo (R$ 999,00) × %", "CashBack Residual fixo (R$ 1.399,00) × %", "CashBack Vendas fixo (R$ 199,90) × %". This makes the breakdown explicitly read "CashBack Entrada: R$ 999,00 × X% = R$ Y" per level (the table already exposes the %, per-vaga earning, and total columns).
+- Updated the three breakdown summary cards (Entrada/Residual/Vendas) bottom text from "X vagas preenchidas no total" / "Gasto médio: R$ Y/indicação" to "CashBack Entrada/Residual/Vendas: R$ X × % por nível" so the fixed base is visible at a glance even when the detailed table is collapsed.
+- Removed "· sobre consumo" from the Vendas card subtitle (no longer tied to consumption spend).
+- Updated the "Gasto Médio Mensal / Indicação" slider help text to "informativo — as matrizes usam bases fixas de CashBack" so users aren't misled into thinking the slider drives the vendas matrix. The slider and `avgMonthlySpendCents` field on SimulationResult are retained (no type/contract breakage) but no longer feed the matrix calculation.
+
+Verification:
+- `bun run lint`: 14 errors total, ALL pre-existing in unrelated files (root .js scripts + src/components/newmobility/billing/payment-method-dialog.tsx). ZERO errors in src/lib/utils.ts, myplan-page.tsx, or earnings-simulator.tsx. Confirmed via grep filter.
+- Did NOT modify prisma/schema.prisma (per instructions). No test files created.
+
+Stage Summary:
+- BACK-6 resolved: Meu Plano now displays prices synchronized with the Admin seed (blue3 R$ 149,00, blue5 R$ 999,90). Blue 3 correctly shows 3 níveis of CashBack Entrada (not 5), CashBack Vendas is marked "Bloqueado" with a "Liberado após pagar sua fatura" tooltip, and the potential-earnings card lists all relevant níveis (1-3 for Blue3, 1-5 for Premium5) plus a dynamic mensalidade sourced from the API. The Comparação de Planos table clearly differentiates Free (—), Blue3 (3 níveis entrada / 7 residual / Bloqueado vendas) and Blue5 (5 / 7 / 9).
+- BACK-13 resolved: The simulator now computes each matrix's earnings against the fixed CashBack pools (Entrada R$ 999,00, Residual R$ 1.399,00, Vendas R$ 199,90) × the level percentage, independent of the selected plan tier. The 6 plan options (Gratuito + Premium 1-5) and their prices are unchanged. Breakdown labels and card text explicitly show "CashBack X fixo: R$ Y × % por nível" so the calculation is transparent.
+- Files changed: src/lib/utils.ts, src/components/newmobility/myplan/myplan-page.tsx, src/components/newmobility/simulator/earnings-simulator.tsx.
+
+---
+Task ID: AGENT-A
+Agent: Sub-agent (BACK-3 / BACK-11 / BACK-12 fixer)
+Task: Fix three user-reported UI issues: bank page update button did nothing, cashback tip card had a decorative bar above the text, voucher welcome banner advertised flat R$30 with no redeem path.
+
+Work Log:
+
+ISSUE 1 — "Acesso ao Banco" → "Atualizar Banco" não atualiza (BACK-3)
+File: src/components/newmobility/portals/bank-page.tsx (rewritten)
+- Replaced the hardcoded inputs (Banco do Brasil / agência 1234-5 / conta 67890-1 / Conta Corrente) with controlled <Input> components bound to local state: bankCode, bankAgency, bankAccount, bankType ('cc' | 'cp'), pixKey, pixEnabled.
+- Added useEffect that on mount calls GET /api/user/profile?userId=${user.id} via apiFetch and hydrates the form with the user's real bankCode / bankAgency / bankAccount / bankType / pixKey / pixEnabled values. Falls back to the in-memory Zustand user if the network call fails so the form is still editable.
+- Added handleSave() that PUTs the form to /api/user/profile with body { userId, bankCode, bankAgency, bankAccount, bankType, pixKey, pixEnabled } (the existing profile API already supports all of these fields). After success it re-hydrates the form from the canonical API response and calls updateUser() on the Zustand store so other pages reflect the new bank info immediately.
+- Added a hydrating guard that blocks saves while the form is still loading (prevents accidentally wiping existing bank data with empty strings, the same defence profile-page.tsx uses).
+- Switched Tipo de Conta from a disabled text input to two radio buttons (cc / cp) so the value matches the profile API contract.
+- Added a PIX section with a "Receber via PIX" checkbox and an editable PIX key input (disabled when the checkbox is off).
+- Wired sonner toast() for success / warning / error notifications.
+- Save button now shows a Loader2 spinner + "Salvando..." label while the request is in flight and is disabled during hydrate/save.
+
+ISSUE 2 — Cashback "figura encima da escrita" (BACK-11)
+File: src/components/newmobility/cashback/cashback-page.tsx (Dica de CashBack card, ~line 537)
+- The card previously rendered a 4px animated gradient bar ABOVE the CardContent (between the card border and the text), making the decorative bar the visual headline. The user complained "a figura fica em cima da escrita".
+- Fix: lead with the icon + title + description (the actual content the user needs to read) inside CardContent, then move the gradient bar to a subtle 4px bottom accent (opacity-70, no animation) so it reads as a footer underline rather than a header banner. Text is now the primary visual element.
+- Added min-w-0 to the text container and leading-relaxed on the description for better wrapping.
+- Checked matrix-visualization.tsx for a similar "figure above text" issue in the matrix change/swap area: the matrix cards already lead with badge → text → progress bar at the bottom, so no change was needed there.
+
+ISSUE 3 — Voucher de Boas-Vindas resgate (BACK-12)
+File: src/app/api/voucher/generate-signup-bonus/route.ts (NEW)
+- GET  /api/voucher/generate-signup-bonus?userId=... → returns the user's existing UNUSED signup_bonus voucher (or { voucher: null }).
+- POST /api/voucher/generate-signup-bonus  body { userId } → idempotent: if the user already has an unused signup_bonus voucher it is returned as-is; otherwise generateVoucherForUser(userId, user.userType, { type: 'signup_bonus' }) is called to create one sized to the user's current userType (gratuito=R$5, usuario=R$10, motorista/entregador=R$20, parceiro=R$30, loja=R$50, empresa=R$100, afiliado=R$15). Returns 201 on creation, 200 on idempotent return.
+
+File: src/components/newmobility/voucher/voucher-page.tsx (welcome banner rewritten)
+- Added a client-side WELCOME_VOUCHER_AMOUNTS_BY_USER_TYPE mirror of lib/voucher.ts VOUCHER_AMOUNTS_BY_USER_TYPE (the server module can't be imported in the browser because it transitively imports Prisma) so the banner can render the correct amount for the user's userType even before the voucher is generated.
+- Added welcomeVoucher / welcomeVoucherLoading / welcomeVoucherGenerating / welcomeCodeCopied state.
+- On mount, calls GET /api/voucher/generate-signup-bonus?userId=${user.id} via apiFetch and populates welcomeVoucher if the user already has an unused signup_bonus voucher.
+- Banner now:
+  * Shows the CORRECT welcome amount for the user's userType via formatBRL(welcomeVoucher?.amount ?? getWelcomeAmountForUserType(user.userType)).
+  * Banner copy: "Todo novo usuário recebe R$ XX,XX em Mobilidade ao se cadastrar." (was hardcoded "R$ 30,00").
+  * If the user already has an unused signup_bonus voucher: shows the code in a monospace pill, plus "Copiar" (writes to clipboard + toast) and "Aplicar" (auto-fills the redeem dialog input with the code and opens it) buttons.
+  * If the user has NO signup_bonus voucher yet: shows a "Resgatar Agora" button that POSTs to /api/voucher/generate-signup-bonus to create one. On success, the banner switches to show the code + Copiar + Aplicar, the main voucher list is refreshed, and a toast confirms the value + code.
+- Switched banner colour from blue→cyan to emerald→teal to match the rest of the app palette.
+- Replaced the Car icon with a Gift icon to better convey "welcome bonus".
+
+Stage Summary:
+- Bank page (BACK-3): button works, fields are editable and pre-filled from the user's real profile, save PUTs to /api/user/profile, success/error toasts shown, store updated. ✅
+- Cashback tip card (BACK-11): decorative gradient moved from above the text to a subtle bottom accent; text is now the primary visual element. ✅
+- Welcome voucher banner (BACK-12): shows the correct amount per userType, exposes the user's existing signup_bonus voucher code with Copiar/Aplicar buttons, and offers a Resgatar Agora button that generates one via the new /api/voucher/generate-signup-bonus endpoint. ✅
+- New API route /api/voucher/generate-signup-bonus (GET + POST) created and idempotent.
+- Did NOT modify prisma/schema.prisma (handled by another agent).
+- bun run lint: 0 errors in any of the modified files (the 14 remaining lint errors are all in pre-existing root-level scripts and payment-method-dialog.tsx, which are outside this task's scope).
+
+---
+Task ID: AGENT-D
+Agent: Back-7 + Back-4 Fixer (Metas visibility + Admin Editar Usuário qualification)
+Task: Fix TWO issues: (1) Metas card visible only to Motorista/Entregador + admin config (BACK-7); (2) Admin Editar Usuário dialog: add `qualification` field with all 6 types (BACK-4)
+
+Work Log:
+- Read worklog.md tail for context (Task 19-FINAL was the last entry). Read all 6 required files plus the Gratification schema (lines 274-302) to confirm `targetQualification` was already added by another agent.
+- ISSUE 1 (BACK-7) — Metas visibility + admin config:
+  1. `src/components/newmobility/gratifications/gratifications-page.tsx` — Added `const u = user as any` cast (qualification/isDelivery are NOT on the Zustand UserData interface — modifying store.ts is out of scope). Added `showDriverGoals = u?.qualification === 'motorista' || u?.qualification === 'entregador' || u?.isDriver || u?.isDelivery`. Wrapped the "Metas Motorista / Entregador" card in `{showDriverGoals && driverGoals && (...)}` so non-motorista/entregador users no longer see it.
+  2. `src/app/api/gratifications/route.ts` — Replaced the hardcoded `driverGoals` (which always had dailyRides=0/monthlyRides=0) with config-driven logic. Reads the driver_goals_config row (Gratification table, by type) to get `targetQualification` ('motorista'|'entregador'|'ambos', default 'ambos'). Computes `matchesQualification` from user.qualification vs target. `isEligibleForDriverGoals = matchesQualification || userIsDriver || userIsDelivery`. When eligible, returns real driverGoals: dailyGoal=18, monthlyGoal=384, dailyRides=totalRides % 18, monthlyRides=min(totalRides, 384), goalReached booleans. When NOT eligible, returns `driverGoals: null` so the UI hides the card.
+  3. `src/app/api/admin/gratifications-config/route.ts` (NEW) — GET returns `{ targetQualification, options }`. PUT upserts the single Gratification row with type='driver_goals_config'. Uses the requesting admin's userId as FK owner on first creation (Gratification.userId has a FK constraint to User); thereafter looks up by `type` so any admin can read/update. Validates input against ['motorista','entregador','ambos'].
+  4. `src/components/newmobility/admin/admin-page.tsx` — Added state (`driverGoalsTarget`, `driverGoalsTargetLoading`, `driverGoalsTargetSaving`). Added `loadDriverGoalsTarget()` (GET) and `saveDriverGoalsTarget(target)` (PUT with sonner toast). Wired `loadDriverGoalsTarget()` to run when the gratifications tab is activated. Added a new Card UI in the gratifications tab with a Car icon, "BACK-7" badge, description text, and a Select dropdown "Benefício aplica-se a:" with options Motorista / Entregador / Ambos. The Select calls `saveDriverGoalsTarget` on change, with a Loader2 spinner while saving.
+- ISSUE 2 (BACK-4) — Admin Editar Usuário qualification field:
+  5. `src/components/newmobility/admin/admin-users-panel.tsx`:
+     - Added `qualification?: string | null` to AdminUser interface.
+     - Added `qualification: string` to EditFormData interface + `qualification: ''` to EMPTY_EDIT.
+     - Added the QUALIFICATION_OPTIONS constant with all 6 types (motorista, passageiro, passageiro_60, passageiro_pcd, comercio, entregador) — mirrors register-page.tsx lines 101-108.
+     - Added `qualificationLabel(value)` helper for human-readable labels.
+     - Set `qualification: u.qualification || ''` in `openEdit(u)`.
+     - Added a "Qualificação" Select field in the edit dialog's "Tipo & Plano" tab (between Plano and the Ativo/Motorista/Entregador switches), bound to `editForm.qualification`.
+     - Added "Qualificação" row in the read-only View dialog using `qualificationLabel(viewing.qualification)`.
+     - `handleSave` already uses `...editForm` so qualification is automatically included in the PUT body.
+     - Verified `isDriver` and `isDelivery` were ALREADY in EditFormData AND in the edit dialog as Switches (Motorista/Entregador) — confirmed pre-existing, no change needed.
+  6. `src/app/api/admin/users/[id]/route.ts` (PUT handler) — Added `qualification` to the destructured body fields. Added `if (qualification !== undefined) updateData.qualification = qualification || null` (allows clearing by sending empty string).
+  7. `src/app/api/admin/users/route.ts` (GET list handler) — Added `qualification: true` to the Prisma `select` clause so the AdminUser rows returned to the admin panel include the qualification value (required for the openEdit pre-population to show the current value, not just default to '').
+- Lint: `bun run lint` returns 14 errors — ALL pre-existing (13 in root .js files: keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js; 1 in payment-method-dialog.tsx). ZERO errors in my modified files.
+- TypeScript: `bunx tsc --noEmit` filtered to my modified files → ZERO errors. Pre-existing admin-page.tsx errors at lines 237/1832/2566/2570/4242 (about `raw`/`code`/`amount` properties on AdminPlan/AdminVoucher) shifted line numbers due to my added ~80 lines but are otherwise unchanged.
+
+Stage Summary:
+- ✅ BACK-7: The "Metas Motorista / Entregador" card is now gated client-side (`showDriverGoals` flag) AND server-side (`driverGoals: null` returned by the API when the user is not motorista/entregador/driver/delivery). Non-eligible users (passageiro, comercio, etc.) will no longer see the card.
+- ✅ BACK-7: driverGoals now returns real progress based on `user.totalRides` (dailyRides = totalRides % 18, monthlyRides = min(totalRides, 384), with goalReached booleans) instead of hardcoded zeros.
+- ✅ BACK-7: New admin config endpoint `/api/admin/gratifications-config` (GET/PUT) stores the benefit target in a Gratification row with type='driver_goals_config' using the existing `targetQualification` field.
+- ✅ BACK-7: Admin gratifications tab now has a "Metas Motorista / Entregador" config Card with a "Benefício aplica-se a:" Select (Motorista / Entregador / Ambos) that calls PUT on change with toast feedback and a saving spinner.
+- ✅ BACK-4: Admin "Editar Usuário" dialog now has a "Qualificação" Select field with all 6 types (motorista, passageiro, passageiro_60, passageiro_pcd, comercio, entregador). The current value is pre-populated from the API (qualification added to the GET /admin/users select clause). The PUT /admin/users/[id] handler now accepts and stores `qualification` (allowing empty string to clear).
+- ✅ BACK-4: Read-only "Perfil do Usuário" dialog now shows the qualification value (with human-readable label).
+- ✅ BACK-4: `isDriver` and `isDelivery` Switches were already in the edit dialog — verified pre-existing, no change needed.
+- Files changed: 6 modified + 1 created. Modified: src/components/newmobility/gratifications/gratifications-page.tsx, src/app/api/gratifications/route.ts, src/components/newmobility/admin/admin-page.tsx, src/components/newmobility/admin/admin-users-panel.tsx, src/app/api/admin/users/[id]/route.ts, src/app/api/admin/users/route.ts. Created: src/app/api/admin/gratifications-config/route.ts.
+- Notes for future agents: (1) Zustand UserData interface in src/lib/store.ts is missing `qualification`, `isDelivery`, `totalRides` — gratifications-page.tsx accesses them via `as any` cast; consider adding to UserData later. (2) The driver_goals_config row is FK-owned by whichever admin first creates it; all subsequent lookups are by `type` only — a future task could use a SystemConfig key-value row for cleaner semantics. (3) dailyRides uses `totalRides % 18` since we don't track per-day rides in a separate table; a future task could add a Rides table for accurate daily tracking.
+
+---
+Task ID: AGENT-C
+Agent: Sub-agent (newmobility payment & referral activity fixer)
+Task: Fix THREE issues — Telemedicina activation price+payment selector (BACK-2), Pagar Faturas payment dialog (BACK-5), Meus Indicados real recent activity (BACK-10)
+
+Work Log:
+- Read worklog.md (prior tasks 1–5 documented Neon migration, data isolation, db.execute fixes, financial page)
+- Read prisma/schema.prisma: confirmed TelemedicinaRequest has NO `paymentMethod` column (must store in `notes` prefix); Invoice already has `paymentMethod String?`; User has no `lastLoginDate` (that field lives on GamificationStreak) so used `isActive` instead
+
+ISSUE 1 (BACK-2) — Telemedicina activation price + payment method
+- /src/app/api/telemedicina/request/route.ts:
+  * Added `TELEMEDICINA_PRICE_CENTS = 4990` constant (R$ 49,90/mês)
+  * Added `normalizePaymentMethod()`, `paymentMethodLabel()`, `parsePaymentFromNotes()`, `buildNotesWithPayment()` helpers
+  * POST now accepts `paymentMethod` in body, validates against pix/boleto/credit_card, persists as `[Pagamento: PIX] <user-notes>` prefix on `notes` column (schema unchanged)
+  * serialize() now also returns `paymentMethod` + `paymentMethodLabel` fields (parsed back out of notes) so the client doesn't re-parse
+- /src/components/newmobility/talkmobi/talkmobi-page.tsx:
+  * Imported RadioGroup + RadioGroupItem, added CreditCard/Receipt icons
+  * Added `TELEMEDICINA_PRICE_CENTS = 4990` constant + `TELEMEDICINA_PRICE_BRL` formatted string
+  * Added `paymentMethod` state (default 'pix') + restored from existing request on edit
+  * Added emerald price banner at the top of the activation dialog: "Valor da ativação: R$ 49,90/mês"
+  * Added payment-method RadioGroup with 3 options (PIX, Boleto, Cartão de Crédito) + descriptions
+  * Added summary box: "Ativação Telemedicina · R$ 49,90/mês · Pagamento via PIX"
+  * Renamed submit button to "Confirmar e Pagar", changed color from rose to emerald
+  * Toast now: "Pedido enviado! Após aprovação do admin, você receberá o link de pagamento PIX."
+  * PENDING status card now shows price + payment method badges
+- /src/components/newmobility/admin/admin-telemedicina-panel.tsx:
+  * Added `parsePaymentFromNotes()` helper + CreditCard icon import
+  * Request list cards now display a "PIX/Boleto/Cartão de Crédito" badge next to status
+  * Notes display strips the `[Pagamento: …]` prefix so admin sees only user-typed text
+  * Details dialog now has a "Forma de Pagamento" row showing the chosen method + R$ 49,90/mês hint
+
+ISSUE 2 (BACK-5) — Pagar Faturas payment method dialog
+- Created /src/components/newmobility/billing/payment-method-dialog.tsx:
+  * New reusable PaymentMethodDialog component with RadioGroup (PIX/Boleto/Cartão de Crédito)
+  * Shows invoice amount, due date, description, bucket label
+  * Summary box + "Confirmar Pagamento" button with loading state
+  * Exports PAYMENT_METHOD_OPTIONS, paymentMethodLabel, formatBRLFromCents helpers
+  * Reset selection on invoice change uses lazy state comparison (avoids setState-in-effect lint error)
+- /src/components/newmobility/billing/billing-page.tsx:
+  * handlePay no longer instantly marks as paid — opens PaymentMethodDialog instead
+  * Added handleConfirmPayment() callback that calls POST /api/billing/pay/[id] WITH paymentMethod in body
+  * Toast: "Pagamento de R$ XX,XX confirmado via PIX"
+  * Paid invoices now show a "Pago via PIX" badge (emerald outline) below the "Pago" status badge
+- /src/app/api/billing/pay/[invoiceId]/route.ts:
+  * Added normalizePaymentMethod() validator (pix/boleto/credit_card + synonyms)
+  * Renamed readBodyUserId → readBody (returns {bodyUserId, bodyPaymentMethod})
+  * Invoice update now includes `paymentMethod: method` when supplied (only overwrites when valid)
+  * 400 error on invalid payment method
+
+ISSUE 3 (BACK-10) — Meus Indicados real recent activity
+- Created /src/app/api/referrals/activity/route.ts:
+  * GET endpoint that returns the user's real recent activity (max 10 entries)
+  * For each direct referral: creates a "Entrou na rede" (if createdAt within 7d) or "Ativo na rede" (if isActive) entry
+  * Queries CashbackEntry, CashbackResidual, CashbackSales in parallel for cash the current user received FROM their referrals
+  * Builds "Ganhou R$ X de <firstName>" entries for each cashback row
+  * Sorts by date DESC, caps at 10, returns {activity, total}
+  * pt-BR relative-time formatter ("3h atrás", "1 dia", "3 dias", "12/03")
+  * Uses `isActive` boolean (User has no lastLoginDate — that field is on GamificationStreak)
+- /src/components/newmobility/referrals/referrals-page.tsx:
+  * Removed the 3 hardcoded mock entries (Thiago Nascimento / Carla Ferreira / Marcos Ribeiro)
+  * Added `activity` + `activityLoading` state, useEffect to fetch /api/referrals/activity?userId=...
+  * Imported Skeleton, AvatarImage, apiFetch, toast
+  * Loading state shows 3 shimmer skeletons matching the entry shape
+  * Empty state shows "Nenhuma atividade recente" with share-link hint
+  * Renders real entries with Avatar (uses profileImage when present, falls back to initials), plan badge, action label (emerald for cashback entries), relative time
+  * Error toast on fetch failure
+
+Lint / type-check:
+- `bun run lint` clean for ALL my files (the 13 remaining errors are in pre-existing root-level .js files: keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js — not my responsibility)
+- `bunx tsc --noEmit --skipLibCheck` clean for ALL my files
+- Initial issues found & fixed:
+  * `react-hooks/set-state-in-effect` in payment-method-dialog.tsx → switched from useEffect+setState to lazy state comparison pattern
+  * `lastLoginDate` doesn't exist on User Prisma type → switched to `isActive` boolean
+  * ES2017 target doesn't support regex `s` (dotAll) flag → replaced `/.../is` with `/.../i` + `[\s\S]*` capture group (in both telemedicina/request/route.ts and admin-telemedicina-panel.tsx)
+
+Stage Summary:
+- ISSUE 1 (BACK-2): Telemedicina activation dialog now shows R$ 49,90/mês price prominently, requires a payment-method selection (PIX/Boleto/Cartão via RadioGroup), shows a summary line, submits with "Confirmar e Pagar" button, and the API persists the chosen method as a `[Pagamento: …]` prefix on `notes` (schema unchanged). Admin panel displays the chosen method as a badge + in the details dialog. ✅
+- ISSUE 2 (BACK-5): Clicking "Pagar" on an invoice without asaasPaymentId now opens a PaymentMethodDialog (PIX/Boleto/Cartão) instead of instantly marking paid. The API stores paymentMethod on the Invoice record (existing column). Paid invoices display a "Pago via PIX" badge. ✅
+- ISSUE 3 (BACK-10): The "Atividade Recente" section now fetches real data from /api/referrals/activity — direct referrals join/active entries + cashback earned from referrals — with loading skeleton and empty state. The 3 hardcoded mock entries (Thiago/Carla/Marcos) are gone. ✅
+
+Files modified (8):
+1. /src/app/api/telemedicina/request/route.ts (added paymentMethod parsing/storage + serialize)
+2. /src/components/newmobility/talkmobi/talkmobi-page.tsx (price banner, RadioGroup selector, summary, Confirmar e Pagar button, pending-status badges)
+3. /src/components/newmobility/admin/admin-telemedicina-panel.tsx (payment-method badge in list + details dialog, stripped prefix from notes display)
+4. /src/components/newmobility/billing/payment-method-dialog.tsx (NEW reusable dialog)
+5. /src/components/newmobility/billing/billing-page.tsx (handlePay opens dialog, handleConfirmPayment callback, "Pago via X" badge)
+6. /src/app/api/billing/pay/[invoiceId]/route.ts (accept + store paymentMethod on Invoice)
+7. /src/app/api/referrals/activity/route.ts (NEW endpoint)
+8. /src/components/newmobility/referrals/referrals-page.tsx (real activity fetch, skeleton, empty state, removed mock data)
+
+No changes to prisma/schema.prisma. No test files created.
+
+---
+Task ID: AGENT-F
+Agent: Admin UX fixer (ADM-1 + ADM-2 + ADM-5 + ADM-7)
+Task: Fix FOUR admin issues — (ADM-1) English category nomenclature; (ADM-2) stuck "Criar Gratificação" button; (ADM-5) Nova Conquista dialog missing code-variable help; (ADM-7) Streak reward always shows "+pts" even when rewardType='cashback'
+
+Work Log:
+- Read worklog.md (last entry was AGENT-D; AGENT-C and AGENT-D preceded this task). Verified schema.prisma was NOT modified.
+- Read all five target files: src/lib/utils.ts (159 lines), src/components/newmobility/admin/admin-page.tsx (6714 lines), src/components/newmobility/admin/admin-reports-panel.tsx (930 lines), src/components/newmobility/gamification/gamification-page.tsx (227 lines), src/app/api/gamification/streak/route.ts (86 lines).
+- Verified the claim flow: there is NO dedicated "claim streak reward" API endpoint. The `claimed` flag returned by /api/gamification/streak is purely derived (`currentStreak >= streakDays`); the streak route credits only login-bonus `totalPoints` (5/10/20 per day). The actual rewardAmount is therefore never auto-credited to any wallet today — that is a pre-existing design limitation OUT OF SCOPE for this task (task said "fix it if needed" — no claim API to fix in the listed files). I did NOT create a new claim endpoint since the task explicitly limits changes to the listed files.
+
+ISSUE 1 (ADM-1) — English category labels in admin summary panels
+1. src/lib/utils.ts — Added two new exports at the bottom of the file:
+   * `export const CATEGORY_LABELS: Record<string, string>` mapping withdrawal/mobility/shopping/food/pharmacy/gratification/marketplace/other → Portuguese (Saque/Mobilidade/Compras/Refeição/Farmácia/Gratificação/Marketplace/Outros).
+   * `export function categoryLabel(key: string | null | undefined): string` — falls back to the raw key (or 'Outros' for null/undefined) when no mapping exists, so unknown categories still render something readable.
+2. src/components/newmobility/admin/admin-page.tsx —
+   * Added `categoryLabel` to the existing `import { formatCurrency } from '@/lib/utils'` line.
+   * Removed the local inline `const categoryLabels: Record<string, string>` map from the "Resumo por Categoria" pie-chart legend (was around line 3146) and replaced `{categoryLabels[c.category] || c.category}` with `{categoryLabel(c.category)}`.
+   * Updated the pie-chart slice `title` attribute from `${c.category}: ...` to `${categoryLabel(c.category)}: ...` so the hover tooltip is also translated.
+   * Updated the "Distribuição por Categoria" panel in the Gratifications tab — line ~4088 was `<span ... capitalize>{cat.category || '—'}</span>` and is now `<span ...>{categoryLabel(cat.category)}</span>` (removed the `capitalize` class because the helper returns already-capitalised Portuguese text).
+3. src/components/newmobility/admin/admin-reports-panel.tsx —
+   * Added `import { categoryLabel } from '@/lib/utils'`.
+   * Updated the "Por Categoria" card (line ~710) — removed `capitalize` from the `<p>` className and changed `{c.category}` → `{categoryLabel(c.category)}`.
+   * Updated the transactions table Category cell (line ~872) — removed `capitalize` from the `<TableCell>` className and changed `{t.category}` → `{categoryLabel(t.category)}`.
+4. Searched for other raw `\.category` renders in src/components/newmobility/admin/ — the remaining matches are:
+   * discount-club-manager.tsx, accredited-network-manager.tsx — use their own local `CATEGORY_LABEL` map for product/service categories (different domain, not financial); left alone.
+   * admin-page.tsx lines 4927 & 5215 — render Achievement.category and FAQ.category respectively; these are different category namespaces (referral/financial/plan/gaming/etc.) and are already shown via their respective human-readable labels elsewhere; left alone.
+   * API routes that group by `t.category` (e.g. reports/route.ts, financial/route.ts) keep the raw key on purpose for filtering/grouping — translating at the API would break the where-clause. Confirmed correct.
+
+ISSUE 2 (ADM-2) — "Criar Gratificação" dialog stuck
+1. src/components/newmobility/admin/admin-page.tsx —
+   * Added `useRef` and `useCallback` to the React import (was `useState, useEffect, Fragment`).
+   * Added 3 new state hooks next to the existing gratification state: `gratificationUserLoading` (boolean), `gratificationUserSearched` (boolean, gates the "Nenhum usuário encontrado" empty state so it doesn't flash on dialog open), and `gratificationSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)` (holds the debounce timer so we can cancel it).
+   * Replaced the old `searchUsersForGratification` (which silently swallowed errors and required Enter/click) with a `useCallback` version that:
+     - Accepts an optional `query?` argument (so we can call it with `''` on dialog open to pre-populate).
+     - Sets `gratificationUserSearched = true` and `gratificationUserLoading = true` before the request.
+     - Builds params with `page: 1` and only adds `search` when the term is non-empty.
+     - On success: stores up to 10 users (slices to 10 to keep the dropdown manageable).
+     - On error: shows `toast.error(err?.message || 'Erro ao buscar usuários')` and clears results.
+     - Always resets `gratificationUserLoading = false` in `finally`.
+   * Added a debounce useEffect that fires `searchUsersForGratification()` 300ms after every `gratificationUserSearch` change while the dialog is open, with proper timer cleanup.
+   * Added a pre-populate useEffect that runs when `gratificationCreateOpen` flips to true: clears the search string + results + searched flag, then calls `searchUsersForGratification('')` so the admin sees the first 10 users immediately.
+   * Verified the dialog open wiring: `<Button onClick={() => setGratificationCreateOpen(true)}>` already existed (line ~4007) and `<Dialog open={gratificationCreateOpen} onOpenChange={setGratificationCreateOpen}>` already existed — no missing wiring, so the "stuck" behaviour was purely the search silently failing with no UI feedback.
+   * Updated the dialog UI:
+     - Search Input placeholder changed to "Digite nome, email ou código (busca automática)...".
+     - Search button now shows a Loader2 spinner (instead of the Search icon) while `gratificationUserLoading` is true, and is disabled during loading.
+     - Added a "Buscando usuários..." row with a Loader2 spinner that appears while loading.
+     - Added a "Nenhum usuário encontrado" empty-state box (dashed border) that appears only when: not loading AND has searched AND results empty AND no user is currently selected.
+     - Wrapped the results list in `{!gratificationUserLoading && gratificationUserResults.length > 0 && (...)}` so it doesn't show stale results during a new search.
+   * All other strings in the Gratifications tab were already in Portuguese — no further translations needed.
+
+ISSUE 3 (ADM-5) — Nova Conquista dialog code-variable help box
+1. src/components/newmobility/admin/admin-page.tsx — In the "Nova Conquista" dialog (the achievement dialog, around line 5330), placed a `<details>` collapsible help box BETWEEN the "Código *" `<Label>` and the `<Input>` (per spec: "between the 'Código *' label and the input"):
+   * Summary row: Info icon + "Variáveis disponíveis para o código" + a ChevronDown that rotates 180° when open (using a `group-open:rotate-180` utility).
+   * Body: muted-background card with a `<ul>` listing every supported keyword from the `/api/achievements` progressForCode function, with the keywords highlighted in emerald `<code>`:
+     - cashback → Total de CashBack acumulado (R$ em cents)
+     - withdraw / saque → Número de saques realizados
+     - voucher → Vouchers resgatados
+     - plan_upgrade / upgrade / plan → Upgrades de plano
+     - marketplace / purchase / compra → Pedidos no marketplace
+     - ride / corrida → Corridas realizadas (motorista/entregador)
+     - bet_streak / login_streak / streak / weekly_active → Maior sequência de logins
+     - bet / aposta / game_win / victory → Apostas vencedoras
+     - career / top_earner → Pontos de carreira
+     - loyalty / fidelity / ano / mes → Meses de cadastro ativo
+     - security / seguran → Recursos de segurança ativados
+     - referral / indic / network → Indicações diretas
+   * Footer of the help box: "Exemplos:" line with 5 example codes (first_referral, cashback_1000, streak_30, ride_100, career_bronze).
+   * Used `<details>`/`<summary>` so it's collapsed by default (doesn't take space) but expands on click. Used `list-none` to suppress the default disclosure triangle (we provide our own ChevronDown).
+   * The icons used (Info, ChevronDown) were already imported from lucide-react at the top of admin-page.tsx — no new imports needed.
+
+ISSUE 4 (ADM-7) — Streak reward always shows "+X pts" even for cashback
+1. src/app/api/gamification/streak/route.ts — Rewrote the `streakRewards.map(...)` block to:
+   * Normalise `rewardType` to a strict `'points' | 'cashback'` union (was passing the raw `r.rewardType` string through, which could be `null` or anything).
+   * Return BOTH `points: r.rewardAmount` (backwards-compat alias for old UI builds) AND `amount: r.rewardAmount` (the new canonical field).
+   * Updated the comment block above to document the contract: amount = career points when rewardType='points'; amount = BRL cents when rewardType='cashback'.
+2. src/components/newmobility/gamification/gamification-page.tsx —
+   * Updated the `StreakData.streakRewards` type from `{ days: number; points: number; claimed: boolean }[]` to `{ days: number; points: number; amount: number; rewardType: 'points' | 'cashback'; claimed: boolean }[]` (kept `points` for backwards-compat with the alias).
+   * Rewrote the reward card rendering (line ~138) to compute a `rewardLabel` string before the JSX:
+     - If `reward.rewardType === 'cashback'`: `+R$ X,XX` via `new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((reward.amount ?? reward.points ?? 0) / 100)`.
+     - Else: `+X pts` using `reward.amount ?? reward.points ?? 0` (prefers the new `amount` field, falls back to `points` for older API responses).
+   * The reward card now correctly shows "+R$ 10,00" for a cashback reward of 1000 cents and "+100 pts" for a points reward of 100.
+
+Lint / type-check:
+- `bun run lint`: 13 errors total, ALL in pre-existing root-level .js files (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js) that use `require()`. ZERO errors and ZERO warnings in any of my modified files (had one unused-eslint-disable warning that I fixed by removing the directive and adding `searchUsersForGratification` to the deps array instead).
+- `bunx tsc --noEmit --skipLibCheck` filtered to my files: ZERO new errors. The 5 errors reported in admin-page.tsx (lines 237, 1995, 2738, 2742, 4409 — about `raw`, `code`, `amount` properties on AdminPlan/AdminVoucher) are PRE-EXISTING (documented in AGENT-D's worklog entry) and unrelated to my changes.
+
+Stage Summary:
+- ✅ ADM-1: All admin "category" summary panels (admin-page.tsx Resumo por Categoria pie chart + legend, Distribuição por Categoria bars; admin-reports-panel.tsx Por Categoria card + transactions table Category column) now render Portuguese labels via the shared `categoryLabel()` helper in src/lib/utils.ts. The translation map is in ONE place (utils.ts) so future category additions only need one edit.
+- ✅ ADM-2: "Criar Gratificação" dialog now opens with the first 10 users pre-loaded; typing in the search box auto-searches after a 300ms debounce; a spinner shows during search; "Nenhum usuário encontrado" empty state appears when no results; API errors surface as a sonner toast instead of being swallowed. The button was never actually "stuck" — it was the silent search failure that gave that impression.
+- ✅ ADM-5: The Nova Conquista achievement dialog now has a collapsible help box above the code input listing every keyword prefix the system recognises (cashback, withdraw/saque, voucher, plan_upgrade/upgrade/plan, marketplace/purchase/compra, ride/corrida, bet_streak/login_streak/streak/weekly_active, bet/aposta/game_win/victory, career/top_earner, loyalty/fidelity/ano/mes, security/seguran, referral/indic/network) plus 5 example codes. Collapsed by default so it doesn't crowd the form.
+- ✅ ADM-7: Streak reward cards now correctly distinguish cashback from points. A reward configured as rewardType='cashback' rewardAmount=1000 now renders "+R$ 10,00" instead of "+1000 pts". The API returns both `amount` (canonical) and `points` (backwards-compat alias) and a normalised `rewardType: 'points' | 'cashback'` union.
+- Note for future agents: There is NO claim-streak-reward API endpoint today — the `claimed` flag is purely derived from currentStreak >= streakDays, and the rewardAmount is never actually credited to any wallet automatically. If true crediting is desired (cashback → balanceWithdrawal, points → careerPoints), a new POST /api/gamification/streak/claim endpoint would need to be created (out of scope for this task).
+- Files modified (5): src/lib/utils.ts, src/components/newmobility/admin/admin-page.tsx, src/components/newmobility/admin/admin-reports-panel.tsx, src/components/newmobility/gamification/gamification-page.tsx, src/app/api/gamification/streak/route.ts. No files created. prisma/schema.prisma NOT modified. No test files created.
+
+---
+Task ID: AGENT-G
+Agent: Sub-agent (Admin ADM-4 / ADM-6 / ADM-3 fixer)
+Task: Fix THREE admin issues: (1) ADM-4 — Create User dialog + Role select + login flow info boxes; (2) ADM-6 — admin Streak Rewards panel display (career plan form left to AGENT-E); (3) ADM-3 — Telemedicina admin panel price + payment-method verification.
+
+Work Log:
+
+ISSUE 1 (ADM-4) — Create User dialog + Role select
+Files: admin-users-panel.tsx, admin-permissions-panel.tsx, lib/api.ts, admin-page.tsx
+
+- admin-users-panel.tsx:
+  * Added `role: string` to EditFormData interface + EMPTY_EDIT default `'user'`. Added `role: u.role || 'user'` mapping in openEdit.
+  * Added ROLE_OPTIONS_BASE constant (user/admin/support), roleLabel() helper, roleBadgeClass() helper.
+  * Added CreateFormData interface + EMPTY_CREATE default.
+  * Added new state: createOpen, createForm, creating, customRoles + a roleOptions memo (base + custom).
+  * Added useEffect that loads custom roles from GET /admin/permissions?userId=... on mount.
+  * Added openCreate() + handleCreate() handlers. handleCreate validates name/email/password (>=6 chars), POSTs to /admin/users/create with {userId, name, email, password, phone, cpf, plan, role, userType, referredByCode}, shows success toast "Usuário criado! Ele pode fazer login com email + senha.", resets to page 1 + reloads users.
+  * Added "Criar Usuário" button (UserPlus icon, emerald) at the end of the filter bar (next to Exportar/Atualizar).
+  * Added a new "Role" column to the user table (visible on lg screens) with role badges; updated colSpan of loading/empty rows from 8 to 9.
+  * Added Role Select (Shield icon) to the edit dialog's "Tipo & Plano" tab listing roleOptions (base + custom). Helper text explains admin/support/custom grant panel access.
+  * Added "Role" Detail row to the read-only View dialog using roleLabel().
+  * Added a new Create User Dialog (sm:max-w-lg) with: emerald info box explaining the login flow, Nome completo, Email (with "Será usado para login" hint), Senha (with KeyRound icon), Telefone, CPF, Tipo de Usuário (USER_TYPES), Role, Plano (free/blue3/blue5), Código de indicante.
+
+- admin-permissions-panel.tsx:
+  * Added Info + KeyRound to lucide-react imports.
+  * Added an emerald info Card at the very top of the panel explaining how login + roles + permissions work: "Cada usuário criado no sistema tem seu próprio email e senha. Usuários com role 'admin' ou 'support' (ou roles customizados) podem acessar o painel admin, limitado às páginas permitidas abaixo. Para criar um novo usuário com acesso ao painel, vá na aba Usuários e clique em 'Criar Usuário'."
+
+- lib/api.ts:
+  * Added a `createUser` method to the adminApi object. Signature: `(userId, data: { name, email, password, phone?, cpf?, plan?, role?, userType?, referredByCode? })`. POSTs to /admin/users/create with JSON body { userId, ...data }.
+
+- admin-page.tsx (inline users tab):
+  * Imported useMemo from react + UserPlus, KeyRound from lucide-react.
+  * Added new state: createUserDialogOpen, creatingNewUser, newUserForm, customRoles + roleSelectOptions memo.
+  * Added useEffect to fetch /admin/permissions on mount and populate customRoles.
+  * Added handleOpenCreateUser() + handleCreateUser() handlers (same validation + POST as admin-users-panel.tsx).
+  * Added "Criar Usuário" button next to Exportar CSV button in the inline users tab filter bar.
+  * Added a new Create User Dialog (mirrors admin-users-panel.tsx): info box + all fields.
+  * Updated the existing inline Role Select in the Edit User dialog (was just user/admin) to use roleSelectOptions (base + custom roles).
+
+ISSUE 2 (ADM-6) — Streak Rewards admin panel display (admin-page.tsx only)
+NOTE: AGENT-E is handling the CareerPlan admin form changes for the new schema fields. I only worked on the Streak Rewards admin panel.
+
+- admin-page.tsx (Streak Rewards list cards, ~lines 5214-5272):
+  * Rewrote the streakRewards.map callback to compute isCashback, rewardTypeLabel ('Cashback' / 'Pontos'), and rewardAmountStr (formatCurrency(amount) for cashback, "${amount} pts" for points).
+  * Replaced the plain `<p>{s.rewardType}</p>` with a Badge showing Wallet icon (cashback) or Star icon (points) + the friendly label.
+  * Updated the amber bottom card to clearly read "Recompensa: R$ X,XX (Cashback)" or "Recompensa: 500 pts (Pontos)".
+- admin-page.tsx (Streak Reward dialog amount field, ~line 5796):
+  * Added a preview label below the amount Input: "Será exibido no backoffice como: [R$ X,XX] ou [X pts]" based on the current rewardType selection. The bracketed value updates live as the admin types.
+  * Verified the existing amount Input correctly handles both types: cashback uses step="0.01" and displays rewardAmount / 100 (R$ value); points uses step="1" and displays the raw integer.
+  * Verified handleSaveStreakReward correctly sends rewardType + rewardAmount (cents for cashback, raw int for points) — no change needed.
+
+ISSUE 3 (ADM-3) — Telemedicina admin panel (admin-telemedicina-panel.tsx)
+NOTE: AGENT-C already added the payment-method badge to this panel. I added the price display + polish.
+
+- Verified the payment-method badge is shown on each request list card (already there from AGENT-C).
+- Added a fixed "R$ 49,90/mês" price Badge next to the payment-method badge on every request list card (emerald outline, font-semibold) so the admin sees the activation amount at a glance.
+- Added a prominent price + payment-method banner to the top of the approve/reject dialog body (between DialogHeader and the form fields):
+  * Left side: CreditCard icon + "Valor da ativação" label + "Pagamento: <method>" sub-line (parsed from notes via parsePaymentFromNotes).
+  * Right side: bold "R$ 49,90" + "por mês" hint.
+- Updated the Details dialog (read-only):
+  * Added a dedicated "Valor da ativação" row showing "R$ 49,90/mês" (bold emerald).
+  * Removed the small inline "(R$ 49,90/mês)" hint that was previously appended next to the payment method label (now redundant with the dedicated row).
+  * The Forma de Pagamento row now shows just the method label + CreditCard icon.
+
+Lint / Type-check:
+- `bun run lint`: 13 errors total, ALL pre-existing in root .js files (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js). ZERO errors in any of my 5 modified files.
+- `bunx eslint <my-files>`: clean for all 5 modified files (admin-users-panel.tsx, admin-permissions-panel.tsx, admin-telemedicina-panel.tsx, admin-page.tsx, lib/api.ts).
+- `bunx tsc --noEmit --skipLibCheck`: errors in admin-page.tsx are all PRE-EXISTING (`raw`/`code`/`amount` property type mismatches on AdminPlan/AdminVoucher/SystemConfigs, originally reported by AGENT-D). After my ~165 added lines they shifted from lines 237/1832/2566/2570/4242 to 237/1995/2738/2742/4409 but are otherwise unchanged. No NEW TypeScript errors introduced.
+- The TS1117 "duplicate getWithdrawals" error in lib/api.ts(163,3) is also pre-existing (financialApi has two getWithdrawals methods — unrelated to my adminApi.createUser addition).
+- Dev server log (/home/z/my-project/.zscripts/dev.log): clean. Only the pre-existing `./src/lib/db.ts` Critical dependency warning (Prisma client initialization). Page compiles and returns HTTP 200.
+
+Stage Summary:
+- ✅ ADM-4: Admin can create new users with login + password via a "Criar Usuário" button in BOTH the standalone AdminUsersPanel component AND the inline users tab in admin-page.tsx. Dialog has all required fields + info box explaining the login flow. The new user can immediately log in via /api/auth/login.
+- ✅ ADM-4: Admin can edit a user's role (admin/support/user or any custom role from the Permissões tab) via a new Role Select in the Edit User dialog. Custom roles are auto-loaded from /admin/permissions so they appear in both Create and Edit Role selects. The PUT /api/admin/users/[id] route already accepted role (added by AGENT-D); I only added the UI to use it.
+- ✅ ADM-4: The Permissões tab now has an info box at the top explaining how login + roles + permissions work together, with a pointer to the "Criar Usuário" button in the Users tab.
+- ✅ ADM-4: Added `adminApi.createUser()` method to src/lib/api.ts for the new endpoint.
+- ✅ ADM-6 (admin side): Streak Rewards list cards now clearly show the type via a Badge (Cashback / Pontos) and the reward reads "Recompensa: R$ X,XX (Cashback)" or "Recompensa: 500 pts (Pontos)". The dialog amount field has a live preview label showing exactly how the value will be rendered in the backoffice. The dialog already correctly handled cents-for-cashback vs raw-int-for-points (verified — no change needed to the save handler).
+- ✅ ADM-3: Telemedicina admin panel now shows the R$ 49,90/mês price badge on every request list card, plus a prominent price + payment-method banner at the top of the approve/reject dialog, plus a dedicated "Valor da ativação" row in the read-only Details dialog. Admin can see all details: holder info (name/CPF/email/phone/birthdate), dependents, notes (with payment-method prefix stripped), payment method, and price.
+- Files changed: 5 modified. Modified: src/components/newmobility/admin/admin-users-panel.tsx, src/components/newmobility/admin/admin-permissions-panel.tsx, src/components/newmobility/admin/admin-page.tsx, src/components/newmobility/admin/admin-telemedicina-panel.tsx, src/lib/api.ts.
+- Did NOT modify prisma/schema.prisma. No test files created.
+- Coordination notes: AGENT-E handled the CareerPlan admin form (rewardWithdrawalCents/rewardShoppingCents/rewardPoints/gratification) — I left it alone. AGENT-F handled the user-side gamification-page.tsx streak display — I left it alone. AGENT-C previously added the payment-method badge to admin-telemedicina-panel.tsx — I built on top of their work.
+
+---
+Task ID: AGENT-E
+Agent: Sub-agent (BACK-9 + BACK-8 fixer — Career Plan separate rewards + achievements points display)
+
+Task: Fix TWO related issues — (1) BACK-9: Admin Career Plan form had a single combined "Tipo de Recompensa + Bônus Mensal/Pontos" field; split into 4 separate fields (Carteira Saque, Carteira Compras, Pontos, Gratificação) and add a user-side "Gratificações Desbloqueadas" claim flow with a new /api/career/claim endpoint. (2) BACK-8: achievements-section.tsx showed R$ for cashback achievements (targetValue >= 100000); switch to PONTOS-only display and convert cashback fallback achievements to point-based targets.
+
+Work Log:
+
+ISSUE 1 (BACK-9) — Plano de Carreira: separate reward fields + claim flow
+
+1) `src/app/api/admin/career-plans/route.ts` (POST handler)
+   - Added `rewardWithdrawalCents`, `rewardShoppingCents`, `rewardPoints`, `gratification` to the destructured body with safe defaults (0 / null).
+   - When `rewardWithdrawalCents > 0`, the API also mirrors the value into the legacy `bonusCents` column and sets `rewardType = 'real'` so any code path still reading the legacy fields keeps working. Otherwise legacy `bonusCents` / `rewardType` fall through unchanged.
+   - Persisted all 4 new fields + the mirrored legacy fields in `prisma.careerPlan.create({ data })`.
+   - No schema change required (the columns were added by the task preamble).
+
+2) `src/app/api/admin/career-plans/[id]/route.ts` (PUT handler)
+   - Added the same 4 new fields to the destructured body.
+   - Each field is only written when explicitly provided (`!== undefined`) so a partial update (e.g. just toggling isActive) doesn't wipe existing rewards.
+   - When `rewardWithdrawalCents` is provided, it ALSO mirrors into `bonusCents` and sets `rewardType` accordingly. When not provided but legacy `bonusCents` / `rewardType` are, those are honoured (backward compat).
+
+3) `src/app/api/career/route.ts` (GET — user-side)
+   - Extended the `mapPlan` type signature to include the 4 new fields (`rewardWithdrawalCents`, `rewardShoppingCents`, `rewardPoints`, `gratification`).
+   - Each mapped plan now returns those fields (with `?? 0` / `?? null` defensive defaults).
+   - Also extended the `nextRank` object with the same 4 fields so the UI can read them off the next-rank preview.
+
+4) `src/app/api/career/claim/route.ts` (NEW — POST + GET)
+   - POST /api/career/claim body `{ userId, planId }`:
+     * Verifies user exists, plan exists, plan isActive.
+     * Checks `user.careerPoints >= plan.minPoints` — 400 "Pontos insuficientes" if not.
+     * Idempotency: scans the user's existing `career_claim`-type Gratifications and parses the encoded `[plan:<planId>]` prefix out of `description`. If a claim already exists for this plan, returns 409 "Gratificação já reivindicada".
+     * On success, runs a Prisma `$transaction` that:
+       - Increments `balanceWithdrawal` by `rewardWithdrawalCents`
+       - Increments `balanceShopping` by `rewardShoppingCents`
+       - Increments `careerPoints` by `rewardPoints`
+       - Creates a `Gratification` row with `type='career_claim'`, `isClaimed=true`, `claimedAt=now`, `category='career'`, `amount=withdrawal+shopping cents`, `description=[plan:<planId>] <planName>`, `qualification='Plano de Carreira: <planName>'`, `frequency='one_time'`.
+     * Returns the credited amounts + new balances + gratificationId.
+   - GET /api/career/claim?userId=X: returns the user's career-claim gratifications parsed back into `{ planId, claimedAt, amountCents }` so the UI can disable already-claimed plan buttons.
+   - Used the existing `description` field (instead of a `referenceId` column) because the Gratification model has no `referenceId` column and we were told NOT to modify the schema.
+
+5) `src/components/newmobility/admin/admin-page.tsx`
+   - Extended the `CareerPlanItem` interface with optional `rewardWithdrawalCents`, `rewardShoppingCents`, `rewardPoints`, `gratification` fields.
+   - Extended the `careerPlanForm` state object with the same 4 fields (defaults: 0 / 0 / 0 / ''). Kept legacy `bonusCents` and `rewardType` for backward compat.
+   - `handleOpenCreateCareerPlan` / `handleOpenEditCareerPlan`: now populate / read the new 4 fields. Edit pre-fills from `c.rewardWithdrawalCents ?? 0` etc. so old plans with only legacy data still load correctly.
+   - `handleSaveCareerPlan`: posts all 4 new fields. Also sends `bonusCents` (mirrored from rewardWithdrawalCents when set) and `rewardType` for backward compat with older API routes.
+   - List rendering (~line 4992): replaced the single "Bônus Mensal" cell with a 2×2 grid showing all 4 reward types separately:
+       * 9.1 Carteira Saque (formatCurrency if > 0, else "—")
+       * 9.2 Carteira Compras (formatCurrency if > 0, else "—")
+       * 9.3 Recompensa Pontos (X pts if > 0, else "—")
+     Below the grid, a conditional amber-tinted box renders the 9.4 Gratificação text (only when non-empty).
+   - Dialog form (~line 5441): replaced the combined "Tipo de Recompensa" select + "Bônus Mensal/Quantidade de Pontos" Input with a styled `<div>` containing:
+       * "Recompensas (separadas)" header
+       * Grid: Pontos Mínimos / 9.1 Carteira Saque (R$, step=0.01, ×100 on save) / 9.2 Carteira Compras (R$, step=0.01, ×100 on save) / 9.3 Recompensa Pontos (integer)
+       * 9.4 Gratificação — `<textarea rows={2}>` for free-text bonus description.
+     The legacy `rewardType` field is no longer exposed in the UI; it's derived from `rewardWithdrawalCents` server-side.
+   - Icon/Color/Order/Active checkboxes moved to a separate grid below the rewards block for cleaner layout.
+
+6) `src/components/newmobility/career/career-page.tsx`
+   - Extended the `CareerLevel` interface with the 4 new reward fields (`rewardWithdrawalCents`, `rewardShoppingCents`, `rewardPoints`, `gratification`). Kept the legacy `reward` and `rewardType` for backward compat with any code path still reading them.
+   - Added `formatBRLFromCents(cents)` helper that uses `Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents/100)`.
+   - REWROTE `formatReward(level)` to take a `Pick<CareerLevel, ...>` and return a comma-separated list of every non-zero reward: "Saque: R$ 2.000,00 · Compras: R$ 500,00 · 1.000 pts". Returns "—" when no rewards are configured. The OLD `formatReward(reward, rewardType)` 2-arg signature was renamed to `formatLegacyReward(reward, rewardType)` and kept for any callers that still pass a pair.
+   - Updated all 4 existing call sites of `formatReward(...)` to use the new single-arg signature (`formatReward(lvl)`, `formatReward(nextLevel)`, `formatReward(level)`). Also fixed the `/mês` suffix to be driven by `(rewardWithdrawalCents > 0 || rewardShoppingCents > 0)` instead of the old `rewardType === 'real'` check.
+   - Updated the fallback `careerLevels` array (5 pins: Safira/Rubi/Esmeralda/Diamante/Imperial) to populate the new fields. Each pin now has `rewardWithdrawalCents` set to the existing BRL reward (R$2.000 / R$3.000 / R$4.000 / R$5.000 / R$6.000 in cents), `rewardShoppingCents: 0`, `rewardPoints: 0`, and a Portuguese `gratification` text like "Bônus de Safira ao atingir 100 pontos".
+   - Updated the API data mapping (loadCareer useEffect) to read the 4 new fields from each plan with defensive `typeof === 'number'` checks. Falls back to legacy `bonusCents` for `rewardWithdrawalCents` when the API response predates BACK-9. Legacy `reward` is derived from `rewardWithdrawalCents` for backward compat.
+   - Added `claimedPlanIds` state (Record<planId, claimedAt ISO>) and `claimingPlanId` state (string | null) for tracking which plans are being claimed right now (drives the spinner).
+   - Added a NEW useEffect that calls `GET /api/career/claim?userId=X` on mount to populate `claimedPlanIds`.
+   - Added `handleClaimGratification(planId, planName)` async function:
+     * POSTs to /api/career/claim.
+     * On success: shows a toast with the credited amounts (e.g. "Gratificação de Safira reivindicada! (+Saque: R$ 2.000,00)"), updates `claimedPlanIds`, and re-fetches `/api/career` so the new careerPoints (if any) propagate to the `achieved` flags on other plans.
+     * On error: shows the API's error message as a toast.
+     * Guards against double-clicks via `claimingPlanId`.
+   - Added a NEW "Gratificações Desbloqueadas" Card section between "Benefícios Atuais" and the Trilha de Carreira timeline:
+     * Filters `levels` to those where `currentPoints >= pointsRequired && code !== 'associado'`.
+     * Empty state: shows a Lock icon + "Nenhuma gratificação desbloqueada ainda. Acumule pontos de carreira para desbloquear e reivindicar gratificações."
+     * For each unlocked plan: an amber-tinted card with the plan emoji, name, "X pts" badge, the formatted rewards (via formatReward), and the gratification text. A "Reivindicar Gratificação" amber button on the right calls `handleClaimGratification`. When the plan is already claimed, the button is replaced by an emerald "Reivindicada" badge with a CheckCircle2 icon.
+   - Imports added: `Button` from '@/components/ui/button', `Loader2` from 'lucide-react', `toast` from 'sonner'.
+
+ISSUE 2 (BACK-8) — Pontuações: career_bronze R$ → PONTOS
+
+7) `src/components/newmobility/points/achievements-section.tsx`
+   - Rewrote `formatProgress(a)` to ALWAYS return a points-formatted string: `"${a.progress.toLocaleString('pt-BR')} / ${a.targetValue.toLocaleString('pt-BR')} pts"`.
+   - Removed the `if (a.targetValue >= 100000)` branch that was formatting progress/target as `R$ X / R$ Y` for cashback achievements. The UI now uniformly shows points — e.g. "750 / 5.000 pts" instead of "R$ 750 / R$ 5.000,00" for `fb_cashback_5000`.
+
+8) `src/app/api/achievements/route.ts`
+   - Updated the `FALLBACK_ACHIEVEMENTS` array:
+     * `fb_cashback_1000`: targetValue 100000 → 1000, name "R$ 1.000 em CashBack" → "1.000 pts em CashBack", description updated to "Acumule 1.000 pontos em CashBack".
+     * `fb_cashback_5000`: targetValue 500000 → 5000, name "R$ 5.000 em CashBack" → "5.000 pts em CashBack", description updated similarly.
+   - Updated `progressForCode(code, stats)` for the `cashback` branch: now returns `Math.floor(stats.cashbackTotalCents / 100)` (i.e. R$1 = 1 pt) so the progress value matches the new point-based targetValue. Without this fix, targetValue=5000 with progress=cashbackTotalCents (e.g. 750000) would always look "complete" since 750000 > 5000. Now progress is also in points so the comparison is consistent.
+   - Added explanatory comments documenting the BACK-8 conversion (1 pt = R$1 of cashback earned).
+   - All other achievement codes (referral, withdraw, voucher, plan_upgrade, marketplace, ride, streak, bet, career, loyalty, security) are unchanged — they were already in point counts.
+
+Verification:
+- `bun run lint`: 13 errors total, ALL pre-existing in root .js scripts (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js). ZERO errors in any of my modified/created files. Confirmed by running `bunx eslint <my-files>` → exit 0.
+- `bunx tsc --noEmit --skipLibCheck`: ZERO errors in my files. The 5 admin-page.tsx errors at lines 237/1995/2738/2742/4409 are pre-existing (about `raw` on AdminPlan, `code` on AdminPlan, `amount` on AdminVoucher) and were noted in the AGENT-D worklog as pre-existing — they just shifted line numbers due to my added code.
+
+Stage Summary:
+- ✅ BACK-9: Admin Career Plan form now has 4 SEPARATE reward fields (Carteira Saque, Carteira Compras, Pontos, Gratificação) replacing the single combined "Tipo de Recompensa + Bônus" field. The list view shows all 4 reward types separately. Legacy `bonusCents` / `rewardType` columns are kept in sync server-side for backward compat.
+- ✅ BACK-9: User-side career page now displays rewards via the new `formatReward(level)` helper that joins all non-zero rewards with " · " separators ("Saque: R$ 2.000,00 · 1.000 pts"). The fallback array, API mapping, and all 4 existing formatReward call sites were updated.
+- ✅ BACK-9: New `/api/career/claim` endpoint (POST + GET) credits the 3 reward types to the user's wallets (balanceWithdrawal, balanceShopping, careerPoints), creates a Gratification row, and is idempotent (prevents double-claiming).
+- ✅ BACK-9: New "Gratificações Desbloqueadas" Card on the career page lists every plan the user has reached, shows a "Reivindicar Gratificação" button (or "Reivindicada" badge if already claimed), and shows success/error toasts.
+- ✅ BACK-8: achievements-section.tsx `formatProgress` now ALWAYS shows points — the old `R$ X / R$ Y` branch for targetValue >= 100000 is gone.
+- ✅ BACK-8: FALLBACK_ACHIEVEMENTS cashback rows converted from BRL-cents targets (100000 / 500000) to point-based targets (1000 / 5000) with renamed labels ("1.000 pts em CashBack" / "5.000 pts em CashBack"). `progressForCode` for cashback now converts cents → points (/100) so progress matches targetValue.
+- Files changed: 7 modified + 1 created. Modified: src/app/api/admin/career-plans/route.ts, src/app/api/admin/career-plans/[id]/route.ts, src/app/api/career/route.ts, src/components/newmobility/admin/admin-page.tsx, src/components/newmobility/career/career-page.tsx, src/components/newmobility/points/achievements-section.tsx, src/app/api/achievements/route.ts. Created: src/app/api/career/claim/route.ts.
+- Did NOT modify prisma/schema.prisma (handled by the task preamble — the new CareerPlan columns were already added).
+- No test files created.

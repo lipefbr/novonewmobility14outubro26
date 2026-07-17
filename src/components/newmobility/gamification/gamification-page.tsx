@@ -19,7 +19,18 @@ interface StreakData {
   currentStreak: number
   longestStreak: number
   totalPoints: number
-  streakRewards: { days: number; points: number; claimed: boolean }[]
+  // ADM-7 — `rewardType` and `amount` come from the admin-managed
+  // StreakReward table. `amount` is the raw rewardAmount integer:
+  //   - rewardType='points'  → amount = number of career points
+  //   - rewardType='cashback' → amount = value in BRL cents (divide by 100)
+  // `points` is kept as an alias for backwards-compat with older builds.
+  streakRewards: {
+    days: number
+    points: number
+    amount: number
+    rewardType: 'points' | 'cashback'
+    claimed: boolean
+  }[]
 }
 
 interface LeaderboardEntry {
@@ -127,18 +138,27 @@ export function GamificationPage() {
           <CardContent className="p-4">
             <h4 className="text-sm font-semibold text-foreground mb-3">Recompensas de Sequência</h4>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {streak?.streakRewards.map((reward, i) => (
-                <div key={i} className={`p-3 rounded-lg border text-center ${
-                  reward.claimed
-                    ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800'
-                    : 'bg-muted/50 border-border'
-                }`}>
-                  <Flame className={`h-5 w-5 mx-auto mb-1 ${reward.claimed ? 'text-emerald-600' : 'text-muted-foreground'}`} />
-                  <p className="text-sm font-bold text-foreground">{reward.days} dias</p>
-                  <p className="text-xs text-muted-foreground">+{reward.points} pts</p>
-                  {reward.claimed && <Badge className="mt-1 bg-emerald-600 text-white text-[9px]"><Check className="h-2.5 w-2.5 mr-0.5" />Conquistado</Badge>}
-                </div>
-              ))}
+              {streak?.streakRewards.map((reward, i) => {
+                // ADM-7 — Render the reward correctly based on its type:
+                //   cashback  → "+R$ X,XX"  (amount is in BRL cents)
+                //   points    → "+X pts"    (amount is the raw point count)
+                const isCashback = reward.rewardType === 'cashback'
+                const rewardLabel = isCashback
+                  ? `+${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((reward.amount ?? reward.points ?? 0) / 100)}`
+                  : `+${reward.amount ?? reward.points ?? 0} pts`
+                return (
+                  <div key={i} className={`p-3 rounded-lg border text-center ${
+                    reward.claimed
+                      ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800'
+                      : 'bg-muted/50 border-border'
+                  }`}>
+                    <Flame className={`h-5 w-5 mx-auto mb-1 ${reward.claimed ? 'text-emerald-600' : 'text-muted-foreground'}`} />
+                    <p className="text-sm font-bold text-foreground">{reward.days} dias</p>
+                    <p className="text-xs text-muted-foreground">{rewardLabel}</p>
+                    {reward.claimed && <Badge className="mt-1 bg-emerald-600 text-white text-[9px]"><Check className="h-2.5 w-2.5 mr-0.5" />Conquistado</Badge>}
+                  </div>
+                )
+              })}
             </div>
           </CardContent>
         </Card>

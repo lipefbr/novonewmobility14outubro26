@@ -534,10 +534,16 @@ export function CashbackPage() {
         ))}
       </div>
 
-      {/* CashBack Tips Card with background pattern */}
+      {/* CashBack Tips Card — text-first layout.
+          Previously a 4px gradient bar was rendered ABOVE the CardContent,
+          pushing the title+description down and making the decorative bar
+          the visual headline. The user explicitly complained that "a figura
+          fica em cima da escrita" (the figure is on top of the writing).
+          Fix: lead with the icon+text (the actual content the user needs to
+          read), and demote the gradient to a subtle bottom accent so it
+          reads as a footer underline rather than a header banner. */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
         <Card className="shadow-sm bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800 overflow-hidden relative">
-          <div className="h-1 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400 animate-gradient-shift" />
           {/* Subtle dots background pattern */}
           <div className="absolute inset-0 opacity-[0.04] pointer-events-none" style={{
             backgroundImage: `radial-gradient(circle, #059669 1px, transparent 1px)`,
@@ -548,15 +554,19 @@ export function CashbackPage() {
               <div className="p-2 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400 shrink-0">
                 <Layers className="h-4 w-4" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <h4 className="text-sm font-bold text-emerald-800 dark:text-emerald-300">Dica de CashBack</h4>
-                <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">
-                  Indique pelo menos 3 pessoas ativas para maximizar seus ganhos no CashBack Entrada. 
+                <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1 leading-relaxed">
+                  Indique pelo menos 3 pessoas ativas para maximizar seus ganhos no CashBack Entrada.
                   Quanto maior sua rede, maior o retorno em todos os níveis!
                 </p>
               </div>
             </div>
           </CardContent>
+          {/* Subtle bottom accent — replaces the previous top "figure".
+              Thin, low-contrast, sits BELOW the text so it reads as a
+              decorative underline instead of competing with the headline. */}
+          <div className="h-1 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400 opacity-70" />
         </Card>
       </motion.div>
 

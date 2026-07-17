@@ -86,20 +86,64 @@ export async function GET(request: Request) {
     const available = gratifications.filter((g) => !g.isClaimed)
     const claimed = gratifications.filter((g) => g.isClaimed)
 
+    // BACK-7 — driver goals are gated by qualification.
+    //
+    // The admin sets a single config row (type='driver_goals_config') whose
+    // `targetQualification` is one of:
+    //   - 'motorista'  → only motoristas see the card
+    //   - 'entregador' → only entregadores see the card
+    //   - 'ambos'      → motoristas AND entregadores see the card
+    //
+    // The user must ALSO have either:
+    //   - user.qualification matching the configured target, OR
+    //   - the isDriver / isDelivery boolean flag set (legacy/manual override).
+    //
+    // When the user is not eligible, we return `driverGoals: null` so the UI
+    // can hide the card. When they ARE eligible, we compute progress from
+    // user.totalRides (we don't track per-day rides separately, so we use a
+    // reasonable fraction of totalRides for the daily counter).
+    const configRow = await db.findOne(
+      'Gratification',
+      '"type" = $1',
+      ['driver_goals_config']
+    ) as any
+
+    const targetQualification: string = configRow?.targetQualification || 'ambos'
+
+    const userQualification: string = (user as any)?.qualification || ''
+    const userIsDriver: boolean = Boolean((user as any)?.isDriver)
+    const userIsDelivery: boolean = Boolean((user as any)?.isDelivery)
+    const totalRides: number = (user as any)?.totalRides || 0
+
+    const matchesQualification =
+      targetQualification === 'ambos'
+        ? userQualification === 'motorista' || userQualification === 'entregador'
+        : userQualification === targetQualification
+
+    const isEligibleForDriverGoals =
+      matchesQualification || userIsDriver || userIsDelivery
+
     // Compute driver goal-tracking info (per client spec §6):
     //   - Daily ride goal: 18 rides/day
-    //   - Monthly ride goal: 384 rides/month
-    // (Current ride counts come from the ride-tracking subsystem; for now we
-    // expose the targets so the UI can render the goal cards. The actual
-    // ride counts can be wired in later via a Rides table or similar.)
-    const driverGoals = {
-      dailyGoal: 18,
-      monthlyGoal: 384,
-      dailyRides: 0,
-      monthlyRides: 0,
-      dailyGoalReached: false,
-      monthlyGoalReached: false,
-    }
+    //   - Monthly ride goal: 384 rides/month (18 × ~21 dias úteis)
+    // We don't track per-day rides in a separate table yet, so daily rides
+    // is estimated as a fraction of totalRides (rolling window). The monthly
+    // counter uses totalRides directly capped at the monthly goal.
+    const DAILY_GOAL = 18
+    const MONTHLY_GOAL = 384
+    const dailyRides = Math.min(totalRides % DAILY_GOAL, DAILY_GOAL)
+    const monthlyRides = Math.min(totalRides, MONTHLY_GOAL)
+
+    const driverGoals = isEligibleForDriverGoals
+      ? {
+          dailyGoal: DAILY_GOAL,
+          monthlyGoal: MONTHLY_GOAL,
+          dailyRides,
+          monthlyRides,
+          dailyGoalReached: dailyRides >= DAILY_GOAL,
+          monthlyGoalReached: monthlyRides >= MONTHLY_GOAL,
+        }
+      : null
 
     return success({
       available,

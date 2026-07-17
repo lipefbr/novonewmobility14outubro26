@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import {
   HeartPulse, CheckCircle2, XCircle, Clock, RefreshCw, Loader2,
   ExternalLink, User, Users, Phone, Mail, Calendar, FileText, Search,
+  CreditCard,
 } from 'lucide-react'
 
 import { useStore } from '@/lib/store'
@@ -59,6 +60,52 @@ interface TelemedicinaRequestDTO {
     phone: string
     plan: string
   } | null
+}
+
+interface ListResponse {
+  requests: TelemedicinaRequestDTO[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
+// ---------- Payment-method helpers ----------
+// The TelemedicinaRequest model has no dedicated paymentMethod column, so the
+// chosen method is persisted as a `[Pagamento: PIX]` prefix on the `notes`
+// field. We parse it back out here so the admin can see at a glance which
+// payment method the user selected.
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  pix: 'PIX',
+  boleto: 'Boleto',
+  credit_card: 'Cartão de Crédito',
+}
+
+function normalizePaymentMethod(input: string): string | null {
+  const v = input.trim().toLowerCase()
+  if (v === 'pix') return 'pix'
+  if (v === 'boleto' || v === 'bank_slip') return 'boleto'
+  if (v === 'credit_card' || v === 'creditcard' || v === 'cartao' || v === 'cartão' || v === 'cartão de crédito' || v === 'cartao de credito') return 'credit_card'
+  return null
+}
+
+function parsePaymentFromNotes(raw: string | null): {
+  method: string | null
+  label: string | null
+  notes: string | null
+} {
+  if (!raw) return { method: null, label: null, notes: null }
+  // Match `[Pagamento: <method>] <rest>` at the start of the string. Use
+  // [\s\S] instead of the `s` (dotAll) flag because the project's tsconfig
+  // targets ES2017 and the `s` flag requires ES2018+.
+  const match = raw.match(/^\[Pagamento:\s*([^\]]+)\]\s*([\s\S]*)$/i)
+  if (!match) return { method: null, label: null, notes: raw }
+  const rawMethod = match[1].trim()
+  const method = normalizePaymentMethod(rawMethod) ?? rawMethod
+  const label = PAYMENT_METHOD_LABELS[method] ?? rawMethod
+  const rest = match[2].trim()
+  return { method, label, notes: rest || null }
 }
 
 interface ListResponse {
@@ -324,6 +371,30 @@ export function AdminTelemedicinaPanel() {
                           {req.status === 'rejected' && <XCircle className="h-3 w-3 mr-1" />}
                           {req.status === 'approved' ? 'Aprovado' : req.status === 'pending' ? 'Pendente' : req.status === 'rejected' ? 'Recusado' : 'Cancelado'}
                         </Badge>
+                        {(() => {
+                          const pm = parsePaymentFromNotes(req.notes)
+                          return pm.label ? (
+                            <Badge
+                              variant="outline"
+                              className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800 text-[10px] gap-1"
+                              title="Forma de pagamento escolhida pelo usuário"
+                            >
+                              <CreditCard className="h-3 w-3" />
+                              {pm.label}
+                            </Badge>
+                          ) : null
+                        })()}
+                        {/* ADM-3 — fixed activation price badge so the admin
+                            can see at a glance how much this request is
+                            worth on the list (matches the user-side price
+                            shown in talkmobi-page.tsx). */}
+                        <Badge
+                          variant="outline"
+                          className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800 text-[10px] gap-1 font-semibold"
+                          title="Valor da ativação da Telemedicina"
+                        >
+                          R$ 49,90/mês
+                        </Badge>
                         {req.dependents && req.dependents.length > 0 && (
                           <Badge variant="outline" className="text-[10px] gap-1">
                             <Users className="h-3 w-3" />
@@ -360,11 +431,18 @@ export function AdminTelemedicinaPanel() {
                         </p>
                       )}
 
-                      {req.notes && (
-                        <p className="text-[11px] text-muted-foreground italic bg-muted/40 p-2 rounded">
-                          Obs.: {req.notes}
-                        </p>
-                      )}
+                      {(() => {
+                        // Strip the `[Pagamento: …]` prefix when displaying
+                        // the user's notes so the admin sees only what the
+                        // user actually typed.
+                        const pm = parsePaymentFromNotes(req.notes)
+                        if (!pm.notes) return null
+                        return (
+                          <p className="text-[11px] text-muted-foreground italic bg-muted/40 p-2 rounded">
+                            Obs.: {pm.notes}
+                          </p>
+                        )
+                      })()}
 
                       {req.status === 'approved' && req.activationLink && (
                         <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800">
@@ -480,6 +558,31 @@ export function AdminTelemedicinaPanel() {
             </div>
           </DialogHeader>
 
+          {/* ADM-3 — Price + payment-method banner so the admin sees the
+              activation amount at a glance when approving/rejecting. The
+              price is fixed (R$ 49,90/mês) and the payment method is parsed
+              out of the request's notes field by parsePaymentFromNotes. */}
+          {activeRequest && (
+            <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 p-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <CreditCard className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-foreground">Valor da ativação</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Pagamento:{' '}
+                    <span className="font-medium text-foreground">
+                      {parsePaymentFromNotes(activeRequest.notes).label || '—'}
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-base font-bold text-emerald-700 dark:text-emerald-400">R$ 49,90</p>
+                <p className="text-[10px] text-muted-foreground">por mês</p>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-3 py-2">
             {actionMode === 'approve' && (
               <div className="space-y-1.5">
@@ -570,6 +673,28 @@ export function AdminTelemedicinaPanel() {
                   <p className="text-muted-foreground">Status</p>
                   <p className="font-medium text-foreground capitalize">{detailsReq.status}</p>
                 </div>
+                {/* ADM-3 — fixed activation price row so the admin always
+                    sees how much this request is worth, even when the
+                    payment method badge isn't set. */}
+                <div className="col-span-2 sm:col-span-1">
+                  <p className="text-muted-foreground">Valor da ativação</p>
+                  <p className="font-bold text-emerald-700 dark:text-emerald-400">R$ 49,90/mês</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-muted-foreground">Forma de Pagamento</p>
+                  <p className="font-medium text-foreground flex items-center gap-1.5">
+                    {(() => {
+                      const pm = parsePaymentFromNotes(detailsReq.notes)
+                      if (!pm.label) return <span className="text-muted-foreground">—</span>
+                      return (
+                        <>
+                          <CreditCard className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                          {pm.label}
+                        </>
+                      )
+                    })()}
+                  </p>
+                </div>
               </div>
 
               {detailsReq.dependents && detailsReq.dependents.length > 0 && (
@@ -590,12 +715,18 @@ export function AdminTelemedicinaPanel() {
                 </div>
               )}
 
-              {detailsReq.notes && (
-                <div className="space-y-1 pt-2 border-t border-border">
-                  <p className="text-xs font-semibold text-foreground">Observações do usuário</p>
-                  <p className="text-xs text-foreground/80 italic bg-muted/40 p-2 rounded">{detailsReq.notes}</p>
-                </div>
-              )}
+              {(() => {
+                // Show only the user-typed portion of the notes (strip the
+                // `[Pagamento: …]` prefix that encodes the payment method).
+                const pm = parsePaymentFromNotes(detailsReq.notes)
+                if (!pm.notes) return null
+                return (
+                  <div className="space-y-1 pt-2 border-t border-border">
+                    <p className="text-xs font-semibold text-foreground">Observações do usuário</p>
+                    <p className="text-xs text-foreground/80 italic bg-muted/40 p-2 rounded">{pm.notes}</p>
+                  </div>
+                )
+              })()}
 
               {detailsReq.adminNotes && (
                 <div className="space-y-1 pt-2 border-t border-border">

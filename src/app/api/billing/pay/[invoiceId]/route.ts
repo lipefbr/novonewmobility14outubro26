@@ -14,14 +14,33 @@ import { generateVoucherForUser } from '@/lib/voucher'
 // is handled elsewhere (via the Asaas webhook); this endpoint is the
 // fallback used by the billing page when an invoice has no `asaasPaymentId`.
 //
-// Body (optional): { userId } — when supplied by an admin/system caller.
+// Body (optional):
+//   { userId, paymentMethod }
+//     - `userId`        — when supplied by an admin/system caller.
+//     - `paymentMethod` — one of 'pix' | 'boleto' | 'credit_card'. Stored on
+//                         the Invoice row (the schema already has this column)
+//                         so the UI can show a "Pago via PIX" badge. When
+//                         omitted we keep the existing value (or null).
+
+const VALID_PAYMENT_METHODS = new Set(['pix', 'boleto', 'credit_card'])
+
+function normalizePaymentMethod(input: unknown): string | null {
+  if (!input || typeof input !== 'string') return null
+  const v = input.trim().toLowerCase()
+  if (VALID_PAYMENT_METHODS.has(v)) return v
+  // Tolerate common synonyms before rejecting.
+  if (v === 'creditcard' || v === 'cartao' || v === 'cartão') return 'credit_card'
+  if (v === 'bank_slip') return 'boleto'
+  return null
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ invoiceId: string }> }
 ) {
   try {
     const session = await getSession(request)
-    const bodyUserId = await readBodyUserId(request)
+    const { bodyUserId, bodyPaymentMethod } = await readBody(request)
     const targetUserId = session?.userId || bodyUserId
 
     if (!targetUserId) {
@@ -49,12 +68,23 @@ export async function POST(
       return error('Forbidden: invoice does not belong to caller', 403)
     }
 
+    // Normalize the chosen payment method. Reject unknown values so we
+    // never persist garbage to the Invoice.paymentMethod column.
+    const method = normalizePaymentMethod(bodyPaymentMethod)
+    if (bodyPaymentMethod && !method) {
+      return error('Forma de pagamento inválida. Use: pix, boleto ou credit_card', 400)
+    }
+
     const now = new Date()
     const updated = await prisma.invoice.update({
       where: { id: invoiceId },
       data: {
         status: 'paid',
         paidAt: now,
+        // Only overwrite the payment method when a valid one was supplied.
+        // Otherwise we leave the existing value (e.g. set earlier by an
+        // Asaas webhook) untouched.
+        ...(method ? { paymentMethod: method } : {}),
       },
     })
 
@@ -182,19 +212,29 @@ export async function POST(
   }
 }
 
-// Helper: read `userId` from the request body without disturbing the
-// downstream `request.json()` call (we clone first).
-async function readBodyUserId(request: Request): Promise<string | null> {
+// Helper: read `userId` and `paymentMethod` from the request body without
+// disturbing the downstream `request.json()` call (we clone first).
+async function readBody(request: Request): Promise<{
+  bodyUserId: string | null
+  bodyPaymentMethod: string | null
+}> {
   try {
     const ct = request.headers.get('content-type') || ''
-    if (!ct.includes('application/json')) return null
+    if (!ct.includes('application/json')) {
+      return { bodyUserId: null, bodyPaymentMethod: null }
+    }
     const clone = request.clone()
     const body = await clone.json().catch(() => null)
-    if (body && typeof body === 'object' && typeof (body as Record<string, unknown>).userId === 'string') {
-      return (body as Record<string, string>).userId
+    if (!body || typeof body !== 'object') {
+      return { bodyUserId: null, bodyPaymentMethod: null }
     }
-    return null
+    const rec = body as Record<string, unknown>
+    const bodyUserId =
+      typeof rec.userId === 'string' ? (rec.userId as string) : null
+    const bodyPaymentMethod =
+      typeof rec.paymentMethod === 'string' ? (rec.paymentMethod as string) : null
+    return { bodyUserId, bodyPaymentMethod }
   } catch {
-    return null
+    return { bodyUserId: null, bodyPaymentMethod: null }
   }
 }

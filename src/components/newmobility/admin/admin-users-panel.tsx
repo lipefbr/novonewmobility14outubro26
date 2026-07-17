@@ -47,6 +47,9 @@ import {
   Save,
   RefreshCw,
   Download,
+  UserPlus,
+  Info,
+  KeyRound,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useStore } from '@/lib/store'
@@ -75,9 +78,61 @@ const PLAN_OPTIONS = [
   { value: 'blue5', label: 'Blue 5 Premium' },
 ]
 
+// ADM-4 — Role options for the Edit User dialog and the Create User dialog.
+// Mirrors the role concept used by the admin permissions panel:
+//   - 'user'    => regular user, no admin panel access
+//   - 'admin'   => full admin (wildcard '*')
+//   - 'support' => default staff role (users + support + announcements)
+// Custom roles created in admin-permissions-panel.tsx are appended at runtime
+// (see roleOptions state in AdminUsersPanel).
+const ROLE_OPTIONS_BASE = [
+  { value: 'user', label: 'Usuário comum' },
+  { value: 'admin', label: 'Administrador' },
+  { value: 'support', label: 'Suporte' },
+] as const
+
+function roleLabel(value?: string | null): string {
+  if (!value) return '—'
+  const base = ROLE_OPTIONS_BASE.find((r) => r.value === value)
+  if (base) return base.label
+  // Custom role — capitalize the raw value.
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
+function roleBadgeClass(value?: string | null): string {
+  switch (value) {
+    case 'admin':
+      return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+    case 'support':
+      return 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300'
+    case 'user':
+    default:
+      return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+  }
+}
+
+// BACK-4 — qualification options mirror the registration dropdown
+// (register-page.tsx lines 101-108). There are 6 types, not just motorista
+// and entregador. Used in the "Editar Usuário" dialog so admins can set or
+// correct a user's qualification after registration.
+const QUALIFICATION_OPTIONS = [
+  { value: 'motorista', label: 'Motorista' },
+  { value: 'passageiro', label: 'Passageiro' },
+  { value: 'passageiro_60', label: 'Passageiro 60+' },
+  { value: 'passageiro_pcd', label: 'Passageiro com Mobilidade Reduzida' },
+  { value: 'comercio', label: 'Comércio' },
+  { value: 'entregador', label: 'Entregador' },
+]
+
 function userTypeBadge(type?: string) {
   const t = USER_TYPES.find((x) => x.value === (type || 'usuario'))
   return t || USER_TYPES[2]
+}
+
+// BACK-4 — human-readable label for a qualification value (or '—' when unset).
+function qualificationLabel(value?: string | null): string {
+  if (!value) return '—'
+  return QUALIFICATION_OPTIONS.find((q) => q.value === value)?.label || value
 }
 
 function planBadge(plan?: string) {
@@ -115,6 +170,9 @@ interface AdminUser {
   plan: string
   isActive: boolean
   userType?: string
+  // BACK-4 — qualification is one of: motorista | passageiro | passageiro_60 |
+  // passageiro_pcd | comercio | entregador. Mirrors the registration dropdown.
+  qualification?: string | null
   kycStatus?: string
   role?: string
   referralCode?: string
@@ -156,6 +214,11 @@ interface EditFormData {
   phone: string
   cpf: string
   userType: string
+  // BACK-4 — qualification field per the registration dropdown (6 options).
+  qualification: string
+  // ADM-4 — auth role (admin/support/user or any custom role). Drives
+  // access to the admin panel via the permissions matrix.
+  role: string
   plan: string
   isActive: boolean
   isDriver: boolean
@@ -175,12 +238,39 @@ interface EditFormData {
   stars: number
 }
 
+// ADM-4 — form data for the Create User dialog.
+interface CreateFormData {
+  name: string
+  email: string
+  password: string
+  phone: string
+  cpf: string
+  userType: string
+  role: string
+  plan: string
+  referredByCode: string
+}
+
+const EMPTY_CREATE: CreateFormData = {
+  name: '',
+  email: '',
+  password: '',
+  phone: '',
+  cpf: '',
+  userType: 'usuario',
+  role: 'user',
+  plan: 'free',
+  referredByCode: '',
+}
+
 const EMPTY_EDIT: EditFormData = {
   name: '',
   email: '',
   phone: '',
   cpf: '',
   userType: 'usuario',
+  qualification: '',
+  role: 'user',
   plan: 'free',
   isActive: true,
   isDriver: false,
@@ -221,6 +311,22 @@ export function AdminUsersPanel() {
   const [viewOpen, setViewOpen] = useState(false)
   const [viewing, setViewing] = useState<AdminUser | null>(null)
 
+  // ADM-4 — Create User dialog state
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createForm, setCreateForm] = useState<CreateFormData>(EMPTY_CREATE)
+  const [creating, setCreating] = useState(false)
+
+  // ADM-4 — custom roles loaded from /admin/permissions so the Role select
+  // can offer roles the admin created in the Permissões tab (e.g. financeiro,
+  // marketing). Falls back to ROLE_OPTIONS_BASE only if the request fails.
+  const [customRoles, setCustomRoles] = useState<string[]>([])
+  const roleOptions = useMemo(() => {
+    const extras = customRoles
+      .filter((r) => !ROLE_OPTIONS_BASE.some((b) => b.value === r))
+      .map((r) => ({ value: r, label: r.charAt(0).toUpperCase() + r.slice(1) }))
+    return [...ROLE_OPTIONS_BASE, ...extras]
+  }, [customRoles])
+
   const loadUsers = useCallback(async () => {
     if (!user?.id) return
     setLoading(true)
@@ -246,6 +352,22 @@ export function AdminUsersPanel() {
     loadUsers()
   }, [loadUsers])
 
+  // ADM-4 — load custom roles once so the Role Select in both the Create
+  // and Edit dialogs can list them. Errors are swallowed silently because
+  // the dialog still works with just ROLE_OPTIONS_BASE.
+  useEffect(() => {
+    if (!user?.id) return
+    apiFetch<{ permissions: Record<string, string[]> }>(`/admin/permissions?userId=${user.id}`)
+      .then((res) => {
+        if (res?.permissions) {
+          setCustomRoles(Object.keys(res.permissions))
+        }
+      })
+      .catch(() => {
+        /* no-op — fall back to base roles */
+      })
+  }, [user?.id])
+
   const stats = useMemo(() => {
     if (!data?.users) return { total: 0, active: 0, inactive: 0, drivers: 0 }
     const users = data.users
@@ -265,6 +387,8 @@ export function AdminUsersPanel() {
       phone: u.phone || '',
       cpf: u.cpf || '',
       userType: u.userType || 'usuario',
+      qualification: u.qualification || '',
+      role: u.role || 'user',
       plan: u.plan || 'free',
       isActive: u.isActive,
       isDriver: u.isDriver || false,
@@ -289,6 +413,58 @@ export function AdminUsersPanel() {
   const openView = (u: AdminUser) => {
     setViewing(u)
     setViewOpen(true)
+  }
+
+  // ADM-4 — create a new user (and optional admin/staff account) via the
+  // /api/admin/users/create endpoint. The created user can immediately log
+  // in with the email + password defined here.
+  const openCreate = () => {
+    setCreateForm(EMPTY_CREATE)
+    setCreateOpen(true)
+  }
+
+  const handleCreate = async () => {
+    if (!user?.id) return
+    if (!createForm.name.trim()) {
+      toast.error('Informe o nome completo')
+      return
+    }
+    if (!createForm.email.trim() || !/\S+@\S+\.\S+/.test(createForm.email)) {
+      toast.error('Informe um email válido (será usado para login)')
+      return
+    }
+    if (createForm.password.length < 6) {
+      toast.error('A senha deve ter pelo menos 6 caracteres')
+      return
+    }
+    setCreating(true)
+    try {
+      await apiFetch('/admin/users/create', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: user.id,
+          name: createForm.name.trim(),
+          email: createForm.email.trim(),
+          password: createForm.password,
+          phone: createForm.phone || undefined,
+          cpf: createForm.cpf || undefined,
+          plan: createForm.plan,
+          role: createForm.role,
+          userType: createForm.userType,
+          referredByCode: createForm.referredByCode || undefined,
+        }),
+      })
+      toast.success('Usuário criado! Ele pode fazer login com email + senha.')
+      setCreateOpen(false)
+      setCreateForm(EMPTY_CREATE)
+      // Jump back to page 1 so the new user shows up at the top of the list.
+      setPage(1)
+      loadUsers()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao criar usuário')
+    } finally {
+      setCreating(false)
+    }
   }
 
   const handleSave = async () => {
@@ -462,6 +638,13 @@ export function AdminUsersPanel() {
             <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs shrink-0" onClick={loadUsers} disabled={loading}>
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Atualizar
             </Button>
+            <Button
+              size="sm"
+              className="h-9 gap-1.5 text-xs shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={openCreate}
+            >
+              <UserPlus className="h-3.5 w-3.5" /> Criar Usuário
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -477,6 +660,7 @@ export function AdminUsersPanel() {
                   <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden md:table-cell">CPF</th>
                   <th className="text-left text-xs font-semibold text-muted-foreground p-3">Tipo</th>
                   <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden sm:table-cell">Plano</th>
+                  <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden lg:table-cell">Role</th>
                   <th className="text-left text-xs font-semibold text-muted-foreground p-3">Status</th>
                   <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden lg:table-cell">KYC</th>
                   <th className="text-left text-xs font-semibold text-muted-foreground p-3 hidden md:table-cell">Saldo Saque</th>
@@ -486,7 +670,7 @@ export function AdminUsersPanel() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center">
+                    <td colSpan={9} className="p-8 text-center">
                       <div className="inline-flex items-center gap-2 text-muted-foreground text-sm">
                         <span className="h-4 w-4 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
                         Carregando usuários...
@@ -511,6 +695,11 @@ export function AdminUsersPanel() {
                         </td>
                         <td className="p-3 hidden sm:table-cell">
                           <Badge className={planBadge(u.plan)}>{u.plan === 'blue5' ? 'Blue 5' : u.plan === 'blue3' ? 'Blue 3' : 'Gratuito'}</Badge>
+                        </td>
+                        <td className="p-3 hidden lg:table-cell">
+                          <Badge className={roleBadgeClass(u.role)} title={u.role ? `Role: ${u.role}` : undefined}>
+                            <Shield className="h-2.5 w-2.5 mr-0.5" /> {roleLabel(u.role)}
+                          </Badge>
                         </td>
                         <td className="p-3">
                           <Badge className={u.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'}>
@@ -563,7 +752,7 @@ export function AdminUsersPanel() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center">
+                    <td colSpan={9} className="p-8 text-center">
                       <UsersIcon className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">Nenhum usuário encontrado</p>
                     </td>
@@ -588,6 +777,151 @@ export function AdminUsersPanel() {
           )}
         </CardContent>
       </Card>
+
+      {/* ADM-4 — Create User dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-4 w-4 text-emerald-600" />
+              Criar Usuário
+            </DialogTitle>
+            <DialogDescription>
+              Crie um novo usuário com login e senha. O usuário poderá acessar a plataforma imediatamente.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Info box — explains the login flow */}
+          <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 p-3 text-[11px] text-emerald-800 dark:text-emerald-300 flex gap-2">
+            <Info className="h-4 w-4 shrink-0 mt-0.5" />
+            <p>
+              O usuário criado poderá fazer login na plataforma usando o <strong>email</strong> e a{' '}
+              <strong>senha</strong> definidos aqui. Para acessar o painel admin, defina o Role como{' '}
+              <strong>&apos;admin&apos;</strong> ou <strong>&apos;support&apos;</strong> e configure as permissões
+              na aba <strong>Permissões</strong>.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Nome completo *</Label>
+              <Input
+                value={createForm.name}
+                onChange={(e) => setCreateForm((d) => ({ ...d, name: e.target.value }))}
+                placeholder="João da Silva"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Email *</Label>
+                <Input
+                  type="email"
+                  value={createForm.email}
+                  onChange={(e) => setCreateForm((d) => ({ ...d, email: e.target.value }))}
+                  placeholder="joao@exemplo.com"
+                />
+                <p className="text-[10px] text-muted-foreground">Será usado para login.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Senha *</Label>
+                <div className="relative">
+                  <KeyRound className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    value={createForm.password}
+                    onChange={(e) => setCreateForm((d) => ({ ...d, password: e.target.value }))}
+                    placeholder="mínimo 6 caracteres"
+                    className="pl-8"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Telefone</Label>
+                <Input
+                  value={createForm.phone}
+                  onChange={(e) => setCreateForm((d) => ({ ...d, phone: e.target.value }))}
+                  placeholder="(11) 99999-0000"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">CPF</Label>
+                <Input
+                  value={createForm.cpf}
+                  onChange={(e) => setCreateForm((d) => ({ ...d, cpf: e.target.value }))}
+                  placeholder="000.000.000-00"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Tipo de Usuário</Label>
+                <Select
+                  value={createForm.userType}
+                  onValueChange={(v) => setCreateForm((d) => ({ ...d, userType: v }))}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {USER_TYPES.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs flex items-center gap-1.5">
+                  <Shield className="h-3 w-3 text-emerald-600" />
+                  Role
+                </Label>
+                <Select
+                  value={createForm.role}
+                  onValueChange={(v) => setCreateForm((d) => ({ ...d, role: v }))}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {roleOptions.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Plano</Label>
+                <Select
+                  value={createForm.plan}
+                  onValueChange={(v) => setCreateForm((d) => ({ ...d, plan: v }))}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {PLAN_OPTIONS.map((p) => (
+                      <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Código de indicante</Label>
+                <Input
+                  value={createForm.referredByCode}
+                  onChange={(e) => setCreateForm((d) => ({ ...d, referredByCode: e.target.value }))}
+                  placeholder="opcional"
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>Cancelar</Button>
+            <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleCreate} disabled={creating}>
+              {creating ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <UserPlus className="h-4 w-4" />}
+              Criar Usuário
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
@@ -651,6 +985,48 @@ export function AdminUsersPanel() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              {/* ADM-4 — Role Select: controls admin panel access. 'admin' or
+                  'support' (or any custom role from the permissions panel)
+                  grants panel access limited by the Permissões tab matrix. */}
+              <div className="space-y-1.5 pt-1">
+                <Label className="text-xs flex items-center gap-1.5">
+                  <Shield className="h-3 w-3 text-emerald-600" />
+                  Role (acesso ao painel)
+                </Label>
+                <Select
+                  value={editForm.role || 'user'}
+                  onValueChange={(v) => setEditForm((d) => ({ ...d, role: v }))}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {roleOptions.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground">
+                  Usuários com role <strong>admin</strong>, <strong>support</strong> ou qualquer role
+                  customizado conseguem acessar o painel admin. As páginas permitidas são definidas na aba
+                  <strong> Permissões</strong>.
+                </p>
+              </div>
+              {/* BACK-4 — Qualification dropdown (6 types, mirrors the
+                  registration dropdown). Lets the admin set or correct the
+                  user's qualification after registration. */}
+              <div className="space-y-1.5 pt-1">
+                <Label className="text-xs">Qualificação</Label>
+                <Select
+                  value={editForm.qualification || undefined}
+                  onValueChange={(v) => setEditForm((d) => ({ ...d, qualification: v }))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Selecione a qualificação" /></SelectTrigger>
+                  <SelectContent>
+                    {QUALIFICATION_OPTIONS.map((q) => (
+                      <SelectItem key={q.value} value={q.value}>{q.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid grid-cols-3 gap-3 pt-2">
                 <div className="flex items-center justify-between p-3 rounded-lg border">
@@ -761,7 +1137,9 @@ export function AdminUsersPanel() {
                 <Detail label="Telefone" value={viewing.phone || '—'} />
                 <Detail label="CPF" value={viewing.cpf || '—'} />
                 <Detail label="Tipo" value={userTypeBadge(viewing.userType).label} />
+                <Detail label="Qualificação" value={qualificationLabel(viewing.qualification)} />
                 <Detail label="Plano" value={viewing.plan === 'blue5' ? 'Blue 5 Premium' : viewing.plan === 'blue3' ? 'Blue 3' : 'Gratuito'} />
+                <Detail label="Role" value={roleLabel(viewing.role)} />
                 <Detail label="Status" value={viewing.isActive ? 'Ativo' : 'Inativo'} />
                 <Detail label="KYC" value={kycBadge(viewing.kycStatus).label} />
                 <Detail label="Motorista" value={viewing.isDriver ? 'Sim' : 'Não'} />

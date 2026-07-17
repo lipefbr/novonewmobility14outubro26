@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,7 +17,7 @@ import {
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { useAdminPermissions } from '@/lib/admin-permissions'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, categoryLabel } from '@/lib/utils'
 import { apiFetch, adminApi } from '@/lib/api'
 import {
   Shield, Users, DollarSign, TrendingUp, Activity, Settings, Search,
@@ -28,7 +28,7 @@ import {
   ArrowUpDown, Receipt, PieChart, Filter, Download, Calendar,
   MessageSquare, Send, Gift, Ticket, Gamepad2, Network, Percent,
   TreePine, Coins, Trophy, AlertCircle, Heart, UsersRound, Layers,
-  LogIn, Loader2,
+  LogIn, Loader2, UserPlus, KeyRound,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -280,6 +280,11 @@ interface CareerPlanItem {
   // 'real' = bonusCents is BRL (rendered as R$). 'points' = bonusCents is a
   // point count (rendered as "X pts"). Admin chooses per plan.
   rewardType: string;
+  // BACK-9 — separate reward fields (stored as cents / integers).
+  rewardWithdrawalCents?: number;
+  rewardShoppingCents?: number;
+  rewardPoints?: number;
+  gratification?: string | null;
   color?: string | null;
   icon?: string | null;
   isActive: boolean;
@@ -427,6 +432,30 @@ export function AdminPage() {
   const [editUserData, setEditUserData] = useState<EditFormData>(emptyEditForm)
   const [savingUser, setSavingUser] = useState(false)
 
+  // ADM-4 — Create User dialog state. The admin can create a new user with
+  // login + password (and optional role) directly from the Users tab.
+  const [createUserDialogOpen, setCreateUserDialogOpen] = useState(false)
+  const [creatingNewUser, setCreatingNewUser] = useState(false)
+  const [newUserForm, setNewUserForm] = useState({
+    name: '', email: '', password: '', phone: '', cpf: '',
+    userType: 'usuario', role: 'user', plan: 'free', referredByCode: '',
+  })
+  // Custom roles loaded from /admin/permissions so the Role selects
+  // (in both the Create and Edit dialogs) can list any role the admin
+  // created in the Permissões tab.
+  const [customRoles, setCustomRoles] = useState<string[]>([])
+  const roleSelectOptions = useMemo(() => {
+    const base = [
+      { value: 'user', label: 'Usuário comum' },
+      { value: 'admin', label: 'Administrador' },
+      { value: 'support', label: 'Suporte' },
+    ]
+    const extras = customRoles
+      .filter((r) => !base.some((b) => b.value === r))
+      .map((r) => ({ value: r, label: r.charAt(0).toUpperCase() + r.slice(1) }))
+    return [...base, ...extras]
+  }, [customRoles])
+
   // User view dialog
   const [viewUserDialogOpen, setViewUserDialogOpen] = useState(false)
   const [viewingUser, setViewingUser] = useState<ViewUserData | null>(null)
@@ -537,6 +566,15 @@ export function AdminPage() {
   const [gratificationSaving, setGratificationSaving] = useState(false)
   const [gratificationUserSearch, setGratificationUserSearch] = useState('')
   const [gratificationUserResults, setGratificationUserResults] = useState<AdminUser[]>([])
+  const [gratificationUserLoading, setGratificationUserLoading] = useState(false)
+  const [gratificationUserSearched, setGratificationUserSearched] = useState(false)
+  const gratificationSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // BACK-7 — driver-goals benefit target config ('motorista' | 'entregador' | 'ambos').
+  // Stored as a Gratification row with type='driver_goals_config'.
+  const [driverGoalsTarget, setDriverGoalsTarget] = useState<string>('ambos')
+  const [driverGoalsTargetLoading, setDriverGoalsTargetLoading] = useState(false)
+  const [driverGoalsTargetSaving, setDriverGoalsTargetSaving] = useState(false)
 
   // ---------- Game Config (inside Bets tab) ----------
   const [gameConfigs, setGameConfigs] = useState<GameConfigItem[]>([])
@@ -565,8 +603,18 @@ export function AdminPage() {
   const [careerPlanLoading, setCareerPlanLoading] = useState(false)
   const [careerPlanDialogOpen, setCareerPlanDialogOpen] = useState(false)
   const [editingCareerPlan, setEditingCareerPlan] = useState<CareerPlanItem | null>(null)
+  // BACK-9 — careerPlanForm now has SEPARATE reward fields instead of one
+  // combined "Tipo de Recompensa + Bônus" field. The legacy bonusCents /
+  // rewardType fields are kept for backward compatibility with the API but
+  // are derived from rewardWithdrawalCents on save.
   const [careerPlanForm, setCareerPlanForm] = useState({
-    code: '', name: '', description: '', minPoints: 0, bonusCents: 0,
+    code: '', name: '', description: '', minPoints: 0,
+    rewardWithdrawalCents: 0, // 9.1 — Carteira Saque (R$ cents)
+    rewardShoppingCents: 0,   // 9.2 — Carteira Compras (R$ cents)
+    rewardPoints: 0,          // 9.3 — Pontos (integer)
+    gratification: '',        // 9.4 — free-text bonus description
+    // Legacy fields — derived from rewardWithdrawalCents on save.
+    bonusCents: 0,
     rewardType: 'real' as 'real' | 'points',
     color: '#6b7280', icon: '🏅', isActive: true, sortOrder: 99,
   })
@@ -615,6 +663,19 @@ export function AdminPage() {
     loadStats()
   }, [])
 
+  // ADM-4 — load custom roles once so the Role Selects in both the Create
+  // and Edit user dialogs can list roles the admin created in the
+  // Permissões tab (e.g. financeiro, marketing). Errors are swallowed
+  // silently — the selects still work with just the base roles.
+  useEffect(() => {
+    if (!user?.id) return
+    apiFetch<{ permissions: Record<string, string[]> }>(`/admin/permissions?userId=${user.id}`)
+      .then((res) => {
+        if (res?.permissions) setCustomRoles(Object.keys(res.permissions))
+      })
+      .catch(() => { /* no-op */ })
+  }, [user?.id])
+
   useEffect(() => {
     if (activeTab === 'users') loadUsers()
     if (activeTab === 'config') loadConfigs()
@@ -625,7 +686,10 @@ export function AdminPage() {
     if (activeTab === 'financial') loadFinancial()
     if (activeTab === 'tickets') loadTickets()
     // Also load financial data for the gratifications admin page (which shows summary)
-    if (activeTab === 'gratifications') loadFinancial()
+    if (activeTab === 'gratifications') {
+      loadFinancial()
+      loadDriverGoalsTarget()
+    }
     // New tabs
     if (activeTab === 'vouchers') loadVouchers()
     if (activeTab === 'bets') { loadBets(); loadGameConfigs() }
@@ -712,6 +776,42 @@ export function AdminPage() {
       const data = await apiFetch<FinancialData>(`/admin/financial?userId=${user?.id}`)
       setFinancialData(data)
     } catch { /* ignore */ }
+  }
+
+  // BACK-7 — load the driver-goals benefit target config from the API.
+  const loadDriverGoalsTarget = async () => {
+    if (!user?.id) return
+    setDriverGoalsTargetLoading(true)
+    try {
+      const data = await apiFetch<{ targetQualification: string }>(
+        `/admin/gratifications-config?userId=${user.id}`
+      )
+      if (data?.targetQualification) {
+        setDriverGoalsTarget(data.targetQualification)
+      }
+    } catch {
+      // Ignore — keep default 'ambos'.
+    } finally {
+      setDriverGoalsTargetLoading(false)
+    }
+  }
+
+  // BACK-7 — save the driver-goals benefit target config to the API.
+  const saveDriverGoalsTarget = async (target: string) => {
+    if (!user?.id) return
+    setDriverGoalsTargetSaving(true)
+    try {
+      await apiFetch(`/admin/gratifications-config`, {
+        method: 'PUT',
+        body: JSON.stringify({ userId: user.id, targetQualification: target }),
+      })
+      setDriverGoalsTarget(target)
+      toast.success('Configuração de metas atualizada com sucesso')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar configuração de metas')
+    } finally {
+      setDriverGoalsTargetSaving(false)
+    }
   }
 
   const loadTickets = async () => {
@@ -958,13 +1058,48 @@ export function AdminPage() {
   }
 
   // ---------- Create Gratification ----------
-  const searchUsersForGratification = async () => {
-    if (!gratificationUserSearch.trim()) return
+  // ADM-2: robust user search with debounce, loading spinner, empty state and
+  // error toast. The previous version required the admin to press Enter/click
+  // and silently swallowed errors, which made the dialog look "stuck".
+  const searchUsersForGratification = useCallback(async (query?: string) => {
+    const term = (query ?? gratificationUserSearch).trim()
+    setGratificationUserSearched(true)
+    setGratificationUserLoading(true)
     try {
-      const data = await adminApi.getUsers(user?.id || '', { search: gratificationUserSearch, page: 1 })
-      setGratificationUserResults(data.users || [])
-    } catch { /* ignore */ }
-  }
+      const params: { search?: string; page: number } = { page: 1 }
+      if (term) params.search = term
+      const data = await adminApi.getUsers(user?.id || '', params)
+      setGratificationUserResults((data.users || []).slice(0, 10))
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao buscar usuários')
+      setGratificationUserResults([])
+    } finally {
+      setGratificationUserLoading(false)
+    }
+  }, [gratificationUserSearch, user?.id])
+
+  // Debounced auto-search (300ms) — runs whenever the search input changes.
+  // Clear the timer on cleanup to avoid duplicate calls.
+  useEffect(() => {
+    if (!gratificationCreateOpen) return
+    if (gratificationSearchTimer.current) clearTimeout(gratificationSearchTimer.current)
+    gratificationSearchTimer.current = setTimeout(() => {
+      searchUsersForGratification()
+    }, 300)
+    return () => {
+      if (gratificationSearchTimer.current) clearTimeout(gratificationSearchTimer.current)
+    }
+  }, [gratificationUserSearch, gratificationCreateOpen, searchUsersForGratification])
+
+  // Pre-populate the search with the first 10 users when the dialog opens, so
+  // the admin sees options immediately without having to type anything.
+  useEffect(() => {
+    if (!gratificationCreateOpen) return
+    setGratificationUserSearched(false)
+    setGratificationUserSearch('')
+    setGratificationUserResults([])
+    searchUsersForGratification('')
+  }, [gratificationCreateOpen, searchUsersForGratification])
 
   const handleCreateGratification = async () => {
     if (!gratificationForm.targetUserId) {
@@ -1176,7 +1311,12 @@ export function AdminPage() {
   const handleOpenCreateCareerPlan = () => {
     setEditingCareerPlan(null)
     setCareerPlanForm({
-      code: '', name: '', description: '', minPoints: 0, bonusCents: 0,
+      code: '', name: '', description: '', minPoints: 0,
+      rewardWithdrawalCents: 0,
+      rewardShoppingCents: 0,
+      rewardPoints: 0,
+      gratification: '',
+      bonusCents: 0,
       rewardType: 'real',
       color: '#6b7280', icon: '🏅', isActive: true, sortOrder: 99,
     })
@@ -1190,6 +1330,11 @@ export function AdminPage() {
       name: c.name,
       description: c.description || '',
       minPoints: c.minPoints,
+      // BACK-9 — populate the separate reward fields from the API response.
+      rewardWithdrawalCents: c.rewardWithdrawalCents ?? 0,
+      rewardShoppingCents: c.rewardShoppingCents ?? 0,
+      rewardPoints: c.rewardPoints ?? 0,
+      gratification: c.gratification || '',
       bonusCents: c.bonusCents,
       rewardType: c.rewardType === 'points' ? 'points' : 'real',
       color: c.color || '#6b7280',
@@ -1207,13 +1352,21 @@ export function AdminPage() {
     }
     setCareerPlanSaving(true)
     try {
+      // BACK-9 — send all 4 new reward fields. The API mirrors
+      // rewardWithdrawalCents into the legacy bonusCents/rewardType columns
+      // for backward compatibility.
       const payload: Record<string, unknown> = {
         userId: user?.id,
         code: careerPlanForm.code,
         name: careerPlanForm.name,
         description: careerPlanForm.description || undefined,
         minPoints: Number(careerPlanForm.minPoints) || 0,
-        bonusCents: Number(careerPlanForm.bonusCents) || 0,
+        rewardWithdrawalCents: Number(careerPlanForm.rewardWithdrawalCents) || 0,
+        rewardShoppingCents: Number(careerPlanForm.rewardShoppingCents) || 0,
+        rewardPoints: Number(careerPlanForm.rewardPoints) || 0,
+        gratification: careerPlanForm.gratification || undefined,
+        // Legacy fields — sent for backward compat with older API routes.
+        bonusCents: Number(careerPlanForm.rewardWithdrawalCents) || Number(careerPlanForm.bonusCents) || 0,
         rewardType: careerPlanForm.rewardType,
         color: careerPlanForm.color || undefined,
         icon: careerPlanForm.icon || undefined,
@@ -1522,6 +1675,61 @@ export function AdminPage() {
       toast.success('Status atualizado!')
     } catch {
       toast.error('Erro ao atualizar status')
+    }
+  }
+
+  // ---------- ADM-4 — Create User ----------
+  // Opens the Create User dialog with the form reset to empty defaults.
+  const handleOpenCreateUser = () => {
+    setNewUserForm({
+      name: '', email: '', password: '', phone: '', cpf: '',
+      userType: 'usuario', role: 'user', plan: 'free', referredByCode: '',
+    })
+    setCreateUserDialogOpen(true)
+  }
+
+  // Submits the Create User form to /api/admin/users/create. The created
+  // user can immediately log in with the email + password defined here.
+  const handleCreateUser = async () => {
+    if (!user?.id) return
+    if (!newUserForm.name.trim()) {
+      toast.error('Informe o nome completo')
+      return
+    }
+    if (!newUserForm.email.trim() || !/\S+@\S+\.\S+/.test(newUserForm.email)) {
+      toast.error('Informe um email válido (será usado para login)')
+      return
+    }
+    if (newUserForm.password.length < 6) {
+      toast.error('A senha deve ter pelo menos 6 caracteres')
+      return
+    }
+    setCreatingNewUser(true)
+    try {
+      await apiFetch('/admin/users/create', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: user.id,
+          name: newUserForm.name.trim(),
+          email: newUserForm.email.trim(),
+          password: newUserForm.password,
+          phone: newUserForm.phone || undefined,
+          cpf: newUserForm.cpf || undefined,
+          plan: newUserForm.plan,
+          role: newUserForm.role,
+          userType: newUserForm.userType,
+          referredByCode: newUserForm.referredByCode || undefined,
+        }),
+      })
+      toast.success('Usuário criado! Ele pode fazer login com email + senha.')
+      setCreateUserDialogOpen(false)
+      // Jump back to page 1 so the new user shows up at the top.
+      setUserPage(1)
+      loadUsers()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao criar usuário')
+    } finally {
+      setCreatingNewUser(false)
     }
   }
 
@@ -2393,6 +2601,15 @@ export function AdminPage() {
                 <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs" onClick={handleExportCSV}>
                   <Download className="h-3.5 w-3.5" /> Exportar CSV
                 </Button>
+                {/* ADM-4 — Create new user (login + password). Wired to the
+                    /api/admin/users/create endpoint via handleCreateUser. */}
+                <Button
+                  size="sm"
+                  className="h-9 gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+                  onClick={handleOpenCreateUser}
+                >
+                  <UserPlus className="h-3.5 w-3.5" /> Criar Usuário
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -3085,7 +3302,7 @@ export function AdminPage() {
                                     key={c.category}
                                     className={`${colors[i % colors.length]}`}
                                     style={{ width: `${pct}%` }}
-                                    title={`${c.category}: ${formatCurrency(c.amount)}`}
+                                    title={`${categoryLabel(c.category)}: ${formatCurrency(c.amount)}`}
                                   />
                                 )
                               })
@@ -3098,11 +3315,6 @@ export function AdminPage() {
                             const total = financialData.categoryBreakdown.reduce((s, c) => s + c.amount, 0) || 1
                             const maxAmount = Math.max(...financialData.categoryBreakdown.map(c => c.amount), 1)
                             const colors = ['bg-emerald-500', 'bg-amber-500', 'bg-blue-500', 'bg-purple-500', 'bg-red-500', 'bg-orange-500', 'bg-pink-500', 'bg-teal-500']
-                            const categoryLabels: Record<string, string> = {
-                              withdrawal: 'Saque', mobility: 'Mobilidade', shopping: 'Compras',
-                              food: 'Refeição', pharmacy: 'Farmácia', gratification: 'Gratificação',
-                              marketplace: 'Marketplace', other: 'Outros',
-                            }
                             return financialData.categoryBreakdown.map((c, i) => {
                               const pct = (c.amount / total) * 100
                               const barPct = (c.amount / maxAmount) * 100
@@ -3111,7 +3323,7 @@ export function AdminPage() {
                                   <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                       <div className={`h-3 w-3 rounded-sm ${colors[i % colors.length]}`} />
-                                      <span className="text-xs text-foreground">{categoryLabels[c.category] || c.category}</span>
+                                      <span className="text-xs text-foreground">{categoryLabel(c.category)}</span>
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <span className="text-xs font-medium text-foreground">{formatCurrency(c.amount)}</span>
@@ -3965,6 +4177,44 @@ export function AdminPage() {
             </CardContent>
           </Card>
 
+          {/* BACK-7 — driver-goals benefit target config (who sees the Metas card) */}
+          <Card className="border-blue-200 dark:border-blue-800">
+            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400 shrink-0">
+                  <Car className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h4 className="text-sm font-semibold text-foreground">Metas Motorista / Entregador</h4>
+                    <Badge className="bg-blue-100 text-blue-700 text-[10px]">BACK-7</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Define para qual tipo de usuário o benefício de metas (18 corridas/dia, 384/mês) é exibido na aba Metas.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">Benefício aplica-se a:</Label>
+                <Select
+                  value={driverGoalsTarget}
+                  onValueChange={(v) => saveDriverGoalsTarget(v)}
+                  disabled={driverGoalsTargetLoading || driverGoalsTargetSaving}
+                >
+                  <SelectTrigger className="w-full sm:w-[180px]">
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="motorista">Motorista</SelectItem>
+                    <SelectItem value="entregador">Entregador</SelectItem>
+                    <SelectItem value="ambos">Ambos</SelectItem>
+                  </SelectContent>
+                </Select>
+                {driverGoalsTargetSaving && <Loader2 className="h-4 w-4 animate-spin text-blue-600 shrink-0" />}
+              </div>
+            </CardContent>
+          </Card>
+
           {financialData ? (
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -4002,7 +4252,7 @@ export function AdminPage() {
                           const max = Math.max(...financialData.categoryBreakdown.map(c => c.amount), 1)
                           return (
                             <div key={i} className="flex items-center justify-between gap-3">
-                              <span className="text-xs font-medium text-foreground capitalize">{cat.category || '—'}</span>
+                              <span className="text-xs font-medium text-foreground">{categoryLabel(cat.category)}</span>
                               <div className="flex items-center gap-2 flex-1 max-w-[200px]">
                                 <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                                   <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${(cat.amount / max) * 100}%` }} />
@@ -4885,16 +5135,36 @@ export function AdminPage() {
                         <p className="text-sm font-bold text-foreground">{c.minPoints}</p>
                       </div>
                       <div className="p-2 bg-muted/50 rounded-lg">
-                        <p className="text-[10px] text-muted-foreground">
-                          {c.rewardType === 'points' ? 'Recompensa (Pontos)' : 'Bônus Mensal'}
-                        </p>
+                        <p className="text-[10px] text-muted-foreground">9.1 Carteira Saque</p>
                         <p className="text-sm font-bold text-emerald-600">
-                          {c.rewardType === 'points'
-                            ? `${c.bonusCents.toLocaleString('pt-BR')} pts`
-                            : formatCurrency(c.bonusCents)}
+                          {(c.rewardWithdrawalCents ?? 0) > 0
+                            ? formatCurrency(c.rewardWithdrawalCents ?? 0)
+                            : '—'}
+                        </p>
+                      </div>
+                      <div className="p-2 bg-muted/50 rounded-lg">
+                        <p className="text-[10px] text-muted-foreground">9.2 Carteira Compras</p>
+                        <p className="text-sm font-bold text-emerald-600">
+                          {(c.rewardShoppingCents ?? 0) > 0
+                            ? formatCurrency(c.rewardShoppingCents ?? 0)
+                            : '—'}
+                        </p>
+                      </div>
+                      <div className="p-2 bg-muted/50 rounded-lg">
+                        <p className="text-[10px] text-muted-foreground">9.3 Recompensa Pontos</p>
+                        <p className="text-sm font-bold text-amber-600">
+                          {(c.rewardPoints ?? 0) > 0
+                            ? `${Number(c.rewardPoints).toLocaleString('pt-BR')} pts`
+                            : '—'}
                         </p>
                       </div>
                     </div>
+                    {(c.gratification && c.gratification.trim().length > 0) && (
+                      <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-100 dark:border-amber-900/50">
+                        <p className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">9.4 Gratificação</p>
+                        <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5 line-clamp-2">{c.gratification}</p>
+                      </div>
+                    )}
                     <div className="flex items-center justify-end gap-1 mt-3 border-t border-border pt-2">
                       <Button variant="ghost" size="sm" className="h-7 text-blue-600 hover:text-blue-700 text-xs" onClick={() => handleOpenEditCareerPlan(c)} title="Editar">
                         <Edit className="h-3.5 w-3.5" />
@@ -4941,7 +5211,17 @@ export function AdminPage() {
             </CardContent></Card>
           ) : streakRewards.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {streakRewards.map(s => (
+              {streakRewards.map(s => {
+                // ADM-6 — derive the human-readable reward label and amount
+                // string for the card. Cashback amounts are stored as cents
+                // (so we format as R$ via formatCurrency); points are raw
+                // integers (so we just append "pts").
+                const isCashback = s.rewardType === 'cashback'
+                const rewardTypeLabel = isCashback ? 'Cashback' : 'Pontos'
+                const rewardAmountStr = isCashback
+                  ? formatCurrency(s.rewardAmount)
+                  : `${s.rewardAmount} pts`
+                return (
                 <Card key={s.id} className={!s.isActive ? 'opacity-60' : ''}>
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-2">
@@ -4951,16 +5231,31 @@ export function AdminPage() {
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-foreground">{s.streakDays} dias</p>
-                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{s.rewardType}</p>
+                          {/* ADM-6 — show a friendly type label (Cashback / Pontos)
+                              instead of the raw rewardType string. */}
+                          <Badge
+                            variant="outline"
+                            className={
+                              isCashback
+                                ? 'mt-0.5 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800 text-[10px]'
+                                : 'mt-0.5 bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800 text-[10px]'
+                            }
+                          >
+                            {isCashback ? <Wallet className="h-2.5 w-2.5 mr-0.5" /> : <Star className="h-2.5 w-2.5 mr-0.5" />}
+                            {rewardTypeLabel}
+                          </Badge>
                         </div>
                       </div>
                       <Badge className={s.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}>{s.isActive ? 'Ativo' : 'Inativo'}</Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">{s.description || '—'}</p>
+                    {/* ADM-6 — clearly show "Recompensa: R$ X,XX (Cashback)"
+                        or "Recompensa: 500 pts (Pontos)" so the admin can
+                        tell at a glance which type each reward grants. */}
                     <div className="flex items-center gap-2 mt-3 p-2 bg-amber-50 dark:bg-amber-950/30 rounded-lg">
                       <Star className="h-4 w-4 text-amber-500" />
                       <span className="text-sm font-bold text-amber-700 dark:text-amber-400">
-                        {s.rewardType === 'points' ? `${s.rewardAmount} pontos` : formatCurrency(s.rewardAmount)}
+                        Recompensa: {rewardAmountStr} ({rewardTypeLabel})
                       </span>
                     </div>
                     <div className="flex items-center justify-end gap-1 mt-3 border-t border-border pt-2">
@@ -4973,7 +5268,8 @@ export function AdminPage() {
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <Card><CardContent className="flex flex-col items-center justify-center py-12 gap-2">
@@ -5251,6 +5547,44 @@ export function AdminPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Código *</Label>
+                {/* ADM-5 — Code variable help box.
+                    The system auto-detects which user stat to track from the
+                    achievement code via the progressForCode() function in
+                    /api/achievements/route.ts. Document every supported keyword
+                    here so the admin knows which substrings trigger which stat.
+                    Placed BETWEEN the "Código *" label and the input as per spec. */}
+                <details className="mt-1 mb-1.5 group">
+                  <summary className="cursor-pointer text-[10px] text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 select-none list-none flex items-center gap-1">
+                    <Info className="h-3 w-3" />
+                    <span className="font-medium">Variáveis disponíveis para o código</span>
+                    <ChevronDown className="h-3 w-3 ml-0.5 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="mt-1.5 p-2.5 rounded-md bg-muted/60 border border-border text-[10px] text-muted-foreground space-y-1.5">
+                    <p className="font-medium text-foreground">O sistema detecta a estatística pela palavra-chave no código:</p>
+                    <ul className="space-y-0.5 leading-relaxed">
+                      <li><code className="text-emerald-600 dark:text-emerald-400">cashback</code> → Total de CashBack acumulado (R$ em cents)</li>
+                      <li><code className="text-emerald-600 dark:text-emerald-400">withdraw</code> / <code className="text-emerald-600 dark:text-emerald-400">saque</code> → Número de saques realizados</li>
+                      <li><code className="text-emerald-600 dark:text-emerald-400">voucher</code> → Vouchers resgatados</li>
+                      <li><code className="text-emerald-600 dark:text-emerald-400">plan_upgrade</code> / <code className="text-emerald-600 dark:text-emerald-400">upgrade</code> / <code className="text-emerald-600 dark:text-emerald-400">plan</code> → Upgrades de plano</li>
+                      <li><code className="text-emerald-600 dark:text-emerald-400">marketplace</code> / <code className="text-emerald-600 dark:text-emerald-400">purchase</code> / <code className="text-emerald-600 dark:text-emerald-400">compra</code> → Pedidos no marketplace</li>
+                      <li><code className="text-emerald-600 dark:text-emerald-400">ride</code> / <code className="text-emerald-600 dark:text-emerald-400">corrida</code> → Corridas realizadas (motorista/entregador)</li>
+                      <li><code className="text-emerald-600 dark:text-emerald-400">bet_streak</code> / <code className="text-emerald-600 dark:text-emerald-400">login_streak</code> / <code className="text-emerald-600 dark:text-emerald-400">streak</code> / <code className="text-emerald-600 dark:text-emerald-400">weekly_active</code> → Maior sequência de logins</li>
+                      <li><code className="text-emerald-600 dark:text-emerald-400">bet</code> / <code className="text-emerald-600 dark:text-emerald-400">aposta</code> / <code className="text-emerald-600 dark:text-emerald-400">game_win</code> / <code className="text-emerald-600 dark:text-emerald-400">victory</code> → Apostas vencedoras</li>
+                      <li><code className="text-emerald-600 dark:text-emerald-400">career</code> / <code className="text-emerald-600 dark:text-emerald-400">top_earner</code> → Pontos de carreira</li>
+                      <li><code className="text-emerald-600 dark:text-emerald-400">loyalty</code> / <code className="text-emerald-600 dark:text-emerald-400">fidelity</code> / <code className="text-emerald-600 dark:text-emerald-400">ano</code> / <code className="text-emerald-600 dark:text-emerald-400">mes</code> → Meses de cadastro ativo</li>
+                      <li><code className="text-emerald-600 dark:text-emerald-400">security</code> / <code className="text-emerald-600 dark:text-emerald-400">seguran</code> → Recursos de segurança ativados</li>
+                      <li><code className="text-emerald-600 dark:text-emerald-400">referral</code> / <code className="text-emerald-600 dark:text-emerald-400">indic</code> / <code className="text-emerald-600 dark:text-emerald-400">network</code> → Indicações diretas</li>
+                    </ul>
+                    <p className="pt-1 border-t border-border/60">
+                      <span className="font-medium text-foreground">Exemplos:</span>{' '}
+                      <code className="text-emerald-600 dark:text-emerald-400">first_referral</code>,{' '}
+                      <code className="text-emerald-600 dark:text-emerald-400">cashback_1000</code>,{' '}
+                      <code className="text-emerald-600 dark:text-emerald-400">streak_30</code>,{' '}
+                      <code className="text-emerald-600 dark:text-emerald-400">ride_100</code>,{' '}
+                      <code className="text-emerald-600 dark:text-emerald-400">career_bronze</code>
+                    </p>
+                  </div>
+                </details>
                 <Input value={achievementForm.code} disabled={!!editingAchievement} onChange={(e) => setAchievementForm(f => ({ ...f, code: e.target.value }))} placeholder="ex: first_referral" className="h-9 text-sm" />
               </div>
               <div>
@@ -5332,39 +5666,64 @@ export function AdminPage() {
               <Label className="text-xs">Descrição</Label>
               <Input value={careerPlanForm.description} onChange={(e) => setCareerPlanForm(f => ({ ...f, description: e.target.value }))} placeholder="Descrição do nível" className="h-9 text-sm" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Pontos Mínimos</Label>
-                <Input type="number" value={careerPlanForm.minPoints} onChange={(e) => setCareerPlanForm(f => ({ ...f, minPoints: Number(e.target.value) }))} className="h-9 text-sm" />
+            {/* BACK-9 — separate reward fields. Replaces the old combined
+                "Tipo de Recompensa + Bônus Mensal/Quantidade de Pontos"
+                single field with 4 distinct inputs. */}
+            <div className="rounded-lg border border-emerald-100 dark:border-emerald-900/50 bg-emerald-50/40 dark:bg-emerald-950/20 p-3 space-y-3">
+              <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wide">
+                Recompensas (separadas)
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Pontos Mínimos</Label>
+                  <Input type="number" value={careerPlanForm.minPoints} onChange={(e) => setCareerPlanForm(f => ({ ...f, minPoints: Number(e.target.value) }))} className="h-9 text-sm" />
+                </div>
+                <div>
+                  <Label className="text-xs">9.1 Carteira Saque (R$)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={(careerPlanForm.rewardWithdrawalCents || 0) / 100}
+                    onChange={(e) => setCareerPlanForm(f => ({ ...f, rewardWithdrawalCents: Math.round((Number(e.target.value) || 0) * 100) }))}
+                    placeholder="0,00"
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">9.2 Carteira Compras (R$)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={(careerPlanForm.rewardShoppingCents || 0) / 100}
+                    onChange={(e) => setCareerPlanForm(f => ({ ...f, rewardShoppingCents: Math.round((Number(e.target.value) || 0) * 100) }))}
+                    placeholder="0,00"
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">9.3 Recompensa Pontos</Label>
+                  <Input
+                    type="number"
+                    step="1"
+                    value={careerPlanForm.rewardPoints || 0}
+                    onChange={(e) => setCareerPlanForm(f => ({ ...f, rewardPoints: Math.round(Number(e.target.value) || 0) }))}
+                    placeholder="0"
+                    className="h-9 text-sm"
+                  />
+                </div>
               </div>
               <div>
-                <Label className="text-xs">Tipo de Recompensa</Label>
-                <select
-                  value={careerPlanForm.rewardType}
-                  onChange={(e) => setCareerPlanForm(f => ({ ...f, rewardType: e.target.value as 'real' | 'points' }))}
-                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
-                >
-                  <option value="real">Real (R$)</option>
-                  <option value="points">Pontos</option>
-                </select>
-              </div>
-              <div>
-                <Label className="text-xs">
-                  {careerPlanForm.rewardType === 'points' ? 'Quantidade de Pontos' : 'Bônus Mensal (R$)'}
-                </Label>
-                <Input
-                  type="number"
-                  step={careerPlanForm.rewardType === 'points' ? '1' : '0.01'}
-                  value={careerPlanForm.rewardType === 'points' ? careerPlanForm.bonusCents : careerPlanForm.bonusCents / 100}
-                  onChange={(e) => setCareerPlanForm(f => ({
-                    ...f,
-                    bonusCents: f.rewardType === 'points'
-                      ? Math.round(Number(e.target.value) || 0)
-                      : Math.round((Number(e.target.value) || 0) * 100),
-                  }))}
-                  className="h-9 text-sm"
+                <Label className="text-xs">9.4 Gratificação (texto do bônus)</Label>
+                <textarea
+                  value={careerPlanForm.gratification || ''}
+                  onChange={(e) => setCareerPlanForm(f => ({ ...f, gratification: e.target.value }))}
+                  placeholder="Ex.: Bônus de Safira ao atingir 100 pontos"
+                  rows={2}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Ícone (emoji)</Label>
                 <Input value={careerPlanForm.icon} onChange={(e) => setCareerPlanForm(f => ({ ...f, icon: e.target.value }))} placeholder="🥉" className="h-9 text-sm" />
@@ -5434,6 +5793,18 @@ export function AdminPage() {
                 }))}
                 className="h-9 text-sm"
               />
+              {/* ADM-6 — preview label so the admin knows exactly how the
+                  amount will be rendered in the backoffice cards and on the
+                  user-facing gamification page. Cashback amounts are stored
+                  as cents and rendered as R$; points are raw integers. */}
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Será exibido no backoffice como:{' '}
+                <span className="font-semibold text-foreground">
+                  {streakRewardForm.rewardType === 'cashback'
+                    ? `[${formatCurrency(streakRewardForm.rewardAmount)}]`
+                    : `[${streakRewardForm.rewardAmount} pts]`}
+                </span>
+              </p>
             </div>
             <div>
               <Label className="text-xs">Descrição</Label>
@@ -5795,6 +6166,156 @@ export function AdminPage() {
         </DialogContent>
       </Dialog>
 
+      {/* ===== ADM-4 — CREATE USER DIALOG ===== */}
+      <Dialog open={createUserDialogOpen} onOpenChange={setCreateUserDialogOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-4 w-4 text-emerald-600" />
+              Criar Usuário
+            </DialogTitle>
+            <DialogDescription>
+              Crie um novo usuário com login e senha. O usuário poderá acessar a plataforma imediatamente.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Info box — explains the login flow */}
+          <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 p-3 text-[11px] text-emerald-800 dark:text-emerald-300 flex gap-2">
+            <Info className="h-4 w-4 shrink-0 mt-0.5" />
+            <p>
+              O usuário criado poderá fazer login na plataforma usando o <strong>email</strong> e a{' '}
+              <strong>senha</strong> definidos aqui. Para acessar o painel admin, defina o Role como{' '}
+              <strong>&apos;admin&apos;</strong> ou <strong>&apos;support&apos;</strong> e configure as permissões
+              na aba <strong>Permissões</strong>.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Nome completo *</Label>
+              <Input
+                value={newUserForm.name}
+                onChange={(e) => setNewUserForm((d) => ({ ...d, name: e.target.value }))}
+                placeholder="João da Silva"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Email *</Label>
+                <Input
+                  type="email"
+                  value={newUserForm.email}
+                  onChange={(e) => setNewUserForm((d) => ({ ...d, email: e.target.value }))}
+                  placeholder="joao@exemplo.com"
+                />
+                <p className="text-[10px] text-muted-foreground">Será usado para login.</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Senha *</Label>
+                <div className="relative">
+                  <KeyRound className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    value={newUserForm.password}
+                    onChange={(e) => setNewUserForm((d) => ({ ...d, password: e.target.value }))}
+                    placeholder="mínimo 6 caracteres"
+                    className="pl-8"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Telefone</Label>
+                <Input
+                  value={newUserForm.phone}
+                  onChange={(e) => setNewUserForm((d) => ({ ...d, phone: e.target.value }))}
+                  placeholder="(11) 99999-0000"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">CPF</Label>
+                <Input
+                  value={newUserForm.cpf}
+                  onChange={(e) => setNewUserForm((d) => ({ ...d, cpf: e.target.value }))}
+                  placeholder="000.000.000-00"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Tipo de Usuário</Label>
+                <select
+                  value={newUserForm.userType}
+                  onChange={(e) => setNewUserForm((d) => ({ ...d, userType: e.target.value }))}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="gratuito">Gratuito</option>
+                  <option value="inativo">Inativo</option>
+                  <option value="usuario">Usuário</option>
+                  <option value="motorista">Motorista</option>
+                  <option value="entregador">Entregador</option>
+                  <option value="loja">Loja</option>
+                  <option value="parceiro">Parceiro</option>
+                  <option value="empresa">Empresa</option>
+                  <option value="afiliado">Afiliado</option>
+                  <option value="administrador">Administrador</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs flex items-center gap-1.5">
+                  <Shield className="h-3 w-3 text-emerald-600" />
+                  Role
+                </Label>
+                <Select
+                  value={newUserForm.role}
+                  onValueChange={(v) => setNewUserForm((d) => ({ ...d, role: v }))}
+                >
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {roleSelectOptions.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Plano</Label>
+                <Select
+                  value={newUserForm.plan}
+                  onValueChange={(v) => setNewUserForm((d) => ({ ...d, plan: v }))}
+                >
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="free">Gratuito</SelectItem>
+                    <SelectItem value="blue3">Blue 3</SelectItem>
+                    <SelectItem value="blue5">Blue 5</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Código de indicante</Label>
+                <Input
+                  value={newUserForm.referredByCode}
+                  onChange={(e) => setNewUserForm((d) => ({ ...d, referredByCode: e.target.value }))}
+                  placeholder="opcional"
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateUserDialogOpen(false)} disabled={creatingNewUser}>Cancelar</Button>
+            <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleCreateUser} disabled={creatingNewUser}>
+              {creatingNewUser ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+              Criar Usuário
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ===== EDIT USER DIALOG ===== */}
       <Dialog open={editUserDialogOpen} onOpenChange={setEditUserDialogOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -5865,8 +6386,9 @@ export function AdminPage() {
                     <Select value={editUserData.role} onValueChange={(v) => updateEditField('role', v)}>
                       <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="user">Usuário</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
+                        {roleSelectOptions.map((r) => (
+                          <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -6532,10 +7054,10 @@ export function AdminPage() {
                   value={gratificationUserSearch}
                   onChange={(e) => setGratificationUserSearch(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') searchUsersForGratification() }}
-                  placeholder="Nome, email ou código..."
+                  placeholder="Digite nome, email ou código (busca automática)..."
                 />
-                <Button type="button" variant="outline" size="sm" onClick={searchUsersForGratification}>
-                  <Search className="h-3.5 w-3.5" />
+                <Button type="button" variant="outline" size="sm" onClick={() => searchUsersForGratification()} disabled={gratificationUserLoading}>
+                  {gratificationUserLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
                 </Button>
               </div>
               {gratificationForm.targetUserId && (
@@ -6543,7 +7065,18 @@ export function AdminPage() {
                   ✓ Usuário selecionado: {gratificationForm.targetUserId.slice(-8)}
                 </p>
               )}
-              {gratificationUserResults.length > 0 && (
+              {gratificationUserLoading && (
+                <div className="flex items-center justify-center gap-2 py-3 text-[10px] text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Buscando usuários...</span>
+                </div>
+              )}
+              {!gratificationUserLoading && gratificationUserSearched && gratificationUserResults.length === 0 && !gratificationForm.targetUserId && (
+                <div className="text-center py-3 text-[10px] text-muted-foreground border border-dashed border-border rounded-lg">
+                  Nenhum usuário encontrado
+                </div>
+              )}
+              {!gratificationUserLoading && gratificationUserResults.length > 0 && (
                 <div className="max-h-40 overflow-y-auto border border-border rounded-lg divide-y divide-border/50">
                   {gratificationUserResults.map(u => (
                     <button
