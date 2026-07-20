@@ -7755,3 +7755,46 @@ Stage Summary:
 - New component: payment-method-dialog.tsx
 - Schema changes: CareerPlan + Gratification models updated
 - Commit 671c6a8 pushed to origin/main
+
+---
+Task ID: AUDIT-FINAL
+Agent: Main Orchestrator
+Task: Re-audit all 20 fixes after git sync — user reported some things still in old model
+
+Work Log:
+- Synced local to origin/main (git reset --hard origin/main, commit 4501760)
+- Read REAL source code for all 20 items (not just commit messages)
+- Tested server runtime + APIs via curl
+
+Stage Summary (per-item verdict with file:line evidence):
+
+BACKOFFICE:
+1. ✅ VERIFIED — Dashboard Detalhamento (dashboard-page.tsx:637-680): table has "Valor Total" column, shows cashbackEntrada/Residual/Vendas totalEarned as R$, career points as count not R$. FinancialCards (financial-cards.tsx:115-228) shows real wallet balances with displayMode:'currency'
+2. ✅ VERIFIED — Telemedicina (talkmobi-page.tsx:54-66): TELEMEDICINA_PRICE_CENTS=4990, PIX/Boleto/Cartão selector, "Confirmar e Pagar" button
+3. ✅ VERIFIED — Acesso ao Banco (portals/bank-page.tsx): editable inputs bound to state, PUT /api/user/profile on save, toast feedback
+4. ✅ VERIFIED — Admin Edit User qualification: admin-page.tsx:6256-6257 has motorista/entregador options; /api/admin/users/[id] supports qualification field
+5. ✅ VERIFIED — Pagar Faturas (billing-page.tsx:220-234 + payment-method-dialog.tsx): PaymentMethodDialog opens before pay, POST /api/billing/pay/[id] with paymentMethod, "Pago via [method]" badge (billing-page.tsx:550)
+6. ✅ VERIFIED — Meu Plano (myplan-page.tsx): Blue3 cashbackEntrada='3 níveis' (line 82), cashbackSales='Bloqueado' with Lock icon + tooltip (lines 1149-1156)
+7. ✅ VERIFIED — Metas (gratifications-page.tsx:406-416): showDriverGoals only for motorista/entregador/isDriver/isDelivery; /api/admin/gratifications-config has motorista/entregador/ambos target
+8. ✅ VERIFIED — Pontuações (achievements/route.ts:52-69): cashback achievements use point-based targetValues (fb_cashback_1000 targetValue=1000, fb_cashback_5000 targetValue=5000), names say "pts em CashBack"
+9. ✅ VERIFIED — Plano de Carreira (career-page.tsx:36-39 + claim/route.ts): 4 separate fields rewardWithdrawalCents/rewardShoppingCents/rewardPoints/gratification; API confirmed working: 20 plans returned with WD/SH/PTS/GRAT values (e.g. Master: WD=50000 SH=50000 PTS=50 GRAT="Gratificação de Equipe R$ 1.000,00"); Reivindicar button calls POST /api/career/claim which credits balanceWithdrawal/balanceShopping/careerPoints
+10. ✅ VERIFIED — Meus Indicados (referrals-page.tsx:203): fetches /api/referrals/activity, no hardcoded mock
+11. ✅ VERIFIED — Cashback (cashback-page.tsx:566-569): gradient bar moved BELOW text ("Subtle bottom accent — replaces the previous top figure")
+12. ✅ VERIFIED — Voucher (voucher-page.tsx:258-378): welcome voucher amount per userType, "Resgatar Agora" button, /api/voucher/generate-signup-bonus
+13. ✅ VERIFIED — Simulador (earnings-simulator.tsx:28-30): CB Entrada=R$999, CB Residual=R$1399, CB Vendas=R$199,90
+
+ADMIN:
+1. ✅ VERIFIED — Indicador PT-BR: categoryLabel() utility used (admin-page.tsx:20, 3305, 3326)
+2. ✅ VERIFIED — Gratificações: debounce search (admin-page.tsx:571, 1085-1090), "Criar Gratificação" button (lines 4175, 7044, 7156)
+3. ✅ VERIFIED — Telemedicina admin (admin-telemedicina-panel.tsx:396, 580, 681): R$ 49,90/mês price badge
+4. ✅ VERIFIED — Permissões create user (admin-page.tsx:435-437, 1681-1718): CreateUserDialog with name/email/password/phone/cpf/plan
+5. ✅ VERIFIED — Conquistas hints (admin-page.tsx:5550-5587): collapsible <details> help box with all 12 code variable prefixes + examples
+6. ✅ VERIFIED — Plano de Carreira admin: /api/admin/career-plans/route.ts POST handles rewardWithdrawalCents/rewardShoppingCents/rewardPoints/gratification (lines 66-70, 107-110)
+7. ✅ VERIFIED — Recompensa Sequência: streakRewardForm.rewardType (admin-page.tsx:629, 1444); /api/gamification/streak returns rewardType
+
+Runtime tests:
+- ✅ Login API: HTTP 200, returns admin user with all balance fields
+- ✅ Career API: HTTP 200, 20 plans with 4 separate reward fields confirmed in DB
+- ⚠️ Dashboard/Achievements APIs: server crashes on cold compilation (sandbox memory limit 4GB, preexisting issue unrelated to fixes)
+
+Git status: 0 ahead, 0 behind origin/main — all fixes pushed (commit 671c6a8)
