@@ -108,6 +108,10 @@ model User {
   userChallenges        UserChallenge[]
   vouchers              Voucher[]
   withdrawalRequests    WithdrawalRequest[]
+  // ── App ecosystem relations (managed by /admingeral) ──
+  appStores             AppStore[]
+  appOrders             AppOrder[]
+  driverApplications    DriverApplication[]
 }
 
 model Bet {
@@ -870,5 +874,239 @@ model TalkMobiSubscription {
   @@index([userId])
   @@index([status])
   @@index([planId])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// APP ECOSYSTEM MODELS — managed by the /admingeral panel
+// ----------------------------------------------------------------------------
+// These models power the /mobile, /motorista, /lojista (and future /prestador)
+// apps. They are SEPARATE from the MMN/admin models above so the app-side
+// administration is fully isolated from the network-marketing backoffice.
+// ============================================================================
+
+// ── AppCategory ──────────────────────────────────────────────────────────────
+// Top-level categories shown on the /mobile home grid (Shopping, Alimentação,
+// Mercado, MediDrop, etc.) and used to classify stores + products.
+model AppCategory {
+  id          String   @id @default(cuid())
+  code        String   @unique // "shopping", "alimentacao", "mercado"...
+  label       String
+  description String?
+  icon        String?  // lucide icon name or emoji
+  color       String?  // hex accent color
+  sortOrder   Int      @default(99)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stores    AppStore[]
+  products  AppProduct[]
+
+  @@index([isActive])
+  @@index([sortOrder])
+}
+
+// ── AppStore ─────────────────────────────────────────────────────────────────
+// A merchant store (lojista). Owned by a User with userType='lojista' or
+// isDelivery=true. One user can own multiple stores.
+model AppStore {
+  id           String   @id @default(cuid())
+  ownerId      String
+  name         String
+  slug         String   @unique
+  category     String   @default("alimentacao") // AppCategory.code
+  description  String?
+  logoUrl      String?
+  coverUrl     String?
+  phone        String?
+  email        String?
+  // Address
+  address      String?
+  city         String?
+  state        String?
+  zipCode      String?
+  lat          Float?
+  lng          Float?
+  // Business
+  rating       Float    @default(0)
+  totalOrders  Int      @default(0)
+  totalRevenue Int      @default(0) // cents
+  // Status
+  isVerified   Boolean  @default(false)
+  isOpen       Boolean  @default(true) // manual toggle by owner
+  isFeatured   Boolean  @default(false)
+  isActive     Boolean  @default(true)
+  // Delivery
+  deliveryFeeCents Int  @default(0)
+  minOrderCents    Int  @default(0)
+  estimatedDeliveryMin Int @default(30)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  owner       User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  categoryRel AppCategory?   @relation(fields: [category], references: [code])
+  products    AppProduct[]
+  orders      AppOrder[]
+
+  @@index([ownerId])
+  @@index([category])
+  @@index([isActive])
+  @@index([isFeatured])
+  @@index([city])
+}
+
+// ── AppProduct ───────────────────────────────────────────────────────────────
+// A product/menu-item sold by a store.
+model AppProduct {
+  id           String   @id @default(cuid())
+  storeId      String
+  name         String
+  description  String?
+  priceCents   Int
+  oldPriceCents Int? // for showing a discount
+  imageUrl     String?
+  category     String? // sub-category within the store (e.g. "Burgers", "Pizzas")
+  categoryCode String?  // AppCategory.code for cross-store filtering
+  // Inventory
+  stock        Int      @default(-1) // -1 = unlimited
+  // Flags
+  isAvailable  Boolean  @default(true)
+  isFeatured   Boolean  @default(false)
+  sortOrder    Int      @default(99)
+  // Nutrition / extras
+  calories     Int?
+  preparationTimeMin Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  store       AppStore     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  categoryRel AppCategory? @relation(fields: [categoryCode], references: [code])
+  orderItems  AppOrderItem[]
+
+  @@index([storeId])
+  @@index([categoryCode])
+  @@index([isFeatured])
+  @@index([isAvailable])
+}
+
+// ── AppOrder ─────────────────────────────────────────────────────────────────
+// An order placed by a cliente at a lojista store.
+model AppOrder {
+  id            String   @id @default(cuid())
+  number        String   @unique // human-readable "#4582"
+  storeId       String
+  customerId    String
+  // Status: pending | preparo | entrega | entregue | cancelado
+  status        String   @default("pending")
+  // Totals (cents)
+  subtotalCents Int
+  deliveryFeeCents Int   @default(0)
+  totalCents    Int
+  // Cashback credited to the customer (cents)
+  cashbackCents Int      @default(0)
+  // Delivery
+  deliveryAddress String?
+  deliveryCity  String?
+  deliveryState String?
+  deliveryZipCode String?
+  // Payment
+  paymentMethod String   @default("pix") // pix | credit | cash
+  paymentStatus String   @default("pending") // pending | paid | refunded
+  // Notes
+  customerNotes String?
+  adminNotes    String?
+  // Timestamps
+  acceptedAt    DateTime?
+  preparingAt   DateTime?
+  dispatchedAt  DateTime?
+  deliveredAt   DateTime?
+  cancelledAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  store     AppStore       @relation(fields: [storeId], references: [id])
+  customer  User           @relation(fields: [customerId], references: [id])
+  items     AppOrderItem[]
+
+  @@index([storeId])
+  @@index([customerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ── AppOrderItem ─────────────────────────────────────────────────────────────
+model AppOrderItem {
+  id           String   @id @default(cuid())
+  orderId      String
+  productId    String
+  productName  String
+  quantity     Int      @default(1)
+  unitPriceCents Int
+  totalCents   Int
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  order   AppOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product AppProduct @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+// ── MobileBanner ─────────────────────────────────────────────────────────────
+// Promotional banners shown on the /mobile home carousel.
+model MobileBanner {
+  id          String   @id @default(cuid())
+  title       String
+  subtitle    String?
+  ctaLabel    String?
+  ctaHref     String?
+  imageUrl    String?
+  accentColor String   @default("#155EEF")
+  sortOrder   Int      @default(99)
+  isActive    Boolean  @default(true)
+  // Targeting — which app surface to show on
+  surface     String   @default("mobile") // mobile | motorista | lojista
+  startsAt    DateTime?
+  endsAt      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([surface])
+  @@index([sortOrder])
+}
+
+// ── DriverApplication ────────────────────────────────────────────────────────
+// A user's application to become a driver (motorista). Admin approves/rejects
+// in /admingeral. On approval, sets User.isDriver=true.
+model DriverApplication {
+  id            String   @id @default(cuid())
+  userId        String
+  // Vehicle info
+  vehicleType   String   @default("car") // car | moto | utilitario
+  vehicleModel  String?
+  vehiclePlate  String?
+  vehicleColor  String?
+  vehicleYear   Int?
+  // Documents (CNH, CRLV, etc.) — stored as JSON array of URLs
+  documents     String   @default("[]")
+  // Background check
+  cnhNumber     String?
+  cnhCategory   String?  // A | B | C | D | E
+  // Status: pending | approved | rejected | reSubmitted
+  status        String   @default("pending")
+  adminNotes    String?
+  reviewedById  String?
+  reviewedAt    DateTime?
+  rejectedReason String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
   @@index([createdAt])
 }

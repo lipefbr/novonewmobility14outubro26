@@ -8096,3 +8096,78 @@ Stage Summary:
 - A single account can have multiple flags (e.g. a user who is both cliente and motorista), but each app enforces its own access control and blocks the wrong account types.
 - Wallet balances are shared across all apps (same User.balance* columns) — a lojista sees their balanceWithdrawal (for payouts) + balanceFood (food cashback) in the /lojista/financeiro screen.
 - Store/Order data is mock until the /admingeral panel adds Store and Order models to the Prisma schema — the API auto-upgrades to real data with zero code changes.
+
+---
+Task ID: ADMINGERAL-1
+Agent: Main Agent
+Task: Verify system connections across /mobile, /motorista, /lojista (user types, plans, wallet) + build /admingeral panel for app-side administration (categories, stores, products, banners, orders, drivers, users, config).
+
+Work Log:
+- VERIFIED system connections: all 3 apps (/mobile, /motorista, /lojista) use the SAME /api/auth/login endpoint, the SAME User table, and read wallet balances from the SAME balance* columns (balanceWithdrawal, balanceMobility, balanceFood, balanceShopping, etc.). Access control is enforced per-app via /api/{mobile,motorista,lojista}/me routes that check userType + isDriver + isDelivery flags.
+  - /mobile: isClient = (userType='usuario'|'cliente') && !isDriver && !isDelivery
+  - /motorista: isDriver = isDriver===true || userType='motorista'
+  - /lojista: isLojista = userType='lojista' || isDelivery===true
+  - Plans (User.plan: 'free'|'blue3'|'blue5') gate MMN features but the 3 mobile apps check user-type flags, not plan — this is correct because the apps are about the service modality, plans are about the business opportunity.
+  - UserType table has mobilePermissions JSON field per type (dashboard, wallet, ride_request, cashback, etc.) — ready for per-feature gating.
+
+- Added 7 new Prisma models for the app ecosystem (managed by /admingeral):
+  * AppCategory — top-level categories (shopping, alimentacao, mercado, medidrop, etc.) with icon, color, sortOrder
+  * AppStore — merchant stores owned by lojista users, with category, address, rating, isVerified, isFeatured, deliveryFeeCents, minOrderCents
+  * AppProduct — store products/menu-items with priceCents, oldPriceCents, imageUrl, stock, isAvailable, isFeatured
+  * AppOrder — orders placed by clientes at stores, with status (pending|preparo|entrega|entregue|cancelado), totals, paymentMethod, delivery address, cashbackCents
+  * AppOrderItem — line items per order (productName, quantity, unitPriceCents)
+  * MobileBanner — promotional banners for the /mobile home carousel (title, ctaLabel, ctaHref, imageUrl, surface, schedule)
+  * DriverApplication — user applications to become a motorista (vehicle info, CNH, documents), admin approves/rejects
+  * Added relations on User model: appStores[], appOrders[], driverApplications[]
+  * Pushed schema to Neon PostgreSQL (db:push succeeded, Prisma client regenerated)
+
+- Built /api/admingeral/* backend (10 routes + 4 dynamic sub-routes):
+  * /me — admin auth check (role='admin' OR userType='admin') + pending counts badge
+  * /dashboard — aggregated stats (users by type, stores, products, orders, revenue today/week, banners, categories, drivers, recent orders)
+  * /categories — GET (auto-seeds 8 default categories) + POST
+  * /stores — GET (filter by status) + POST (admin creates store for owner)
+  * /stores/[id] — GET + PATCH (toggle isVerified, isFeatured, isActive) + DELETE
+  * /products — GET (filter by storeId) + POST
+  * /banners — GET + POST
+  * /banners/[id] — PATCH (toggle isActive) + DELETE
+  * /orders — GET (filter by status, storeId) with store + customer + items
+  * /drivers — GET (filter by status: pending|approved|rejected|all)
+  * /drivers/[id]/approve — POST (sets application status=approved AND User.isDriver=true + userType='motorista')
+  * /drivers/[id]/reject — POST (with reason)
+  * /users — GET (filter by type: clientes|motoristas|lojistas|entregadores, search by name/email/phone)
+  * /config — GET (app_* keys from SystemConfig with defaults) + PUT (upsert)
+
+- Built /admingeral frontend (2 routes):
+  * /admingeral/login — slate-900 themed admin login (ShieldCheck icon), validates admin via /api/admingeral/me BEFORE storing session
+  * /admingeral/inicio — single-page admin panel with:
+    - Fixed dark sidebar (slate-900) with 9 nav items + pending badges (drivers/stores/orders)
+    - Mobile-responsive (Sheet sidebar on mobile)
+    - Top bar with section title + "Ver site" external link
+    - Dynamic section rendering:
+      * Dashboard: revenue cards (today/week), 8-stat grid, pending alerts, recent orders list
+      * Categorias: grid of category cards + create form (code, label, icon, color, sortOrder)
+      * Lojas: store cards with verify/feature/activate toggles + search + filter (all/pending/verified)
+      * Produtos: product grid with search + featured badge
+      * Banners: banner cards with create form + active toggle + delete
+      * Pedidos: order list with status filter (all/pending/preparo/entrega/entregue/cancelado)
+      * Motoristas: driver application cards with approve/reject (approve sets isDriver=true)
+      * Usuários: user cards filtered by type (clientes/motoristas/lojistas/entregadores) + search
+      * Configurações: app toggles (enable mobile/motorista/lojista apps), cashback rates per category, delivery defaults, support contact
+
+- Created /lib/admingeral-guard.ts — shared requireAppAdmin() helper used by all /api/admingeral/* routes.
+
+Verification:
+- All 10 API routes return HTTP 403 "Unauthorized" when no userId (correct — admin guard works).
+- /admingeral/login compiles (HTTP 200, 23KB) — VLM-confirmed: ShieldCheck icon, "Admin Geral" title, email/password fields, "Acessar painel" button.
+- /admingeral/inicio compiles (HTTP 200, 20KB) — single-page panel renders.
+- ESLint: 0 errors in admingeral code (13 pre-existing in utility .js scripts).
+- Schema pushed to Neon PostgreSQL successfully — all 7 new models live.
+
+Stage Summary:
+- System connections CONFIRMED: the 3 apps share the same auth, users, wallet, and plan system. Each app enforces its own access control via user-type flags.
+- /admingeral panel built — manages the entire app ecosystem (categories, stores, products, banners, orders, drivers, users, config) separately from the MMN backoffice at /.
+- Admin access: role='admin' OR userType='admin' (dedicated app admin without MMN access).
+- When admin approves a driver application, it auto-sets User.isDriver=true so they can immediately log in to /motorista.
+- When admin creates a store, it's auto-verified (isVerified=true) so the lojista can immediately use /lojista.
+- App config stored in SystemConfig under app_* keys — cashback rates per category, delivery fees, app enable toggles, support contact.
+- The existing /api/mobile/home and /api/lojista/home routes already try to read from MobileBanner/AppStore/AppOrder tables via try/catch — they will now automatically serve REAL data from these new tables with zero code changes.
