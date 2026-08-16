@@ -14,14 +14,15 @@ import {
   Bike,
   ChevronDown,
   Loader2,
-  ShieldAlert,
-  LogOut,
   Sparkles,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { apiFetch } from '@/lib/api'
 import { useStore } from '@/lib/store'
+import { useMobileAuth } from '@/lib/mobile-auth'
 import { MobileAppShell } from '@/components/mobile/mobile-app-shell'
 import {
   MOBILE_CATEGORIES,
@@ -90,6 +91,7 @@ interface HomeData {
 export default function MobileInicioPage() {
   const router = useRouter()
   const { user, logout } = useStore()
+  const { wallet: authWallet } = useMobileAuth()
   const [data, setData] = useState<HomeData | null>(null)
   const [loading, setLoading] = useState(true)
   const [showBalance, setShowBalance] = useState(true)
@@ -119,6 +121,14 @@ export default function MobileInicioPage() {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  // Keep wallet in sync when the auth hook finishes (e.g. after a transfer).
+  useEffect(() => {
+    if (authWallet && data) {
+      setData({ ...data, wallet: { ...data.wallet, ...authWallet } as HomeData['wallet'] })
+    }
+     
+  }, [authWallet])
 
   // Banner auto-advance
   useEffect(() => {
@@ -188,7 +198,7 @@ export default function MobileInicioPage() {
           {/* Bell + Avatar */}
           <div className="flex items-center gap-2 flex-shrink-0">
             <button
-              onClick={() => toast.info('Notificações em breve')}
+              onClick={() => router.push('/mobile/notificacoes')}
               className="relative flex h-9 w-9 items-center justify-center rounded-full bg-white/15 hover:bg-white/25 transition-colors min-w-[44px] min-h-[44px]"
               aria-label="Notificações"
             >
@@ -236,28 +246,39 @@ export default function MobileInicioPage() {
           className="bg-white rounded-2xl shadow-xl border border-gray-50 p-4"
         >
           <div className="flex items-center justify-between gap-3">
-            {/* Left: balance */}
+            {/* Left: balance (clickable → /mobile/carteira) */}
             <button
               onClick={() => router.push('/mobile/carteira')}
               className="text-left min-w-0 flex-1 min-h-[44px] flex flex-col justify-center"
             >
-              <p className="text-[11px] text-gray-500 font-medium">Saldo total</p>
-              <p className="text-2xl font-bold text-gray-900 leading-tight">
-                {showBalance ? `R$ ${formatBRL(data.wallet.totalCents)}` : 'R$ ••••'}
-              </p>
-              <div className="flex items-center gap-1 mt-0.5">
-                <span
-                  className="text-[11px] font-semibold"
-                  style={{ color: GREEN }}
+              <div className="flex items-center gap-1.5">
+                <p className="text-[11px] text-gray-500 font-medium">Saldo total</p>
+                <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation()
                     setShowBalance((v) => !v)
                   }}
+                  className="inline-flex h-4 w-4 items-center justify-center text-gray-400 hover:text-gray-700"
+                  aria-label={showBalance ? 'Ocultar saldo' : 'Mostrar saldo'}
                 >
-                  Toque para ver histórico
-                </span>
-                <ChevronRight className="h-3 w-3" style={{ color: GREEN }} />
+                  {showBalance ? (
+                    <EyeOff className="h-3.5 w-3.5" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  )}
+                </button>
               </div>
+              <p className="text-2xl font-bold text-gray-900 leading-tight">
+                {showBalance ? `R$ ${formatBRL(data.wallet.totalCents)}` : 'R$ ••••'}
+              </p>
+              <span
+                className="text-[11px] font-semibold inline-flex items-center gap-0.5 mt-0.5"
+                style={{ color: GREEN }}
+              >
+                Toque para ver histórico
+                <ChevronRight className="h-3 w-3" style={{ color: GREEN }} />
+              </span>
             </button>
 
             {/* Right: 3 action buttons */}
@@ -265,17 +286,17 @@ export default function MobileInicioPage() {
               <WalletAction
                 icon={ArrowUpToLine}
                 label="Enviar"
-                onClick={() => toast.info('Enviar saldo em breve')}
+                onClick={() => router.push('/mobile/enviar')}
               />
               <WalletAction
                 icon={Plus}
                 label="Depositar"
-                onClick={() => toast.info('Depositar em breve')}
+                onClick={() => router.push('/mobile/depositar')}
               />
               <WalletAction
                 icon={ArrowDownToLine}
                 label="Receber"
-                onClick={() => toast.info('Receber em breve')}
+                onClick={() => router.push('/mobile/receber')}
               />
             </div>
           </div>
@@ -499,20 +520,6 @@ export default function MobileInicioPage() {
 
       {/* ════════════════ Footer spacer (bottom nav) ════════════════ */}
       <div className="h-4" />
-
-      {/* Logout floating (temporary, until perfil page exists) */}
-      <div className="px-4 pb-2">
-        <button
-          onClick={() => {
-            logout()
-            router.replace('/mobile/login')
-          }}
-          className="w-full h-10 rounded-xl text-gray-500 text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-gray-50 transition-colors"
-        >
-          <LogOut className="h-3.5 w-3.5" />
-          Sair do app
-        </button>
-      </div>
     </MobileAppShell>
   )
 }
