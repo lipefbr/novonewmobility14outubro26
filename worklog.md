@@ -7798,3 +7798,26 @@ Runtime tests:
 - ⚠️ Dashboard/Achievements APIs: server crashes on cold compilation (sandbox memory limit 4GB, preexisting issue unrelated to fixes)
 
 Git status: 0 ahead, 0 behind origin/main — all fixes pushed (commit 671c6a8)
+
+---
+Task ID: DEPLOY-FIX-LIPEHOST
+Agent: Main Orchestrator
+Task: Fix 3 deploy bugs blocking LipeHost deploy (db exports, tw-animate-css, next.config)
+
+Work Log:
+- Synced to origin/main (commit 8860c78)
+- BUG 1 (src/lib/db.ts): Removed `__non_webpack_require__` + `require('fs')` + `require('path')` dynamic imports from `ensureEnvLoaded()` which prevented Turbopack from statically analyzing the module → caused "Export db doesn't exist in target module" aborting build with 235 errors. Replaced with simple `resolveDatabaseUrl()` that reads `process.env.DATABASE_URL` directly (Next.js auto-loads .env; LipeHost injects DATABASE_URL via PM2 ecosystem). PRESERVED the `db` compatibility wrapper (findOne/find/insert/update/deleteFrom/count) because 59 route files depend on it (login, dashboard, billing, etc.). Both `db` (wrapper) and `prisma` (direct PrismaClient) remain as static named exports.
+- BUG 2 (package.json): `tw-animate-css` was at ^1.3.5 — bumped to ^1.4.0 as requested. Ran `bun install` — tw-animate-css 1.4.0 now installed, bun.lock updated.
+- BUG 3 (next.config.ts): Added `output: "standalone"`, `turbopack.root: path.resolve(__dirname)`, `eslint.ignoreDuringBuilds: true`. Kept existing `typescript.ignoreBuildErrors`, `reactStrictMode: false`, `allowedDevOrigins`.
+
+Validation:
+- ✅ `bun run db:generate` — Prisma Client generated successfully
+- ✅ `bun run lint` — src/ clean (13 pre-existing errors in root .js utility scripts, 0 in src/)
+- ✅ `bun run build` — BUILD PASSED with exit 0, standalone output generated at .next/standalone/, 0 "Export db doesn't exist" errors, all API routes compiled
+- ✅ Runtime test: POST /api/auth/login → HTTP 200 (db.findOne wrapper works), GET /api/career → HTTP 200 (prisma direct works), 20 plans loaded
+
+Stage Summary:
+- All 3 deploy blockers fixed
+- Build passes locally (exit 0) — ready for LipeHost redeploy
+- 59 route files preserved (no migration needed) — wrapper db kept intact
+- Commits: one combined commit for all 3 fixes

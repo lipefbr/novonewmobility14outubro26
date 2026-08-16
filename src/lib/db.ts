@@ -1,96 +1,58 @@
 // Database client using Prisma with PostgreSQL (Neon)
+//
+// IMPORTANT (deploy fix): This module MUST expose `db` and `prisma` as static
+// named exports at the top level. The previous version used
+// `__non_webpack_require__` + `require('fs')` inside an `ensureEnvLoaded()`
+// helper, which prevented Turbopack from statically analyzing the module and
+// caused the build to abort with `Error: Export db doesn't exist in target
+// module` across 235+ routes.
+//
+// The env-loading logic has been removed — Next.js loads `.env` automatically
+// in both dev and production (standalone) builds, and on LipeHost the
+// `DATABASE_URL` is injected via the PM2 ecosystem file. We now rely solely
+// on `process.env.DATABASE_URL`.
+//
+// The `db` object below is a COMPATIBILITY WRAPPER that maps the project's
+// SQL-style calls (`db.findOne('User', '"email" = $1', [email])`) to the
+// matching Prisma client methods. 59 route files depend on this wrapper, so
+// it must stay. Direct Prisma access is also available via `prisma`.
 import { PrismaClient } from '@prisma/client'
 
+// Singleton cache on globalThis to avoid spawning a new PrismaClient on every
+// hot-reload during development.
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
-  __prismaUrl?: string
 }
 
-// Hardcoded fallback Neon PostgreSQL URL — used ONLY when process.env.DATABASE_URL
-// is missing or points to SQLite AND we cannot read .env (e.g. webpack bundling
-// prevents fs access). This ensures the app always connects to the correct DB.
+// Hardcoded fallback Neon PostgreSQL URL — used ONLY when
+// process.env.DATABASE_URL is missing or points to a SQLite `file:` path.
+// In production (LipeHost), DATABASE_URL is always set via the environment.
 const FALLBACK_NEON_URL =
   'postgresql://neondb_owner:npg_2Ul5CdKOpRiu@ep-twilight-night-aqn8fqln-pooler.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require'
 
-// Ensure DATABASE_URL is loaded from .env file if not already set.
-// Next.js normally loads .env automatically, but the dev shell may export a
-// stale SQLite `file:` URL that overrides it. We detect that and fix it.
-// NOTE: This function is a no-op on the client (typeof window !== 'undefined')
-// to avoid pulling Node-only modules into client bundles.
-function ensureEnvLoaded() {
-  // Skip on client-side — database access is server-only
-  if (typeof window !== 'undefined') return
-
-  const currentUrl = process.env.DATABASE_URL || ''
-  const needsUpdate = !currentUrl || currentUrl.startsWith('file:')
-
-  if (!needsUpdate) return
-
-  // Try to read .env file using the real Node.js require (bypassing webpack).
-  // __non_webpack_require__ is a special token webpack leaves as the native require.
-  try {
-    const nodeRequire: NodeRequire =
-      (typeof __non_webpack_require__ !== 'undefined'
-        ? __non_webpack_require__
-        : typeof require !== 'undefined'
-          ? require
-          : null) as NodeRequire
-
-    if (nodeRequire) {
-      const fs = nodeRequire('fs')
-      const path = nodeRequire('path')
-      const envPath = path.join(process.cwd(), '.env')
-      if (fs.existsSync(envPath)) {
-        const content = fs.readFileSync(envPath, 'utf8')
-        for (const line of content.split('\n')) {
-          const trimmed = line.trim()
-          if (!trimmed || trimmed.startsWith('#')) continue
-          const eqIdx = trimmed.indexOf('=')
-          if (eqIdx > 0) {
-            const key = trimmed.substring(0, eqIdx).trim()
-            let val = trimmed.substring(eqIdx + 1).trim()
-            if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-              val = val.slice(1, -1)
-            }
-            if (key === 'DATABASE_URL' && val.startsWith('postgresql://')) {
-              process.env.DATABASE_URL = val
-            }
-          }
-        }
-      }
-    }
-  } catch (e) {
-    // Silently fall through to the hardcoded fallback below.
-  }
-
-  // Final safety net: if still not set or SQLite, use the known Neon URL.
-  if (!process.env.DATABASE_URL || process.env.DATABASE_URL.startsWith('file:')) {
-    process.env.DATABASE_URL = FALLBACK_NEON_URL
-  }
+function resolveDatabaseUrl(): string {
+  const url = process.env.DATABASE_URL || ''
+  if (url && !url.startsWith('file:')) return url
+  return FALLBACK_NEON_URL
 }
 
-// Get or create Prisma client (lazy initialization)
+// Get or create Prisma client (singleton). No dynamic requires, no fs reads —
+// fully statically analyzable by Turbopack.
 export function getPrisma(): PrismaClient {
-  ensureEnvLoaded()
-  const currentUrl = process.env.DATABASE_URL || ''
-  // Recreate the client if it doesn't exist OR if it was previously created
-  // with a different (e.g. SQLite `file:`) URL — this happens when the dev
-  // server was started with an old shell env that overrides .env
-  if (!globalForPrisma.prisma || globalForPrisma.__prismaUrl !== currentUrl) {
+  if (!globalForPrisma.prisma) {
     globalForPrisma.prisma = new PrismaClient({
       log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
       datasources: {
         db: {
-          url: currentUrl,
+          url: resolveDatabaseUrl(),
         },
       },
     })
-    globalForPrisma.__prismaUrl = currentUrl
   }
   return globalForPrisma.prisma
 }
 
-// Initialize eagerly (this will call ensureEnvLoaded if needed)
+// Initialize eagerly so the very first DB call doesn't pay the connect cost.
 export const prisma = getPrisma()
 
 // Comprehensive db interface that maps common query patterns to Prisma calls
