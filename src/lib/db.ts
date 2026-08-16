@@ -24,29 +24,19 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
-// Hardcoded fallback Neon PostgreSQL URL — used ONLY when
-// process.env.DATABASE_URL is missing or points to a SQLite `file:` path.
-// In production (LipeHost), DATABASE_URL is always set via the environment.
-const FALLBACK_NEON_URL =
-  'postgresql://neondb_owner:npg_2Ul5CdKOpRiu@ep-twilight-night-aqn8fqln-pooler.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require'
-
-function resolveDatabaseUrl(): string {
-  const url = process.env.DATABASE_URL || ''
-  if (url && !url.startsWith('file:')) return url
-  return FALLBACK_NEON_URL
-}
-
 // Get or create Prisma client (singleton). No dynamic requires, no fs reads —
 // fully statically analyzable by Turbopack.
+//
+// IMPORTANT (deploy fix): The previous version had a hardcoded
+// `FALLBACK_NEON_URL` constant + a `resolveDatabaseUrl()` helper that silently
+// connected to an external Neon database when `DATABASE_URL` was missing. This
+// masked configuration bugs in production. The fallback has been REMOVED —
+// Prisma now reads `process.env.DATABASE_URL` directly. If the env var is not
+// set, Prisma throws a clear error (which is the desired behavior).
 export function getPrisma(): PrismaClient {
   if (!globalForPrisma.prisma) {
     globalForPrisma.prisma = new PrismaClient({
       log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-      datasources: {
-        db: {
-          url: resolveDatabaseUrl(),
-        },
-      },
     })
   }
   return globalForPrisma.prisma
