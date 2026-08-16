@@ -1,260 +1,546 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import {
-  Loader2, LogOut, Wallet, Car, Bike, Store, Shield, Users,
-  TrendingUp, Crown, Target, Gift, Headphones, Smartphone,
-  Lock, ChevronRight,
+  MapPin,
+  Bell,
+  Search,
+  ChevronRight,
+  ArrowUpToLine,
+  Plus,
+  ArrowDownToLine,
+  Heart,
+  Bike,
+  ChevronDown,
+  Loader2,
+  ShieldAlert,
+  LogOut,
+  Sparkles,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { toast } from 'sonner'
 import { apiFetch } from '@/lib/api'
 import { useStore } from '@/lib/store'
-import { toast } from 'sonner'
+import { MobileAppShell } from '@/components/mobile/mobile-app-shell'
+import {
+  MOBILE_CATEGORIES,
+  MOBILE_QUICK_LINKS,
+  formatBRL,
+} from '@/components/mobile/mobile-categories'
 
 // ============================================================================
-// /mobile/inicio — Skeleton home screen for the NewMobility mobile app.
+// /mobile/inicio — Tela inicial do App Usuário NewMobility.
 // ----------------------------------------------------------------------------
-// Renders a feature grid based on the logged-in user's UserType.mobilePermissions
-// (configured by the admin in the "Tipos de Usuário" tab).
+// Layout (fiel ao design):
+//   1. Header azul fixo: status bar spacer, "Entregar para" + localização,
+//      sino + avatar, campo de busca.
+//   2. Card de carteira flutuante: saldo total real + 3 botões (Enviar /
+//      Depositar / Receber) + link "Toque para ver histórico".
+//   3. Grade de 8 categorias (4 col x 2 linhas) com ícones em fundo verde-água.
+//   4. Banner promocional (carrossel com dots).
+//   5. Produtos em destaque (scroll horizontal).
+//   6. Atalhos rápidos (4 pills).
+//   7. Bottom nav (no MobileAppShell).
 //
-// Flow:
-//   1. Read the user from the Zustand store (populated by /mobile/login).
-//   2. Fetch the user's UserType from /api/user-types?includeMobile=1 and find
-//      the row whose code === user.qualification.
-//   3. Render a grid of feature cards, one per mobilePermissions entry. Cards
-//      the user doesn't have access to are shown locked (greyed out) so the
-//      user can see what exists but can't tap them.
-//   4. If the user has no UserType (qualification === null), we show a friendly
-//      "contate o suporte" message.
-//
-// This is a skeleton — the actual feature screens (ride request, store, etc.)
-// will be built next, once the user sends the design images.
+// Dados:
+//   - Wallet: API /api/mobile/home (lê as mesmas colunas de saldo do sistema).
+//   - Localização: campo address/city/state do perfil do usuário.
+//   - Banners/Produtos: API /api/mobile/home (mock se tabelas não existirem).
 // ============================================================================
 
-// Master list of mobile features. The `key` matches the strings the admin
-// toggles in the UserType panel. A feature not in this list still renders as
-// a generic card (so admins can experiment with new keys).
-const FEATURE_CATALOG: Record<string, { label: string; description: string; icon: typeof Car; color: string }> = {
-  dashboard: { label: 'Início', description: 'Resumo da sua conta', icon: Smartphone, color: '#10b981' },
-  wallet: { label: 'Carteira', description: 'Saldos e saques', icon: Wallet, color: '#3b82f6' },
-  ride_request: { label: 'Pedir Corrida', description: 'Solicite um veículo', icon: Car, color: '#10b981' },
-  ride_offer: { label: 'Ofertar Corrida', description: 'Receba corridas como motorista', icon: Car, color: '#f97316' },
-  delivery: { label: 'Entregas', description: 'Receber entregas', icon: Bike, color: '#f97316' },
-  store: { label: 'Loja', description: 'Comércio parceiro', icon: Store, color: '#ec4899' },
-  cashback: { label: 'Cashback', description: 'Suas matrizes de cashback', icon: TrendingUp, color: '#06b6d4' },
-  career: { label: 'Carreira', description: 'PINs e bônus de carreira', icon: Crown, color: '#a78bfa' },
-  metas: { label: 'Metas', description: 'Metas de motorista/entregador', icon: Target, color: '#f59e0b' },
-  indicacoes: { label: 'Indicações', description: 'Convide e ganhe', icon: Users, color: '#84cc16' },
-  marketplace: { label: 'Marketplace', description: 'Compre produtos', icon: Store, color: '#ec4899' },
-  telemedicina: { label: 'Telemedicina', description: 'Consultas online', icon: Shield, color: '#ef4444' },
-  voucher: { label: 'Vouchers', description: 'Seus cupons e vouchers', icon: Gift, color: '#f59e0b' },
-  support: { label: 'Suporte', description: 'Fale conosco', icon: Headphones, color: '#6366f1' },
-}
+const PRIMARY = '#155EEF'
+const GREEN = '#22C55E'
+const MINT_BG = '#EAF7EF'
 
-interface UserTypeWithPerms {
-  id: string
-  code: string
-  label: string
-  icon: string | null
-  color: string | null
-  mobilePermissions: string[]
+interface HomeData {
+  user: { id: string; name: string; profileImage: string | null; phone: string | null }
+  wallet: {
+    totalCents: number
+    withdrawalCents: number
+    shoppingCents: number
+    foodCents: number
+    pharmacyCents: number
+    mobilityCents: number
+    freeCents: number
+  }
+  location: { shortLabel: string; address: string | null }
+  banners: Array<{
+    id: string
+    title: string
+    subtitle: string
+    ctaLabel: string
+    ctaHref: string
+    image?: string
+    isMock?: boolean
+  }>
+  products: Array<{
+    id: string
+    name: string
+    description?: string
+    priceCents: number
+    image?: string
+    storeName?: string
+    isMock?: boolean
+  }>
+  isClient: boolean
+  hasMockData: boolean
 }
 
 export default function MobileInicioPage() {
   const router = useRouter()
   const { user, logout } = useStore()
-  const [userType, setUserType] = useState<UserTypeWithPerms | null>(null)
+  const [data, setData] = useState<HomeData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showBalance, setShowBalance] = useState(true)
+  const [bannerIdx, setBannerIdx] = useState(0)
+  const [favorites, setFavorites] = useState<Set<string>>(new Set())
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     if (!user?.id) {
       router.replace('/mobile/login')
       return
     }
-    let cancelled = false
-    ;(async () => {
-      try {
-        const data = await apiFetch<{ types: UserTypeWithPerms[] }>(
-          '/user-types?includeMobile=1',
-        )
-        if (cancelled) return
-        const types = data?.types || []
-        // Find the user's type by their qualification code.
-        const mine = user.qualification
-          ? types.find((t) => t.code === user.qualification)
-          : undefined
-        setUserType(mine || null)
-      } catch {
-        if (!cancelled) toast.error('Erro ao carregar permissões')
-      } finally {
-        if (!cancelled) setLoading(false)
+    try {
+      const resp = await apiFetch<HomeData>(`/mobile/home?userId=${user.id}`)
+      setData(resp)
+      // Secondary guard: if somehow a non-client reaches here, kick to login
+      if (!resp.isClient) {
+        logout()
+        router.replace('/mobile/login')
       }
-    })()
-    return () => { cancelled = true }
-  }, [user?.id, user?.qualification, router])
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao carregar')
+    } finally {
+      setLoading(false)
+    }
+  }, [user?.id, router, logout])
 
-  const handleLogout = () => {
-    logout()
-    router.push('/mobile/login')
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  // Banner auto-advance
+  useEffect(() => {
+    if (!data?.banners || data.banners.length <= 1) return
+    const t = setInterval(() => {
+      setBannerIdx((i) => (i + 1) % data.banners.length)
+    }, 5000)
+    return () => clearInterval(t)
+  }, [data?.banners])
+
+  const toggleFav = (id: string) => {
+    setFavorites((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
+  // ── Loading ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/30">
-        <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
-        <span className="ml-2 text-muted-foreground">Carregando...</span>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white">
+        <Loader2 className="h-6 w-6 animate-spin" style={{ color: PRIMARY }} />
+        <p className="text-sm text-gray-500 mt-2">Carregando...</p>
       </div>
     )
   }
 
-  if (!user) return null
+  if (!data) return null
 
-  const perms = userType?.mobilePermissions || []
+  const firstName = data.user.name?.split(' ')[0] || 'usuário'
 
   return (
-    <div className="min-h-screen bg-muted/30 flex flex-col">
-      {/* Status bar spacer */}
-      <div className="h-[env(safe-area-inset-top)] bg-emerald-600" />
+    <MobileAppShell>
+      {/* ════════════════ 1. HEADER AZUL ════════════════ */}
+      <header
+        className="sticky top-0 z-30 pb-16"
+        style={{
+          background: `linear-gradient(160deg, ${PRIMARY} 0%, #0B4FE0 100%)`,
+        }}
+      >
+        {/* status bar safe-area */}
+        <div style={{ height: 'env(safe-area-inset-top)' }} />
 
-      {/* Header */}
-      <div className="bg-gradient-to-r from-emerald-600 to-teal-500 text-white p-4 pb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-lg">
-              {userType?.icon || '👤'}
-            </div>
-            <div>
-              <p className="text-xs text-white/70">Olá,</p>
-              <p className="font-semibold text-sm">{user.name?.split(' ')[0]}</p>
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleLogout}
-            className="text-white hover:bg-white/10 gap-1.5 h-8"
+        {/* Row 1: location + bell + avatar */}
+        <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-3">
+          {/* Location */}
+          <button
+            onClick={() => toast.info('Seleção de endereço em breve')}
+            className="flex items-center gap-1.5 min-w-0 flex-1 min-h-[44px]"
           >
-            <LogOut className="h-3.5 w-3.5" />
-            Sair
-          </Button>
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/15 flex-shrink-0">
+              <MapPin className="h-4 w-4 text-white" />
+            </span>
+            <div className="text-left min-w-0">
+              <p className="text-[10px] text-white/70 font-medium leading-none">Entregar para</p>
+              <div className="flex items-center gap-0.5 mt-0.5">
+                <span className="text-sm font-semibold text-white truncate">
+                  {data.location.shortLabel}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 text-white/80 flex-shrink-0" />
+              </div>
+            </div>
+          </button>
+
+          {/* Bell + Avatar */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => toast.info('Notificações em breve')}
+              className="relative flex h-9 w-9 items-center justify-center rounded-full bg-white/15 hover:bg-white/25 transition-colors min-w-[44px] min-h-[44px]"
+              aria-label="Notificações"
+            >
+              <Bell className="h-4 w-4 text-white" />
+              <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-red-400 ring-2 ring-blue-600" />
+            </button>
+            <button
+              onClick={() => router.push('/mobile/perfil')}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 overflow-hidden ring-2 ring-white/30 hover:ring-white/50 transition-all min-w-[44px] min-h-[44px]"
+              aria-label="Perfil"
+            >
+              {data.user.profileImage ? (
+                <img
+                  src={data.user.profileImage}
+                  alt={firstName}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="text-sm font-bold text-white">
+                  {firstName.charAt(0).toUpperCase()}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
 
-        {/* Type badge */}
-        {userType ? (
-          <div className="mt-3">
-            <Badge className="bg-white/20 text-white hover:bg-white/20 border-0 gap-1">
-              {userType.label}
-            </Badge>
-            <p className="text-[11px] text-white/70 mt-1">
-              {perms.length} funcionalidade(s) disponível(is) para seu tipo de conta
-            </p>
+        {/* Row 2: search */}
+        <div className="px-4 pb-3">
+          <button
+            onClick={() => router.push('/mobile/procurar')}
+            className="w-full flex items-center gap-2.5 h-11 px-4 rounded-xl bg-white shadow-sm min-h-[44px]"
+          >
+            <Search className="h-4 w-4 text-gray-400" />
+            <span className="text-sm text-gray-400">Procurar</span>
+          </button>
+        </div>
+      </header>
+
+      {/* ════════════════ 2. CARD DE CARTEIRA (flutuante) ════════════════ */}
+      <div className="px-4 -mt-12 relative z-20">
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="bg-white rounded-2xl shadow-xl border border-gray-50 p-4"
+        >
+          <div className="flex items-center justify-between gap-3">
+            {/* Left: balance */}
+            <button
+              onClick={() => router.push('/mobile/carteira')}
+              className="text-left min-w-0 flex-1 min-h-[44px] flex flex-col justify-center"
+            >
+              <p className="text-[11px] text-gray-500 font-medium">Saldo total</p>
+              <p className="text-2xl font-bold text-gray-900 leading-tight">
+                {showBalance ? `R$ ${formatBRL(data.wallet.totalCents)}` : 'R$ ••••'}
+              </p>
+              <div className="flex items-center gap-1 mt-0.5">
+                <span
+                  className="text-[11px] font-semibold"
+                  style={{ color: GREEN }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setShowBalance((v) => !v)
+                  }}
+                >
+                  Toque para ver histórico
+                </span>
+                <ChevronRight className="h-3 w-3" style={{ color: GREEN }} />
+              </div>
+            </button>
+
+            {/* Right: 3 action buttons */}
+            <div className="flex gap-2 flex-shrink-0">
+              <WalletAction
+                icon={ArrowUpToLine}
+                label="Enviar"
+                onClick={() => toast.info('Enviar saldo em breve')}
+              />
+              <WalletAction
+                icon={Plus}
+                label="Depositar"
+                onClick={() => toast.info('Depositar em breve')}
+              />
+              <WalletAction
+                icon={ArrowDownToLine}
+                label="Receber"
+                onClick={() => toast.info('Receber em breve')}
+              />
+            </div>
           </div>
-        ) : (
-          <div className="mt-3">
-            <Badge className="bg-amber-500/30 text-white border-0">
-              Sem tipo atribuído
-            </Badge>
-            <p className="text-[11px] text-white/70 mt-1">
-              Contate o suporte para liberar funcionalidades.
-            </p>
-          </div>
-        )}
+        </motion.div>
       </div>
 
-      {/* Feature grid */}
-      <div className="flex-1 p-4 -mt-3">
-        {perms.length === 0 ? (
-          <Card className="shadow-sm">
-            <CardContent className="p-6 text-center">
-              <Lock className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
-              <p className="text-sm font-semibold text-foreground">
-                Nenhuma funcionalidade liberada
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Seu tipo de usuário não tem permissões mobile configuradas.
-                Contate o administrador.
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {perms.map((perm, idx) => {
-              const feat = FEATURE_CATALOG[perm] || {
-                label: perm,
-                description: 'Funcionalidade em breve',
-                icon: Smartphone,
-                color: '#64748b',
-              }
-              const Icon = feat.icon
-              return (
-                <motion.div
-                  key={perm}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.04 }}
+      {/* ════════════════ 3. GRADE DE CATEGORIAS ════════════════ */}
+      <section className="px-4 mt-5">
+        <div className="grid grid-cols-4 gap-3">
+          {MOBILE_CATEGORIES.map((cat, idx) => {
+            const Icon = cat.icon
+            return (
+              <motion.button
+                key={cat.slug}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: idx * 0.03 }}
+                onClick={() => router.push(`/mobile/${cat.slug}`)}
+                className="flex flex-col items-center gap-1.5 min-h-[44px]"
+              >
+                <span
+                  className="flex h-14 w-14 items-center justify-center rounded-2xl"
+                  style={{ backgroundColor: MINT_BG }}
                 >
-                  <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer h-full">
-                    <CardContent className="p-4 flex flex-col items-center text-center h-full">
-                      <div
-                        className="h-11 w-11 rounded-xl flex items-center justify-center mb-2"
-                        style={{ backgroundColor: (feat.color || '#64748b') + '20' }}
-                      >
-                        <Icon className="h-5 w-5" style={{ color: feat.color }} />
-                      </div>
-                      <p className="text-xs font-semibold text-foreground">{feat.label}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">
-                        {feat.description}
-                      </p>
-                      <ChevronRight className="h-3 w-3 text-muted-foreground/40 mt-2" />
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              )
-            })}
-          </div>
-        )}
+                  <Icon className="h-6 w-6" style={{ color: '#059669' }} strokeWidth={2} />
+                </span>
+                <span className="text-[11px] font-medium text-gray-700 text-center leading-tight">
+                  {cat.label}
+                </span>
+              </motion.button>
+            )
+          })}
+        </div>
+      </section>
 
-        {/* Wallet quick preview */}
-        <Card className="shadow-sm mt-4 bg-gradient-to-br from-emerald-600 to-teal-500 border-0 text-white">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] uppercase tracking-wide text-white/70 font-semibold">
-                Saldo Carteira Saque
-              </span>
-              <Wallet className="h-4 w-4 text-white/70" />
+      {/* ════════════════ 4. BANNER PROMOCIONAL ════════════════ */}
+      {data.banners.length > 0 && (
+        <section className="px-4 mt-5">
+          <div className="relative rounded-2xl overflow-hidden shadow-md">
+            {/* Banner content */}
+            <div
+              className="relative h-40 flex items-center"
+              style={{
+                background: `linear-gradient(105deg, #0F172A 0%, #1E293B 50%, #334155 100%)`,
+              }}
+            >
+              {/* Decorative food image (gradient blob since no real image yet) */}
+              <div
+                className="absolute right-0 top-0 bottom-0 w-2/5 opacity-60"
+                style={{
+                  background: `radial-gradient(circle at 70% 50%, ${PRIMARY}40, transparent 70%)`,
+                }}
+              />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                <Bike className="h-16 w-16 text-white/15" strokeWidth={1.5} />
+              </div>
+
+              {/* Text content */}
+              <div className="relative z-10 px-5 max-w-[65%]">
+                <h3 className="text-xl font-bold text-white leading-tight">
+                  {data.banners[bannerIdx].title}
+                </h3>
+                <p className="text-xs text-white/80 mt-1 leading-relaxed">
+                  {data.banners[bannerIdx].subtitle}
+                </p>
+                <button
+                  onClick={() => router.push(data.banners[bannerIdx].ctaHref)}
+                  className="mt-3 inline-flex items-center gap-1.5 h-8 px-4 rounded-full text-white text-xs font-semibold shadow-md hover:shadow-lg transition-all active:scale-95"
+                  style={{ backgroundColor: GREEN }}
+                >
+                  <Bike className="h-3.5 w-3.5" />
+                  {data.banners[bannerIdx].ctaLabel}
+                </button>
+              </div>
+
+              {data.banners[bannerIdx].isMock && (
+                <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-amber-500/90 text-white text-[9px] font-bold">
+                  DEMO
+                </span>
+              )}
             </div>
-            <p className="text-2xl font-bold">
-              R$ {((user.balanceWithdrawal || 0) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-            </p>
-            <div className="grid grid-cols-3 gap-2 mt-3 text-[10px]">
-              <div>
-                <p className="text-white/60">Compras</p>
-                <p className="font-semibold">
-                  R$ {((user.balanceShopping || 0) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+
+            {/* Pagination dots */}
+            {data.banners.length > 1 && (
+              <div className="flex items-center justify-center gap-1.5 py-2 bg-white">
+                {data.banners.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setBannerIdx(i)}
+                    className="h-1.5 rounded-full transition-all"
+                    style={{
+                      width: i === bannerIdx ? 18 : 6,
+                      backgroundColor: i === bannerIdx ? PRIMARY : '#D1D5DB',
+                    }}
+                    aria-label={`Banner ${i + 1}`}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ════════════════ 5. PRODUTOS EM DESTAQUE ════════════════ */}
+      <section className="mt-5">
+        <div className="px-4 flex items-center justify-between mb-3">
+          <h2 className="text-base font-bold text-gray-900">Produtos em destaque</h2>
+          <button
+            onClick={() => toast.info('Ver todos em breve')}
+            className="text-xs font-semibold flex items-center gap-0.5"
+            style={{ color: PRIMARY }}
+          >
+            Ver todos
+            <ChevronRight className="h-3 w-3" />
+          </button>
+        </div>
+
+        <div className="flex gap-3 overflow-x-auto px-4 pb-2 scroll-smooth" style={{ scrollbarWidth: 'none' }}>
+          {data.products.map((product, idx) => (
+            <motion.div
+              key={product.id}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: idx * 0.05 }}
+              className="flex-shrink-0 w-36 rounded-xl bg-white border border-gray-100 shadow-sm overflow-hidden"
+            >
+              {/* Product image */}
+              <div className="relative h-28 bg-gray-100">
+                {product.image ? (
+                  <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
+                ) : (
+                  <div
+                    className="h-full w-full flex items-center justify-center"
+                    style={{ background: `linear-gradient(135deg, ${MINT_BG} 0%, #F0FDF4 100%)` }}
+                  >
+                    <Search className="h-8 w-8 text-gray-300" />
+                  </div>
+                )}
+                {/* Favorite heart */}
+                <button
+                  onClick={() => toggleFav(product.id)}
+                  className="absolute top-2 right-2 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 backdrop-blur shadow-sm min-w-[44px] min-h-[44px]"
+                  aria-label="Favoritar"
+                >
+                  <Heart
+                    className="h-4 w-4"
+                    style={{
+                      color: favorites.has(product.id) ? '#EF4444' : '#9CA3AF',
+                      fill: favorites.has(product.id) ? '#EF4444' : 'none',
+                    }}
+                  />
+                </button>
+                {product.isMock && (
+                  <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-amber-500/90 text-white text-[8px] font-bold">
+                    DEMO
+                  </span>
+                )}
+              </div>
+              {/* Product info */}
+              <div className="p-2.5">
+                {product.storeName && (
+                  <p className="text-[10px] text-gray-400 mb-0.5 truncate">{product.storeName}</p>
+                )}
+                <p className="text-xs font-semibold text-gray-900 leading-tight line-clamp-2">
+                  {product.name}
+                </p>
+                {product.description && (
+                  <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{product.description}</p>
+                )}
+                <p className="text-sm font-bold text-gray-900 mt-1">
+                  R$ {formatBRL(product.priceCents)}
                 </p>
               </div>
-              <div>
-                <p className="text-white/60">Pontos</p>
-                <p className="font-semibold">{(user.careerPoints || 0).toLocaleString('pt-BR')}</p>
-              </div>
-              <div>
-                <p className="text-white/60">Estrelas</p>
-                <p className="font-semibold">{'⭐'.repeat(Math.min(user.stars || 0, 5))}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </motion.div>
+          ))}
+        </div>
+      </section>
 
-        <p className="text-[10px] text-muted-foreground text-center mt-4">
-          Skeleton do app mobile — em breve com mais funcionalidades.
-        </p>
+      {/* ════════════════ 6. ATALHOS RÁPIDOS ════════════════ */}
+      <section className="px-4 mt-5">
+        <div className="grid grid-cols-2 gap-3">
+          {MOBILE_QUICK_LINKS.map((link) => {
+            const Icon = link.icon
+            return (
+              <button
+                key={link.slug}
+                onClick={() => router.push(`/mobile/${link.slug}`)}
+                className="flex items-center gap-3 p-3 rounded-xl bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow min-h-[44px]"
+              >
+                <span
+                  className="flex h-10 w-10 items-center justify-center rounded-xl flex-shrink-0"
+                  style={{ backgroundColor: MINT_BG }}
+                >
+                  <Icon className="h-5 w-5" style={{ color: '#059669' }} strokeWidth={2} />
+                </span>
+                <div className="flex-1 text-left min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 truncate">{link.label}</p>
+                  <p className="text-[11px] font-medium flex items-center gap-0.5" style={{ color: PRIMARY }}>
+                    Ver mais
+                    <ChevronRight className="h-3 w-3" />
+                  </p>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </section>
+
+      {/* ════════════════ Mock data notice ════════════════ */}
+      {data.hasMockData && (
+        <div className="px-4 mt-5">
+          <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 border border-amber-200">
+            <Sparkles className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+            <p className="text-[11px] text-amber-700 leading-relaxed">
+              Banners e produtos em demonstração. Em breve, lojas e produtos
+              reais gerenciados pelo painel administrativo.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════ Footer spacer (bottom nav) ════════════════ */}
+      <div className="h-4" />
+
+      {/* Logout floating (temporary, until perfil page exists) */}
+      <div className="px-4 pb-2">
+        <button
+          onClick={() => {
+            logout()
+            router.replace('/mobile/login')
+          }}
+          className="w-full h-10 rounded-xl text-gray-500 text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-gray-50 transition-colors"
+        >
+          <LogOut className="h-3.5 w-3.5" />
+          Sair do app
+        </button>
       </div>
+    </MobileAppShell>
+  )
+}
 
-      <div className="h-[env(safe-area-inset-bottom)]" />
-    </div>
+// ─────────────────────────────────────────────────────────────────────────────
+// WalletAction — small square blue button (Enviar / Depositar / Receber)
+// ─────────────────────────────────────────────────────────────────────────────
+function WalletAction({
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  icon: typeof ArrowUpToLine
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex flex-col items-center gap-1 min-w-[44px] min-h-[44px]"
+    >
+      <span
+        className="flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-sm"
+        style={{ backgroundColor: PRIMARY }}
+      >
+        <Icon className="h-5 w-5" strokeWidth={2.5} />
+      </span>
+      <span className="text-[10px] font-medium text-gray-700">{label}</span>
+    </button>
   )
 }

@@ -7904,3 +7904,82 @@ Stage Summary:
 - ✅ Remote `backup` configurado localmente para pushes futuros
 - Os 3 fixes de deploy do LipeHost (db.ts exports, tw-animate-css, next.config turbopack) já estão aplicados e commitados no commit `3b5ebd9`, incluídos neste backup
 - Próximo passo: usuário pode continuar desenvolvimento com segurança de que existe um backup completo; se algo quebrar, basta `git push backup main` novamente ou restaurar do backup
+
+---
+Task ID: MOBILE-APP-1
+Agent: main
+Task: Construir App Usuário mobile da NewMobility (exclusivo para cliente) — módulo web independente em /mobile, design azul+branco, carteira real, categorias, banner, produtos, bottom nav, com bloqueio para motorista/lojista
+
+Work Log:
+- Analisado design anexado (17c36285-0c16-46a5-93cd-d974ae0de180.JPG) via VLM:
+  * Paleta: azul #155EEF, branco #FFFFFF, verde #22C55E, verde-água #EAF7EF
+  * Header azul fixo com "Entregar para" + localização + sino + avatar + busca
+  * Card carteira flutuante: saldo + "Toque para ver histórico" + 3 botões (Enviar/Depositar/Receber)
+  * Grade 4x2 categorias: Shopping, Alimentação, Mercado, MediDrop, Reserva, Assistência, Enviar, Mobilidade
+  * Banner promocional com carrossel + botão verde "Peça agora"
+  * Produtos em destaque (scroll horizontal) com ícone de coração
+  * Atalhos rápidos: Restaurantes/Mercado/Farmácia/Eletrônicos
+  * Bottom nav: Início, Pedidos, FAB central (sacola), Procurar, Carteira
+
+- Explorado codebase existente:
+  * Login API (/api/auth/login) retorna user + balances (withdrawal, mobility, shopping, food, pharmacy, gratification, free, pending)
+  * User schema: userType (default "usuario"), isDriver, isDelivery, qualification, address/city/state, todos os balance* em centavos
+  * Store (Zustand persist): login(user) salva em localStorage "newmobility-auth"
+  * apiFetch helper: relative paths /api/*
+
+- Criados 2 endpoints API (backend, leem do mesmo banco — sem duplicar lógica de cashback/MMN):
+  * /api/mobile/me?userId= — retorna user + wallet consolidada (totalCents = soma de todos saldos spendable) + isClient (true se userType=usuario/cliente E !isDriver E !isDelivery) + blockReason (motorista/entregador/lojista/outro)
+  * /api/mobile/home?userId= — retorna wallet + location (city/state do perfil) + banners (mock com isMock=true, fallback para tabela MobileBanner se existir) + products (mock, fallback para tabela Product) + hasMockData flag
+
+- Criados 4 componentes mobile compartilhados (src/components/mobile/):
+  * mobile-bottom-nav.tsx — 5 itens (Início/Pedidos/FAB/Procurar/Carteira), azul #155EEF ativo, cinza inativo, FAB central elevado, safe-area-inset-bottom
+  * mobile-app-shell.tsx — wrapper com bg branco + pb-20 para não ocultar conteúdo atrás do bottom nav
+  * mobile-categories.tsx — MOBILE_CATEGORIES (8 slugs), MOBILE_QUICK_LINKS (4 pills), formatBRL(cents)
+  * mobile-coming-soon.tsx — tela "Em breve" reutilizável para rotas placeholder
+
+- Reescrito /mobile/login (src/app/mobile/login/page.tsx):
+  * Design azul #155EEF + branco, header com gradiente, card de login flutuante
+  * Campos: e-mail/telefone + senha (com toggle de visibilidade)
+  * Botão "Entrar" azul, link "Esqueci minha senha", "Criar conta" (única exceção que leva fora de /mobile → site principal)
+  * Fluxo: POST /api/auth/login → GET /api/mobile/me → se isClient=false, mostra AccountBlockScreen (motorista=âmbar, lojista=roxo, com mensagem "app separado em breve") SEM redirecionar para fora
+  * Safe-area aware (env(safe-area-inset-top/bottom))
+
+- Reescrito /mobile/inicio (src/app/mobile/inicio/page.tsx):
+  * Header azul fixo: status bar spacer, "Entregar para" + cidade/estado reais, sino com badge, avatar (foto ou inicial)
+  * Campo de busca "Procurar" (botão que leva a /mobile/procurar)
+  * Card carteira flutuante (-mt-12): "Saldo total" + R$ formatBRL(totalCents) + "Toque para ver histórico" (verde, leva a /mobile/carteira) + 3 botões azuis (Enviar/Depositar/Receber)
+  * Grade 4x2 categorias com ícones Lucide em fundo #EAF7EF, cor #059669
+  * Banner carrossel: fundo escuro gradiente, "NewMobility" + subtítulo + botão verde "Peça agora" + dots de paginação + auto-advance 5s + badge DEMO
+  * Produtos em destaque: scroll horizontal, cards com imagem placeholder, ícone de coração (favoritar toggle), nome, descrição, preço em BRL, badge DEMO
+  * Atalhos rápidos: 2x2 grid (Restaurantes/Mercado/Farmácia/Eletrônicos) com "Ver mais" em azul
+  * Aviso de dados mock (banner âmbar) quando hasMockData=true
+  * Botão "Sair do app" temporário (até página /mobile/perfil ser implementada)
+  * Guarda de acesso: se !isClient, faz logout e redirect para /mobile/login
+
+- Criadas 13 rotas /mobile/* (todas 100% contidas em /mobile):
+  * 8 categorias: /mobile/shopping, /mobile/alimentacao, /mobile/mercado, /mobile/medidrop, /mobile/reserva, /mobile/assistencia, /mobile/enviar, /mobile/mobilidade
+  * 4 bottom nav: /mobile/pedidos, /mobile/procurar, /mobile/carteira, /mobile/perfil
+  * /mobile/not-found.tsx — 404 customizado (botão "Voltar ao início" leva a /mobile/inicio, nunca fora)
+
+- Verificação com agent-browser + curl + VLM:
+  * /mobile/login → HTTP 200, HTML contém "NewMobility", "Entrar", "E-mail ou telefone", "Criar conta", "#155EEF" ✓
+  * /mobile/inicio → HTTP 200, agent-browser read confirma: "Entregar para", "Rio de Janeiro, RJ" (real), "Saldo total", "R$ 15.389,62" (real, do cashback/MMN), "Toque para ver histórico", "Enviar/Depositar/Receber", 8 categorias, banner "NewMobility" + "Comida que chega rápido", "Peça agora", "Produtos em destaque", 4 produtos com preços, "Restaurantes/Mercado/Farmácia/Eletrônicos", bottom nav ✓
+  * /mobile/carteira → HTTP 200, "Em breve" + "Carteira" ✓
+  * /api/mobile/me?userId=cliente → isClient:true, wallet com balances reais ✓
+  * /api/mobile/me?userId=motorista → isClient:false, blockReason:motorista ✓
+  * /api/mobile/me?userId=lojista → isClient:false, blockReason:lojista ✓
+  * /api/mobile/home?userId=cliente → wallet.totalCents=1538962, location.shortLabel="Rio de Janeiro, RJ", banners[0].isMock=true, products[0].isMock=true ✓
+  * VLM analysis do screenshot confirma: design matches reference (azul #0055ff, header, wallet card, 4x2 grid, banner, bottom nav com FAB) ✓
+  * Lint: 0 erros no código mobile (13 erros pré-existentes em root .js files não relacionados)
+
+Stage Summary:
+- App Usuário mobile construído e verificado — 100% contido em /mobile/*
+- Design system fiel ao print anexado (azul #155EEF + branco + verde #22C55E + verde-água #EAF7EF)
+- Autenticação reutiliza /api/auth/login existente (mesma tabela de usuários, sem base paralela)
+- Controle de acesso: apenas userType=usuario/cliente (sem isDriver/isDelivery) acessa /mobile; motorista/lojista veem tela de bloqueio in-app
+- Carteira exibe saldo REAL do sistema (soma de withdrawal+mobility+shopping+food+pharmacy+gratification+free) — mesma fonte do cashback/MMN, sem recálculo
+- Banners/produtos mock claramente identificados (isMock=true, badge DEMO) — prontos para serem substituídos por dados do futuro painel /admingeral (fallback automático via try/catch em prisma.mobileBanner/product)
+- 13 rotas criadas: 2 principais (login + inicio) + 8 categorias + 4 bottom nav + 1 not-found
+- Bottom nav funcional com FAB central elevado, rotas placeholder "Em breve"
+- Safe-area aware para futuro encapsulamento em WebView nativo (iOS/Android)
+- "Criar conta" é a única exceção que navega fora de /mobile (para o cadastro do site principal), conforme spec

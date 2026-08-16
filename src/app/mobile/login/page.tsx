@@ -1,54 +1,91 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Loader2, Car, Shield, Smartphone } from 'lucide-react'
+import { Loader2, Eye, EyeOff, Mail, Lock, Bell, User, ShieldAlert, Car, Store, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiFetch } from '@/lib/api'
 import { useStore } from '@/lib/store'
 
 // ============================================================================
-// /mobile/login — Skeleton login page for the upcoming NewMobility mobile app.
+// /mobile/login — Tela de login do App Usuário NewMobility.
 // ----------------------------------------------------------------------------
-// This is the entry point for the mobile web app (PWA-style). After login we
-// redirect to /mobile/inicio which renders a feature grid based on the user's
-// UserType.mobilePermissions (configured by the admin in the "Tipos de
-// Usuário" tab).
-//
-// Reuses the same /api/auth/login endpoint as the main backoffice so a single
-// account works on both surfaces.
+// REGRAS:
+//   1. Autentica contra o MESMO backend da plataforma (/api/auth/login).
+//      Nenhuma base de usuários paralela.
+//   2. Após login bem-sucedido, valida tipo de conta via /api/mobile/me:
+//        - userType === 'usuario'/'cliente' E !isDriver E !isDelivery
+//          → libera redirect para /mobile/inicio
+//        - motorista / lojista / entregador → mostra TELA DE BLOQUEIO
+//          dentro do próprio /mobile/login (não redireciona para fora).
+//   3. "Criar conta" é a ÚNICA exceção permitida de navegação fora de /mobile
+//      — leva ao cadastro do site principal.
+//   4. Design: paleta azul #155EEF + branco, mobile-first, safe-area aware.
 // ============================================================================
+
+const PRIMARY = '#155EEF'
 
 export default function MobileLoginPage() {
   const router = useRouter()
-  const { login } = useStore()
+  const { login, user } = useStore()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [blockInfo, setBlockInfo] = useState<{
+    reason: 'motorista' | 'entregador' | 'lojista' | 'outro'
+    name: string
+  } | null>(null)
+
+  // If already logged in as a client, skip straight to home
+  useEffect(() => {
+    if (user?.id) {
+      router.replace('/mobile/inicio')
+    }
+  }, [user?.id, router])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!email.trim() || !password) {
-      toast.error('Informe email e senha')
+      toast.error('Informe e-mail/telefone e senha')
       return
     }
     setLoading(true)
+    setBlockInfo(null)
     try {
-      const data = await apiFetch<any>('/auth/login', {
+      // 1. Authenticate against the existing platform backend
+      const data = await apiFetch<{
+        user: Record<string, unknown>
+      }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email: email.trim(), password }),
       })
-      if (data?.user) {
-        login(data.user, data.token)
-        toast.success(`Bem-vindo, ${data.user.name?.split(' ')[0] || 'usuário'}!`)
-        router.push('/mobile/inicio')
-      } else {
+
+      if (!data?.user || !data.user.id) {
         toast.error('Resposta inválida do servidor')
+        return
       }
+
+      // 2. Validate client-type via /api/mobile/me BEFORE storing the session
+      const meResp = await apiFetch<{
+        isClient: boolean
+        blockReason: 'motorista' | 'entregador' | 'lojista' | 'outro' | null
+      }>(`/mobile/me?userId=${data.user.id}`)
+
+      if (!meResp.isClient) {
+        // Non-client account → show in-app block screen (do NOT store session,
+        // do NOT redirect outside /mobile)
+        setBlockInfo({
+          reason: meResp.blockReason || 'outro',
+          name: (data.user.name as string) || 'Usuário',
+        })
+        return
+      }
+
+      // 3. Client account → store session + go to home
+      login(data.user as unknown as import('@/lib/store').UserData)
+      toast.success(`Bem-vindo, ${(data.user.name as string)?.split(' ')[0] || 'usuário'}!`)
+      router.push('/mobile/inicio')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao entrar')
     } finally {
@@ -56,92 +93,254 @@ export default function MobileLoginPage() {
     }
   }
 
+  // ── Block screen (motorista / lojista / entregador) ───────────────────────
+  if (blockInfo) {
+    return <AccountBlockScreen reason={blockInfo.reason} name={blockInfo.name} onBack={() => setBlockInfo(null)} />
+  }
+
+  // ── Login form ────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-emerald-600 via-emerald-500 to-teal-500">
-      {/* Status bar spacer for mobile safe area */}
-      <div className="h-[env(safe-area-inset-top)]" />
+    <div className="min-h-screen flex flex-col bg-white">
+      {/* Safe-area top spacer */}
+      <div style={{ height: 'env(safe-area-inset-top)' }} />
 
-      <div className="flex-1 flex flex-col items-center justify-center p-6">
-        {/* Logo / brand */}
-        <div className="text-center mb-8">
-          <div className="inline-flex h-16 w-16 rounded-2xl bg-white/20 backdrop-blur items-center justify-center mb-3">
-            <Car className="h-8 w-8 text-white" />
+      {/* Blue header zone (top ~40% of screen) */}
+      <div
+        className="px-6 pt-12 pb-20 relative"
+        style={{
+          background: `linear-gradient(160deg, ${PRIMARY} 0%, #0B4FE0 100%)`,
+        }}
+      >
+        {/* Brand */}
+        <div className="flex flex-col items-center text-white">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm mb-4 shadow-lg">
+            <Car className="h-8 w-8 text-white" strokeWidth={2.5} />
           </div>
-          <h1 className="text-2xl font-bold text-white">NewMobility</h1>
-          <p className="text-sm text-white/80 mt-1">App Mobile</p>
+          <h1 className="text-2xl font-bold tracking-tight">NewMobility</h1>
+          <p className="text-sm text-white/75 mt-1">App do Cliente</p>
         </div>
+      </div>
 
-        {/* Login card */}
-        <Card className="w-full max-w-sm shadow-2xl">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Smartphone className="h-5 w-5 text-emerald-600" />
-              Entrar
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleLogin} className="space-y-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="email" className="text-xs">Email</Label>
-                <Input
+      {/* Login card overlapping the header */}
+      <div className="flex-1 px-6 -mt-10">
+        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6">
+          <h2 className="text-lg font-bold text-gray-900 mb-1">Entrar</h2>
+          <p className="text-xs text-gray-500 mb-5">
+            Use a mesma conta do site NewMobility
+          </p>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            {/* Email */}
+            <div className="space-y-1.5">
+              <label htmlFor="email" className="text-xs font-semibold text-gray-700">
+                E-mail ou telefone
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
                   id="email"
-                  type="email"
+                  type="text"
                   inputMode="email"
                   autoComplete="email"
                   placeholder="seu@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={loading}
-                  className="h-11"
+                  className="w-full h-12 pl-10 pr-3 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-0 focus:border-transparent disabled:opacity-60"
+                  style={{ caretColor: PRIMARY }}
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="password" className="text-xs">Senha</Label>
-                <Input
+            </div>
+
+            {/* Password */}
+            <div className="space-y-1.5">
+              <label htmlFor="password" className="text-xs font-semibold text-gray-700">
+                Senha
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
                   id="password"
-                  type="password"
+                  type={showPwd ? 'text' : 'password'}
                   autoComplete="current-password"
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={loading}
-                  className="h-11"
+                  className="w-full h-12 pl-10 pr-10 rounded-xl border border-gray-200 bg-gray-50 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-0 focus:border-transparent disabled:opacity-60"
+                  style={{ caretColor: PRIMARY }}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPwd((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                  aria-label={showPwd ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
-              <Button
-                type="submit"
-                disabled={loading}
-                className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Entrando...
-                  </>
-                ) : (
-                  <>
-                    <Shield className="h-4 w-4" />
-                    Acessar
-                  </>
-                )}
-              </Button>
-            </form>
-
-            <div className="mt-4 pt-3 border-t text-center">
-              <p className="text-[11px] text-muted-foreground">
-                Use a mesma conta do backoffice. As funcionalidades disponíveis
-                dependem do seu tipo de usuário.
-              </p>
             </div>
-          </CardContent>
-        </Card>
 
-        <p className="text-[10px] text-white/60 mt-6 text-center max-w-xs">
-          Skeleton do app mobile — em breve com mapas, corridas e loja integrada.
+            {/* Forgot password */}
+            <div className="text-right">
+              <a
+                href="/mobile/login" // stays in-app; will be a real flow later
+                className="text-xs font-medium hover:underline"
+                style={{ color: PRIMARY }}
+              >
+                Esqueci minha senha
+              </a>
+            </div>
+
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full h-12 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-70 shadow-md hover:shadow-lg active:scale-[0.99]"
+              style={{ backgroundColor: PRIMARY }}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Entrando...
+                </>
+              ) : (
+                'Entrar'
+              )}
+            </button>
+          </form>
+
+          {/* Divider */}
+          <div className="my-5 flex items-center gap-3">
+            <div className="flex-1 h-px bg-gray-100" />
+            <span className="text-[10px] text-gray-400 font-medium">ou</span>
+            <div className="flex-1 h-px bg-gray-100" />
+          </div>
+
+          {/* Create account — ONLY exception allowed outside /mobile */}
+          <a
+            href="/"
+            className="w-full h-11 rounded-xl border border-gray-200 bg-white text-gray-700 text-sm font-semibold flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"
+          >
+            <User className="h-4 w-4" />
+            Criar conta
+          </a>
+        </div>
+
+        <p className="text-[11px] text-gray-400 text-center mt-6 px-4 leading-relaxed">
+          Ao continuar você concorda com os Termos de Uso e a Política de
+          Privacidade da NewMobility.
         </p>
       </div>
 
-      <div className="h-[env(safe-area-inset-bottom)]" />
+      <div style={{ height: 'env(safe-area-inset-bottom)' }} />
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AccountBlockScreen — shown when a motorista/lojista tries to log in here.
+// Stays 100% inside /mobile (no redirect to the main site).
+// ─────────────────────────────────────────────────────────────────────────────
+function AccountBlockScreen({
+  reason,
+  name,
+  onBack,
+}: {
+  reason: 'motorista' | 'entregador' | 'lojista' | 'outro'
+  name: string
+  onBack: () => void
+}) {
+  const PROFILE_MAP: Record<
+    string,
+    { title: string; icon: typeof Car; color: string; description: string }
+  > = {
+    motorista: {
+      title: 'Conta de Motorista',
+      icon: Car,
+      color: '#F59E0B',
+      description:
+        'Este app é exclusivo para clientes. O app do Motorista NewMobility será lançado em breve como um aplicativo separado.',
+    },
+    entregador: {
+      title: 'Conta de Entregador',
+      icon: Car,
+      color: '#F59E0B',
+      description:
+        'Este app é exclusivo para clientes. O app do Entregador NewMobility será lançado em breve como um aplicativo separado.',
+    },
+    lojista: {
+      title: 'Conta de Lojista',
+      icon: Store,
+      color: '#8B5CF6',
+      description:
+        'Este app é exclusivo para clientes. O painel do Lojista NewMobility será lançado em breve como um aplicativo separado.',
+    },
+    outro: {
+      title: 'Tipo de conta não compatível',
+      icon: ShieldAlert,
+      color: '#EF4444',
+      description:
+        'Este app é exclusivo para clientes. Seu tipo de conta não tem permissão de acesso aqui. Contate o suporte para mais informações.',
+    },
+  }
+
+  const info = PROFILE_MAP[reason] || PROFILE_MAP.outro
+  const Icon = info.icon
+
+  return (
+    <div className="min-h-screen flex flex-col bg-white">
+      <div style={{ height: 'env(safe-area-inset-top)' }} />
+
+      <div
+        className="flex-1 flex flex-col items-center justify-center px-6 py-12"
+        style={{
+          background: `linear-gradient(180deg, ${info.color}08 0%, #FFFFFF 60%)`,
+        }}
+      >
+        {/* Icon */}
+        <div
+          className="flex h-24 w-24 items-center justify-center rounded-full mb-6 shadow-sm"
+          style={{ backgroundColor: info.color + '15' }}
+        >
+          <Icon className="h-11 w-11" style={{ color: info.color }} strokeWidth={2} />
+        </div>
+
+        {/* Message */}
+        <div className="text-center max-w-sm">
+          <p className="text-sm text-gray-500 mb-1">Olá, {name.split(' ')[0]}</p>
+          <h1 className="text-xl font-bold text-gray-900 mb-3">{info.title}</h1>
+          <p className="text-sm text-gray-600 leading-relaxed">{info.description}</p>
+        </div>
+
+        {/* Info box */}
+        <div
+          className="mt-8 w-full max-w-sm rounded-xl border p-4 flex items-start gap-3"
+          style={{ borderColor: info.color + '30', backgroundColor: info.color + '08' }}
+        >
+          <ShieldAlert className="h-5 w-5 flex-shrink-0 mt-0.5" style={{ color: info.color }} />
+          <div>
+            <p className="text-xs font-semibold text-gray-900">Acesso bloqueado</p>
+            <p className="text-[11px] text-gray-600 mt-0.5 leading-relaxed">
+              Você foi autenticado com sucesso, mas este perfil não pode usar
+              o app do cliente. Use o app específico do seu perfil quando
+              estiver disponível.
+            </p>
+          </div>
+        </div>
+
+        {/* Back button */}
+        <button
+          onClick={onBack}
+          className="mt-8 w-full max-w-sm h-12 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2 shadow-md"
+          style={{ backgroundColor: PRIMARY }}
+        >
+          Voltar ao login
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div style={{ height: 'env(safe-area-inset-bottom)' }} />
     </div>
   )
 }
