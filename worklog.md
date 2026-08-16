@@ -7821,3 +7821,56 @@ Stage Summary:
 - Build passes locally (exit 0) — ready for LipeHost redeploy
 - 59 route files preserved (no migration needed) — wrapper db kept intact
 - Commits: one combined commit for all 3 fixes
+
+---
+Task ID: USERTYPE-MOBILE-FEATURE
+Agent: Main Orchestrator
+Task: Admin pode criar tipos de usuário + níveis ao criar conta + permissões para app mobile
+
+Work Log:
+- Synced to origin/main (commit 3b5ebd9)
+- Added new Prisma model `UserType` (schema.prisma:342-363) with fields:
+  code, label, description, isActive, sortOrder, defaultEntradaLevel,
+  defaultResidualLevel, defaultVendasLevel, showDriverGoals,
+  mobilePermissions (JSON string), color, icon
+- Ran `DATABASE_URL=neon bun run db:push` — UserType table created on Neon
+- Created API routes:
+  * /api/admin/user-types (GET list + POST create) — admin-only, seeds 6 defaults on first call
+  * /api/admin/user-types/[id] (GET, PUT, DELETE) — admin-only, refuses delete if users reference the type
+  * /api/user-types (public GET, includeMobile=1 returns parsed perms array) — for registration & mobile app
+- Updated /api/admin/users/create to accept qualification + entradaLevel + residualLevel + vendasLevel; auto-applies UserType defaults; auto-sets isDriver/isDelivery flags
+- Created admin-user-types-panel.tsx — full CRUD UI with:
+  * Grid of type cards (icon, label, code, flags, matrix levels, mobile perms preview)
+  * Create/Edit dialog with all fields + 14 mobile permission toggles + icon/color pickers
+  * Delete confirmation (refuses if users reference the type)
+  * Reorder up/down buttons (swaps sortOrder)
+  * Search by code/label/description
+- Added "user-types" tab to admin sidebar (admin-layout.tsx:70) with UserCog icon
+- Added AdminPageKey 'user-types' to store.ts
+- Routed TabsContent "user-types" → AdminUserTypesPanel in admin-page.tsx
+- Updated Create User dialog (admin-page.tsx) — added "Qualificação & Níveis de Matriz" section:
+  * Dropdown of available UserTypes (lazy-loaded from /api/admin/user-types)
+  * Selecting a type auto-fills entradaLevel/residualLevel/vendasLevel from its defaults
+  * Admin can override each level (0-5 entrada, 0-7 residual, 0-9 vendas)
+  * All sent to /api/admin/users/create on submit
+- Added `qualification` and `isDelivery` fields to UserData interface in store.ts
+- Created skeleton mobile app routes:
+  * /mobile/login — branded login screen (emerald gradient, safe-area aware, reuses /api/auth/login)
+  * /mobile/inicio — home screen that reads UserType.mobilePermissions and renders a feature grid (14 feature catalog: dashboard, wallet, ride_request, ride_offer, delivery, store, cashback, career, metas, indicacoes, marketplace, telemedicina, voucher, support); shows locked card if no perms; wallet balance preview card
+
+Validation:
+- ✅ prisma db push — UserType table created on Neon
+- ✅ prisma generate — Prisma Client regenerated
+- ✅ eslint src/ — 0 errors
+- ✅ GET /api/admin/user-types?userId=admin — returns 6 seeded types (motorista, passageiro, passageiro_60, passageiro_pcd, comercio, entregador)
+- ✅ POST /api/admin/user-types — created "Lojista Parceiro" (HTTP 201)
+- ✅ GET /api/user-types?includeMobile=1 — returns 7 active types with mobilePermissions parsed as array
+- ✅ /mobile/login — HTTP 200 (branded login page renders)
+- ✅ /mobile/inicio — HTTP 200 (feature grid + wallet preview render)
+
+Stage Summary:
+- Admin can now create unlimited custom user types (Motorista, Lojista, Parceiro, etc.) — no longer hardcoded to 6
+- Each type carries: matrix level defaults, "Metas" visibility flag, mobile app permissions
+- Create User dialog now lets admin set qualification + matrix levels at creation time (auto-fills defaults from selected type)
+- /mobile/login and /mobile/inicio skeleton ready — reads mobilePermissions from UserType to gate features
+- Foundation laid for the mobile app — next step is to build actual feature screens (ride request, store, etc.) once user sends design images

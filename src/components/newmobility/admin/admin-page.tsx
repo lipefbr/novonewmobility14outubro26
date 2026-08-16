@@ -40,6 +40,7 @@ import { AdminAuditPanel } from '@/components/newmobility/admin/admin-audit-pane
 import { AdminPermissionsPanel } from '@/components/newmobility/admin/admin-permissions-panel'
 import { AdminChallengesPanel } from '@/components/newmobility/admin/admin-challenges-panel'
 import { AdminUsersPanel } from '@/components/newmobility/admin/admin-users-panel'
+import { AdminUserTypesPanel } from '@/components/newmobility/admin/admin-user-types-panel'
 import { TalkMobiManager } from '@/components/newmobility/admin/talkmobi-manager'
 import { AdminTelemedicinaPanel } from '@/components/newmobility/admin/admin-telemedicina-panel'
 import { AdminTalkMobiSubscriptionsPanel } from '@/components/newmobility/admin/admin-talkmobi-subscriptions-panel'
@@ -366,6 +367,7 @@ const emptyEditForm: EditFormData = {
 const adminPageToTab: Record<string, string> = {
   dashboard: 'stats',
   users: 'users',
+  'user-types': 'user-types',
   financial: 'financial',
   'withdrawals-asaas': 'withdrawals-asaas',
   asaas: 'asaas',
@@ -432,14 +434,26 @@ export function AdminPage() {
   const [editUserData, setEditUserData] = useState<EditFormData>(emptyEditForm)
   const [savingUser, setSavingUser] = useState(false)
 
-  // ADM-4 — Create User dialog state. The admin can create a new user with
-  // login + password (and optional role) directly from the Users tab.
+  // ADM-USERTYPE — Create User dialog state. The admin can create a new user with
+  // login + password (and optional role) directly from the Users tab. Now also
+  // supports setting qualification (UserType code) + matrix levels.
   const [createUserDialogOpen, setCreateUserDialogOpen] = useState(false)
   const [creatingNewUser, setCreatingNewUser] = useState(false)
   const [newUserForm, setNewUserForm] = useState({
     name: '', email: '', password: '', phone: '', cpf: '',
     userType: 'usuario', role: 'user', plan: 'free', referredByCode: '',
+    qualification: '' as string,
+    entradaLevel: 0 as number,
+    residualLevel: 0 as number,
+    vendasLevel: 0 as number,
   })
+  // ADM-USERTYPE — dynamic user types (qualifications) loaded from
+  // /api/admin/user-types so the admin picks from the types they created
+  // in the "Tipos de Usuário" tab (not a hardcoded list).
+  const [availableUserTypes, setAvailableUserTypes] = useState<Array<{
+    id: string; code: string; label: string; icon: string | null;
+    defaultEntradaLevel: number; defaultResidualLevel: number; defaultVendasLevel: number;
+  }>>([])
   // Custom roles loaded from /admin/permissions so the Role selects
   // (in both the Create and Edit dialogs) can list any role the admin
   // created in the Permissões tab.
@@ -1684,8 +1698,33 @@ export function AdminPage() {
     setNewUserForm({
       name: '', email: '', password: '', phone: '', cpf: '',
       userType: 'usuario', role: 'user', plan: 'free', referredByCode: '',
+      qualification: '',
+      entradaLevel: 0,
+      residualLevel: 0,
+      vendasLevel: 0,
     })
     setCreateUserDialogOpen(true)
+    // Lazy-load user types if not already loaded.
+    if (availableUserTypes.length === 0 && user?.id) {
+      apiFetch<{ types: Array<{ id: string; code: string; label: string; icon: string | null; defaultEntradaLevel: number; defaultResidualLevel: number; defaultVendasLevel: number }> }>(
+        `/admin/user-types?userId=${user.id}`,
+      )
+        .then((data) => setAvailableUserTypes(data?.types || []))
+        .catch(() => { /* silent — admin can still type without the dropdown */ })
+    }
+  }
+
+  // When the admin selects a qualification in the create-user dialog, auto-fill
+  // the matrix levels from the UserType defaults (admin can still override).
+  const handleQualificationChange = (code: string) => {
+    const t = availableUserTypes.find((x) => x.code === code)
+    setNewUserForm((f) => ({
+      ...f,
+      qualification: code,
+      entradaLevel: t?.defaultEntradaLevel ?? f.entradaLevel,
+      residualLevel: t?.defaultResidualLevel ?? f.residualLevel,
+      vendasLevel: t?.defaultVendasLevel ?? f.vendasLevel,
+    }))
   }
 
   // Submits the Create User form to /api/admin/users/create. The created
@@ -1719,6 +1758,10 @@ export function AdminPage() {
           role: newUserForm.role,
           userType: newUserForm.userType,
           referredByCode: newUserForm.referredByCode || undefined,
+          qualification: newUserForm.qualification || undefined,
+          entradaLevel: Number(newUserForm.entradaLevel) || 0,
+          residualLevel: Number(newUserForm.residualLevel) || 0,
+          vendasLevel: Number(newUserForm.vendasLevel) || 0,
         }),
       })
       toast.success('Usuário criado! Ele pode fazer login com email + senha.')
@@ -2719,6 +2762,11 @@ export function AdminPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* User Types Tab — CRUD for UserType (qualifications + mobile permissions) */}
+        <TabsContent value="user-types" className="mt-4 space-y-4">
+          <AdminUserTypesPanel adminUserId={user?.id || ''} />
         </TabsContent>
 
         {/* Plans Tab */}
@@ -6302,6 +6350,65 @@ export function AdminPage() {
                   onChange={(e) => setNewUserForm((d) => ({ ...d, referredByCode: e.target.value }))}
                   placeholder="opcional"
                 />
+              </div>
+            </div>
+
+            {/* ADM-USERTYPE — Qualification (from dynamic UserType table) + matrix levels.
+                When the admin picks a qualification, the default levels from that
+                UserType are auto-filled (but can be overridden below). */}
+            <div className="rounded-lg border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/40 dark:bg-emerald-950/10 p-3 space-y-3">
+              <div className="flex items-center gap-1.5">
+                <Shield className="h-3.5 w-3.5 text-emerald-600" />
+                <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                  Qualificação & Níveis de Matriz
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Qualificação (Tipo de conta)</Label>
+                <select
+                  value={newUserForm.qualification}
+                  onChange={(e) => handleQualificationChange(e.target.value)}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">— Nenhuma —</option>
+                  {availableUserTypes.map((t) => (
+                    <option key={t.id} value={t.code}>
+                      {t.icon || '👤'} {t.label} ({t.code})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-muted-foreground">
+                  Gerencie os tipos em "Tipos de Usuário" no menu lateral. Selecionar um tipo preenche os níveis padrão abaixo.
+                </p>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground">Nível Entrada</Label>
+                  <Input
+                    type="number" min={0} max={5}
+                    value={newUserForm.entradaLevel}
+                    onChange={(e) => setNewUserForm((d) => ({ ...d, entradaLevel: Number(e.target.value) }))}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground">Nível Residual</Label>
+                  <Input
+                    type="number" min={0} max={7}
+                    value={newUserForm.residualLevel}
+                    onChange={(e) => setNewUserForm((d) => ({ ...d, residualLevel: Number(e.target.value) }))}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground">Nível Vendas</Label>
+                  <Input
+                    type="number" min={0} max={9}
+                    value={newUserForm.vendasLevel}
+                    onChange={(e) => setNewUserForm((d) => ({ ...d, vendasLevel: Number(e.target.value) }))}
+                    className="h-9 text-sm"
+                  />
+                </div>
               </div>
             </div>
           </div>

@@ -5,7 +5,16 @@ import { success, error, hashPassword, generateReferralCode, sanitizeUser } from
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { userId, name, email, phone, cpf, plan, role, password, referredByCode } = body
+    const {
+      userId, name, email, phone, cpf, plan, role, password, referredByCode,
+      // ADM-USERTYPE — new fields: qualification (UserType code) + matrix
+      // levels. When qualification matches a UserType row, its defaults are
+      // applied unless the admin explicitly overrides them in the request.
+      qualification,
+      entradaLevel,
+      residualLevel,
+      vendasLevel,
+    } = body
 
     if (!userId) return error('userId is required', 400)
 
@@ -47,6 +56,32 @@ export async function POST(req: NextRequest) {
 
     const hashedPassword = hashPassword(password)
 
+    // ADM-USERTYPE — if qualification matches a UserType row, apply its
+    // default matrix levels (entradaLevel/residualLevel/vendasLevel) when
+    // the admin did not explicitly pass those values. This lets the admin
+    // pick "Motorista" and automatically get the right level config.
+    let resolvedEntradaLevel = Number(entradaLevel)
+    let resolvedResidualLevel = Number(residualLevel)
+    let resolvedVendasLevel = Number(vendasLevel)
+    if (qualification) {
+      const userType = await prisma.userType.findUnique({ where: { code: qualification } })
+      if (userType) {
+        if (Number.isNaN(resolvedEntradaLevel)) resolvedEntradaLevel = userType.defaultEntradaLevel
+        if (Number.isNaN(resolvedResidualLevel)) resolvedResidualLevel = userType.defaultResidualLevel
+        if (Number.isNaN(resolvedVendasLevel)) resolvedVendasLevel = userType.defaultVendasLevel
+        // Also auto-set isDriver/isDelivery flags based on the type code
+        // so the backoffice "Metas" card shows up for these users.
+      }
+    }
+    if (Number.isNaN(resolvedEntradaLevel)) resolvedEntradaLevel = 0
+    if (Number.isNaN(resolvedResidualLevel)) resolvedResidualLevel = 0
+    if (Number.isNaN(resolvedVendasLevel)) resolvedVendasLevel = 0
+
+    // Derive isDriver/isDelivery from qualification for backoffice "Metas"
+    // visibility (item 7 — Metas card only for motorista/entregador).
+    const isDriver = qualification === 'motorista'
+    const isDelivery = qualification === 'entregador'
+
     const newUser = await prisma.user.create({
       data: {
         name,
@@ -59,6 +94,14 @@ export async function POST(req: NextRequest) {
         referralCode,
         referredById,
         isActive: true,
+        // ADM-USERTYPE — persist qualification + matrix levels so the admin
+        // can pre-configure a user's network position at creation time.
+        qualification: qualification || null,
+        entradaLevel: resolvedEntradaLevel,
+        residualLevel: resolvedResidualLevel,
+        vendasLevel: resolvedVendasLevel,
+        isDriver,
+        isDelivery,
       },
     })
 

@@ -38,6 +38,7 @@ import {
   Smartphone,
   HeartPulse,
   ClipboardCheck,
+  UserCog,
 } from 'lucide-react'
 import { useStore, type AdminPageKey } from '@/lib/store'
 import { useAdminPermissions } from '@/lib/admin-permissions'
@@ -66,6 +67,7 @@ interface AdminNavItem {
 const adminNavItems: AdminNavItem[] = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, description: 'Visão geral e estatísticas', group: 'main' },
   { key: 'users', label: 'Usuários', icon: Users, description: 'Gerenciamento de usuários', group: 'main' },
+  { key: 'user-types', label: 'Tipos de Usuário', icon: UserCog, description: 'Criar e gerenciar tipos de conta (Motorista, Lojista, etc.) + permissões mobile', group: 'main' },
   { key: 'financial', label: 'Indicador', icon: Wallet, description: 'Transações, saques e cashback', group: 'main' },
   { key: 'withdrawals-asaas', label: 'Saques Asaas', icon: Banknote, description: 'Aprovar saques via Asaas (PIX/TED)', group: 'main' },
   { key: 'plans', label: 'Planos & Preços', icon: CreditCard, description: 'Planos e matrizes', group: 'main' },

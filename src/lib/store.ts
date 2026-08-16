@@ -39,6 +39,7 @@ export type AuthView = 'login' | 'register'
 export type AdminPageKey =
   | 'dashboard'
   | 'users'
+  | 'user-types'
   | 'financial'
   | 'plans'
   | 'gratifications'
@@ -90,6 +91,11 @@ export interface UserData {
   personalPoints: number
   stars: number
   isDriver: boolean
+  isDelivery?: boolean
+  // ADM-USERTYPE — qualification code (matches UserType.code in the DB).
+  // Set when the admin picks a UserType in the Create User dialog or when
+  // the user self-registers with a qualification.
+  qualification?: string | null
   userType?: 'usuario' | 'lojista' | 'motorista' | string
   profileImage: string | null
   createdAt: string

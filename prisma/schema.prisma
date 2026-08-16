@@ -320,6 +320,48 @@ model SystemConfig {
   updatedAt   DateTime @updatedAt
 }
 
+// ============================================================================
+// UserType — Tipos de Usuário gerenciados pelo admin
+// ----------------------------------------------------------------------------
+// Permite que o admin crie/edite/delete tipos de usuário dinamicamente
+// (ex: Motorista, Passageiro, Passageiro 60+, Comércio, Entregador, Lojista,
+// etc.) sem precisar mexer no código. Cada tipo carrega:
+//   - defaultEntradaLevel/Residual/Vendas: níveis padrão de matriz aplicados
+//     quando o admin cria um usuário desse tipo.
+//   - showDriverGoals: se true, usuários desse tipo veem o card "Metas" no
+//     backoffice (item 7 — visível só para motorista/entregador).
+//   - mobilePermissions: JSON array de feature keys que o tipo pode acessar
+//     no futuro app mobile (/mobile/login, /mobile/inicio). Ex:
+//     ["dashboard","wallet","ride_request","store","cashback","career"].
+//   - color/icon: opcionais para badges visuais.
+//
+// O User.qualification continua sendo uma String livre — quando o admin
+// seleciona um UserType, o código desse tipo é gravado em User.qualification
+// e os níveis padrão são aplicados a User.entradaLevel/residualLevel/vendasLevel.
+// ============================================================================
+model UserType {
+  id                   String   @id @default(cuid())
+  code                 String   @unique
+  label                String
+  description          String?
+  isActive             Boolean  @default(true)
+  sortOrder            Int      @default(99)
+  // Default matrix levels for users of this type (admin can override per-user)
+  defaultEntradaLevel  Int      @default(0)
+  defaultResidualLevel Int      @default(0)
+  defaultVendasLevel   Int      @default(0)
+  // Whether users of this type should see the "Metas" driver-goals card
+  showDriverGoals      Boolean  @default(false)
+  // Mobile app permissions — JSON array of feature keys this type can access
+  // in the upcoming /mobile/* app (e.g. ["dashboard","wallet","ride","store"])
+  mobilePermissions    String   @default("[]")
+  // Optional visual: hex color + emoji icon for badges
+  color                String?
+  icon                 String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
 model WithdrawalRequest {
   id              String    @id @default(cuid())
   userId          String
