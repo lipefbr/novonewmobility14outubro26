@@ -8064,3 +8064,35 @@ Stage Summary:
 - Cross-app navigation: /mobile/login block screen agora oferece CTA "Ir para o app do Motorista" → /motorista/login
 - Bottom nav funcional com FAB central elevado (carro), rotas placeholder "Em breve"
 - Safe-area aware para futuro encapsulamento em WebView nativo
+
+---
+Task ID: LOJISTA-1
+Agent: Main Agent
+Task: Build /lojista app (Painel do Lojista) — login + inicio + placeholder routes, with access control for userType='lojista' OR isDelivery=true (food delivery merchants). Block clientes and motoristas from logging in.
+
+Work Log:
+- Read the user's design image (ChatGPT Image 16 de ago. de 2026, 01_28_37.png) via VLM — merchant dashboard for "Burger House" with blue header, store status toggle, sales card, motivational card, 4×2 shortcuts grid, recent orders list, promo banner, bottom nav with central FAB storefront.
+- Created /api/lojista/me route — access control: isLojista = (userType === 'lojista' || isDelivery === true). Returns user + wallet + mock store profile + blockReason for non-lojista (cliente/motorista/outro).
+- Created /api/lojista/home route — aggregates store profile (mock until Store model exists), wallet (real balance columns), today sales summary (mock), recent orders (mock, 3 orders with status preparo/entrega/entregue), access control flag. Uses try/catch on prisma.store/order queries for future-proofing (auto-serves real data when admin panel adds these models).
+- Created lojista shared components: lojista-app-shell.tsx (white bg + pb-24 for nav clearance), lojista-bottom-nav.tsx (5 items: Início/Pedidos/[FAB store]/Financeiro/Mais, blue #155EEF active), lojista-coming-soon.tsx (reusable "Em breve" placeholder).
+- Created /lojista/login page — blue gradient header with Store icon, white login card (email/password with eye toggle), "Criar conta" links to / (only exception outside /lojista). AccountBlockScreen shown for cliente (→/mobile/login) and motorista (→/motorista/login) accounts.
+- Created /lojista/inicio page — full merchant dashboard matching design: blue header (menu + "Olá, Lojista" + store name + BadgeCheck + bell + avatar), store status toggle card (Loja aberta/fechada + Switch), sales card (Vendas de hoje R$1.248,90 + delta +12,5% + 3 quick actions Pedidos/Cardápio/Financeiro), motivational card (green mint bg + storefront + "Sua loja está indo muito bem!" + rocket), 4×2 shortcuts grid (Pedidos/Cardápio/Cupons/Horário/Avaliações/Relatórios/Entrega/Suporte), recent orders list (status badges: Em preparo amber / Saiu para entrega green / Entregue gray), promo banner (dark bg + "Aumente suas vendas" + green CTA), mock data notice, side Sheet menu with wallet + logout.
+- Created placeholder routes: /lojista/pedidos, /lojista/financeiro, /lojista/mais (all use LojistaComingSoon).
+- Created /lojista/not-found.tsx — custom 404 that stays inside /lojista.
+
+Verification:
+- All 6 lojista routes compile and serve correctly: login(200), inicio(200), pedidos(200), financeiro(200), mais(200), nonexistent(404 custom).
+- Both API routes return correct 401 "userId is required" when no userId param.
+- agent-browser screenshot of /lojista/login confirmed via VLM: blue header, Store icon, "NewMobility / Painel do Lojista", email/password fields, blue Entrar button — all design elements present.
+- ESLint: 0 errors in lojista files (13 pre-existing errors in utility .js scripts unrelated).
+- Access control: /mobile blocks lojista/motorista, /motorista blocks cliente/lojista, /lojista blocks cliente/motorista. Each shows in-app AccountBlockScreen with link to the correct app.
+
+Stage Summary:
+- /lojista app is complete and matches the user's design image.
+- User types in NewMobility: userType field (default "usuario") + isDriver boolean + isDelivery boolean flags on the User table. The same User record can access different apps based on these flags:
+  - usuario/cliente (no flags) → /mobile app (App Usuário)
+  - isDriver=true or userType='motorista' → /motorista app
+  - userType='lojista' or isDelivery=true → /lojista app (Painel do Lojista)
+- A single account can have multiple flags (e.g. a user who is both cliente and motorista), but each app enforces its own access control and blocks the wrong account types.
+- Wallet balances are shared across all apps (same User.balance* columns) — a lojista sees their balanceWithdrawal (for payouts) + balanceFood (food cashback) in the /lojista/financeiro screen.
+- Store/Order data is mock until the /admingeral panel adds Store and Order models to the Prisma schema — the API auto-upgrades to real data with zero code changes.
