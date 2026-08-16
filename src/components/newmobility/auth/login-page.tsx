@@ -10,9 +10,10 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
-import { Eye, EyeOff, Mail, Lock, ArrowRight, DollarSign, TrendingUp, Users, Smartphone, Apple, Shield, Fingerprint, Globe, Lock as LockIcon, Zap, ChevronRight } from 'lucide-react'
+import { Eye, EyeOff, Mail, Lock, ArrowRight, DollarSign, TrendingUp, Users, Smartphone, Apple, Shield, Fingerprint, Globe, Lock as LockIcon, Zap, ChevronRight, Car, Store, LayoutDashboard, User as UserIcon } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
+import Link from 'next/link'
 import { ResetPasswordFlow } from './reset-password-flow'
 
 function mapApiUserToUserData(apiUser: Record<string, unknown>, balances?: Record<string, number>): UserData {
@@ -436,6 +437,67 @@ export function LoginPage() {
                     </span>
                   )}
                 </Button>
+              </div>
+
+              {/* Quick access to ecosystem apps */}
+              <div className="mt-5 pt-5 border-t border-gray-200">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 text-center">
+                  Acessar outros painéis
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Link
+                    href="/mobile"
+                    className="group flex items-center gap-2 p-3 rounded-lg border-2 border-sky-200 hover:border-sky-400 hover:bg-sky-50 transition-all"
+                  >
+                    <div className="p-1.5 rounded-md bg-sky-100 text-sky-600 group-hover:scale-110 transition-transform">
+                      <UserIcon className="h-4 w-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-gray-900">App Cliente</p>
+                      <p className="text-[10px] text-gray-500 truncate">Passageiro / usuário</p>
+                    </div>
+                    <ChevronRight className="h-3 w-3 text-gray-400 group-hover:text-sky-600" />
+                  </Link>
+                  <Link
+                    href="/motorista"
+                    className="group flex items-center gap-2 p-3 rounded-lg border-2 border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50 transition-all"
+                  >
+                    <div className="p-1.5 rounded-md bg-emerald-100 text-emerald-600 group-hover:scale-110 transition-transform">
+                      <Car className="h-4 w-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-gray-900">App Motorista</p>
+                      <p className="text-[10px] text-gray-500 truncate">Condutor parceiro</p>
+                    </div>
+                    <ChevronRight className="h-3 w-3 text-gray-400 group-hover:text-emerald-600" />
+                  </Link>
+                  <Link
+                    href="/lojista"
+                    className="group flex items-center gap-2 p-3 rounded-lg border-2 border-amber-200 hover:border-amber-400 hover:bg-amber-50 transition-all"
+                  >
+                    <div className="p-1.5 rounded-md bg-amber-100 text-amber-600 group-hover:scale-110 transition-transform">
+                      <Store className="h-4 w-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-gray-900">Painel Lojista</p>
+                      <p className="text-[10px] text-gray-500 truncate">Comerciante</p>
+                    </div>
+                    <ChevronRight className="h-3 w-3 text-gray-400 group-hover:text-amber-600" />
+                  </Link>
+                  <Link
+                    href="/admingeral"
+                    className="group flex items-center gap-2 p-3 rounded-lg border-2 border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-all"
+                  >
+                    <div className="p-1.5 rounded-md bg-slate-100 text-slate-700 group-hover:scale-110 transition-transform">
+                      <LayoutDashboard className="h-4 w-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-gray-900">Admin Geral</p>
+                      <p className="text-[10px] text-gray-500 truncate">Gestão do app</p>
+                    </div>
+                    <ChevronRight className="h-3 w-3 text-gray-400 group-hover:text-slate-700" />
+                  </Link>
+                </div>
               </div>
 
               {/* Trust badges */}

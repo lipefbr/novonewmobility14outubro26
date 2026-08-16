@@ -1,12 +1,13 @@
 'use client'
 
+import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
   Smartphone, Apple, Download, QrCode, MapPin, Navigation,
   Shield, CreditCard, Star, Bell, Clock, Car, User,
-  CheckCircle2, Zap, RefreshCw
+  CheckCircle2, Zap, RefreshCw, Store, LayoutDashboard, ArrowRight, Globe
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 
@@ -33,15 +34,132 @@ const whatsNew = [
   { version: '3.1.5', date: 'Jan 2025', items: ['Correção de bugs', 'Performance aprimorada', 'Novos mapas'] },
 ]
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Web Apps — links to the actual Next.js routes for each app in the ecosystem.
+// These are the primary entry points for end users, drivers, merchants and
+// the general admin. Clicking a card navigates to the corresponding route,
+// which has its own login screen and access control.
+// ─────────────────────────────────────────────────────────────────────────────
+const WEB_APPS = [
+  {
+    href: '/mobile',
+    title: 'App Cliente',
+    subtitle: 'Passageiro / Usuário',
+    desc: 'Solicite corridas, peça comida, faça compras e gerencie seu CashBack.',
+    icon: User,
+    gradient: 'from-sky-500 to-blue-600',
+    accent: 'bg-sky-100 text-sky-600',
+    border: 'border-sky-200 hover:border-sky-400',
+    badge: 'v3.2.0',
+  },
+  {
+    href: '/motorista',
+    title: 'App Motorista',
+    subtitle: 'Condutor parceiro',
+    desc: 'Receba corridas em tempo real, acompanhe ganhos e metas diárias.',
+    icon: Car,
+    gradient: 'from-emerald-500 to-emerald-600',
+    accent: 'bg-emerald-100 text-emerald-600',
+    border: 'border-emerald-200 hover:border-emerald-400',
+    badge: 'v3.2.0',
+  },
+  {
+    href: '/lojista',
+    title: 'Painel do Lojista',
+    subtitle: 'Comerciante parceiro',
+    desc: 'Gerencie sua loja, produtos, pedidos e financeiro em um só lugar.',
+    icon: Store,
+    gradient: 'from-amber-500 to-orange-600',
+    accent: 'bg-amber-100 text-amber-600',
+    border: 'border-amber-200 hover:border-amber-400',
+    badge: 'v1.0.0',
+  },
+  {
+    href: '/admingeral',
+    title: 'Admin Geral',
+    subtitle: 'Gestão do ecossistema',
+    desc: 'Configure categorias, lojas, banners, usuários e todo o app.',
+    icon: LayoutDashboard,
+    gradient: 'from-slate-700 to-slate-900',
+    accent: 'bg-slate-100 text-slate-700',
+    border: 'border-slate-200 hover:border-slate-400',
+    badge: 'Admin',
+  },
+]
+
 export function AppsPage() {
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-bold text-gray-900">Acesso aos Apps</h2>
-        <p className="text-sm text-gray-500">Faça download dos aplicativos NewMobility</p>
+        <p className="text-sm text-gray-500">
+          Acesse os painéis web dos apps NewMobility ou faça download dos aplicativos nativos
+        </p>
       </div>
 
-      {/* Motorista App */}
+      {/* ────────────────────────────────────────────────────────────────────
+          WEB APPS — versões web acessíveis pelo navegador
+          (links reais para /mobile, /motorista, /lojista, /admingeral)
+      ──────────────────────────────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <Globe className="h-4 w-4 text-blue-600" />
+          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">
+            Versões Web (acesso pelo navegador)
+          </h3>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {WEB_APPS.map((app, i) => (
+            <motion.div
+              key={app.href}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.05 }}
+            >
+              <Link href={app.href} className="block group">
+                <Card
+                  className={`shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md ${app.border} border-2`}
+                >
+                  <div className={`bg-gradient-to-r ${app.gradient} h-1.5`} />
+                  <CardContent className="p-5">
+                    <div className="flex items-start gap-4">
+                      <div className={`p-3 rounded-xl ${app.accent} shrink-0`}>
+                        <app.icon className="h-6 w-6" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <h4 className="font-bold text-gray-900 text-base">{app.title}</h4>
+                          <Badge variant="outline" className="text-[10px]">
+                            {app.badge}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-gray-500 mb-2">{app.subtitle}</p>
+                        <p className="text-sm text-gray-600 leading-snug">{app.desc}</p>
+                        <div className="flex items-center gap-1 mt-3 text-blue-600 text-sm font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+                          Acessar painel
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+
+      {/* Divider */}
+      <div className="border-t border-gray-200 pt-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Smartphone className="h-4 w-4 text-emerald-600" />
+          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">
+            Apps Nativos (download)
+          </h3>
+        </div>
+      </div>
+
+      {/* Motorista App — Native download */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="shadow-sm overflow-hidden">
           <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 h-2" />
@@ -89,7 +207,7 @@ export function AppsPage() {
         </Card>
       </motion.div>
 
-      {/* Passageiro App */}
+      {/* Passageiro App — Native download */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
         <Card className="shadow-sm overflow-hidden">
           <div className="bg-gradient-to-r from-teal-500 to-teal-600 h-2" />
