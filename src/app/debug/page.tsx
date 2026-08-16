@@ -527,7 +527,7 @@ export default function DebugPage() {
           <CardContent className="space-y-4">
             <div className="p-3 rounded bg-slate-950 border border-slate-800">
               <p className="text-xs text-slate-300 mb-2">
-                Testa <strong>todas as {28} rotas de página</strong> do app fazendo fetch HTTP interno e reporta:
+                Testa <strong>todas as {pagesResult?.summary.total || 33} rotas de página</strong> do app fazendo fetch HTTP interno e reporta:
               </p>
               <ul className="text-xs text-slate-400 space-y-0.5 ml-4 list-disc">
                 <li>Status HTTP (200, 404, 500, etc.)</li>
