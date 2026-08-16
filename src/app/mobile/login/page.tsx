@@ -227,6 +227,37 @@ export default function MobileLoginPage() {
             <User className="h-4 w-4" />
             Criar conta
           </a>
+
+          {/* Demo credentials — cliente */}
+          <div className="mt-4 p-3 rounded-xl border border-sky-100 bg-sky-50/60">
+            <div className="flex items-center gap-1.5 mb-2">
+              <span className="inline-flex items-center rounded-full bg-sky-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                Demo
+              </span>
+              <p className="text-[11px] font-semibold text-gray-700">
+                Conta de cliente para teste
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5 text-[11px] text-gray-600">
+              <Mail className="h-3 w-3" />
+              <span className="font-mono">cliente@newmobility.com</span>
+            </div>
+            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-gray-600">
+              <Lock className="h-3 w-3" />
+              <span className="font-mono">123456</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setEmail('cliente@newmobility.com')
+                setPassword('123456')
+              }}
+              className="mt-2 w-full h-9 rounded-lg text-white text-[11px] font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-[0.99]"
+              style={{ backgroundColor: PRIMARY }}
+            >
+              Preencher automaticamente
+            </button>
+          </div>
         </div>
 
         <p className="text-[11px] text-gray-400 text-center mt-6 px-4 leading-relaxed">

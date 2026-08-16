@@ -71,13 +71,10 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  // Ignore ESLint errors during build — ESLint is run separately (bun run lint).
-  // In Next.js 16 ESLint no longer runs during `next build` by default, but we
-  // keep this flag explicitly so a future opt-in (or LipeHost's build pipeline)
-  // can never block a deploy on a lint rule.
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  // NOTE: the `eslint` key is NOT supported in Next.js 16 — it was removed.
+  // ESLint no longer runs during `next build` (run `bun run lint` separately),
+  // so there is nothing to ignore. Keeping this key would emit a
+  // "Unrecognized key(s): 'eslint'" warning on every dev/build start.
 
   reactStrictMode: false,
 

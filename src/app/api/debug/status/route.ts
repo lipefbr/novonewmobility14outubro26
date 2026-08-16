@@ -64,7 +64,6 @@ export async function GET() {
       NEXTAUTH_URL: maskValue(process.env.NEXTAUTH_URL),
       NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET ? '(set)' : '(not set)',
       ASAAS_API_KEY: process.env.ASAAS_API_KEY ? '(set)' : '(not set)',
-      ZAI_API_KEY: process.env.ZAI_API_KEY ? '(set)' : '(not set)',
     },
     db: {
       urlPresent: !!process.env.DATABASE_URL,

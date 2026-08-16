@@ -51,7 +51,6 @@ interface StatusResponse {
     NEXTAUTH_URL: string
     NEXTAUTH_SECRET: string
     ASAAS_API_KEY: string
-    ZAI_API_KEY: string
   }
   db: {
     urlPresent: boolean

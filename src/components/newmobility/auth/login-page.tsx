@@ -372,7 +372,7 @@ export function LoginPage() {
                 </div>
                 <div className="flex items-center gap-2 text-xs text-gray-600">
                   <Mail className="h-3 w-3" />
-                  <span className="font-mono">carlos.silva@email.com</span>
+                  <span className="font-mono">cliente@newmobility.com</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-gray-600 mt-0.5">
                   <Lock className="h-3 w-3" />
@@ -382,7 +382,7 @@ export function LoginPage() {
                   type="button"
                   size="sm"
                   className="mt-3 w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold"
-                  onClick={() => handleLogin('carlos.silva@email.com', '123456')}
+                  onClick={() => handleLogin('cliente@newmobility.com', '123456')}
                   disabled={loading}
                 >
                   {loading ? (
@@ -416,13 +416,13 @@ export function LoginPage() {
                 </div>
                 <div className="flex items-center gap-2 text-xs text-gray-600 mt-0.5">
                   <Lock className="h-3 w-3" />
-                  <span className="font-mono">123456</span>
+                  <span className="font-mono">admin123</span>
                 </div>
                 <Button
                   type="button"
                   size="sm"
                   className="mt-3 w-full bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold"
-                  onClick={() => handleLogin('admin@newmobility.com', '123456', true)}
+                  onClick={() => handleLogin('admin@newmobility.com', 'admin123', true)}
                   disabled={loading}
                 >
                   {loading ? (
@@ -446,7 +446,7 @@ export function LoginPage() {
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   <Link
-                    href="/mobile"
+                    href="/mobile/login"
                     className="group flex items-center gap-2 p-3 rounded-lg border-2 border-sky-200 hover:border-sky-400 hover:bg-sky-50 transition-all"
                   >
                     <div className="p-1.5 rounded-md bg-sky-100 text-sky-600 group-hover:scale-110 transition-transform">
@@ -459,7 +459,7 @@ export function LoginPage() {
                     <ChevronRight className="h-3 w-3 text-gray-400 group-hover:text-sky-600" />
                   </Link>
                   <Link
-                    href="/motorista"
+                    href="/motorista/login"
                     className="group flex items-center gap-2 p-3 rounded-lg border-2 border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50 transition-all"
                   >
                     <div className="p-1.5 rounded-md bg-emerald-100 text-emerald-600 group-hover:scale-110 transition-transform">
@@ -472,7 +472,7 @@ export function LoginPage() {
                     <ChevronRight className="h-3 w-3 text-gray-400 group-hover:text-emerald-600" />
                   </Link>
                   <Link
-                    href="/lojista"
+                    href="/lojista/login"
                     className="group flex items-center gap-2 p-3 rounded-lg border-2 border-amber-200 hover:border-amber-400 hover:bg-amber-50 transition-all"
                   >
                     <div className="p-1.5 rounded-md bg-amber-100 text-amber-600 group-hover:scale-110 transition-transform">
@@ -485,7 +485,7 @@ export function LoginPage() {
                     <ChevronRight className="h-3 w-3 text-gray-400 group-hover:text-amber-600" />
                   </Link>
                   <Link
-                    href="/admingeral"
+                    href="/admingeral/login"
                     className="group flex items-center gap-2 p-3 rounded-lg border-2 border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-all"
                   >
                     <div className="p-1.5 rounded-md bg-slate-100 text-slate-700 group-hover:scale-110 transition-transform">
