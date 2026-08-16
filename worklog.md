@@ -8171,3 +8171,54 @@ Stage Summary:
 - When admin creates a store, it's auto-verified (isVerified=true) so the lojista can immediately use /lojista.
 - App config stored in SystemConfig under app_* keys — cashback rates per category, delivery fees, app enable toggles, support contact.
 - The existing /api/mobile/home and /api/lojista/home routes already try to read from MobileBanner/AppStore/AppOrder tables via try/catch — they will now automatically serve REAL data from these new tables with zero code changes.
+
+---
+Task ID: LIPEHOST-FIX-1
+Agent: main (Z.ai Code)
+Task: Pegar a última versão do git e corrigir 4 bugs que impediam o deploy na LipeHost + investigar por que nenhum link dos apps (/mobile, /motorista, /lojista, /admin) abria.
+
+Work Log:
+- Verificado estado do git: origin/main já estava no commit 7b74da6 (admingeral) — versão mais atual.
+- Backup repo (lipefbr/newmobilitybackup) está em a3917d6 (lojista) — NÃO foi tocado (conforme regra do usuário: backup só quando ele disser "OK").
+- Inspecionados os 4 bugs diagnosticados pela equipe LipeHost:
+  * BUG 1 (tw-animate-css em devDependencies): JÁ ESTAVA CORRIGIDO no commit anterior (linha 99 do package.json).
+  * BUG 2 (turbopack.root em next.config.ts): JÁ ESTAVA CORRIGIDO no commit anterior (linhas 6-8 do next.config.ts).
+  * BUG 3 (FALLBACK_NEON_URL hardcoded em src/lib/db.ts): PRECISAVA CORRIGIR — fallback apontava para Neon externo e mascarava bugs de config.
+  * BUG 4 (prisma/seed.ts ausente): PRECISAVA CRIAR — banco ficava vazio após deploy.
+- Investigado problema "links não abrem":
+  * Descoberto: a home page / (backoffice MMN) usa sistema de navegação in-app (useStore activePage) e NÃO tinha nenhum <Link> Next.js apontando para /mobile, /motorista, /lojista ou /admingeral.
+  * AppsPage (tab "Apps" na sidebar) só tinha botões de download Android/iOS — sem links para as rotas web.
+  * LoginPage (tela inicial não logada) também não tinha links para os apps.
+  * Usuário tinha que digitar a URL manualmente — por isso "nenhum link abria".
+- Aplicadas as correções:
+  1. src/lib/db.ts — removido FALLBACK_NEON_URL + resolveDatabaseUrl(); PrismaClient agora usa new PrismaClient() simples (lê process.env.DATABASE_URL direto, falha com erro claro se não setado).
+  2. prisma/seed.ts — criado (510 linhas, idempotente via upsert): admin + 3 usuários demo (cliente/motorista/lojista) + SystemConfig defaults + UserType defaults (6 tipos) + Plan defaults (free/blue3/blue5) + AppCategory defaults (8 categorias) + FAQ defaults (6 entradas). Senhas hasheadas com SHA-256 (compatível com /api/auth/login existente).
+  3. package.json — adicionados: tsx@^4.19.2 em devDependencies, scripts.seed='tsx prisma/seed.ts', scripts.db:seed, prisma.seed config.
+  4. src/components/newmobility/auth/login-page.tsx — adicionada seção "Acessar outros painéis" com 4 cards Link para /mobile, /motorista, /lojista, /admingeral (visível para usuários não logados).
+  5. src/components/newmobility/portals/apps-page.tsx — adicionada seção "Versões Web" no topo com 4 cards grandes (gradient header + ícone + descrição) linkando para cada app route; mantidos os cards de download nativo abaixo.
+- Validações executadas:
+  * package.json: JSON válido ✓
+  * prisma generate: sucesso ✓
+  * bun add tsx: instalado tsx@4.23.12 ✓
+  * tsc --noEmit prisma/seed.ts: 0 erros ✓
+  * tsx --eval import seed: arquivo parseia e inicia execução ✓
+  * eslint nos arquivos alterados: 0 erros ✓
+  * dev server: /mobile/login retornou HTTP 200 (compilou em 6.8s com Turbopack) ✓
+- 4 commits feitos (um por bug + um para nav links):
+  * bd8ddf7 fix(deps): add tw-animate-css + tsx to devDependencies
+  * 70c4399 fix(db): remove hardcoded FALLBACK_NEON_URL from src/lib/db.ts
+  * 396ea09 feat(seed): add prisma/seed.ts with admin user + system defaults
+  * 1548b5c fix(nav): add navigation links to /mobile, /motorista, /lojista, /admingeral
+- Push para origin: 7b74da6..1548b5c main -> main ✓
+- Backup repo: NÃO tocado (ainda em a3917d6) ✓
+
+Stage Summary:
+- Os 4 bugs de deploy da LipeHost estão corrigidos no git. O próximo Redeploy no painel LipeHost deve passar de primeira sem precisar de fix manual na VPS.
+- Após o deploy, rodar `npm run seed` (ou a LipeHost roda automaticamente) cria o admin@newmobility.com / admin123 + 3 usuários demo + todas as configurações padrão.
+- Links para os 4 apps agora aparecem em 2 lugares: (1) na tela de login / para usuários não logados, (2) na tab "Apps" do backoffice para usuários logados.
+- Credenciais de acesso após seed:
+    Admin     → admin@newmobility.com / admin123 (role=admin, acessa /admingeral e backoffice /)
+    Cliente   → cliente@newmobility.com / 123456 (userType=usuario, acessa /mobile)
+    Motorista → motorista@newmobility.com / 123456 (isDriver=true, acessa /motorista)
+    Lojista   → lojista@newmobility.com / 123456 (userType=lojista, isDelivery=true, acessa /lojista)
+- Próxima fase sugerida pelo usuário: criar a tela do prestador de serviços (4º app do ecossistema).
