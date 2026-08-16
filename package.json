@@ -21,6 +21,9 @@
     "seed": "tsx prisma/seed.ts"
   },
   "workspaces": [],
+  "overrides": {
+    "@auth/core": "0.34.2"
+  },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
@@ -70,7 +73,7 @@
     "input-otp": "^1.4.2",
     "lucide-react": "^0.525.0",
     "next": "16.1.3",
-    "next-auth": "^4.24.11",
+    "next-auth": "4.24.11",
     "next-intl": "^4.3.4",
     "next-themes": "^0.4.6",
     "prisma": "^6.11.1",
@@ -104,6 +107,6 @@
     "tailwindcss": "^4",
     "tsx": "^4.19.2",
     "tw-animate-css": "^1.4.0",
-    "typescript": "^5"
+    "typescript": "^5.7.0"
   }
 }
