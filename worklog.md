@@ -8363,3 +8363,53 @@ Stage Summary:
 - A correção é dupla (belt and suspenders): (1) pin da versão do Next.js garante consistência ambiente-local ↔ VPS, (2) ESM-safe projectRoot detection garante que `turbopack.root` sempre resolve para um path absoluto não-vazio.
 - Importante: o `bun.lock` local já tem 16.1.3 pinado, mas a LipeHost usa `npm install` (não respeita bun.lock), por isso o pin no package.json é essencial.
 - Após o deploy passar, o fluxo continua o mesmo: acessar /debug → "Rodar Seed Agora" → admin@newmobility.com / admin123.
+
+---
+Task ID: DEBUG-PAGE-CHECKER
+Agent: main (Z.ai Code)
+Task: Adicionar no /debug um checker que testa todas as páginas do app e mostra quais funcionam / quais não (e o porquê).
+
+Work Log:
+- Criado /api/debug/pages/route.ts (GET, público, sem auth):
+  * Inventário completo de 28 rotas de página (backoffice, debug, mobile×14, motorista×5, lojista×5, admingeral×2)
+  * Para cada página: faz fetch HTTP interno com redirect:'manual' e timeout de 12s
+  * Retorna: httpStatus, ok (2xx/3xx), redirected + location, error, durationMs, sizeBytes
+  * Testa em paralelo (batches de 6) para manter tempo total baixo
+  * Summary: total/ok/error/redirected/timeout/durationMs
+  * Groups breakdown: por grupo (backoffice, mobile, motorista, lojista, admingeral, debug)
+- Modificado /home/z/my-project/src/app/debug/page.tsx:
+  * Adicionadas interfaces PageResult, PagesResponse e GROUP_LABELS (com cores por grupo)
+  * Adicionado estado: pagesResult, checkingPages, pageFilter ('all'|'ok'|'error')
+  * Adicionada função checkPages() que chama /api/debug/pages
+  * Nova seção "Verificação de Páginas" entre "Usuários" e "Seed":
+    - Card com ícone FileCheck2 (sky-blue)
+    - Badge no título mostrando X/total OK
+    - Descrição do que o teste faz (status HTTP, redirects, erros, tempo, tamanho)
+    - Aviso de que no dev server a primeira visita compila cada página (até 12s)
+    - Botão "Testar todas as páginas" (sky-600)
+    - Botões de filtro: Todas / OK / Com erro (só aparece se houver erros)
+    - Summary cards: Total / OK / Com erro / Tempo total (grid 4 colunas)
+    - Badges de grupos com contagem por grupo (verde se tudo OK, cor do grupo se tiver erro)
+    - Lista scrollável (max-h-480px) com cada página:
+      * Ícone CheckCircle2 (verde) ou XCircle (vermelho)
+      * Path em code + badge do grupo + badge "auth" se requer login
+      * Badge HTTP status (verde/vermelho)
+      * Badge de redirect (amber) com destino → /login
+      * Tempo em ms + tamanho em KB
+      * Botão ExternalLink para abrir a página em nova aba
+      * Caixa de erro (vermelho, font-mono) se houver erro de fetch
+- Removido comment eslint-disable desnecessário no next.config.ts
+- Validações:
+  * curl /api/debug/pages → HTTP 200, JSON com 28 páginas, todas OK (28/28, 3.2s total)
+  * agent-browser abriu /debug → seção "Verificação de Páginas" visível
+  * Clicou no botão via JS eval → resultados apareceram (28/28 OK em 1.0s)
+  * VLM confirmou visualmente: Total 28, OK 28, Erro 0, Tempo 1.0s, todos os grupos 100%, lista com paths e HTTP 200
+  * ESLint nos 3 arquivos modificados: 0 erros
+- Commit 733c64e pushed para origin/main (NÃO para backup)
+
+Stage Summary:
+- O /debug agora tem um checker completo de páginas. Botão "Testar todas as páginas" testa as 28 rotas e mostra status HTTP, redirects, erros, tempo e tamanho de cada uma.
+- Inclui filtro (Todas/OK/Com erro) e breakdown por grupo (Backoffice, Mobile, Motorista, Lojista, Admin Geral, Debug).
+- Cada página tem botão para abrir em nova aba, facilitando diagnóstico rápido.
+- Em produção (LipeHost), se alguma página não abrir, o usuário vai ver exatamente qual path falhou e o motivo (erro de fetch, timeout, HTTP 500, etc.) sem precisar clicar em cada link manualmente.
+- Resultado local: todas as 28 páginas retornam HTTP 200, incluindo /mobile/login, /motorista/login, /lojista/login, /admingeral/login (que o usuário perguntou).
