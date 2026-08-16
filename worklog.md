@@ -8260,3 +8260,53 @@ Stage Summary:
 - Após deploy na LipeHost: acessar /debug → clicar "Rodar Seed Agora" → admin@newmobility.com / admin123 fica disponível imediatamente.
 - A página também serve como painel de diagnóstico contínuo: mostra status do DB, tabelas, usuários e env vars em tempo real com auto-refresh.
 - Em produção, recomenda-se proteger ou remover /debug após o deploy inicial (atualmente é público intencionalmente para debug de deploy).
+
+---
+Task ID: LIPEHOST-BUILD-LOCKFILE
+Agent: main (Z.ai Code)
+Task: Corrigir erro de build na LipeHost: "Couldn't find any pages or app directory" causado por detecção de lockfiles múltiplos.
+
+Work Log:
+- Analisado o build log da LipeHost:
+  * Erro principal: `Error: > Couldn't find any pages or app directory. Please create one under the project root`
+  * Causa raiz: Next.js 16 detecta lockfiles múltiplos na VPS:
+    - `/var/www/lipehost/package-lock.json` (da própria LipeHost — diretório PAI)
+    - `/var/www/lipehost/deploys/cmsv5tbq70001kpd9i733ha1p/package-lock.json` (nosso, do deploy)
+  * Next.js 16 faz "workspace root detection" andando PARA CIMA a partir do cwd procurando o lockfile mais próximo. Ele encontra o PAI (`/var/www/lipehost/`) e o escolhe como root do projeto.
+  * Como o PAI não tem `app/` nem `src/`, o build aborta com "Couldn't find any pages or app directory".
+  * O `turbopack.root` que já tínhamos no next.config.ts NÃO resolve isso porque só afeta builds com Turbopack, e `next build` usa webpack por padrão.
+  * Warning adicional: `Unrecognized key(s) in object: 'eslint', 'swcMinify'` — o `eslint` é nosso (deprecated no Next.js 16), o `swcMinify` é injetado pelo script de deploy da LipeHost.
+
+- Aplicadas 4 correções:
+
+  1. **package.json: adicionado `"workspaces": []`**
+     - Faz nosso package.json ser um "workspace root".
+     - Next.js 16 checa o campo `workspaces` PRIMEIRO ao andar para cima na árvore de diretórios, então ele para no nosso diretório de deploy em vez de continuar até o pai.
+     - Esta é a correção PRINCIPAL — sem ela, Next.js ainda escolhe o diretório pai como root.
+
+  2. **next.config.ts: adicionado `outputFileTracingRoot: path.resolve(__dirname)`**
+     - Diz explicitamente ao Next.js qual é o root do projeto para file tracing (standalone build).
+     - Reforça o override do workspace-root para a geração de output standalone.
+
+  3. **next.config.ts: removido o `eslint` key deprecated**
+     - O `eslint` config key foi removido no Next.js 16. Causava warning de build:
+       `⚠ Unrecognized key(s) in object: 'eslint'`
+     - ESLint não roda mais durante `next build` por padrão no Next.js 16, então não há nada pra ignorar.
+
+  4. **.gitignore: adicionado `package-lock.json` à lista de ignorados**
+     - Usamos `bun.lock` como source of truth para lockfiles.
+     - Ter `package-lock.json` commitado criaria um segundo lockfile no repo e pioraria a detecção de "multiple lockfiles".
+     - LipeHost ainda cria um `package-lock.json` local via `npm install`, mas com `workspaces: []` o Next.js usa nosso dir como root independente disso.
+
+- Validações:
+  * package.json: JSON válido, `workspaces: []` presente, `private: true`, `prisma.seed` e `scripts.seed` intactos.
+  * next.config.ts: compila sem erros (tsc --noEmit), 0 erros ESLint.
+  * Dev server inicia SEM warnings de config (antes mostrava "Unrecognized key(s): eslint" em todo startup).
+  * `output: 'standalone'` preservado (necessário para LipeHost).
+
+- Commit 3dcf126 pushed para origin (NÃO para backup).
+
+Stage Summary:
+- O erro "Couldn't find any pages or app directory" deve estar resolvido. O próximo Redeploy na LipeHost deve encontrar o `src/app/` corretamente porque `workspaces: []` força o Next.js a usar nosso diretório de deploy como root.
+- Os warnings de config (`eslint`, `swcMinify`) foram limpos do nosso lado (o `swcMinify` ainda aparece porque é injetado pela LipeHost, mas é inofensivo).
+- Após o build passar, o usuário deve acessar /debug → clicar "Rodar Seed Agora" → admin@newmobility.com / admin123 fica disponível.
