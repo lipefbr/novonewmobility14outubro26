@@ -7983,3 +7983,84 @@ Stage Summary:
 - Bottom nav funcional com FAB central elevado, rotas placeholder "Em breve"
 - Safe-area aware para futuro encapsulamento em WebView nativo (iOS/Android)
 - "Criar conta" é a única exceção que navega fora de /mobile (para o cadastro do site principal), conforme spec
+
+---
+Task ID: MOTORISTA-APP-1
+Agent: main
+Task: Construir App Motorista da NewMobility — módulo web independente em /motorista, design azul+branco (map-first ride-hailing), com bloqueio para cliente/lojista. Confirmar que /mobile já bloqueia motorista/lojista.
+
+Work Log:
+- Confirmado: /mobile/login JÁ bloqueia motorista/lojista (9 referências a AccountBlockScreen/motorista no código). Motorista que tenta logar em /mobile vê tela "Conta de Motorista" com botão "Ir para o app do Motorista" (CTA para /motorista/login).
+- Analisado design anexado (ChatGPT Image 16 de ago. de 2026, 01_24_59.png) via VLM:
+  * Layout "map-first ride-hailing": header azul + card status online + mapa + FAB carro + bottom nav
+  * Header azul #0055FF: menu hambúrguer + "Olá, Motorista / José da Silva" + sino + avatar
+  * Card status flutuante: "Você está Online" (verde #00A651) + toggle switch iOS
+  * Mapa: grid de ruas com bairros de São Paulo (Pinheiros, Jardins, Vila Olímpia, Itaim Bibi, Moema)
+  * GPS button: canto inferior esquerdo, círculo branco com crosshair azul
+  * FAB central: círculo azul grande elevado, ícone de carro branco
+  * Bottom nav: Início, Corridas, [FAB carro], Carteira, Mais
+
+- Criados 2 endpoints API (backend, leem do mesmo banco — sem duplicar lógica):
+  * /api/motorista/me?userId= — retorna user + wallet consolidada + stats (totalRides, stars, mock todayEarningsCents) + vehicle (mock até modelo Vehicle existir) + isDriver (true se isDriver=true OU userType='motorista') + blockReason (cliente/entregador/lojista/outro)
+  * /api/motorista/home?userId= — retorna wallet + stats + vehicle + recentRides (3 mock com isMock=true: corrida Ana Paula R$18,90, entrega Burger House R$9,90, corrida Aeroporto R$34,90) + isDriver + blockReason
+
+- Criados 3 componentes motorista compartilhados (src/components/motorista/):
+  * motorista-bottom-nav.tsx — 5 itens (Início/Corridas/FAB carro/Carteira/Mais), azul #155EEF ativo, FAB central elevado h-16 w-16 (maior que o do /mobile), safe-area aware
+  * motorista-app-shell.tsx — wrapper branco + pb-24 para FAB maior
+  * motorista-coming-soon.tsx — tela "Em breve" reutilizável (azul #EFF6FF em vez de verde-água)
+
+- Criado /motorista/login (src/app/motorista/login/page.tsx):
+  * Design azul #155EEF + branco (mesma identidade visual do /mobile, com ícone de carro)
+  * Campos: e-mail/telefone + senha (com toggle de visibilidade)
+  * Botão "Entrar" azul, link "Esqueci minha senha", "Criar conta" (única exceção que leva fora de /motorista)
+  * Fluxo: POST /api/auth/login → GET /api/motorista/me → se isDriver=false, mostra AccountBlockScreen:
+    - cliente: botão "Ir para o app do Cliente" (CTA para /mobile/login)
+    - lojista: mensagem "painel em breve"
+    - entregador: mensagem "app em breve"
+  * Safe-area aware
+
+- Criado /motorista/inicio (src/app/motorista/inicio/page.tsx):
+  * Header azul fixo: menu hambúrguer (abre Sheet lateral) + "Olá, Motorista / Nome" + sino com badge + avatar
+  * Card de status flutuante: "Você está" + "Online/Offline" (verde #22C55E / cinza) + Switch (toggle) + ponto pulsante quando online
+  * Mapa simulado (SimulatedMap component): grid de ruas SVG + bairros de SP (Pinheiros, Jardins, Vila Olímpia, Itaim Bibi, Moema) + ruas (Av. Rebouças, Paulista, Santo Amaro) + parque Ibirapuera (ellipse verde) + pin do motorista (azul, pulsante) + watermark "NewMobility Maps"
+  * Stats overlay (top-right): 3 StatPills flutuantes (Ganhos hoje, Corridas, Avaliação) com badge DEMO
+  * GPS button (bottom-left): círculo branco com Crosshair azul
+  * Vehicle info chip (bottom-right, se vehicle.model existir): ícone carro + placa + modelo
+  * Side menu (Sheet): avatar + nome + saldo disponível + menu items (Início, Corridas, Carteira, Mais) + Sair
+  * Guarda de acesso: se !isDriver, faz logout e redirect para /motorista/login
+
+- Criadas 3 rotas placeholder + 1 not-found:
+  * /motorista/corridas — "Minhas Corridas" (Route icon)
+  * /motorista/carteira — "Carteira" (Wallet icon)
+  * /motorista/mais — "Mais Opções" (LayoutGrid icon)
+  * /motorista/not-found.tsx — 404 customizado (botão "Voltar ao início" → /motorista/inicio)
+
+- Atualizado /mobile/login block screen:
+  * Motorista que tenta logar em /mobile agora vê botão "Ir para o app do Motorista" (CTA para /motorista/login)
+  * Cor do block screen de motorista mudou de âmbar para azul #155EEF (consistente com o app de destino)
+  * Mensagem atualizada: "Você foi autenticado como motorista — use o app do Motorista"
+
+- Verificação (curl + API tests):
+  * /motorista/login → HTTP 200, HTML com "NewMobility", "App do Motorista", "Entrar", "#155EEF" ✓
+  * /motorista/inicio → HTTP 200 ✓
+  * /motorista/corridas → HTTP 200 ✓
+  * /motorista/carteira → HTTP 200 ✓
+  * /motorista/mais → HTTP 200 ✓
+  * /api/motorista/me?userId=motorista → isDriver:true, wallet.totalCents:823736 (R$ 8.237,36 real) ✓
+  * /api/motorista/me?userId=cliente → isDriver:false, blockReason:cliente ✓
+  * /api/motorista/me (no userId) → error 401 "userId is required" ✓
+  * Lint: 0 erros no código motorista (13 erros pré-existentes em root .js files)
+  * NOTA: agent-browser visual verification não foi possível devido ao limite de memória do sandbox (Chromium + Next.js dev server > 4GB). Todas as rotas e APIs verificadas via curl.
+
+Stage Summary:
+- App Motorista construído e verificado — 100% contido em /motorista/*
+- Design system fiel ao print anexado (azul #155EEF + branco + verde #22C55E, map-first layout)
+- Autenticação reutiliza /api/auth/login (mesma tabela de usuários, sem base paralela)
+- Controle de acesso: apenas isDriver=true OU userType='motorista' acessa /motorista; cliente/lojista veem tela de bloqueio in-app com CTA para o app correto
+- Carteira exibe saldo REAL do sistema (withdrawal+mobility+gratification+free) — mesma fonte do cashback/MMN
+- Stats e vehicle são mock (isMock=true, badge DEMO) — prontos para serem substituídos por dados reais quando o modelo Rides/Vehicle for adicionado ao schema
+- Mapa simulado com SVG (grid de ruas + bairros de SP + pin pulsante) — pronto para ser substituído por Mapbox/Google Maps
+- 5 rotas criadas: login + inicio + 3 placeholders (corridas, carteira, mais) + not-found
+- Cross-app navigation: /mobile/login block screen agora oferece CTA "Ir para o app do Motorista" → /motorista/login
+- Bottom nav funcional com FAB central elevado (carro), rotas placeholder "Em breve"
+- Safe-area aware para futuro encapsulamento em WebView nativo

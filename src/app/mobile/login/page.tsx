@@ -251,16 +251,26 @@ function AccountBlockScreen({
   name: string
   onBack: () => void
 }) {
+  const router = useRouter()
   const PROFILE_MAP: Record<
     string,
-    { title: string; icon: typeof Car; color: string; description: string }
+    {
+      title: string
+      icon: typeof Car
+      color: string
+      description: string
+      correctAppHref?: string
+      correctAppLabel?: string
+    }
   > = {
     motorista: {
       title: 'Conta de Motorista',
       icon: Car,
-      color: '#F59E0B',
+      color: '#155EEF',
       description:
-        'Este app é exclusivo para clientes. O app do Motorista NewMobility será lançado em breve como um aplicativo separado.',
+        'Este app é exclusivo para clientes. Você foi autenticado como motorista — use o app do Motorista NewMobility para receber corridas e entregas.',
+      correctAppHref: '/motorista/login',
+      correctAppLabel: 'Ir para o app do Motorista',
     },
     entregador: {
       title: 'Conta de Entregador',
@@ -329,14 +339,24 @@ function AccountBlockScreen({
           </div>
         </div>
 
-        {/* Back button */}
+        {/* CTA to the correct app (if applicable) */}
+        {info.correctAppHref && info.correctAppLabel && (
+          <button
+            onClick={() => router.push(info.correctAppHref!)}
+            className="mt-8 w-full max-w-sm h-12 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2 shadow-md"
+            style={{ backgroundColor: info.color }}
+          >
+            {info.correctAppLabel}
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        )}
+
+        {/* Back to login */}
         <button
           onClick={onBack}
-          className="mt-8 w-full max-w-sm h-12 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2 shadow-md"
-          style={{ backgroundColor: PRIMARY }}
+          className="mt-3 w-full max-w-sm h-11 rounded-xl border border-gray-200 bg-white text-gray-700 text-sm font-medium flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"
         >
           Voltar ao login
-          <ChevronRight className="h-4 w-4" />
         </button>
       </div>
 
