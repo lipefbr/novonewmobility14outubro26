@@ -135,8 +135,10 @@ export default function MotoristaLoginPage() {
         </div>
       </div>
 
-      {/* Login card overlapping the header */}
-      <div className="flex-1 px-6 -mt-10">
+      {/* Login card overlapping the header — needs relative z-10 to paint
+          ABOVE the header (which has `relative`). Without this, the header
+          covers the top of the card and clips the "Entrar" title. */}
+      <div className="flex-1 px-6 -mt-10 relative z-10">
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6">
           <h2 className="text-lg font-bold text-gray-900 mb-1">Entrar</h2>
           <p className="text-xs text-gray-500 mb-5">
