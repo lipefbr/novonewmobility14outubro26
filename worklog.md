@@ -8413,3 +8413,53 @@ Stage Summary:
 - Cada página tem botão para abrir em nova aba, facilitando diagnóstico rápido.
 - Em produção (LipeHost), se alguma página não abrir, o usuário vai ver exatamente qual path falhou e o motivo (erro de fetch, timeout, HTTP 500, etc.) sem precisar clicar em cada link manualmente.
 - Resultado local: todas as 28 páginas retornam HTTP 200, incluindo /mobile/login, /motorista/login, /lojista/login, /admingeral/login (que o usuário perguntou).
+
+---
+Task ID: MOBILE-LOGIN-FIX
+Agent: main (Z.ai Code)
+Task: Corrigir texto "Entrar" cortado na tela de login mobile + eliminar scroll horizontal em todas as páginas mobile/motorista/lojista.
+
+Work Log:
+- Diagnosticado problema do "Entrar" cortado via VLM em viewport mobile:
+  * Sintoma: o título "Entrar" e o subtítulo "Use a mesma conta do site NewMobility" apareciam cortados no topo do card branco.
+  * Causa raiz: o header azul tem class `relative` (cria layer posicionada), mas o container do card tinha `-mt-10` SEM `relative`. Em CSS, elementos posicionados pintam ACIMA de siblings não-posicionados, então o header cobria o topo do card.
+  * Confirmado comparando com /mobile/inicio e /lojista/inicio que JÁ tinham `relative z-20` no card (e funcionavam).
+- Diagnosticado problema do scroll horizontal:
+  * Sintoma: páginas mobile podiam rolar pros lados em viewports estreitas.
+  * Causa: nenhum wrapper tinha `overflow-x-hidden`; elementos com margens negativas, sombras ou conteúdo largo podiam causar overflow.
+
+- Aplicadas 2 correções:
+
+  1. **Fix do z-index nas 3 login pages** (mobile, motorista, lojista):
+     * Antes: `<div className="flex-1 px-6 -mt-10">`
+     * Depois: `<div className="flex-1 px-6 -mt-10 relative z-10">`
+     * Adicionado comentário explicando o porquê do `relative z-10`.
+     * Arquivos: src/app/mobile/login/page.tsx, src/app/motorista/login/page.tsx, src/app/lojista/login/page.tsx
+
+  2. **Fix do scroll horizontal via layouts** (3 novos arquivos):
+     * Criado src/app/mobile/layout.tsx — wrapper `<div className="overflow-x-hidden">{children}</div>` para TODAS as rotas /mobile/*
+     * Criado src/app/motorista/layout.tsx — mesmo wrapper para /motorista/*
+     * Criado src/app/lojista/layout.tsx — mesmo wrapper para /lojista/*
+     * Vantagem: 1 arquivo por grupo de rotas fixa TODAS as páginas daquele app, sem precisar editar cada page.tsx individualmente.
+
+- Validações executadas:
+  * VLM em /mobile/login (desktop): confirmou "Entrar" visível e completo, card sobrepondo header corretamente, sem texto cortado.
+  * VLM em /motorista/login: confirmou "Entrar" visível, card sobrepondo header, sem texto cortado.
+  * VLM em /lojista/login: confirmou "Entrar" visível, card sobrepondo header, sem texto cortado.
+  * Teste em viewport iPhone 14 (390x844) via `agent-browser set device "iPhone 14"`:
+    - document.body.scrollWidth = 390
+    - document.body.clientWidth = 390
+    - hasHorizontalScroll = false ✓
+  * VLM em iPhone 14 viewport: confirmou "Entrar" visível, "Use a mesma conta do site NewMobility" visível, sem scroll horizontal, card sobrepondo header, layout excelente para mobile.
+  * /api/debug/pages: 28/28 páginas HTTP 200 (todas funcionando).
+  * ESLint nos 6 arquivos: 0 erros.
+
+- Commit ee79546 pushed para origin/main (NÃO para backup):
+  * `fix(mobile): fix 'Entrar' text clipped + prevent horizontal scroll`
+  * 6 files changed, 54 insertions(+), 6 deletions(-)
+
+Stage Summary:
+- O título "Entrar" agora aparece completo em todas as 3 telas de login (mobile, motorista, lojista). O card branco sobrepõe o header azul corretamente.
+- Todas as páginas mobile/motorista/lojista estão com scroll horizontal bloqueado via layout wrapper com `overflow-x-hidden`.
+- A correção do z-index foi específica para as 3 login pages (que usam o padrão header `relative` + card `-mt-10` sem `relative`). As páginas internas (inicio, carteira, etc.) já tinham `relative z-20` no card e não precisavam de fix.
+- Os 3 layouts novos são minimalistas (apenas um wrapper div) e não afetam o comportamento de scroll vertical, sticky/fixed elements, modais ou drawers.
