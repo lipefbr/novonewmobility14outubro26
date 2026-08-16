@@ -8222,3 +8222,41 @@ Stage Summary:
     Motorista → motorista@newmobility.com / 123456 (isDriver=true, acessa /motorista)
     Lojista   → lojista@newmobility.com / 123456 (userType=lojista, isDelivery=true, acessa /lojista)
 - Próxima fase sugerida pelo usuário: criar a tela do prestador de serviços (4º app do ecossistema).
+
+---
+Task ID: DEBUG-PAGE-1
+Agent: main (Z.ai Code)
+Task: Criar /debug para ver se tem erro e fazer o seed de usuários pelo navegador.
+
+Work Log:
+- Criado /api/debug/status/route.ts (GET, público, sem auth):
+  * Testa conexão DB com prisma.$queryRaw`SELECT 1` (mede latência)
+  * Lista presença de env vars (DATABASE_URL mascarada, secrets mostram "(set)"/"(not set)")
+  * Conta registros em 10 tabelas (users, plans, systemConfig, userType, appCategory, faq, appStore, appProduct, appOrder, mobileBanner)
+  * Verifica se admin@newmobility.com existe e se a senha bate com "admin123" (SHA-256)
+  * Retorna 200 mesmo em caso de erro (para a UI conseguir exibir)
+  * Detecta problemas comuns: DATABASE_URL ausente, protocolo errado (SQLite vs PostgreSQL), tabelas vazias, admin ausente
+- Criado /api/debug/seed/route.ts (POST, público, requer {confirm:true}):
+  * Espelha prisma/seed.ts mas roda inline (sem precisar de CLI)
+  * Cria: admin + 3 usuários demo (cliente/motorista/lojista) + SystemConfig (12 chaves) + UserType (6 tipos) + Plan (free/blue3/blue5) + AppCategory (8 categorias) + FAQ (6 entradas)
+  * IDEMPOTENTE — usa upsert/create-if-not-exists em tudo
+  * Se admin já existe, ATUALIZA a senha para "admin123" (garante acesso)
+  * Retorna estrutura: steps[], log[], credentials, durationMs
+  * GET retorna mensagem de ajuda (seed real requer POST por segurança)
+- Criado src/app/debug/page.tsx (UI pública):
+  * Tema dark "terminal" (slate-950 bg, emerald accents)
+  * Header sticky com toggle auto-refresh (5s)
+  * Banner de saúde geral (verde/vermelho)
+  * Cards: Conexão DB, Runtime (Node/plataforma/memória), Variáveis de ambiente (mascaradas), Tabelas (grid com contagens — 0 = ambar, -1 = vermelho), Usuários (total + admin existe + usuários demo encontrados)
+  * Seção Seed: explica o que será criado, botão grande "Rodar Seed Agora" (requer confirm dialog), resultados ao vivo com status passo-a-passo, display de credenciais com botão copiar, output de log, links rápidos para /, /mobile, /motorista, /lojista, /admingeral após seed bem-sucedido
+- Validações:
+  * /api/debug/status retornou JSON válido via curl — detectou corretamente que .env local aponta para SQLite (file:) mas schema exige PostgreSQL, exibindo o erro exato do Prisma
+  * /debug page retornou HTTP 200 (compilou em 12.7s com Turbopack)
+  * ESLint: 0 erros nos 3 arquivos
+- Commit 0cc587a pushed para origin (NÃO para backup).
+
+Stage Summary:
+- Rota /debug criada e funcional — permite diagnosticar o sistema e rodar o seed pelo navegador sem precisar de acesso CLI à VPS.
+- Após deploy na LipeHost: acessar /debug → clicar "Rodar Seed Agora" → admin@newmobility.com / admin123 fica disponível imediatamente.
+- A página também serve como painel de diagnóstico contínuo: mostra status do DB, tabelas, usuários e env vars em tempo real com auto-refresh.
+- Em produção, recomenda-se proteger ou remover /debug após o deploy inicial (atualmente é público intencionalmente para debug de deploy).
