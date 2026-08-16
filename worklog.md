@@ -8310,3 +8310,56 @@ Stage Summary:
 - O erro "Couldn't find any pages or app directory" deve estar resolvido. O próximo Redeploy na LipeHost deve encontrar o `src/app/` corretamente porque `workspaces: []` força o Next.js a usar nosso diretório de deploy como root.
 - Os warnings de config (`eslint`, `swcMinify`) foram limpos do nosso lado (o `swcMinify` ainda aparece porque é injetado pela LipeHost, mas é inofensivo).
 - Após o build passar, o usuário deve acessar /debug → clicar "Rodar Seed Agora" → admin@newmobility.com / admin123 fica disponível.
+
+---
+Task ID: LIPEHOST-BUILD-CSS-TURBOPACK
+Agent: main (Z.ai Code)
+Task: Corrigir erro de build Turbopack na LipeHost: "FileSystemPath(\"\").join(\"../../node_modules/tailwindcss/index.css\") leaves the filesystem root"
+
+Work Log:
+- Analisado o build log da LipeHost (3 tentativas falharam com o mesmo erro):
+  * Erro: `FileSystemPath("").join("../../node_modules/tw-animate-css/dist/tw-animate.css") leaves the filesystem root`
+  * Após reinstall: `FileSystemPath("").join("../../node_modules/tailwindcss/index.css") leaves the filesystem root`
+  * O `FileSystemPath("")` (vazio) indica que o Turbopack não está conseguindo determinar o project root para resolução de CSS @import.
+- Comparado ambiente local vs LipeHost:
+  * LOCAL: Next.js 16.1.3 → `npx next build` funciona perfeitamente (28s, 0 erros)
+  * LIPEHOST: Next.js 16.3.1 → build falha no CSS
+  * Diferença: `package.json` tinha `"next": "^16.1.1"` (caret), que deixa o `npm install` da VPS resolver para a versão mais recente (16.3.1).
+- Diagnóstico da causa raiz:
+  * Next.js 16.3.1 tem um bug no Turbopack CSS @import resolver: `turbopack.root` NÃO é aplicado a bare-specifier CSS imports (como `@import "tailwindcss"`).
+  * Resultado: o project root do CSS resolver vira `FileSystemPath("")` (vazio).
+  * Lightning CSS resolve `@import "tailwindcss"` para o caminho relativo `../../node_modules/tailwindcss/index.css` (a partir de `src/app/globals.css`).
+  * Turbopack tenta join desse caminho relativo com `FileSystemPath("")` → `../../` sai acima do root → panic.
+  * Localmente com 16.1.3 o bug não existe, por isso funciona.
+
+- Aplicadas 2 correções:
+
+  1. **package.json: pin `next` para versão exata `16.1.3`** (removido o caret `^`)
+     - Antes: `"next": "^16.1.1"` → LipeHost instalava 16.3.1 (bugada)
+     - Depois: `"next": "16.1.3"` → LipeHost instala exatamente 16.1.3 (testada e funcional)
+     - Esta é a correção PRINCIPAL — garante que a VPS use a mesma versão que testamos localmente.
+
+  2. **next.config.ts: detecção de projectRoot ESM-safe**
+     - Antes: `const projectRoot = path.resolve(__dirname)` — `__dirname` não é garantido em configs carregadas como ESM.
+     - Depois: chain de fallback com 3 níveis:
+       a) `import.meta.url` + `fileURLToPath` (ESM nativo, sempre disponível em módulos ESM)
+       b) `globalThis.__dirname` (CJS/jiti fallback)
+       c) `process.cwd()` (último recurso, sempre disponível)
+     - Final: `path.resolve(projectRoot)` normaliza para path absoluto sem trailing slash.
+     - Adicionado comentário extenso documentando o sintoma, causa raiz e fix.
+
+- Validações executadas:
+  * `npx tsx -e` testou a resolução de projectRoot → `/home/z/my-project` (absoluto, não-vazio) ✓
+  * `rm -rf .next && npx next build` → compilação limpa em 28s, 0 erros, 0 CSS panics ✓
+  * Dev server reiniciou normalmente ✓
+  * `grep "next" package.json` → `"next": "16.1.3"` (sem caret) ✓
+
+- Commit 0e3333f pushed para origin/main (NÃO para backup):
+  * `fix(build): pin next to 16.1.3 + ESM-safe turbopack.root`
+  * 2 files changed, 47 insertions(+), 22 deletions(-)
+
+Stage Summary:
+- O erro de build Turbopack CSS na LipeHost deve estar resolvido. O próximo Redeploy no painel LipeHost vai instalar Next.js 16.1.3 (exata) em vez de 16.3.1, evitando o bug do CSS @import resolver.
+- A correção é dupla (belt and suspenders): (1) pin da versão do Next.js garante consistência ambiente-local ↔ VPS, (2) ESM-safe projectRoot detection garante que `turbopack.root` sempre resolve para um path absoluto não-vazio.
+- Importante: o `bun.lock` local já tem 16.1.3 pinado, mas a LipeHost usa `npm install` (não respeita bun.lock), por isso o pin no package.json é essencial.
+- Após o deploy passar, o fluxo continua o mesmo: acessar /debug → "Rodar Seed Agora" → admin@newmobility.com / admin123.
