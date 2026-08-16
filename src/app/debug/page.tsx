@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge'
 import {
   Database, RefreshCw, AlertCircle, CheckCircle2, XCircle,
   Terminal, Shield, Users, Settings, Zap, Clock, Cpu, HardDrive,
-  KeyRound, Play, Copy, ArrowRight,
+  KeyRound, Play, Copy, ArrowRight, FileCheck2, ExternalLink,
+  ArrowLeftRight, Timer, AlertTriangle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
@@ -95,12 +96,54 @@ interface SeedResponse {
   }
 }
 
+interface PageResult {
+  path: string
+  group: string
+  label: string
+  requiresAuth?: boolean
+  httpStatus: number | null
+  ok: boolean
+  redirected: boolean
+  redirectLocation?: string | null
+  error: string | null
+  durationMs: number
+  sizeBytes: number
+}
+
+interface PagesResponse {
+  ok: boolean
+  timestamp: string
+  baseUrl: string
+  summary: {
+    total: number
+    ok: number
+    error: number
+    redirected: number
+    timeout: number
+    durationMs: number
+  }
+  groups: Record<string, { total: number; ok: number; error: number }>
+  pages: PageResult[]
+}
+
+const GROUP_LABELS: Record<string, { label: string; color: string; badge: string }> = {
+  backoffice: { label: 'Backoffice', color: 'text-slate-200', badge: 'border-slate-600 text-slate-300' },
+  mobile: { label: 'Mobile (Cliente)', color: 'text-sky-300', badge: 'border-sky-700 text-sky-300' },
+  motorista: { label: 'Motorista', color: 'text-emerald-300', badge: 'border-emerald-700 text-emerald-300' },
+  lojista: { label: 'Lojista', color: 'text-amber-300', badge: 'border-amber-700 text-amber-300' },
+  admingeral: { label: 'Admin Geral', color: 'text-violet-300', badge: 'border-violet-700 text-violet-300' },
+  debug: { label: 'Debug', color: 'text-rose-300', badge: 'border-rose-700 text-rose-300' },
+}
+
 export default function DebugPage() {
   const [status, setStatus] = useState<StatusResponse | null>(null)
   const [loadingStatus, setLoadingStatus] = useState(false)
   const [seeding, setSeeding] = useState(false)
   const [seedResult, setSeedResult] = useState<SeedResponse | null>(null)
   const [autoRefresh, setAutoRefresh] = useState(false)
+  const [pagesResult, setPagesResult] = useState<PagesResponse | null>(null)
+  const [checkingPages, setCheckingPages] = useState(false)
+  const [pageFilter, setPageFilter] = useState<'all' | 'ok' | 'error'>('all')
 
   const fetchStatus = useCallback(async () => {
     setLoadingStatus(true)
@@ -159,6 +202,34 @@ export default function DebugPage() {
     navigator.clipboard.writeText(text)
     toast.success('Copiado para a área de transferência')
   }
+
+  const checkPages = async () => {
+    setCheckingPages(true)
+    setPagesResult(null)
+    try {
+      const res = await fetch('/api/debug/pages')
+      const data = await res.json()
+      setPagesResult(data)
+      if (data.ok) {
+        toast.success(`${data.summary.ok}/${data.summary.total} páginas OK em ${data.summary.durationMs}ms`)
+      } else {
+        toast.error(`${data.summary.error} de ${data.summary.total} páginas com problema`)
+      }
+    } catch (err) {
+      console.error('Pages check failed:', err)
+      toast.error('Falha ao testar páginas')
+    } finally {
+      setCheckingPages(false)
+    }
+  }
+
+  const filteredPages = pagesResult
+    ? pagesResult.pages.filter((p) => {
+        if (pageFilter === 'ok') return p.ok
+        if (pageFilter === 'error') return !p.ok
+        return true
+      })
+    : []
 
   const tableEntries = status
     ? Object.entries(status.tables).filter(([k]) => !k.endsWith('_error'))
@@ -433,6 +504,230 @@ export default function DebugPage() {
                     {status.users.error}
                   </div>
                 )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Pages Health Check */}
+        <Card className="bg-slate-900 border-slate-800">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-bold flex items-center gap-2 text-slate-200">
+              <FileCheck2 className="h-4 w-4 text-sky-400" />
+              Verificação de Páginas
+              {pagesResult && (
+                <Badge variant="outline" className={`ml-2 text-xs ${
+                  pagesResult.ok ? 'border-emerald-700 text-emerald-300' : 'border-red-700 text-red-300'
+                }`}>
+                  {pagesResult.summary.ok}/{pagesResult.summary.total} OK
+                </Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="p-3 rounded bg-slate-950 border border-slate-800">
+              <p className="text-xs text-slate-300 mb-2">
+                Testa <strong>todas as {28} rotas de página</strong> do app fazendo fetch HTTP interno e reporta:
+              </p>
+              <ul className="text-xs text-slate-400 space-y-0.5 ml-4 list-disc">
+                <li>Status HTTP (200, 404, 500, etc.)</li>
+                <li>Redirects (com destino) — comum em páginas que exigem login</li>
+                <li>Erros de fetch (timeout, conexão recusada, etc.)</li>
+                <li>Tempo de resposta + tamanho do HTML</li>
+              </ul>
+              <p className="text-xs text-amber-300 mt-2 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                No dev server, a primeira visita a cada página compila ela — pode demorar até 12s por página.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={checkPages}
+                disabled={checkingPages}
+                className="bg-sky-600 hover:bg-sky-700 text-white"
+                size="sm"
+              >
+                {checkingPages ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                    Testando páginas...
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-3.5 w-3.5 mr-1.5" />
+                    Testar todas as páginas
+                  </>
+                )}
+              </Button>
+              {pagesResult && (
+                <>
+                  <Button
+                    size="sm"
+                    variant={pageFilter === 'all' ? 'default' : 'outline'}
+                    onClick={() => setPageFilter('all')}
+                    className={pageFilter === 'all' ? '' : 'border-slate-700 text-slate-300'}
+                  >
+                    Todas ({pagesResult.summary.total})
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={pageFilter === 'ok' ? 'default' : 'outline'}
+                    onClick={() => setPageFilter('ok')}
+                    className={pageFilter === 'ok' ? 'bg-emerald-600 hover:bg-emerald-700' : 'border-emerald-800 text-emerald-300'}
+                  >
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    OK ({pagesResult.summary.ok})
+                  </Button>
+                  {pagesResult.summary.error > 0 && (
+                    <Button
+                      size="sm"
+                      variant={pageFilter === 'error' ? 'default' : 'outline'}
+                      onClick={() => setPageFilter('error')}
+                      className={pageFilter === 'error' ? 'bg-red-600 hover:bg-red-700' : 'border-red-800 text-red-300'}
+                    >
+                      <XCircle className="h-3 w-3 mr-1" />
+                      Com erro ({pagesResult.summary.error})
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+
+            {pagesResult && (
+              <>
+                {/* Summary bar */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="p-2 rounded bg-slate-950 border border-slate-800 text-center">
+                    <div className="text-lg font-bold text-slate-200">{pagesResult.summary.total}</div>
+                    <div className="text-[10px] uppercase text-slate-500">Total</div>
+                  </div>
+                  <div className="p-2 rounded bg-emerald-950/30 border border-emerald-900 text-center">
+                    <div className="text-lg font-bold text-emerald-300">{pagesResult.summary.ok}</div>
+                    <div className="text-[10px] uppercase text-emerald-500">OK</div>
+                  </div>
+                  <div className="p-2 rounded bg-red-950/30 border border-red-900 text-center">
+                    <div className="text-lg font-bold text-red-300">{pagesResult.summary.error}</div>
+                    <div className="text-[10px] uppercase text-red-500">Com erro</div>
+                  </div>
+                  <div className="p-2 rounded bg-slate-950 border border-slate-800 text-center">
+                    <div className="text-lg font-bold text-slate-300 flex items-center justify-center gap-1">
+                      <Timer className="h-3 w-3" />
+                      {(pagesResult.summary.durationMs / 1000).toFixed(1)}s
+                    </div>
+                    <div className="text-[10px] uppercase text-slate-500">Tempo total</div>
+                  </div>
+                </div>
+
+                {/* Group breakdown */}
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(pagesResult.groups).map(([group, stats]) => {
+                    const meta = GROUP_LABELS[group] || { label: group, badge: 'border-slate-700 text-slate-300' }
+                    const allOk = stats.error === 0
+                    return (
+                      <Badge
+                        key={group}
+                        variant="outline"
+                        className={`text-xs ${allOk ? 'border-emerald-700 text-emerald-300' : meta.badge}`}
+                      >
+                        {meta.label}: {stats.ok}/{stats.total}
+                        {!allOk && <AlertTriangle className="h-3 w-3 ml-1 text-amber-400" />}
+                      </Badge>
+                    )
+                  })}
+                </div>
+
+                {/* Pages list */}
+                <div className="space-y-1 max-h-[480px] overflow-y-auto pr-1 custom-scroll">
+                  {filteredPages.length === 0 ? (
+                    <p className="text-xs text-slate-500 text-center py-4">
+                      Nenhuma página no filtro selecionado.
+                    </p>
+                  ) : (
+                    filteredPages.map((p) => {
+                      const meta = GROUP_LABELS[p.group] || { label: p.group, color: 'text-slate-300', badge: 'border-slate-700 text-slate-300' }
+                      return (
+                        <div
+                          key={p.path}
+                          className={`p-2.5 rounded border ${
+                            p.ok
+                              ? 'bg-slate-950 border-slate-800'
+                              : 'bg-red-950/20 border-red-900/60'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              {p.ok ? (
+                                <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                              ) : (
+                                <XCircle className="h-4 w-4 text-red-400 shrink-0" />
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <code className={`text-xs font-semibold ${meta.color}`}>
+                                    {p.path}
+                                  </code>
+                                  <Badge variant="outline" className={`text-[10px] py-0 px-1.5 ${meta.badge}`}>
+                                    {meta.label}
+                                  </Badge>
+                                  {p.requiresAuth && (
+                                    <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-slate-700 text-slate-500">
+                                      auth
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-slate-500 truncate">{p.label}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {p.httpStatus !== null && (
+                                <Badge
+                                  variant="outline"
+                                  className={`text-xs font-mono ${
+                                    p.ok
+                                      ? 'border-emerald-800 text-emerald-400'
+                                      : 'border-red-800 text-red-400'
+                                  }`}
+                                >
+                                  HTTP {p.httpStatus}
+                                </Badge>
+                              )}
+                              {p.redirected && p.redirectLocation && (
+                                <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-amber-800 text-amber-400 flex items-center gap-1">
+                                  <ArrowLeftRight className="h-3 w-3" />
+                                  → {p.redirectLocation}
+                                </Badge>
+                              )}
+                              <span className="text-[10px] text-slate-500 font-mono tabular-nums">
+                                {p.durationMs}ms
+                              </span>
+                              {p.sizeBytes > 0 && (
+                                <span className="text-[10px] text-slate-600 font-mono tabular-nums hidden sm:inline">
+                                  {(p.sizeBytes / 1024).toFixed(1)}KB
+                                </span>
+                              )}
+                              <Link href={p.path} target="_blank" rel="noopener noreferrer">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0 text-slate-500 hover:text-sky-300"
+                                  title={`Abrir ${p.path} em nova aba`}
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                </Button>
+                              </Link>
+                            </div>
+                          </div>
+                          {p.error && (
+                            <div className="mt-2 p-2 rounded bg-red-950/50 border border-red-900 text-red-300 text-[11px] font-mono break-all">
+                              {p.error}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
               </>
             )}
           </CardContent>

@@ -48,7 +48,6 @@ try {
   projectRoot = path.dirname(fileURLToPath(configUrl));
 } catch {
   // CJS / jiti fallback: __dirname is injected by the loader
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const dir: string | undefined = (globalThis as { __dirname?: string }).__dirname;
   projectRoot = dir ? path.resolve(dir) : process.cwd();
 }
