@@ -9007,3 +9007,41 @@ Stage Summary:
 - Total: 3 novos arquivos, 4 arquivos modificados. ~1075 linhas adicionadas. **0 erros de lint novos, 0 erros de TypeScript novos.**
 - **db:push precisa ser rodado?** SIM — o schema foi atualizado com 2 novos models (`MarketplaceReview`, `MarketplaceFavorite`) e novas relations em `MarketplaceProduct` e `User`. Até que `bun run db:push` seja executado, as tabelas físicas não existirão no banco e qualquer tentativa de persistir/ler reviews ou favoritos resultará em erro de runtime Prisma ("Table marketplace_review does not exist"). As APIs já estão implementadas corretamente; apenas falta o push do schema para o DB. O `bunx prisma generate` foi rodado (apenas recria os tipos TypeScript do client, não toca no DB) para que o código compile sem erros TS.
 
+
+---
+Task ID: BACKLOG-14-ITEMS
+Agent: Main Orchestrator + 5 subagents
+Task: Resolver 14 itens de backlog do backoffice+admin NewMobility
+
+Work Log (orchestrator direct fixes):
+- Item 1 (Apps 404): apps-page.tsx hrefs corrigidos /mobile→/mobile/login etc (4 links). Mesmo bug da login-page corrigido na sessão anterior.
+- Item 4 (KYC selfie): adicionado 'selfie_document' em KYC_DOC_TYPES + KYC_DOC_LABELS (lib/kyc.ts); corrigido kyc-page.tsx que enviava 'selfie' (inválido) em vez de 'selfie_document'.
+- Item 12 (Indicador→Financeiro): renomeado em 5 arquivos (app-layout, admin-layout x2, welcome-modal, dashboard-page).
+- Item 12.1 (Dados bancários fixos): financial-page.tsx card de banco agora lê user.bankCode/bankAgency/bankAccount/bankType/pixKey (era hardcoded 'Banco do Brasil / 1234-5 / 67890-1'). Empty-state CTA quando não cadastrado.
+- Item 12.2 (Duplicidade saldo fatura): removido 'bills' (Saldo para Faturas / balancePending) das opções de transferência; só 'paymentInvoice' (Saldo Pagamento de Fatura) permanece.
+- Item 3 (Foto perfil): /api/user/profile/image agora exige session auth (antes confiava no userId do client — furo de segurança). Fluxo de upload já estava correto.
+- Item 5 (Faturas pendentes): billing-page agora auto-chama /api/billing/ensure-monthly no load para gerar faturas mensais ausentes antes de listar.
+- Item 6 (Relatórios): API já usa agregação real de Transaction (sem mock). Verificado.
+
+Subagent work:
+- Item 13 (subagent): register API agora exige referredById válido (400 se faltar); admin tem filtro 'Sem patrocinador' + dialog 'Vincular'; /api/admin/users/[id] PUT aceita referredById com detecção de ciclo.
+- Item 2 (subagent): Telemedicina e TalkMoby separados em 2 páginas independentes (TelemedicinaPage nova + talkmobi-page.tsx reescrita); 2 itens de sidebar separados.
+- Item 10 (subagent): referrals API retorna totalEarningsCents, activeNetwork, pendingNetwork (collectDescendants sem limite de profundidade); referrals-page top section redesenhada com 4 stat cards reais.
+- Item 7 (subagent): MarketplaceReview + MarketplaceFavorite models; reviews bidirecionais (buyer→seller + seller→buyer); favoritos com toggle; removidos depoimentos fictícios; reputação do vendedor exibida.
+- Item 14 (subagent): images (até 15) + specifications em MarketplaceProduct/AppProduct; LojistaProductForm com upload de fotos + specs; /lojista/produtos page; marketplace detail modal com galeria + specs.
+- Item 8-9 (subagent): verificado JÁ IMPLEMENTADO por agentes anteriores (ServiceType model, /api/service-types CRUD, foto upload, admin section; gratifications-page showDriverGoals gate, /api/admin/gratifications-config).
+
+Item 11 (Matrizes): NÃO codado — requer validação de regra de negócio antes de implementar (spillover R$96.500/R$750.000, nomenclatura 'Vendas'). Documentado como pendente.
+
+Schema changes (REQUER bun run db:push no deploy):
+  - MarketplaceReview (nova): id, productId, orderId, reviewerId, revieweeId, direction, rating, comment + @@unique([orderId, direction])
+  - MarketplaceFavorite (nova): id, userId, productId + @@unique([userId, productId])
+  - MarketplaceProduct.specifications (novo campo String?)
+  - AppProduct.images + specifications (novos campos String?)
+  - ServiceType (já existia de trabalho anterior)
+
+Stage Summary:
+- 13 de 14 itens resolvidos (item 11 pendente por regra de negócio).
+- Commit 5e14ceb pushed para origin/main.
+- Lint: apenas 13 erros require() preexistentes em .js root (nenhum novo).
+- ATENÇÃO: rodar `bun run db:push` na LipeHost antes do redeploy para criar as novas tabelas/colunas (MarketplaceReview, MarketplaceFavorite, specifications, images).
