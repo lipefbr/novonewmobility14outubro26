@@ -53,9 +53,9 @@ import { LojistaAppShell } from '@/components/lojista/lojista-app-shell'
 //      sino + avatar
 //   2. Card de status flutuante: "Loja aberta/fechada" + toggle verde
 //   3. Card de vendas: "Vendas de hoje" + valor + delta + 3 ações rápidas
-//      (Pedidos / Cardápio / Financeiro)
+//      (Pedidos / Produtos / Financeiro)
 //   4. Card motivacional (fundo verde menta): "Sua loja está indo muito bem!"
-//   5. Grid de atalhos 4×2 (Pedidos, Cardápio, Cupons, Horário, Avaliações,
+//   5. Grid de atalhos 4×2 (Pedidos, Produtos, Cupons, Horário, Avaliações,
 //      Relatórios, Entrega, Suporte)
 //   6. Últimos pedidos (lista com status coloridos)
 //   7. Banner promocional "Aumente suas vendas" (fundo escuro + CTA verde)
@@ -306,8 +306,8 @@ export default function LojistaInicioPage() {
               />
               <QuickAction
                 icon={UtensilsCrossed}
-                label="Cardápio"
-                onClick={() => toast.info('Cardápio em breve')}
+                label="Produtos"
+                onClick={() => router.push('/lojista/produtos')}
               />
               <QuickAction
                 icon={Wallet}
@@ -366,9 +366,9 @@ export default function LojistaInicioPage() {
           />
           <ShortcutItem
             icon={UtensilsCrossed}
-            label="Cardápio"
-            sublabel="Editar itens"
-            onClick={() => toast.info('Cardápio em breve')}
+            label="Produtos"
+            sublabel="Fotos e specs"
+            onClick={() => router.push('/lojista/produtos')}
           />
           <ShortcutItem
             icon={Percent}

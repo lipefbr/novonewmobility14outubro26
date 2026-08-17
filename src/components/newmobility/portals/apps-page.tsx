@@ -42,7 +42,7 @@ const whatsNew = [
 // ─────────────────────────────────────────────────────────────────────────────
 const WEB_APPS = [
   {
-    href: '/mobile',
+    href: '/mobile/login',
     title: 'App Cliente',
     subtitle: 'Passageiro / Usuário',
     desc: 'Solicite corridas, peça comida, faça compras e gerencie seu CashBack.',
@@ -53,7 +53,7 @@ const WEB_APPS = [
     badge: 'v3.2.0',
   },
   {
-    href: '/motorista',
+    href: '/motorista/login',
     title: 'App Motorista',
     subtitle: 'Condutor parceiro',
     desc: 'Receba corridas em tempo real, acompanhe ganhos e metas diárias.',
@@ -64,7 +64,7 @@ const WEB_APPS = [
     badge: 'v3.2.0',
   },
   {
-    href: '/lojista',
+    href: '/lojista/login',
     title: 'Painel do Lojista',
     subtitle: 'Comerciante parceiro',
     desc: 'Gerencie sua loja, produtos, pedidos e financeiro em um só lugar.',
@@ -75,7 +75,7 @@ const WEB_APPS = [
     badge: 'v1.0.0',
   },
   {
-    href: '/admingeral',
+    href: '/admingeral/login',
     title: 'Admin Geral',
     subtitle: 'Gestão do ecossistema',
     desc: 'Configure categorias, lojas, banners, usuários e todo o app.',

@@ -96,6 +96,9 @@ model User {
   invoices              Invoice[]
   marketplaceOrders     MarketplaceOrder[]
   marketplaceOrderItems MarketplaceOrderItem[]
+  marketplaceReviewsWritten   MarketplaceReview[]  @relation("MarketplaceReviewsWritten")
+  marketplaceReviewsReceived  MarketplaceReview[]  @relation("MarketplaceReviewsReceived")
+  marketplaceFavorites        MarketplaceFavorite[]
   matrixPositions       MatrixPosition[]
   notifications         Notification[]
   pointTransactions     PointTransaction[]
@@ -507,7 +510,8 @@ model MarketplaceProduct {
   originalPrice   Int?
   category        String
   imageUrl        String?
-  images          String?
+  images          String? // JSON array of up to 15 photo URLs (String)
+  specifications  String? // JSON object of tech attrs (Marca, Modelo, Peso, Dimensões, Garantia, Condição, etc.)
   stock           Int                    @default(0)
   isActive        Boolean                @default(true)
   isFeatured      Boolean                @default(false)
@@ -519,6 +523,8 @@ model MarketplaceProduct {
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
   orderItems      MarketplaceOrderItem[]
+  reviews         MarketplaceReview[]
+  favorites       MarketplaceFavorite[]
 }
 
 model MarketplaceOrder {
@@ -551,6 +557,53 @@ model MarketplaceOrderItem {
   order           MarketplaceOrder   @relation(fields: [orderId], references: [id])
   product         MarketplaceProduct @relation(fields: [productId], references: [id])
   user            User               @relation(fields: [userId], references: [id])
+}
+
+// ── MarketplaceReview ─────────────────────────────────────────────────────────
+// Bidirectional review between buyer and seller for a single order.
+//   direction = "buyer_to_seller" → reviewer = buyer, reviewee = seller
+//   direction = "seller_to_buyer" → reviewer = seller, reviewee = buyer
+// The @@unique([orderId, direction]) constraint guarantees each direction can
+// only be reviewed once per order (i.e. buyer can only rate seller once per
+// order, and vice versa). productId is denormalised so we can list reviews for
+// a product without joining through order items.
+model MarketplaceReview {
+  id          String   @id @default(cuid())
+  productId   String
+  orderId     String
+  reviewerId  String
+  revieweeId  String
+  // "buyer_to_seller" | "seller_to_buyer"
+  direction   String
+  rating      Int
+  comment     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  product     MarketplaceProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  reviewer    User               @relation("MarketplaceReviewsWritten", fields: [reviewerId], references: [id], onDelete: Cascade)
+  reviewee    User               @relation("MarketplaceReviewsReceived", fields: [revieweeId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, direction])
+  @@index([productId])
+  @@index([revieweeId])
+  @@index([reviewerId])
+}
+
+// ── MarketplaceFavorite ───────────────────────────────────────────────────────
+// Wishlist / favorited products per user. Toggled via POST /api/marketplace/favorites.
+// @@unique([userId, productId]) guarantees a user can only favorite a product once.
+model MarketplaceFavorite {
+  id          String   @id @default(cuid())
+  userId      String
+  productId   String
+  createdAt   DateTime @default(now())
+
+  product     MarketplaceProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
 }
 
 model Plan {
@@ -966,6 +1019,8 @@ model AppProduct {
   priceCents   Int
   oldPriceCents Int? // for showing a discount
   imageUrl     String?
+  images       String? // JSON array of up to 15 photo URLs (String)
+  specifications String? // JSON object of tech attrs (Marca, Modelo, Peso, Dimensões, Garantia, Condição, etc.)
   category     String? // sub-category within the store (e.g. "Burgers", "Pizzas")
   categoryCode String?  // AppCategory.code for cross-store filtering
   // Inventory
@@ -1108,5 +1163,57 @@ model DriverApplication {
 
   @@index([userId])
   @@index([status])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// ServiceType — Tipos/Categorias de Serviço gerenciados pelo admin
+// ----------------------------------------------------------------------------
+// Substitui a lista hardcoded de 7 categorias + "Outros" no módulo de
+// Serviços. O admin cria/edita/desativa tipos livremente; o módulo de
+// Serviços consome /api/service-types para popular o dropdown e os chips
+// de filtro. `icon` é um emoji livre (ex: "🚙", "🔧"). `isActive=false`
+// esconde o tipo do dropdown público mas mantém registros históricos.
+//
+// Item 8 — fotos + admin CRUD de Tipos de Serviço.
+// ============================================================================
+model ServiceType {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  icon      String?
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(99)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================================
+// Service — anúncio de serviço criado por um usuário (lojista/motorista).
+// ----------------------------------------------------------------------------
+// `photos` é uma string JSON contendo um array de URLs/data URLs de fotos
+// enviadas pelo usuário ao criar o serviço (Item 8). Cada item até 5 fotos.
+// `category` continua sendo o nome (string) do ServiceType — guardamos o
+// nome em vez do id para que o histórico continue legível mesmo se o tipo
+// for renomeado/excluído depois.
+// ============================================================================
+model Service {
+  id           String   @id @default(cuid())
+  providerId   String
+  providerName String
+  name         String
+  description  String?
+  category     String
+  price        Int      @default(0) // in cents
+  location     String?
+  phone        String?
+  photos       String   @default("[]") // JSON array of photo URLs/data URLs
+  isAvailable  Boolean  @default(true)
+  rating       Int      @default(0)
+  reviewCount  Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([providerId])
+  @@index([category])
   @@index([createdAt])
 }

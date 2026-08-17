@@ -60,13 +60,14 @@ const sidebarLabelKeys: Record<PageKey, string> = {
   'billing': 'sidebar.billing',
   'kyc': 'sidebar.kyc',
   'talkmobi': 'sidebar.talkmobi',
+  'telemedicina': 'sidebar.telemedicina',
 }
 
 // Mobile bottom navigation items
 const mobileNavItems: { key: PageKey; icon: React.ElementType; label: string }[] = [
   { key: 'dashboard', icon: Home, label: 'Início' },
   { key: 'cashback', icon: DollarSign, label: 'CashBack' },
-  { key: 'financial', icon: Wallet, label: 'Indicador' },
+  { key: 'financial', icon: Wallet, label: 'Financeiro' },
   { key: 'referrals', icon: Users, label: 'Rede' },
   { key: 'profile', icon: UserCircle, label: 'Perfil' },
 ]

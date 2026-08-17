@@ -35,6 +35,7 @@ import { MinhaRedePage } from '@/components/newmobility/minha-rede/minha-rede-pa
 import { BillingPage } from '@/components/newmobility/billing/billing-page'
 import KycPage from '@/components/newmobility/kyc/kyc-page'
 import { TalkMobiPage } from '@/components/newmobility/talkmobi/talkmobi-page'
+import { TelemedicinaPage } from '@/components/newmobility/telemedicina/telemedicina-page'
 import { AppsPage } from '@/components/newmobility/portals/apps-page'
 
 function PageContent() {
@@ -71,8 +72,11 @@ function PageContent() {
       // Apps tab shows the actual apps download page (motorista/passageiro apps)
       return <AppsPage />
     case 'talkmobi':
-      // TalkMobi + Telemedicina dedicated page (plans + telemedicine activation)
+      // TalkMobi mobile plan catalogue + subscription flow (separate from Telemedicina)
       return <TalkMobiPage />
+    case 'telemedicina':
+      // Telemedicina activation flow — independent page/state (Task ID 2)
+      return <TelemedicinaPage />
     case 'bank':
       return <BankPage />
     case 'profile':

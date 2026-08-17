@@ -17,6 +17,11 @@ export async function GET(req: NextRequest) {
     // the GET handler previously ignored it — making the "Tipo de usuário"
     // dropdown in admin-users-panel.tsx do nothing.
     const userType = req.nextUrl.searchParams.get('userType') || 'all'
+    // Item 13 (sponsor validation): when the admin clicks "Sem patrocinador",
+    // the panel sends noSponsor=true and we filter to users whose
+    // referredById is null AND whose role is not 'admin' (the seed admin is
+    // the only user allowed to have no sponsor).
+    const noSponsor = req.nextUrl.searchParams.get('noSponsor') === 'true'
     const includeMatrix = req.nextUrl.searchParams.get('includeMatrix') === 'true'
     const includeBets = req.nextUrl.searchParams.get('includeBets') === 'true'
     const page = parseInt(req.nextUrl.searchParams.get('page') || '1')
@@ -41,6 +46,13 @@ export async function GET(req: NextRequest) {
     }
     if (userType !== 'all') {
       where.userType = userType
+    }
+    if (noSponsor) {
+      // Item 13: only the admin seed may legitimately have no sponsor.
+      // Users without a sponsor (excluding admins) are the ones the admin
+      // needs to identify and link to a sponsor.
+      where.referredById = null
+      where.role = { not: 'admin' }
     }
 
     let users: any[] = []

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { formatDate, getStatusLabel, getStatusVariant, getPlanName } from '@/lib/utils'
+import { formatBRL } from '@/lib/format'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { referralsApi, apiFetch } from '@/lib/api'
@@ -17,10 +18,10 @@ import { EmptyState } from '../ui/empty-states'
 import { ShareOptions } from './share-options'
 import { NetworkModal } from './network-modal'
 import {
-  Users, UserPlus, UserCheck, TrendingUp, Search, Link2, Copy, Check as CheckIcon,
+  Users, UserCheck, TrendingUp, Search, Link2, Copy, Check as CheckIcon,
   Share2, Eye, ChevronDown, ChevronUp, Calendar, Award, ArrowUpRight,
   ArrowRight, MessageCircle, Target, Medal, Maximize2, Activity, Download, Filter,
-  FileSpreadsheet, Heart, HeartOff,
+  FileSpreadsheet, HeartOff, Clock,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ResponsiveContainer, LineChart, Line, XAxis, Tooltip as RechartsTooltip } from 'recharts'
@@ -76,6 +77,18 @@ export function ReferralsPage() {
   const [statusFilterVal, setStatusFilterVal] = useState<string>('all')
   const [referrals, setReferrals] = useState<any[]>([])
 
+  // Top-section summary stats (Task 10). Sourced from the /api/referrals
+  // `stats` payload — these are computed server-side so they reflect the
+  // FULL referral network (not just the levels shown in the tree) and so
+  // "ganhos por indicação" can aggregate all three cashback tables.
+  // Defaults to 0 so the top section never shows broken placeholders while
+  // the request is in flight (the page-level `loading` skeleton still gates
+  // the whole page, but if the list resolves faster than expected the
+  // numbers are simply zero until stats arrive).
+  const [totalEarningsCents, setTotalEarningsCents] = useState<number>(0)
+  const [activeNetwork, setActiveNetwork] = useState<number>(0)
+  const [pendingNetwork, setPendingNetwork] = useState<number>(0)
+
   // Recent activity feed (BACK-10). Replaces the 3 hardcoded mock entries
   // (Thiago Nascimento / Carla Ferreira / Marcos Ribeiro) with real data
   // from /api/referrals/activity — recent referrals + cashback earned.
@@ -106,6 +119,15 @@ export function ReferralsPage() {
       try {
         const data = await referralsApi.getList(user.id)
         if (cancelled) return
+
+        // Pull the server-computed summary stats so the top section shows
+        // real network-wide numbers (Task 10). Falls back to 0 if the API
+        // omits any field for backward compatibility.
+        if (data?.stats) {
+          setTotalEarningsCents(Number(data.stats.totalEarningsCents ?? 0))
+          setActiveNetwork(Number(data.stats.activeNetwork ?? 0))
+          setPendingNetwork(Number(data.stats.pendingNetwork ?? 0))
+        }
 
         if (data?.directReferrals) {
           // Build a lookup of `userId -> directReferralsCount` from the
@@ -428,14 +450,42 @@ export function ReferralsPage() {
         </Card>
       </motion.div>
 
-      {/* Stats Cards */}
+      {/* Stats Cards — top summary section (Task 10).
+          Shows the four headline metrics requested: total de indicados,
+          indicações ativas, indicações pendentes, ganhos por indicação.
+          Active/Pending come from the server-computed `stats` payload
+          (full-network counts, not the depth-limited tree) and earnings
+          aggregate all three cashback tables for the current user. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { icon: UserPlus, label: 'INDICAÇÕES DIRETAS', value: totalDirect, color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400', trend: '+2 este mês' },
-          { icon: Users, label: 'TOTAL DA REDE', value: totalNetwork, color: 'bg-teal-100 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400', trend: `+${newThisMonth} novos` },
-          { icon: UserCheck, label: 'NOVOS ESTE MÊS', value: newThisMonth, color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400', trend: 'Crescendo!' },
-          { icon: TrendingUp, label: 'TAXA CONVERSÃO', value: `${conversionRate}%`, color: 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400', trend: 'Ativos/Total' },
-          { icon: Heart, label: 'SAÚDE DA REDE', value: healthLabel, color: healthBg + ' ' + healthColor, trend: `${activeCount}/${totalNetwork} ativos` },
+          {
+            icon: Users,
+            label: 'TOTAL DE INDICADOS',
+            value: totalNetwork,
+            color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400',
+            trend: `${totalDirect} diretos · +${newThisMonth} este mês`,
+          },
+          {
+            icon: UserCheck,
+            label: 'INDICAÇÕES ATIVAS',
+            value: activeNetwork,
+            color: 'bg-teal-100 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400',
+            trend: `${conversionRate}% de conversão`,
+          },
+          {
+            icon: Clock,
+            label: 'INDICAÇÕES PENDENTES',
+            value: pendingNetwork,
+            color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400',
+            trend: 'Aguardando ativação',
+          },
+          {
+            icon: TrendingUp,
+            label: 'GANHOS POR INDICAÇÃO',
+            value: formatBRL(totalEarningsCents),
+            color: 'bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400',
+            trend: 'Total acumulado',
+          },
         ].map((stat, i) => (
           <motion.div
             key={stat.label}

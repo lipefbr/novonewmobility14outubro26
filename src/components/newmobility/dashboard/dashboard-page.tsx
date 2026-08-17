@@ -619,7 +619,7 @@ export function DashboardPage() {
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-base sm:text-lg font-bold text-foreground flex items-center gap-2">
             <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-600 shrink-0" />
-            Indicador
+            Financeiro
             <span className="flex-1 h-px bg-gradient-to-r from-emerald-400/60 to-transparent ml-2" />
           </h3>
           <Button

@@ -177,23 +177,29 @@ export async function POST(request: Request) {
     }
 
     // Find referrer if referral code provided
-    // Referral code is OPTIONAL - if invalid, proceed without referrer (warning only)
+    // Item 13 (sponsor validation): all non-admin users MUST have a valid
+    // sponsor (referredById) at registration time. The admin seed user is the
+    // only one exempt from this rule. Here we resolve the referrer from the
+    // provided referralCode and reject the registration with HTTP 400 if the
+    // code is missing or does not match any existing User.
     let referrer = null
-    let referralWarning = null
     if (referralCode) {
       console.log('[Register] Looking up referrer with code:', referralCode)
       try {
         referrer = await db.findOne('User', '"referralCode" = $1', [referralCode])
         if (!referrer) {
-          // Don't block registration - just proceed without referrer
-          console.warn('[Register] Referral code not found, proceeding without referrer:', referralCode)
-          referralWarning = 'Código de indicação não encontrado. Cadastro realizado sem indicador.'
+          // Item 13: invalid sponsor code -> block registration (was a warning before).
+          return error('Patrocinador é obrigatório. Informe um código de indicação válido.', 400)
         }
       } catch (dbErr) {
         console.error('[Register] Error looking up referrer:', dbErr)
-        // Don't block registration - proceed without referrer
-        referralWarning = 'Não foi possível verificar o código de indicação. Cadastro realizado sem indicador.'
+        return error('Não foi possível verificar o código de indicação. Tente novamente.', 500)
       }
+    } else {
+      // Item 13: no referralCode provided at all -> block registration.
+      // Only the admin seed (created via prisma/seed.ts) is allowed to have
+      // no sponsor. Self-registration through this endpoint always requires one.
+      return error('Patrocinador é obrigatório. Informe o código de indicação de quem convidou você.', 400)
     }
 
     const hashedPassword = hashPassword(password)
@@ -621,9 +627,6 @@ export async function POST(request: Request) {
     }
 
     const responseData: any = { user: safeUser }
-    if (referralWarning) {
-      responseData.warning = referralWarning
-    }
 
     return success(responseData, 201)
   } catch (err) {

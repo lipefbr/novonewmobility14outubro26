@@ -160,6 +160,22 @@ export function BillingPage() {
     }
     setLoading(true)
     try {
+      // BACK-5: Ensure the user has a pending monthly plan invoice before
+      // listing. Previously, if a user had an active (non-free) plan but no
+      // Invoice row was ever generated (e.g. plan was set by admin without
+      // running ensure-monthly), the "Pagar Faturas" page showed nothing —
+      // the user saw a "pending R$999 plan" in Meu Plano but no fatura to
+      // pay. This auto-generates the missing monthly invoice (server-side
+      // no-op if one already exists) right before we fetch the list.
+      try {
+        await apiFetch('/billing/ensure-monthly', {
+          method: 'POST',
+          body: JSON.stringify({ userId: user.id }),
+        })
+      } catch {
+        // Non-fatal — the user may not have a paid plan; just continue to
+        // the list fetch so they still see whatever invoices exist.
+      }
       const res = await apiFetch<BillingResponse>(`/billing?userId=${user.id}`)
       setData(res)
     } catch (err) {

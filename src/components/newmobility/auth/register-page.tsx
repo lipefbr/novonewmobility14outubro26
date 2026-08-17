@@ -137,8 +137,20 @@ export function RegisterPage() {
     const params = new URLSearchParams(window.location.search)
     const ref = params.get('ref') || params.get('referralCode')
     if (ref) {
-      setFormData(prev => ({ ...prev, referralCode: ref.toUpperCase() }))
+      const upper = ref.toUpperCase()
+      setFormData(prev => ({ ...prev, referralCode: upper }))
       setHasReferral(true)
+      // Item 13: auto-validate the referral code from the URL so the user
+      // can advance past step 0 without manually blurring the (disabled)
+      // input field. Without this, canGoNext() would block step 0 because
+      // referralValid stays null.
+      if (upper.length >= 3) {
+        // Fire-and-forget; checkReferralCode updates the state.
+        fetch(`/api/referrals/validate?code=${encodeURIComponent(upper)}`)
+          .then(r => r.json())
+          .then(d => setReferralValid(!!d?.valid))
+          .catch(() => setReferralValid(null))
+      }
     }
   }, [])
 
@@ -161,7 +173,11 @@ export function RegisterPage() {
         formData.email.trim() !== '' &&
         formData.password.length >= 6 &&
         formData.password === formData.confirmPassword &&
-        formData.qualification.trim() !== ''
+        formData.qualification.trim() !== '' &&
+        // Item 13 (sponsor validation): a valid sponsor code is required to
+        // advance past step 0. Backend (/api/auth/register) also enforces this.
+        formData.referralCode.trim().length >= 3 &&
+        referralValid === true
       )
     }
     if (step === 1) {
@@ -251,9 +267,6 @@ export function RegisterPage() {
         setSuccess(true)
         setTimeout(() => {
           login(userData)
-          if (data.warning) {
-            toast.warning(data.warning)
-          }
           toast.success('Conta criada com sucesso! Bem-vindo(a)!')
         }, 2000)
       }
@@ -584,7 +597,7 @@ export function RegisterPage() {
                   <div className="space-y-2">
                     <Label htmlFor="referral" className="flex items-center gap-1.5">
                       Código de Indicação
-                      <span className="text-[10px] text-muted-foreground font-normal">(opcional)</span>
+                      <span className="text-[10px] text-rose-600 dark:text-rose-400 font-normal">(obrigatório)</span>
                       {hasReferral && (
                         <span className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-normal">
                           <LockKeyhole className="h-3 w-3" />
@@ -610,7 +623,7 @@ export function RegisterPage() {
                         className={cn(
                           "pl-10 uppercase",
                           referralValid === true && "border-emerald-500",
-                          referralValid === false && "border-amber-500"
+                          referralValid === false && "border-rose-500"
                         )}
                         disabled={hasReferral}
                       />
@@ -625,9 +638,14 @@ export function RegisterPage() {
                       )}
                     </div>
                     {referralValid === false && !hasReferral && (
-                      <p className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                      <p className="text-[10px] text-rose-600 dark:text-rose-400 flex items-center gap-1">
                         <MessageSquare className="h-3 w-3" />
-                        Código não encontrado. Você será cadastrado sem indicador.
+                        Código não encontrado. Informe um código de indicação válido para se cadastrar.
+                      </p>
+                    )}
+                    {!formData.referralCode && (
+                      <p className="text-[10px] text-muted-foreground">
+                        É obrigatório informar quem convidou você. Sem patrocinador, o cadastro não é permitido.
                       </p>
                     )}
                   </div>

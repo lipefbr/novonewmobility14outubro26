@@ -56,6 +56,11 @@ export async function PUT(
       isDriver, isDelivery,
       qualification,
       role,
+      // Item 13 (sponsor validation): allow the admin to assign a sponsor
+      // (referredById) to a user that was created without one. Pass `null`
+      // to clear the sponsor link (admin only — non-admins should always
+      // have one, but the admin is the trust root here).
+      referredById,
     } = body
 
     if (!userId) return error('userId is required', 400)
@@ -118,6 +123,65 @@ export async function PUT(
 
     // Role
     if (role !== undefined) updateData.role = role
+
+    // Item 13 (sponsor validation): allow the admin to set or clear the
+    // user's sponsor (referredById). Validates that:
+    //   - the target sponsor exists in the User table
+    //   - the sponsor is not the user themselves (would create a self-loop)
+    //   - the sponsor is not already a descendant of this user (would create
+    //     a cycle in the referral tree) — we check this with a depth-limited
+    //     BFS over the upline chain of the candidate sponsor.
+    if (referredById !== undefined) {
+      if (referredById === null) {
+        // Clear the sponsor. Only allow if the target user is an admin
+        // (the seed admin is the only legitimate sponsor-less user).
+        if (targetUser.role !== 'admin') {
+          return error('Apenas administradores podem ficar sem patrocinador.', 400)
+        }
+        updateData.referredById = null
+      } else if (typeof referredById === 'string' && referredById.trim() !== '') {
+        // Resolve sponsor by id (also accept email or referralCode for
+        // convenience, since the admin UI looks up sponsors by email/code).
+        const trimmed = referredById.trim()
+        let sponsor = await prisma.user.findUnique({ where: { id: trimmed } })
+        if (!sponsor) {
+          sponsor = await prisma.user.findUnique({ where: { email: trimmed.toLowerCase() } })
+        }
+        if (!sponsor) {
+          sponsor = await prisma.user.findUnique({ where: { referralCode: trimmed.toUpperCase() } })
+        }
+        if (!sponsor) {
+          return error('Patrocinador não encontrado. Verifique o email ou código de indicação.', 400)
+        }
+        if (sponsor.id === id) {
+          return error('O usuário não pode ser patrocinador de si mesmo.', 400)
+        }
+        // Cycle check: walk the candidate sponsor's upline and bail if we hit
+        // the target user id (which would mean `sponsor` is a descendant of
+        // `targetUser` — making the assignment create a cycle).
+        let cursor: string | null = sponsor.id
+        const visited = new Set<string>()
+        let depth = 0
+        while (cursor && depth < 50 && !visited.has(cursor)) {
+          visited.add(cursor)
+          if (cursor === id) {
+            return error(
+              'Este patrocinador é um downline do usuário — isso criaria um ciclo na rede.',
+              400,
+            )
+          }
+          const node: any = await prisma.user.findUnique({
+            where: { id: cursor },
+            select: { referredById: true },
+          })
+          cursor = node?.referredById ?? null
+          depth += 1
+        }
+        updateData.referredById = sponsor.id
+      } else {
+        return error('referredById inválido.', 400)
+      }
+    }
 
     if (Object.keys(updateData).length === 0) {
       return error('No fields to update', 400)

@@ -402,14 +402,19 @@ export function GratificationsPage() {
   const claimedCount = allItems.filter((i) => i.isClaimed).length
   const totalAvailable = allItems.filter((i) => !i.isClaimed).reduce((acc, i) => acc + i.amount, 0)
 
-  // BACK-7 — the "Metas Motorista / Entregador" card is gated to users who
-  // are actually motorista/entregador (or have the isDriver/isDelivery flag).
-  // Other qualifications (passageiro, comercio, etc.) should never see it.
-  // NOTE: `qualification` and `isDelivery` are persisted on the User row in
-  // Prisma but are not (yet) on the Zustand `UserData` interface, so we cast
-  // to access them safely at runtime.
+  // BACK-7 + Item 9 — the "Metas Motorista / Entregador" card is gated to
+  // users who are actually motorista/entregador. The check covers every
+  // signal the platform records:
+  //   - user.userType (set during onboarding/register)
+  //   - user.qualification (UserType.code assigned by the admin)
+  //   - user.isDriver / user.isDelivery (boolean flags toggled by the admin
+  //     or by the DriverApplication approval flow)
+  // Any other profile (passageiro, comercio, etc.) gets the card hidden —
+  // they should not see driver-only goal tracking.
   const u = user as any
   const showDriverGoals =
+    u?.userType === 'motorista' ||
+    u?.userType === 'entregador' ||
     u?.qualification === 'motorista' ||
     u?.qualification === 'entregador' ||
     u?.isDriver === true ||

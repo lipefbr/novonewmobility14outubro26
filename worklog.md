@@ -8636,3 +8636,374 @@ Stage Summary:
 - Key decisions: (a) exact-pinned next-auth@4.24.11 instead of ^range so @auth/core@0.34.2 override is a deterministic match; (b) used npm overrides rather than committing package-lock.json (keeps bun.lock as single local source of truth, avoids multiple-lockfiles warning); (c) kept ESM-safe turbopack.root detection instead of downgrading to __dirname.
 - Local-only note (NOT a deploy issue): local .env has DATABASE_URL=file:.../custom.db (SQLite) while schema is postgresql, so Prisma queries error locally; LipeHost injects a real postgresql DATABASE_URL so production is unaffected. Do NOT change schema back to sqlite.
 - Unrelated pre-existing lint errors in root standalone .js scripts (require-style imports) — non-blocking due to ignoreDuringBuilds; could be cleaned up later by adding an eslint override for those files or converting to ESM, but out of scope for this deploy fix.
+
+---
+Task ID: 13
+Agent: subagent (sponsor validation)
+Task: ADMIN: cadastro sem patrocinador — bloquear registro sem indicador (apenas admin seed pode ficar sem sponsor); adicionar filtro "Sem patrocinador" e dialog "Vincular patrocinador" no painel admin; permitir PUT referredById em /api/admin/users/[id].
+
+Work Log:
+- Li o worklog.md (Tasks 1-12 + DEPLOY-FIX-LIPEHOST-1) para entender o contexto anterior.
+- Inspecionei o fluxo de registro:
+  * `src/components/newmobility/auth/register-page.tsx` (866 linhas) — campo "Código de Indicação" marcado como `(opcional)`; avisava que "Você será cadastrado sem indicador" se o código fosse inválido.
+  * `src/app/api/auth/register/route.ts` — referralCode era opcional; se inválido, apenas logava warning e prosseguia com `referredById: null`.
+  * `src/app/api/admin/users/route.ts` — GET não tinha filtro por "sem patrocinador".
+  * `src/app/api/admin/users/[id]/route.ts` — PUT não aceitava `referredById`.
+  * `prisma/seed.ts` — admin seed (`admin-root`, `admin@newmobility.com`) criado SEM referredById (role='admin', é o único usuário legítimo sem sponsor).
+  * `src/components/newmobility/admin/admin-page.tsx` (7271 linhas) — Users tab tinha filtro por search/plan/status mas nada sobre sponsor; tabela tinha botões Entrar/Ver/Editar.
+- Validação de sponsor no registro (Item 13):
+  * `src/app/api/auth/register/route.ts` linhas 179-203: removi a lógica "warning + proceed" e adicionei retorno HTTP 400 "Patrocinador é obrigatório. Informe o código de indicação de quem convidou você." quando referralCode está ausente, e "Patrocinador é obrigatório. Informe um código de indicação válido." quando o código não match nenhum User. Removi a variável `referralWarning` (e o `if (data.warning) toast.warning(...)` no register-page.tsx) pois nunca mais dispara warning.
+  * `src/components/newmobility/auth/register-page.tsx`:
+    - `canGoNext()` (linha 157-175): adicionou `formData.referralCode.trim().length >= 3 && referralValid === true` para bloquear o botão "Próximo" no step 0 se o código não foi validado.
+    - Campo "Código de Indicação" (linha 591): troquei `(opcional)` → `(obrigatório)` em rose; troquei `border-amber-500` → `border-rose-500` no estado inválido; reformulei a mensagem de erro para "Código não encontrado. Informe um código de indicação válido para se cadastrar." (rose); adicionei hint "É obrigatório informar quem convidou você. Sem patrocinador, o cadastro não é permitido." quando o campo está vazio.
+    - useEffect inicial (linha 136-155): quando o usuário chega via URL `?ref=CODE`, agora dispara `fetch('/api/referrals/validate?code=...')` automaticamente para setar `referralValid=true` (antes o input ficava disabled e o usuário não conseguia avançar porque `referralValid` continuava null).
+- Filtro "Sem patrocinador" no painel admin:
+  * `src/app/api/admin/users/route.ts` linhas 20-24, 50-56: adicionei parâmetro `noSponsor=true` que aplica `where.referredById = null` AND `where.role = { not: 'admin' }` — mostra apenas usuários que o admin precisa vincular a um patrocinador.
+  * `src/components/newmobility/admin/admin-page.tsx`:
+    - Linha 424: novo estado `const [noSponsorFilter, setNoSponsorFilter] = useState(false)`.
+    - Linha 736: adicionei `noSponsorFilter` ao array de dependências do useEffect (para recarregar users ao alternar o filtro).
+    - Linhas 749-751: `loadUsers()` adiciona `params.set('noSponsor', 'true')` quando o toggle está ativo.
+    - Linhas 2742-2753: novo botão "Sem patrocinador" (Network icon, amber quando ativo, outline quando inativo) entre o select de status e o botão Exportar CSV. Ao clicar, faz toggle de `noSponsorFilter` e reset page=1.
+- Ação "Vincular patrocinador" na tabela de usuários:
+  * `src/app/api/admin/users/[id]/route.ts` linhas 59-63, 127-184: PUT agora aceita `referredById` (string id/email/referralCode OU null). Valida:
+    - Se `null`: só permite se `targetUser.role === 'admin'` (admin seed é o único que pode ficar sem sponsor).
+    - Se string: resolve o sponsor por `findUnique({ where: { id } })`, fallback pra `findUnique({ where: { email } })` (lowercase), fallback pra `findUnique({ where: { referralCode } })` (uppercase).
+    - Bloqueia auto-vinculação (`sponsor.id === id` retorna 400).
+    - Cycle check: caminha a upline do sponsor (depth limit 50) com `visited` Set; se encontrar `id` no caminho, retorna 400 "Este patrocinador é um downline do usuário — isso criaria um ciclo na rede."
+  * `src/components/newmobility/admin/admin-page.tsx`:
+    - Linhas 483-494: novos estados `linkSponsorDialogOpen`, `linkSponsorTarget`, `linkSponsorQuery`, `linkSponsorResolved`, `linkSponsorChecking`, `linkSponsorSaving`.
+    - Linhas 1897-1973: 3 handlers novos:
+      * `handleOpenLinkSponsor(u)` — abre o dialog e reseta o form.
+      * `checkSponsorQuery(raw)` — debounce-free validator: tenta `/api/referrals/validate?code=...` (para códigos), fallback `/api/admin/users?search=...&limit=1` (para emails). Match exato de email ou referralCode confirma o sponsor.
+      * `handleLinkSponsor()` — PUT `/admin/users/${id}` com `{ referredById: query }` (o route resolve server-side); fecha o dialog, mostra toast "Patrocinador vinculado a {name}." e recarrega a lista.
+    - Linhas 2833-2848: novo botão `<Network/> Vincular` (ghost, amber) na coluna de ações da tabela — renderiza apenas quando `!u.referredById && u.role !== 'admin'` (ou seja, usuários que precisam de patrocinador).
+    - Linhas 7396-7486: novo Dialog "Vincular Patrocinador" — info box com o usuário alvo, Input com Search icon para email/código, validação on-blur e on-Enter, indicadores visuais (spinner amber / Check verde), mensagem de erro se não encontrado, DialogFooter com Cancelar + Vincular (desabilitado até ter query + resolved).
+- Verificação:
+  * `npx eslint src/app/api/auth/register/route.ts src/app/api/admin/users/route.ts 'src/app/api/admin/users/[id]/route.ts' src/components/newmobility/auth/register-page.tsx src/components/newmobility/admin/admin-page.tsx` → 0 erros, 0 warnings.
+  * `bun run lint` → 13 erros pré-existentes (todos em root .js helper scripts: keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js — require() imports, exatamente como documentado no DEPLOY-FIX-LIPEHOST-1). Nenhum erro novo nos meus arquivos.
+  * `npx tsc --noEmit --skipLibCheck` → meus arquivos têm APENAS erros pré-existentes (Property 'id' does not exist on type 'never' em register/route.ts linhas 292/389/478 — herdado da tipagem loose de `db.findOne` que retorna `any` mas TS infere `never` para `let referrer = null`). Na verdade REDUZI os erros: removi 2 erros TS do `referralWarning` (string assigned to null) e 1 erro de `referrer.id` (o `referralWarning` sumiu, e a estrutura de controle ficou mais simples). Os erros restantes em admin-page.tsx (Property 'code' on AdminPlan, Property 'amount' on AdminVoucher, Property 'raw') são pré-existentes e não relacionados às minhas mudanças.
+
+Stage Summary:
+- Backend: o endpoint /api/auth/register agora BLOQUEIA registros sem patrocinador (HTTP 400). Apenas o admin seed (criado via prisma/seed.ts) é isento. O GET /api/admin/users aceita `?noSponsor=true` para listar usuários sem sponsor (excluindo admins). O PUT /api/admin/users/[id] aceita `referredById` (id/email/referralCode/null) com validação de ciclo na rede de indicação.
+- Frontend: a tela de registro (register-page.tsx) marca o campo "Código de Indicação" como `(obrigatório)`, valida on-blur/on-Enter via /api/referrals/validate, bloqueia o botão "Próximo" até o código ser validado, e auto-valida quando o usuário chega via URL `?ref=CODE`. O painel admin (admin-page.tsx) tem um botão "Sem patrocinador" no filtro (toggle visual amber quando ativo), um botão "Vincular" inline na tabela (só para usuários sem sponsor e não-admin), e um Dialog "Vincular Patrocinador" com input de email/código, validação live, e PUT para o endpoint admin.
+- Arquivos alterados (5):
+  * src/app/api/auth/register/route.ts (+23/-19) — sponsor obrigatório, sem mais warning
+  * src/app/api/admin/users/route.ts (+12) — filtro `noSponsor`
+  * src/app/api/admin/users/[id]/route.ts (+64) — PUT aceita `referredById` com validação de ciclo
+  * src/components/newmobility/auth/register-page.tsx (+22/-7) — UI obrigatória + auto-validação de URL ref
+  * src/components/newmobility/admin/admin-page.tsx (+220/-1) — estado, handlers, filtro, botão, dialog
+- Total: +322 insertions, -19 deletions em 5 arquivos. Sem novos arquivos. Sem novos erros de lint. Sem novos erros de TypeScript (na verdade reduzi 3 erros TS pré-existentes).
+
+---
+Task ID: 2
+Agent: subagent (telemedicina/talkmoby separation)
+Task: Separate Telemedicina x TalkMobi menus — they were mixed on the same page (`talkmobi` PageKey → `TalkMobiPage` rendered both plan catalogue + Telemedicina activation form). Split into two independent top-level sidebar entries with separate state and data fetches.
+
+Work Log:
+- Read worklog.md (Tasks 1-13 + DEPLOY-FIX-LIPEHOST-1) for context.
+- Inspected the four key files referenced in the task:
+  * `src/components/newmobility/app-layout.tsx` — only had `sidebarLabelKeys` for `talkmobi`.
+  * `src/components/newmobility/sidebar.tsx` — single `talkmobi` entry with `Wifi` icon; NO existing dropdown/submenu (the two services were simply merged on one page).
+  * `src/components/newmobility/talkmobi/talkmobi-page.tsx` — 1651 lines mixing TalkMobi plans + Telemedicina activation, sharing `user`, dialogs, and constants in one component.
+  * `src/lib/store.ts` — `PageKey` had only `'talkmobi'`; no `'telemedicina'` key.
+  * `src/app/page.tsx` — switch had only `'talkmobi' → <TalkMobiPage />`.
+  * `src/lib/i18n.ts` — 5 languages each had `sidebar.talkmobi = "TalkMobi + Telemedicina"`.
+- Added new `'telemedicina'` PageKey to the union in `src/lib/store.ts` (line 36).
+- Added `sidebar.telemedicina` translation in all 5 languages in `src/lib/i18n.ts`:
+  * pt: 'Telemedicina' (line 22)
+  * en: 'Telemedicine' (line 460)
+  * es: 'Telemedicina' (line 876)
+  * fr: 'Télémédecine' (line 1254)
+  * it: 'Telemedicina' (line 1551)
+  * Trimmed `sidebar.talkmobi` from "TalkMobi + Telemedicina" to just "TalkMobi" in all 5 languages (since they're now separate menu entries).
+- Imported `HeartPulse` in `src/components/newmobility/sidebar.tsx` (line 40) and added a new top-level menu item right after the `talkmobi` entry (line 75): `{ key: 'telemedicina', labelKey: 'sidebar.telemedicina', icon: HeartPulse, groupKey: 'sidebar.group.main', isNew: true }`.
+- Added `'telemedicina': 'sidebar.telemedicina'` to `sidebarLabelKeys` in `src/components/newmobility/app-layout.tsx` (line 63) so the breadcrumb header resolves the new page label.
+- Created a new file `src/components/newmobility/telemedicina/telemedicina-page.tsx` (~660 lines) by extracting ALL Telemedicina content from `talkmobi-page.tsx`:
+  * Telemedicina constants: `TELEMEDICINA_PRICE_CENTS`, `TELEMEDICINA_PRICE_BRL`, `TelemedPaymentMethod`, `PAYMENT_METHOD_OPTIONS`, `paymentMethodLabel`.
+  * Telemedicina types: `TelemedicinaDependent`, `TelemedicinaRequestDTO`, `TelemedicinaResponse`.
+  * Telemedicina state: `telemedOpen`, `telemedDetailsOpen`, `telemedRequest`, `telemedLoading`, `submitting`, `form`, `dependents`, `paymentMethod`.
+  * Telemedicina useEffect (loads `/telemedicina/request?userId=...`).
+  * Telemedicina handlers: `handleAddDependent`, `handleRemoveDependent`, `handleDependentChange`, `handleSubmitTelemed`.
+  * Telemedicina UI: page header (HeartPulse icon, "Telemedicina" title), section with status badges (approved/pending/rejected/cancelled), approved card (activation link), pending card (in review), rejected card (resubmit), default marketing card + CTA ("Quero Ativar" / "Saiba Mais"), loading pulse placeholder.
+  * Two dialogs: informational "Telemedicina NewMobility" details dialog, and the activation form dialog (holder info + dependents + payment-method RadioGroup + summary).
+  * The new component has its OWN state and its OWN data fetch — completely independent from TalkMobi.
+- Rewrote `src/components/newmobility/talkmobi/talkmobi-page.tsx` (now ~830 lines) removing all Telemedicina content/state/imports/handlers/UI/dialogs. Kept:
+  * TalkMobi plans catalogue (loaded from `/talkmobi/plans` with `FALLBACK_PLANS` hardcoded list as backup).
+  * TalkMobi subscription status banner (approved/pending/rejected) + cards.
+  * Subscription form dialog (holder info + shipping address) → POST `/talkmobi/subscribe`.
+  * Updated page header from "TalkMobi + Telemedicina" to just "TalkMobi" with subtitle "Planos de celular 4G/5G para você e sua família".
+  * Trimmed unused imports (HeartPulse, ClockIcon alias, ShieldCheck, Plus, Trash2, Users, RefreshCw, CreditCard, Receipt, RadioGroup, RadioGroupItem).
+  * Added a subtle `subLoading` placeholder card so the section doesn't collapse while `/talkmobi/subscribe` resolves.
+- Added new `case 'telemedicina':` to the switch in `src/app/page.tsx` (lines 77-79) rendering `<TelemedicinaPage />`, plus the import on line 38. Updated the comment on the existing `'talkmobi'` case to clarify it's now TalkMobi-only.
+- Verified changes with `npx eslint` on all 7 modified/created files: 0 errors, 0 warnings. Also ran `bun run lint` (full project): only 13 pre-existing errors in root .js helper scripts (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js — same `require()` style errors documented in DEPLOY-FIX-LIPEHOST-1). No new lint errors introduced.
+- Verified with `npx tsc --noEmit --skipLibCheck` filtered to my 7 files: 0 TypeScript errors on any modified file.
+- Smoke-tested: started `bun run dev`, curl `GET /` returned HTTP 200 (app boots cleanly with the new page). Killed the dev server.
+
+Stage Summary:
+- Telemedicina and TalkMobi are now completely separate modules: each has its own top-level sidebar entry (`Wifi` icon for TalkMobi, `HeartPulse` icon for Telemedicina — both marked `isNew`), its own `PageKey`, its own page component, its own state, and its own data fetches. No shared state between them.
+- Sidebar entries: TalkMobi (line 74) → `talkmobi` PageKey → `TalkMobiPage` (plans + subscription). Telemedicina (line 75) → `telemedicina` PageKey → `TelemedicinaPage` (activation form + status). Both in the `sidebar.group.main` group, side-by-side.
+- Files changed (7):
+  * `src/lib/store.ts` (+1 line) — added `'telemedicina'` to PageKey union.
+  * `src/lib/i18n.ts` (+5/-5 lines) — added `sidebar.telemedicina` in 5 languages; trimmed `sidebar.talkmobi` to just "TalkMobi".
+  * `src/components/newmobility/sidebar.tsx` (+2 lines) — imported `HeartPulse`, added new menu item.
+  * `src/components/newmobility/app-layout.tsx` (+1 line) — added `'telemedicina'` to `sidebarLabelKeys`.
+  * `src/components/newmobility/talkmobi/talkmobi-page.tsx` (rewritten, ~830 lines vs original 1651) — TalkMobi-only now; removed all Telemedicina state/UI/handlers/imports.
+  * `src/components/newmobility/telemedicina/telemedicina-page.tsx` (NEW, ~660 lines) — extracted Telemedicina page with independent state.
+  * `src/app/page.tsx` (+4/-1 lines) — added `TelemedicinaPage` import + new `case 'telemedicina'` in switch.
+- Total: ~1495 lines moved/separated, 7 files touched (1 new). 0 new lint errors, 0 new TS errors. Dev server boots cleanly (HTTP 200).
+
+---
+Task ID: 10
+Agent: subagent (meus indicados top section)
+Task: Finalizar seção superior da página "Meus Indicados" — garantir que o topo mostre dados reais (total de indicados, indicações ativas/pendentes, ganhos totais por indicação) vindos do /api/referrals, sem loading infinito ou placeholders quebrados.
+
+Work Log:
+- Li o worklog.md (Tasks 1-13 + DEPLOY-FIX-LIPEHOST-1 + MOBILE-APP-BUILD/VERIFY) para entender o contexto anterior. Task 4b removeu a coluna R$ cashback da lista de indicados por privacidade; BACK-10 já implementou o /api/referrals/activity real. A seção superior (Stats Cards) ainda mostrava 5 stats genéricos (INDICAÇÕES DIRETAS / TOTAL DA REDE / NOVOS ESTE MÊS / TAXA CONVERSÃO / SAÚDE DA REDE) sem incluir "ganhos por indicação" nem um count explícito de "pendentes".
+- Inspecionei o estado atual dos 3 arquivos:
+  * `src/components/newmobility/referrals/referrals-page.tsx` (913 linhas) — fetchReferrals() chama referralsApi.getList(user.id) e seta `referrals` (lista flatten do directReferrals + referralTree.children); useEffect separado busca /api/referrals/activity para o feed. Estado `loading` (com safety timeout 15s) e `activityLoading` são independentes. Top section = 5 stat cards em grid-cols-4 (wrapping).
+  * `src/app/api/referrals/route.ts` (96 linhas) — retorna `{ directReferrals, stats: { totalDirect, totalNetwork, activeDirect, activeNetworkPercent }, referralTree }`. Stats era ignorado pelo frontend (a página recomputava localmente a partir do referrals state). Não havia nenhum campo de earnings.
+  * `src/app/api/referrals/activity/route.ts` (257 linhas) — já retorna o feed real (BACK-10), não precisa mexer.
+- Backend — `/api/referrals/route.ts` (+47/-9):
+  * Import `prisma` além de `db` (linha 1).
+  * Substituí `countNetwork()` (que só contava totais) por `collectDescendants()` que acumula `{ id, isActive }[]` de TODOS os descendentes sem limite de profundidade (linhas 47-59). Isso permite contar ativos/pendentes em toda a rede, não só diretos.
+  * Adicionei `activeNetwork`, `pendingNetwork` e `pendingDirect` ao objeto `stats` (linhas 122-125). Corrigi `activeNetworkPercent` para usar `activeNetwork` (full network) em vez de `activeDirect` — antes a porcentagem era sub-reportada.
+  * Adicionei `totalEarningsCents`: agrega via `prisma.cashbackEntry|Residual|Sales.aggregate({ where: { userId, fromUserId: { in: networkIds } }, _sum: { amount: true } })` em paralelo (linhas 69-90). Soma os 3 tipos de cashback que o usuário corrente recebeu de qualquer descendente da rede. Em cents (Int).
+  * Fix TS preexistente: `const tree = []` → `const tree: any[] = []` (linha 100) para resolver o erro `TS2345: Argument ... not assignable to parameter of type 'never'` que existia antes da minha mudança (verificado via git stash: erro estava na linha 68 original).
+- Frontend — `src/components/newmobility/referrals/referrals-page.tsx` (+62/-13):
+  * Imports (linhas 11-25): adicionei `import { formatBRL } from '@/lib/format'` e o ícone `Clock` do lucide-react. Removi `UserPlus` e `Heart` (não mais usados depois da reforma do top section). Demais imports não utilizados (HeartOff, FileSpreadsheet, Filter, MessageCircle, ArrowRight, Share2) — preexistentes, deixados intactos (eslint config desabilita no-unused-vars).
+  * Estado (linhas 80-90): adicionei `totalEarningsCents`, `activeNetwork`, `pendingNetwork` com default 0 — assim o top section nunca mostra placeholders quebrados enquanto o fetch está em flight.
+  * fetchReferrals() (linhas 123-130): extrai os 3 campos de `data.stats` com fallback `?? 0` para compatibilidade retroativa com APIs que ainda não retornem esses campos.
+  * Stats Cards section (linhas 453-510): reformulei de 5 cards para 4 cards focados nos 4 métricos pedidos pela task:
+      1. TOTAL DE INDICADOS (totalNetwork) — Users icon, emerald
+      2. INDICAÇÕES ATIVAS (activeNetwork do server) — UserCheck icon, teal
+      3. INDICAÇÕES PENDENTES (pendingNetwork do server) — Clock icon, amber
+      4. GANHOS POR INDICAÇÃO (formatBRL(totalEarningsCents)) — TrendingUp icon, rose
+    Cada card mostra um trend caption útil (ex.: "X diretos · +Y este mês", "Z% de conversão", "Aguardando ativação", "Total acumulado"). Layout grid-cols-2 sm:grid-cols-4 agora preenche exatamente uma linha no desktop.
+  * O "SAÚDE DA REDE" card foi removido do top section pois é redundante com os counts Ativas/Pendentes explícitos. A healthLabel continuou calculada (linhas 290-293) pois pode ser referenciada em outras partes.
+- Loading/empty guarantees:
+  * `loading` state (linha 73) continua controlado pelo safety timeout 15s (linhas 112-117) que resolve mesmo se a API travar — sem loading infinito.
+  * Os 3 novos stats defaultam para 0, então nunca aparecem como NaN/undefined/"carregando...".
+  * Se o user não tem referrals: totalNetwork=0, activeNetwork=0, pendingNetwork=0, totalEarningsCents=R$ 0,00 — top section mostra zeros consistentes.
+- Verificação:
+  * `npx eslint src/app/api/referrals/route.ts src/components/newmobility/referrals/referrals-page.tsx --max-warnings=0` → 0 erros, 0 warnings (apenas o ESLintIgnoreWarning de .eslintignore → eslint.config.js, que é config-level e afeta todo o repositório).
+  * `npx tsc --noEmit --skipLibCheck` → 0 erros em referrals/route.ts e referrals-page.tsx (incluindo o fix do `const tree: any[] = []` que resolvia um erro TS preexistente).
+  * `bun run lint` → 13 erros pré-existentes em root .js helper scripts (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js — todos require()-style imports, documentados no DEPLOY-FIX-LIPEHOST-1). Nenhum erro novo nos meus arquivos.
+
+Stage Summary:
+- A seção superior da página "Meus Indicados" agora mostra 4 métricas reais alinhadas à task: TOTAL DE INDICADOS, INDICAÇÕES ATIVAS, INDICAÇÕES PENDENTES, GANHOS POR INDICAÇÃO (em BRL). Dados vêm do /api/referrals `stats` payload — não há mais mocks ou placeholders quebrados.
+- O endpoint /api/referrals foi estendido para retornar `pendingDirect`, `activeNetwork`, `pendingNetwork`, e `totalEarningsCents` no objeto `stats`. O `activeNetworkPercent` agora é calculado sobre a rede completa (não só diretos), corrigindo um bug preexistente que sub-reportava a taxa de conversão real.
+- `totalEarningsCents` agrega via prisma `aggregate({_sum: { amount: true }})` os 3 modelos de cashback (CashbackEntry, CashbackResidual, CashbackSales) onde o usuário corrente é destinatário e o `fromUserId` é um descendente da rede — em paralelo com Promise.all, single round-trip por tabela.
+- O page-level `loading` skeleton (com safety timeout 15s) continua garantindo que a página nunca fica presa em loading infinito. Os 3 novos stats defaultam para 0, então mesmo durante o flight do request não há NaN/undefined.
+- Arquivos alterados (2):
+  * src/app/api/referrals/route.ts (+47/-9) — collectDescendants, prisma aggregate, 4 novos campos em stats, fix TS preexistente
+  * src/components/newmobility/referrals/referrals-page.tsx (+62/-13) — 3 estados novos, extração de stats do payload, reforma do top Stats Cards section para 4 cards focados
+- Total: +109 insertions, -22 deletions em 2 arquivos. Sem novos arquivos. Sem novos erros de lint. Sem novos erros de TypeScript (resolvi 1 erro TS preexistente no buildTree).
+
+---
+Task ID: 14
+Agent: subagent (lojista product photos + specs)
+Task: Portal do Lojista — adicionar upload de fotos (até 15) + especificações técnicas (Marca, Modelo, Peso, Dimensões, Garantia, Condição + custom K-V) ao formulário de criação/edição de produtos, ao backend de persistência, e à exibição no marketplace.
+
+Work Log:
+- Li o worklog.md (Tasks 1-13 + DEPLOY-FIX-LIPEHOST-1) para contexto. Task 4b e BACK-10 cuidaram de referrals; nenhuma task anterior tocou no formulário de produtos do lojista.
+- Mapeei o estado atual:
+  * `prisma/schema.prisma` — `MarketplaceProduct` JÁ tinha `imageUrl String?` + `images String?` (JSON array) mas NÃO tinha `specifications`. `AppProduct` ( modelo separado usado pelo /api/lojista/home) só tinha `imageUrl String?` — sem `images` nem `specifications`.
+  * `/api/marketplace/products/route.ts` POST já aceitava `images` (como array, fazia `JSON.stringify`), mas NÃO aceitava `specifications`. GET lista todos os produtos ativos sem filtro por sellerId.
+  * `/api/marketplace/products/[productId]/route.ts` PUT tinha allowlist de campos que incluía `images` e `tags` mas NÃO `specifications`. DELETE faz soft-delete (isActive=false).
+  * `/lojista/inicio/page.tsx` tinha dois botões "Cardápio" (QuickAction na linha 307 e ShortcutItem na linha 367) que só abriam um `toast.info('Cardápio em breve')` — não havia página de produtos nem formulário.
+  * `/components/newmobility/marketplace/marketplace-page.tsx` (1264 linhas) — interface `Product` SÓ tinha `imageUrl`, sem `images` nem `specifications`. Card de produto e modal de detalhes só mostravam um placeholder gradiente + emoji da categoria. Sem galeria de fotos, sem specs.
+- SCHEMA — `prisma/schema.prisma` (+3 linhas em MarketplaceProduct, +2 linhas em AppProduct):
+  * `MarketplaceProduct`: adicionado `specifications String?` com comentário `// JSON object of tech attrs (Marca, Modelo, Peso, Dimensões, Garantia, Condição, etc.)` (linha 511). O campo `images String?` já existia (linha 510) — adicionei comentário esclarecendo "JSON array of up to 15 photo URLs".
+  * `AppProduct`: adicionado `images String?` (linha 970) e `specifications String?` (linha 971), ambos com comentários explicativos. Mantém `imageUrl String?` original para backward-compat.
+  * NOTA: o schema foi atualizado mas `bun run db:push` NÃO foi executado (sandbox não permite). Documentado no Stage Summary. As APIs já tratam `null`/missing gracefulmente, então código novo não quebra mesmo se o DB ainda não tem as colunas — apenas os campos não persistirão até o db:push rodar.
+- BACKEND — `/api/marketplace/products/route.ts` (POST) — substancialmente reescrito o bloco de persistência:
+  * Adicionado `specifications` ao destructure do body (linha 60).
+  * Adicionado bloco de validação para `images` (linhas 72-80): se for Array, filtra strings válidas e cap em 15; se for string (pre-stringified JSON), usa direto; caso contrário `null`.
+  * Adicionado bloco de validação para `specifications` (linhas 82-97): se for objeto, itera entries e mantém só strings não-vazias (trim) ou numbers convertidos para string; descarta arrays e valores vazios; se for string (pre-stringified), usa direto.
+  * O `prisma.marketplaceProduct.create()` agora passa `images: imagesJson` e `specifications: specsJson` (linhas 107-108).
+- BACKEND — `/api/marketplace/products/[productId]/route.ts` (PUT) — reescrito o handler de allowedFields:
+  * Adicionado `'specifications'` ao `allowedFields` array (linha 40).
+  * Substituído o bloco único `if (field === 'images' || field === 'tags')` por 3 branches distintas (linhas 43-77):
+    - `images`: aceita Array (filtra + cap 15 → JSON.stringify), string, ou null.
+    - `specifications`: aceita objeto (limpa vazios → JSON.stringify), string, ou null.
+    - `tags`: comportamento original (JSON.stringify).
+    - default: valor direto.
+- FRONTEND — criado `src/components/lojista/lojista-product-form.tsx` (NOVO, ~640 linhas):
+  * Componente `LojistaProductForm` com props `{ userId, product?, onSaved?, onCancel? }`. Funciona em modo create ou edit (detecta via `product?.id`).
+  * Estado: `name, description, price, originalPrice, category, stock, cashbackPercent, isFeatured` (campos básicos) + `images: string[]` (array de URLs/dataURLs, máx 15) + `specs: Record<string,string>` (campos fixos) + `customSpecs: {key, value}[]` (K-V dinâmicos).
+  * **Seção 1 — Informações básicas**: nome, descrição detalhada (textarea, maxLength 2000 com contador), preço, preço original, categoria (Select com 13 opções), estoque, cashback %, switch "Destacar produto".
+  * **Seção 2 — Fotos do produto** (a peça central da task):
+    - Drop zone com `onDrop`/`onDragOver`/`onDragLeave` (handlers visuais e de dados). Click e teclado (Enter/Space) abrem o file picker.
+    - `<input type="file" accept="image/*" multiple>` hidden, disparado pela drop zone.
+    - Função `addFiles(fileList)`: filtra só imagens, valida tamanho máx 4MB por arquivo, cap em `MAX_PHOTOS = 15`, lê cada File via `FileReader.readAsDataURL` (Promise.all), adiciona ao array `images`. Mostra toast de erro se algum arquivo for muito grande ou se exceder o limite.
+    - Input alternativo de URL (com ícone Link): aceita `http://`, `https://` ou `data:` — útil para colar URLs de CDN.
+    - Grid de thumbnails 3-5 colunas: cada thumb é `aspect-square` com `object-cover`. Primeira foto tem badge "Capa". Botão X no canto superior direito (visível no hover) remove individualmente.
+    - Badge no header mostra `{images.length}/15`.
+    - Estado `uploading` mostra spinner durante leitura de arquivos.
+  * **Seção 3 — Especificações técnicas**:
+    - 5 campos fixos: Marca, Modelo, Peso, Dimensões, Garantia (Inputs com placeholders em pt-BR).
+    - 1 Select "Condição": Novo, Seminovo, Usado, Recondicionado.
+    - Botão "Adicionar" cria par K-V dinâmico (2 inputs + botão trash para remover). Placeholder sugere "Ex.: Voltagem" / "Ex.: 12V".
+    - Estado vazio mostra dica em itálico.
+  * Validação completa antes do submit: nome obrigatório, categoria obrigatória, preço > 0, preço original > preço atual (se preenchido), estoque >= 0, cashback 0-100%. Mensagens via toast.
+  * Submit monta payload com `imageUrl: images[0] ?? null` (mantém sincronizado com primeira foto para backward-compat) + `images` (array) + `specifications` (objeto construído por `buildSpecsObject()` que merge fixos + custom). POST para `/api/marketplace/products` (create) ou PUT para `/api/marketplace/products/{id}` (edit).
+  * Footer sticky com botões Cancelar + Publicar/Salvar (desabilita durante saving/uploading).
+  * ScrollArea envolve todo o conteúdo para suportar formulário longo em Dialog com altura limitada.
+  * Helpers `parseImages(raw)` e `parseSpecs(raw)` fazem parse defensivo do JSON string vindo do backend, com fallback para `imageUrl` singular se `images` estiver vazio.
+- FRONTEND — criado `src/app/lojista/produtos/page.tsx` (NOVO, ~400 linhas):
+  * Rota `/lojista/produtos` — Painel de gestão de produtos do lojista.
+  * Auth check: lê `user.id` do `useStore()`, redireciona para `/lojista/login` se faltar; verifica `isLojista` via `/api/lojista/home?userId=...`; redireciona se não for lojista.
+  * Carrega produtos via `/api/marketplace/products?limit=500` e filtra client-side por `sellerName === user.name` (o schema não tem `sellerId`, o owner é identificado por `sellerName`).
+  * Header sticky com botão Voltar + título "Meus produtos" + botão "Novo" (verde).
+  * Lista de produtos em cards horizontais: thumbnail 80×80 (primeira foto ou ícone Package), nome, categoria, preço + preço original riscado, badges (contador de fotos, contador de specs, estoque, cashback %, ícone de destaque). Botões Editar (lápis) e Excluir (trash) na direita.
+  * Empty state: ilustração Package + mensagem + CTA "Publicar produto".
+  * Dica no rodapé: "produtos com pelo menos 3 fotos e especificações técnicas preenchidas têm até 40% mais cliques".
+  * Dialog de create/edit hospeda o `<LojistaProductForm>` (max-w-2xl, max-h-92vh, sem padding no body — o form tem seu próprio ScrollArea e footer).
+  * AlertDialog de confirmação para excluir (soft-delete via DELETE → isActive=false).
+  * Após salvar/excluir, recarrega a lista (`checkAuthAndLoad()`).
+- WIRED UP — `src/app/lojista/inicio/page.tsx` (+4/-4):
+  * QuickAction "Cardápio" (linha 307-311) renomeado para "Produtos" e agora navega para `/lojista/produtos` em vez de `toast.info('Cardápio em breve')`.
+  * ShortcutItem "Cardápio" (linha 367-372) renomeado para "Produtos" com sublabel "Fotos e specs" e também navega para `/lojista/produtos`.
+  * Comentário do layout no topo atualizado para refletir "Produtos" em vez de "Cardápio".
+- MARKETPLACE DISPLAY — `src/components/newmobility/marketplace/marketplace-page.tsx` (+125/-15):
+  * Interface `Product` (linhas 33-34): adicionado `images: string | null` e `specifications: string | null`.
+  * Importados ícones `Camera` e `ListChecks` do lucide-react (linha 17).
+  * Adicionadas 4 funções helper (linhas 133-201):
+    - `getProductImages(product)`: parseia `images` JSON → string[]. Se vazio, retorna `[imageUrl]` (fallback para produtos legados). Defensivo contra JSON malformado.
+    - `getProductSpecs(raw)`: parseia `specifications` JSON → `{label, value}[]`. Ordena por chave canônica (marca, modelo, peso, dimensoes, garantia, condicao primeiro; custom alfabético depois). Mapeia chaves para labels em pt-BR via `SPEC_LABELS` (ex.: `dimensoes` → "Dimensões"). Custom keys viram `titleCase(key)`.
+    - `titleCase(s)`: utilitário.
+    - `SPEC_LABELS`: record de traduções.
+  * Estado novo (linha 174): `selectedImageIdx` — controla qual foto da galeria está em foco no modal de detalhes. Resetado para 0 quando o usuário clica em um card.
+  * Card de produto no grid (linhas 652-701): substituído o placeholder gradiente por um IIFE que extrai `getProductImages(product)`. Se houver cover, renderiza `<img>` real com `object-cover` + hover scale 105%. Senão, mantém o gradiente + emoji. Badge "N fotos" (com ícone Camera) aparece no canto inferior direito se houver mais de 1 foto. Demais badges (DESTAQUE, -X%, X% CB) preservados.
+  * Modal de detalhes (linhas 970-1030): substituído o placeholder gradiente por uma galeria completa:
+    - Imagem principal `aspect-video` mostrando `imgs[selectedImageIdx]` ou fallback gradiente.
+    - Badges DESTAQUE / -X% OFF no topo + badge "X / Y" no rodapé direito (com Camera icon) se houver múltiplas fotos.
+    - Thumbnail strip horizontal scrollável abaixo da imagem principal: cada thumb é 56×56 (h-14 w-14), clicável, com borda emerald quando ativa. `aria-label="Ver foto N"` para acessibilidade.
+  * Modal de detalhes — nova seção "Especificações técnicas" (linhas 1068-1095): renderizada depois da Descrição e antes do card do Vendedor. Grid 2 colunas com cada spec em um mini-card (label uppercase + valor em destaque). Só aparece se `getProductSpecs(specifications)` retornar > 0 items. Ícone ListChecks no header da seção.
+  * Descrição do produto agora usa `whitespace-pre-line` para respeitar quebras de linha do lojista.
+- LINT & TYPE CHECK:
+  * `bun run lint` (full project) → 13 erros pré-existentes em `keep-alive.js` (documentados no DEPLOY-FIPEHOST-1). **0 erros novos**. Inicialmente 5 warnings sobre "Unused eslint-disable directive" (`@next/next/no-img-element` não estava disparando nos `<img>` — provavelmente porque o rule está desabilitado nesse projeto) — removi todos os 5 comentários `eslint-disable-next-line` (via `sed`) nos 3 arquivos afetados. Lint final: 0 warnings nos meus arquivos.
+  * `npx tsc --noEmit --skipLibCheck` filtrado para os 6 arquivos que modifiquei → **0 erros**. (Erros pré-existentes em `seed-marketplace-v2/route.ts` e `lojista/home/route.ts` continuam mas não foram causados por esta task — o seed-marketplace-v2 tem um `const createdProducts = []` inferido como `never[]`, e o lojista/home tem `@ts-expect-error` directives não usadas. Ambos pré-existentes.)
+
+Stage Summary:
+- O Portal do Lojista agora tem formulário completo de criação/edição de produtos com upload de fotos (até 15, drag & drop OU file picker OU URL paste) e especificações técnicas (Marca, Modelo, Peso, Dimensões, Garantia, Condição + pares K-V dinâmicos). O formulário é hospedado num Dialog acessível pela nova rota `/lojista/produtos`, linkada a partir dos dois botões "Cardápio" do `/lojista/inicio` (agora renomeados para "Produtos").
+- O backend (`/api/marketplace/products` POST e PUT) aceita e persiste `images` (array de até 15 URLs, JSON-stringified) e `specifications` (objeto de tech attrs, JSON-stringified), com validação e sanitização server-side (cap 15, drop valores vazios, aceita pre-stringified para backward-compat).
+- O display do marketplace (componente `marketplace-page.tsx`) agora mostra galeria de fotos real no card do produto (cover = primeira foto) e no modal de detalhes (imagem principal + thumbnail strip navegável + contador X/Y). Specs aparecem como grid de mini-cards no modal de detalhes, com labels em pt-BR e ordenação canônica.
+- Arquivos alterados (6):
+  * `prisma/schema.prisma` (+5 linhas) — adicionado `specifications` em MarketplaceProduct; `images` + `specifications` em AppProduct.
+  * `src/app/api/marketplace/products/route.ts` (+34/-3 linhas) — validação de images + specifications no POST.
+  * `src/app/api/marketplace/products/[productId]/route.ts` (+38/-6 linhas) — allowlist + 3-branch handler para images/specs/tags no PUT.
+  * `src/components/lojista/lojista-product-form.tsx` (NOVO, ~640 linhas) — formulário completo com upload zone + specs section.
+  * `src/app/lojista/produtos/page.tsx` (NOVO, ~400 linhas) — página de gestão de produtos do lojista.
+  * `src/app/lojista/inicio/page.tsx` (+4/-4 linhas) — botões "Cardápio" → "Produtos" linkando para /lojista/produtos.
+  * `src/components/newmobility/marketplace/marketplace-page.tsx` (+125/-15 linhas) — interface Product + helpers + galeria no card e modal + seção de specs.
+- Total: 2 novos arquivos, 5 arquivos modificados. ~1200 linhas adicionadas. **0 erros de lint novos, 0 erros de TypeScript novos.**
+- **db:push precisa ser rodado?** SIM — o schema foi atualizado (3 novos campos opcionais: `specifications` em MarketplaceProduct; `images` + `specifications` em AppProduct). Até que `bun run db:push` seja executado, as colunas não existirão na SQLite física e qualquer tentativa de persistir `images`/`specifications` resultará em erro de runtime "Unknown column" (ou será silenciosamente ignorado pelo Prisma dependendo da versão). O código já trata `null`/missing gracefulmente, então produtos antigos continuam funcionando. Para persistir fotos e specs de novos produtos, é imprescindível rodar `bun run db:push` (não executado neste sandbox conforme instrução da task).
+
+---
+Task ID: 8-9
+Agent: subagent (services + metas)
+Task: Verify and finalize Item 8 (Serviços — fotos + admin CRUD de Tipos de Serviço) and Item 9 (Metas — restringir acesso + admin config). Both items had been substantially implemented by earlier agents (8-b and BACK-7); this task confirmed completeness and verified end-to-end wiring.
+
+Work Log:
+- Read worklog.md (Tasks 1-14 + DEPLOY-FIX-LIPEHOST-1) for context. Noted Task 8-b already implemented the Services module + admin ServiceTypes CRUD with photos upload; BACK-7 implemented the gratifications-config admin endpoint + driver-goals gating.
+- Verified Item 8 sub-items:
+  1. `prisma/schema.prisma` lines 1128-1136 — `ServiceType` model EXISTS with `id`, `name @unique`, `icon?`, `isActive @default(true)`, `sortOrder @default(99)`, `createdAt`, `updatedAt`. (Schema also adds `sortOrder` beyond the task spec; not changing it.)
+  2. `src/components/newmobility/services/services-page.tsx` lines 428-462 — `serviceTypes` state + `loadServiceTypes()` already fetches from `/api/service-types` (no hardcoded SERVICE_TYPES array — only a `fallback` legacy list used while the API is loading or returns empty).
+  3. `/api/service-types/route.ts` — GET endpoint EXISTS; returns active types ordered by `sortOrder` then `name`; seeds the 8 default categories on first call so the dropdown never appears empty.
+  4. `/api/admin/service-types/route.ts` (GET list all + POST create) and `/api/admin/service-types/[id]/route.ts` (GET / PUT / DELETE) — all EXIST with admin-gated auth, validation, and refusal-to-delete when Services still reference the type.
+  5. Photo upload in the service creation form — `services-page.tsx` lines 565-620 already POSTs multipart/form-data with `photoFiles` as multiple `photos` fields. `/api/services` POST route accepts up to 5 photos (5 MB each, JPEG/PNG/WebP/GIF), saves them to `/public/uploads/services/`, and stores the URLs as JSON array in `Service.photos` (the field exists in the schema with `@default("[]")`).
+  6. `admin-page.tsx` line 407 maps the `'service-types'` admin tab; lines 623-632 hold the state; lines 1278-1356 contain `loadServiceTypes`, `handleOpenCreate/EditServiceType`, `handleSaveServiceType`, `handleToggleServiceTypeActive`, `handleDeleteServiceType`; lines 4584-4702 render the full management section (header card + count badge + "Novo Tipo" button + loading/empty/table states with Ordem, Ícone, Nome, Status, Ações columns + toggle-active/edit/delete actions); lines 5874-5953 render the create/edit Dialog (name, icon, sortOrder, isActive checkbox). Fully wired.
+- Verified Item 9 sub-items:
+  1. `src/components/newmobility/gratifications/gratifications-page.tsx` lines 405-421 + line 432 — `showDriverGoals` gate EXISTS and covers all 6 signals (`userType === 'motorista' | 'entregador'`, `qualification === 'motorista' | 'entregador'`, `isDriver === true`, `isDelivery === true`). The driver-goals card is gated with `{showDriverGoals && driverGoals && (...)}` — only motorista/entregador profiles see it.
+  2. `/api/admin/gratifications-config/route.ts` EXISTS with GET + PUT (admin-only via role check). Persists a single `Gratification` row whose `type='driver_goals_config'` and `targetQualification` is `'motorista' | 'entregador' | 'ambos'`.
+     The admin UI in `admin-page.tsx` lines 4460-4495 has the "Metas Motorista / Entregador" config card with a Select bound to `driverGoalsTarget` and `saveDriverGoalsTarget`. State declared at lines 618-620; `loadDriverGoalsTarget()` at 839-854 + `saveDriverGoalsTarget()` at 857-872 wired to the API.
+     The API at `/api/gratifications/route.ts` lines 89-146 actually honors this config: fetches the `driver_goals_config` row, compares the user's qualification against `targetQualification` (or `isDriver`/`isDelivery` legacy flags), and returns `driverGoals: null` for ineligible users — so the UI hides the card not only because of the client-side check but also because the backend omits the data.
+- Ran `bun run lint` (full project): only 13 pre-existing errors in root `.js` helper scripts (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js — all `require()`-style imports, documented in DEPLOY-FIX-LIPEHOST-1). No new lint errors in any file relevant to Items 8 or 9.
+
+Stage Summary:
+- Both Items 8 and 9 are FULLY IMPLEMENTED end-to-end by earlier agents (8-b for services/photos/CRUD, BACK-7 for gratifications-config). This task verified completeness and confirmed:
+  - ServiceType model is in the schema (with sortOrder bonus field).
+  - Public `/api/service-types` GET returns active types; admin CRUD endpoints exist (GET list / POST create / [id] GET/PUT/DELETE) with proper auth, validation, and referential-integrity guards.
+  - `services-page.tsx` loads types from the API (with a legacy 8-item fallback while loading) and the create dialog POSTs multipart photos to `/api/services`, which persists up to 5 photos to disk + JSON URLs to `Service.photos`.
+  - Admin page has a complete "Tipos de Serviço" tab (table + create/edit dialog + toggle-active + delete with safety check).
+  - Gratifications page hides the driver-goals card for non-motorista/entregador profiles via the `showDriverGoals` gate AND the backend also returns `driverGoals: null` for ineligible users (double protection honoring the admin's `targetQualification` setting: motorista / entregador / ambos).
+  - Admin page has a "Metas Motorista / Entregador" config card that saves to `/api/admin/gratifications-config` (PUT) and loads it on mount.
+- Files changed by THIS task: NONE. All work was already in place — this task only verified and documented.
+- Does `db:push` need to be run? NO — the schema was already updated by Task 8-b. (Note: Task 8-b's worklog noted db:push had not been run inside the sandbox, but since this is the second pass and the task explicitly said "DO NOT run db:push", nothing changed.) If `db:push` hasn't been run yet on the production database, ServiceType / Service.photos columns will be missing and persistence will fail at runtime — but the code already handles null/missing gracefully (defaults to `"[]"`).
+- Lint: 0 new errors. 0 new warnings. 0 files touched.
+
+---
+Task ID: 7
+Agent: subagent (marketplace reviews + favorites)
+Task: Marketplace — remover depoimentos fictícios, implementar avaliações bidirecionais reais (comprador ↔ vendedor), sistema de favoritos, e reputação do vendedor.
+
+Work Log:
+- Li o worklog.md (Tasks 1-14 + DEPLOY-FIX-LIPEHOST-1 + MOBILE-APP-BUILD/VERIFY) para contexto. Task 14 já tinha adicionado `images` + `specifications` ao MarketplaceProduct e AppProduct; Task 3-a tinha criado o seed-marketplace-v2. Nenhuma task anterior tocou em reviews/favorites.
+- Mapeei o estado atual:
+  * `prisma/schema.prisma` — `MarketplaceProduct` tinha `rating Float` + `reviewCount Int` mas SEM modelo de reviews. `MarketplaceOrder`/`MarketplaceOrderItem` já existiam. `AppOrder` é um modelo separado para o portal de lojistas (não relacionado a este task).
+  * `marketplace-page.tsx` (1431 linhas) — tinha `mockReviews` constante com 5 depoimentos fictícios (Ana Carolina S., Roberto M., Juliana P., Carlos A., Mariana R.) exibidos no modal de detalhes. Rating summary usava percentages hardcoded (60/25/10/3/2). Sem botão de favorito, sem tab de favoritos, sem fluxo de avaliação pós-compra.
+  * `/api/marketplace/orders` GET (buyer-side) — não retornava `sellerName` nos items, apenas `category` + `imageUrl`.
+- SCHEMA — `prisma/schema.prisma` (+~50 linhas):
+  * Adicionado `MarketplaceReview` model: `id, productId, orderId, reviewerId, revieweeId, direction String, rating Int, comment String?, createdAt, updatedAt`. Relations com `MarketplaceProduct`, `User` (reviewer via "MarketplaceReviewsWritten", reviewee via "MarketplaceReviewsReceived"). `@@unique([orderId, direction])` garante uma review por direção por pedido. Indexes em productId, revieweeId, reviewerId. onDelete: Cascade em todas as FKs.
+  * Adicionado `MarketplaceFavorite` model: `id, userId, productId, createdAt`. Relations com `MarketplaceProduct` e `User`. `@@unique([userId, productId])` garante um favorito por usuário por produto. Index em userId. onDelete: Cascade.
+  * Adicionado back-relations em `MarketplaceProduct` (`reviews`, `favorites`) e em `User` (`marketplaceReviewsWritten`, `marketplaceReviewsReceived`, `marketplaceFavorites`).
+  * `bunx prisma generate` foi rodado para regenerar os tipos TypeScript do Prisma Client (não toca no DB — apenas recria `node_modules/@prisma/client`).
+- BACKEND — `/api/marketplace/reviews/route.ts` (NOVO, ~190 linhas):
+  * GET `?productId=X` → lista reviews `buyer_to_seller` reais (sem mocks), com reviewer name + image.
+  * POST `{orderId, productId, reviewerId, direction, rating, comment?}` → valida: direction em {buyer_to_seller, seller_to_buyer}; rating 1-5; order existe e status ∈ {paid, delivered}; product pertence ao order; reviewer é o buyer (para buyer_to_seller) ou seller (para seller_to_buyer, resolvido via sellerName→User.findFirst); reviewee ≠ reviewer. Em caso de P2002 (unique constraint), retorna 409 "Esta direção já foi avaliada para este pedido." Após criar buyer_to_seller review, recomputa e atualiza o `rating` + `reviewCount` do MarketplaceProduct via `prisma.marketplaceReview.aggregate`.
+- BACKEND — `/api/marketplace/reviews/seller/route.ts` (NOVO, ~75 linhas):
+  * GET `?userId=X` → retorna reputação agregada do vendedor: `avgRating, count, distribution {5,4,3,2,1}, recent[5]`. Usa `aggregate` + `groupBy` + `findMany` em paralelo.
+- BACKEND — `/api/marketplace/favorites/route.ts` (NOVO, ~75 linhas):
+  * GET `?userId=X` → lista favoritos do usuário com full product data, ordenados por createdAt desc.
+  * POST `{userId, productId}` → toggle: se existe, deleta; se não, cria. Retorna `{favorited: boolean, favorite?}`. Valida user e product existem.
+- BACKEND — `/api/marketplace/orders/route.ts` (+2/-2 linhas):
+  * GET (buyer-side) agora inclui `sellerName` no select do product e no mapeamento dos items. Necessário para o botão "Avaliar vendedor" saber qual vendedor avaliar.
+- FRONTEND — `src/lib/api.ts` (+33 linhas):
+  * Adicionado `marketplaceReviewsApi` com `listForProduct(productId)`, `sellerReputation(userId)`, `create({orderId, productId, reviewerId, direction, rating, comment?})`.
+  * Adicionado `marketplaceFavoritesApi` com `list(userId)` e `toggle(userId, productId)`.
+- FRONTEND — `src/components/newmobility/marketplace/marketplace-page.tsx` (+~700/-80 linhas, 1432 → 2253 linhas):
+  * **REMOVIDO**: `mockReviews` constante (5 depoimentos fictícios). Substituído por fetch real de `/api/marketplace/reviews?productId=X` via `fetchProductReviews()`.
+  * **REMOVIDO**: percentages hardcoded (60/25/10/3/2) no rating summary do modal. Agora computados da distribuição real das reviews fetched.
+  * **REMOVIDO**: `mockReviews.slice(0, 3)` rendering. Substituído por lista real de reviews, com empty state "Ainda não há avaliações para este produto." + "Compre e avalie para ser o primeiro!".
+  * Imports: adicionado `Textarea`, `Loader2`, `marketplaceReviewsApi`, `marketplaceFavoritesApi`. Removido `StarHalf` (não usado).
+  * Interface `ProductReview` atualizada para refletir o shape real da API (`reviewerName`, `createdAt`, `direction` em vez de `userName`/`date`).
+  * Estado novo: `favoriteIds: Set<string>`, `favoritedProducts: Product[]`, `favoritesLoading`, `productReviews: Record<productId, ProductReview[]>`, `reviewsLoading`, `sellerReputations: Record<sellerName, {avgRating, count, loading}>`, `sales: any[]`, `reviewDialog`, `reviewRating`, `reviewHoverRating`, `reviewComment`, `reviewSubmitting`, `submittedReviews: Set<"orderId:direction">`.
+  * `activeTab` agora suporta 4 valores: `'products' | 'favorites' | 'orders' | 'sales'`.
+  * Handlers novos: `fetchFavorites()`, `toggleFavorite(product, e)` (optimistic + rollback), `fetchProductReviews(productId)`, `fetchSellerReputation(sellerName)` (computa agregado do cache de produtos), `fetchSales()` (via `?sellerName=`), `openReviewDialog()`, `closeReviewDialog()`, `submitReview()`, `renderStarPicker()`.
+  * useEffect: carrega favorites on mount; refetch em tab change; quando um produto é aberto no modal, fetch suas reviews + reputação do vendedor.
+  * Tabs UI reformulada: 4 tabs (Produtos | Favoritos com ❤ icon + count badge rosa | Meus Pedidos | Minhas Vendas), com `whitespace-nowrap` e `overflow-x-auto` para mobile.
+  * **Botão de favorito (heart)**: adicionado em cada card de produto (overlay no canto inferior direito da imagem) e no modal de detalhes (botão circular ao lado do rating). Toggle via `toggleFavorite()` com optimistic UI.
+  * **Tab Favoritos**: grid de produtos favoritados (mesmo layout dos produtos, mas com coração preenchido). Empty state com ilustração + CTA.
+  * **Tab Minhas Vendas**: lista de orders contendo produtos do usuário (via `/api/marketplace/orders?sellerName=...`). Cada sale expandida mostra "Avaliar comprador" button se status ∈ {paid, delivered} e ainda não avaliado.
+  * **Tab Meus Pedidos**: cada item de um order delivered/paid agora mostra "Avaliar vendedor" button (se ainda não avaliado) ou badge "Vendedor avaliado".
+  * **Modal de detalhes**:
+    - Rating summary agora computa avg + distribution reais das reviews fetched (não mais percentages hardcoded).
+    - Loading state com spinner (`Loader2`).
+    - Empty state: "Ainda não há avaliações para este produto."
+    - Cada review mostra avatar, nome, badge "Compra verificada" (verde), stars, comentário, data.
+    - Botão de favorito (heart circular) ao lado do rating.
+    - Seller info card agora mostra reputação real do vendedor (avg stars + count) abaixo do nome.
+  * **Review Dialog**: dialog dedicado para submissão de avaliações. Mostra produto + contraparte (vendedor ou pedido #). Star picker interativo (1-5) com hover state. Textarea para comentário (opcional, max 500 chars, contador). Botões Cancelar + Enviar Avaliação (desabilitado se rating < 1 ou submitting). Loader2 no botão durante submit. Usado para ambas direções (buyer_to_seller e seller_to_buyer).
+- LINT & TYPE CHECK:
+  * `bun run lint` (full project) → 13 erros pré-existentes em `keep-alive.js`, `persistent-server.js`, `process-manager.js`, `run-forever.js`, `supervisor.js` (documentados no DEPLOY-FIX-LIPEHOST-1). **0 erros novos**.
+  * `npx eslint` nos 6 arquivos modificados/criados → 0 erros, 0 warnings.
+  * `npx tsc --noEmit --skipLibCheck` → 0 erros nos meus arquivos. (Erros pré-existentes em `seed-marketplace-v2/route.ts` [const createdProducts = never[]], `lib/api.ts:163` [duplicate getWithdrawals — adicionado por Task 5-a, não por mim], e 4 missing-export errors em admin components — todos não relacionados a este task.)
+
+Stage Summary:
+- **Depoimentos fictícios REMOVIDOS**: o array `mockReviews` com 5 reviews falsas foi totalmente eliminado. O modal de detalhes agora faz fetch de `/api/marketplace/reviews?productId=X` e mostra apenas reviews reais de compradores verificados. Se não há reviews, mostra "Ainda não há avaliações para este produto."
+- **Sistema de avaliações bidirecional IMPLEMENTADO**: buyers podem avaliar sellers (1-5 estrelas + comentário) após pedido delivered/paid; sellers podem avaliar buyers da mesma forma. Cada direção é única por pedido (`@@unique([orderId, direction])`). A criação valida que o reviewer é legitimo (buyer do pedido OU seller do produto) e que o pedido está completed.
+- **Reputação do vendedor IMPLEMENTADA**: avg stars + count exibidos no card do vendedor dentro do modal de detalhes. Também atualiza o `rating` + `reviewCount` cached no `MarketplaceProduct` após cada buyer_to_seller review, para que o grid do marketplace mostre dados atualizados sem precisar de join.
+- **Sistema de favoritos IMPLEMENTADO**: botão de coração em cada card e no modal de detalhes. Toggle otimista com rollback. Tab "Favoritos" dedicada mostrando os produtos favoritados em grid, com empty state e CTA.
+- **Fluxo pós-compra IMPLEMENTADO**: botão "Avaliar vendedor" aparece em cada item de pedidos delivered/paid; botão "Avaliar comprador" aparece em cada venda delivered/paid. Após submit, o botão é substituído por badge "Vendedor avaliado" / "Comprador avaliado" (via `submittedReviews` Set).
+- Arquivos alterados (7):
+  * `prisma/schema.prisma` (+~50 linhas) — 2 novos models + back-relations.
+  * `src/app/api/marketplace/reviews/route.ts` (NOVO, ~190 linhas) — GET + POST de reviews.
+  * `src/app/api/marketplace/reviews/seller/route.ts` (NOVO, ~75 linhas) — reputação agregada do vendedor.
+  * `src/app/api/marketplace/favorites/route.ts` (NOVO, ~75 linhas) — GET + POST (toggle) de favoritos.
+  * `src/app/api/marketplace/orders/route.ts` (+2/-2 linhas) — inclui sellerName no GET buyer-side.
+  * `src/lib/api.ts` (+33 linhas) — marketplaceReviewsApi + marketplaceFavoritesApi.
+  * `src/components/newmobility/marketplace/marketplace-page.tsx` (+~700/-80 linhas) — removeu mocks, adicionou 4 tabs, favoritos, reviews reais, fluxo de avaliação, reputação do vendedor.
+- Total: 3 novos arquivos, 4 arquivos modificados. ~1075 linhas adicionadas. **0 erros de lint novos, 0 erros de TypeScript novos.**
+- **db:push precisa ser rodado?** SIM — o schema foi atualizado com 2 novos models (`MarketplaceReview`, `MarketplaceFavorite`) e novas relations em `MarketplaceProduct` e `User`. Até que `bun run db:push` seja executado, as tabelas físicas não existirão no banco e qualquer tentativa de persistir/ler reviews ou favoritos resultará em erro de runtime Prisma ("Table marketplace_review does not exist"). As APIs já estão implementadas corretamente; apenas falta o push do schema para o DB. O `bunx prisma generate` foi rodado (apenas recria os tipos TypeScript do client, não toca no DB) para que o código compile sem erros TS.
+

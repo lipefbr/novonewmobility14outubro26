@@ -190,7 +190,7 @@ function StepExplore({ onNext, onSkip, step, totalSteps }: StepProps) {
   const features = [
     { icon: LayoutDashboard, label: 'Dashboard', desc: 'Visão geral da sua conta', color: 'from-emerald-500 to-emerald-600', page: 'dashboard' as const },
     { icon: DollarSign, label: 'CashBack', desc: 'Acompanhe seus ganhos', color: 'from-teal-500 to-teal-600', page: 'cashback' as const },
-    { icon: Wallet, label: 'Indicador', desc: 'Saldo e transações', color: 'from-amber-500 to-amber-600', page: 'financial' as const },
+    { icon: Wallet, label: 'Financeiro', desc: 'Saldo e transações', color: 'from-amber-500 to-amber-600', page: 'financial' as const },
     { icon: TrendingUp, label: 'Carreira', desc: 'Seu plano de evolução', color: 'from-purple-500 to-purple-600', page: 'career' as const },
   ]
 

@@ -528,6 +528,39 @@ export const marketplaceApi = {
     }),
 }
 
+// Marketplace — reviews (bidirectional, post-purchase) and favorites
+export const marketplaceReviewsApi = {
+  // Public: list real buyer_to_seller reviews for a product.
+  listForProduct: (productId: string) =>
+    apiFetch<{ reviews: any[] }>(`/marketplace/reviews?productId=${encodeURIComponent(productId)}`),
+  // Seller reputation (avg rating + count + distribution + recent).
+  sellerReputation: (userId: string) =>
+    apiFetch<any>(`/marketplace/reviews/seller?userId=${encodeURIComponent(userId)}`),
+  // Create a review (buyer → seller OR seller → buyer).
+  create: (data: {
+    orderId: string
+    productId: string
+    reviewerId: string
+    direction: 'buyer_to_seller' | 'seller_to_buyer'
+    rating: number
+    comment?: string
+  }) =>
+    apiFetch<any>('/marketplace/reviews', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+}
+
+export const marketplaceFavoritesApi = {
+  list: (userId: string) =>
+    apiFetch<{ favorites: any[] }>(`/marketplace/favorites?userId=${encodeURIComponent(userId)}`),
+  toggle: (userId: string, productId: string) =>
+    apiFetch<{ favorited: boolean; favorite?: any }>(`/marketplace/favorites`, {
+      method: 'POST',
+      body: JSON.stringify({ userId, productId }),
+    }),
+}
+
 // TalkMobi plans admin CRUD. The GET endpoint is public (no userId needed),
 // but POST/PUT/DELETE require an admin userId in the body/query.
 export const talkMobiApi = {

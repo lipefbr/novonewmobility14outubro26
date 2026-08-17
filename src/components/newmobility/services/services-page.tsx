@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useStore } from '@/lib/store'
 import { formatCurrency, cn } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/card'
@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Wrench, Star, MapPin, Plus, Filter, Search, Clock, Users,
-  ChevronRight, Phone, Heart, MessageSquare
+  ChevronRight, Phone, Heart, MessageSquare, ImageIcon, X, Loader2
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -25,7 +25,12 @@ interface ServiceItem {
   providerName: string
   name: string
   description: string
-  category: ServiceCategory
+  // Item 8 — category is now a free string populated from the ServiceType
+  // table (admin-managed). It may be the canonical capitalized name
+  // ("Automotivo") for new services or a lowercase legacy value
+  // ("automotivo") for the seeded mock data — both are handled by the
+  // getCategory*() helpers below.
+  category: string
   price: number
   location: string
   rating: number
@@ -34,25 +39,25 @@ interface ServiceItem {
   isAvailable: boolean
   isFavorite: boolean
   createdAt: string
+  photos?: string[]
 }
 
-type ServiceCategory = 'construção' | 'manutenção' | 'limpeza' | 'transporte' | 'tecnologia' | 'automotivo' | 'mobilidade' | 'outros'
+// Legacy category union — kept only as the key set for the static color/icon
+// fallback maps below. New ServiceType entries from the DB may use any string.
+type LegacyServiceCategory =
+  | 'construção' | 'manutenção' | 'limpeza' | 'transporte'
+  | 'tecnologia' | 'automotivo' | 'mobilidade' | 'outros'
 
-// --- Category Config ---
+interface ServiceTypeOption {
+  id: string
+  name: string
+  icon?: string | null
+  sortOrder?: number
+}
 
-const categories: { id: ServiceCategory | 'all'; label: string; icon: React.ElementType }[] = [
-  { id: 'all', label: 'Todos', icon: Filter },
-  { id: 'automotivo', label: 'Automotivo', icon: Wrench },
-  { id: 'mobilidade', label: 'Mobilidade', icon: Wrench },
-  { id: 'construção', label: 'Construção', icon: Wrench },
-  { id: 'manutenção', label: 'Manutenção', icon: Wrench },
-  { id: 'limpeza', label: 'Limpeza', icon: Wrench },
-  { id: 'transporte', label: 'Transporte', icon: Wrench },
-  { id: 'tecnologia', label: 'Tecnologia', icon: Wrench },
-  { id: 'outros', label: 'Outros', icon: Wrench },
-]
+// --- Category Config (fallbacks for legacy / unknown categories) ---
 
-const categoryColors: Record<ServiceCategory, string> = {
+const FALLBACK_CATEGORY_COLORS: Record<LegacyServiceCategory, string> = {
   automotivo: 'from-red-500 to-rose-500',
   mobilidade: 'from-emerald-500 to-green-500',
   construção: 'from-amber-500 to-orange-500',
@@ -63,7 +68,7 @@ const categoryColors: Record<ServiceCategory, string> = {
   outros: 'from-gray-500 to-slate-500',
 }
 
-const categoryIcons: Record<ServiceCategory, string> = {
+const FALLBACK_CATEGORY_ICONS: Record<LegacyServiceCategory, string> = {
   automotivo: '🚙',
   mobilidade: '📱',
   construção: '🏗️',
@@ -74,7 +79,7 @@ const categoryIcons: Record<ServiceCategory, string> = {
   outros: '📦',
 }
 
-const categoryBadgeStyles: Record<ServiceCategory, string> = {
+const FALLBACK_CATEGORY_BADGE_STYLES: Record<LegacyServiceCategory, string> = {
   automotivo: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
   mobilidade: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
   construção: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
@@ -83,6 +88,27 @@ const categoryBadgeStyles: Record<ServiceCategory, string> = {
   transporte: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
   tecnologia: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400',
   outros: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400',
+}
+
+const DEFAULT_COLOR = 'from-emerald-500 to-teal-500'
+const DEFAULT_BADGE = 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+const DEFAULT_ICON = '🛠️'
+
+// Look up a category's color gradient by name (case-insensitive). Falls back
+// to a sensible emerald gradient for admin-created types with no preset.
+function getCategoryColor(name: string): string {
+  const key = name.toLowerCase() as LegacyServiceCategory
+  return FALLBACK_CATEGORY_COLORS[key] || DEFAULT_COLOR
+}
+
+function getCategoryIcon(name: string): string {
+  const key = name.toLowerCase() as LegacyServiceCategory
+  return FALLBACK_CATEGORY_ICONS[key] || DEFAULT_ICON
+}
+
+function getCategoryBadge(name: string): string {
+  const key = name.toLowerCase() as LegacyServiceCategory
+  return FALLBACK_CATEGORY_BADGE_STYLES[key] || DEFAULT_BADGE
 }
 
 // --- Mock Data ---
@@ -394,19 +420,102 @@ export function ServicesPage() {
 
   const [services, setServices] = useState<ServiceItem[]>(mockServices)
   const [search, setSearch] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState<ServiceCategory | 'all'>('all')
+  const [selectedCategory, setSelectedCategory] = useState<string | 'all'>('all')
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [selectedService, setSelectedService] = useState<ServiceItem | null>(null)
   const [showHireDialog, setShowHireDialog] = useState(false)
+
+  // Item 8 — service types loaded from /api/service-types (admin-managed).
+  // Falls back to a static 8-type list if the API is unreachable.
+  const [serviceTypes, setServiceTypes] = useState<ServiceTypeOption[]>([])
+  const [serviceTypesLoading, setServiceTypesLoading] = useState(true)
+  const [photoFiles, setPhotoFiles] = useState<File[]>([])
+  const [photoPreviews, setPhotoPreviews] = useState<string[]>([])
+  const [submittingService, setSubmittingService] = useState(false)
 
   // New service form state
   const [newService, setNewService] = useState({
     name: '',
     description: '',
-    category: '' as ServiceCategory | '',
+    category: '' as string,
     price: '',
     location: '',
   })
+
+  // ---- Fetch service types from the admin-managed ServiceType table ----
+  const loadServiceTypes = useCallback(async () => {
+    setServiceTypesLoading(true)
+    try {
+      const res = await fetch('/api/service-types')
+      const data = await res.json()
+      const types: ServiceTypeOption[] = data?.types?.length ? data.types : []
+      setServiceTypes(types)
+    } catch {
+      setServiceTypes([])
+    } finally {
+      setServiceTypesLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadServiceTypes()
+  }, [loadServiceTypes])
+
+  // ---- Fetch real services (with mock fallback) ----
+  const loadServices = useCallback(async () => {
+    try {
+      const res = await fetch('/api/services')
+      const data = await res.json()
+      if (Array.isArray(data?.services) && data.services.length > 0) {
+        const mapped: ServiceItem[] = data.services.map((s: any) => ({
+          id: String(s.id),
+          providerId: String(s.providerId || ''),
+          providerName: String(s.providerName || 'Provider'),
+          name: String(s.name || ''),
+          description: String(s.description || ''),
+          category: String(s.category || 'Outros'),
+          price: Number(s.price || 0),
+          location: String(s.location || ''),
+          rating: Number(s.rating || 0),
+          reviewCount: Number(s.reviewCount || 0),
+          phone: String(s.phone || ''),
+          isAvailable: s.isAvailable !== false,
+          isFavorite: false,
+          createdAt: s.createdAt || new Date().toISOString(),
+          photos: Array.isArray(s.photos) ? s.photos : [],
+        }))
+        setServices(prev => [...mapped, ...mockServices.filter(m => !mapped.find(r => r.id === m.id))])
+      }
+    } catch {
+      // keep mock data on error
+    }
+  }, [])
+
+  useEffect(() => {
+    loadServices()
+  }, [loadServices])
+
+  // Build the category chips: always include "all", then the DB-driven types.
+  // If the DB is empty/loading, show the legacy hardcoded list so the chips
+  // never disappear.
+  const categories: { id: string | 'all'; label: string; icon: React.ElementType }[] = useMemo(() => {
+    const fallback: { id: string; label: string; icon: React.ElementType }[] = [
+      { id: 'automotivo', label: 'Automotivo', icon: Wrench },
+      { id: 'mobilidade', label: 'Mobilidade', icon: Wrench },
+      { id: 'construção', label: 'Construção', icon: Wrench },
+      { id: 'manutenção', label: 'Manutenção', icon: Wrench },
+      { id: 'limpeza', label: 'Limpeza', icon: Wrench },
+      { id: 'transporte', label: 'Transporte', icon: Wrench },
+      { id: 'tecnologia', label: 'Tecnologia', icon: Wrench },
+      { id: 'outros', label: 'Outros', icon: Wrench },
+    ]
+    const dynamic: { id: string; label: string; icon: React.ElementType }[] =
+      serviceTypes.map(t => ({ id: t.name, label: t.name, icon: Wrench }))
+    return [
+      { id: 'all' as const, label: 'Todos', icon: Filter },
+      ...(dynamic.length > 0 ? dynamic : fallback),
+    ]
+  }, [serviceTypes])
 
   // Filter services
   const filteredServices = useMemo(() => {
@@ -436,7 +545,7 @@ export function ServicesPage() {
     return services.filter(s => s.providerId === user.id)
   }, [services, isProvider, user])
 
-  const handleAddService = () => {
+  const handleAddService = async () => {
     if (!newService.name || !newService.category || !newService.price || !newService.location) {
       toast.error('Preencha todos os campos obrigatórios')
       return
@@ -448,27 +557,93 @@ export function ServicesPage() {
       return
     }
 
-    const service: ServiceItem = {
-      id: `srv_${Date.now()}`,
-      providerId: user!.id,
-      providerName: user!.name,
-      name: newService.name,
-      description: newService.description,
-      category: newService.category as ServiceCategory,
-      price: priceValue,
-      location: newService.location,
-      rating: 0,
-      reviewCount: 0,
-      phone: user!.phone || '',
-      isAvailable: true,
-      isFavorite: false,
-      createdAt: new Date().toISOString(),
+    if (!user) {
+      toast.error('Você precisa estar logado para cadastrar um serviço')
+      return
     }
 
-    setServices(prev => [service, ...prev])
-    setShowAddDialog(false)
-    setNewService({ name: '', description: '', category: '', price: '', location: '' })
-    toast.success('Serviço adicionado com sucesso!')
+    setSubmittingService(true)
+
+    try {
+      // Item 8 — upload photos + service payload as multipart/form-data so the
+      // server persists photos to /public/uploads/services/ and stores the
+      // URLs in Service.photos.
+      const formData = new FormData()
+      formData.append('name', newService.name)
+      formData.append('description', newService.description)
+      formData.append('category', newService.category)
+      formData.append('price', String(priceValue / 100))
+      formData.append('location', newService.location)
+      if (user.phone) formData.append('phone', user.phone)
+      photoFiles.forEach(f => formData.append('photos', f))
+
+      const res = await fetch('/api/services', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error || 'Falha ao cadastrar serviço')
+      }
+
+      const created: ServiceItem = {
+        id: String(data.id),
+        providerId: String(data.providerId || user.id),
+        providerName: String(data.providerName || user.name),
+        name: String(data.name || newService.name),
+        description: String(data.description || newService.description),
+        category: String(data.category || newService.category),
+        price: Number(data.price || priceValue),
+        location: String(data.location || newService.location),
+        rating: 0,
+        reviewCount: 0,
+        phone: String(data.phone || user.phone || ''),
+        isAvailable: true,
+        isFavorite: false,
+        createdAt: data.createdAt || new Date().toISOString(),
+        photos: Array.isArray(data.photos) ? data.photos : [],
+      }
+
+      setServices(prev => [created, ...prev])
+      setShowAddDialog(false)
+      setNewService({ name: '', description: '', category: '', price: '', location: '' })
+      setPhotoFiles([])
+      setPhotoPreviews([])
+      toast.success('Serviço adicionado com sucesso!')
+    } catch (err: any) {
+      toast.error('Erro ao cadastrar serviço', {
+        description: err?.message || 'Tente novamente mais tarde.',
+      })
+    } finally {
+      setSubmittingService(false)
+    }
+  }
+
+  // ---- Photo upload helpers ----
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+    const remaining = Math.max(0, 5 - photoFiles.length)
+    const toAdd = files.slice(0, remaining)
+    if (toAdd.length < files.length) {
+      toast.info(`Máximo de 5 fotos por serviço.`)
+    }
+    setPhotoFiles(prev => [...prev, ...toAdd])
+    setPhotoPreviews(prev => [
+      ...prev,
+      ...toAdd.map(f => URL.createObjectURL(f)),
+    ])
+    // Clear the input value so selecting the same file again re-triggers onChange
+    e.target.value = ''
+  }
+
+  const handleRemovePhoto = (idx: number) => {
+    setPhotoFiles(prev => prev.filter((_, i) => i !== idx))
+    setPhotoPreviews(prev => {
+      const url = prev[idx]
+      if (url && url.startsWith('blob:')) URL.revokeObjectURL(url)
+      return prev.filter((_, i) => i !== idx)
+    })
   }
 
   const handleToggleFavorite = (serviceId: string) => {
@@ -613,13 +788,13 @@ export function ServicesPage() {
                         <div className="flex items-center gap-2 min-w-0">
                           <div className={cn(
                             'w-9 h-9 rounded-lg bg-gradient-to-br flex items-center justify-center shrink-0',
-                            categoryColors[service.category]
+                            getCategoryColor(service.category)
                           )}>
-                            <span className="text-base">{categoryIcons[service.category]}</span>
+                            <span className="text-base">{getCategoryIcon(service.category)}</span>
                           </div>
                           <div className="min-w-0">
                             <p className="text-sm font-semibold text-foreground truncate">{service.name}</p>
-                            <Badge className={cn('text-[9px] px-1.5 py-0 h-4 border-0', categoryBadgeStyles[service.category])}>
+                            <Badge className={cn('text-[9px] px-1.5 py-0 h-4 border-0', getCategoryBadge(service.category))}>
                               {service.category}
                             </Badge>
                           </div>
@@ -755,7 +930,7 @@ export function ServicesPage() {
                     {/* Service Category Header */}
                     <div className={cn(
                       'h-2 bg-gradient-to-r',
-                      categoryColors[service.category]
+                      getCategoryColor(service.category)
                     )} />
 
                     <div className="p-4 flex flex-col flex-1">
@@ -764,15 +939,15 @@ export function ServicesPage() {
                         <div className="flex items-center gap-2.5 min-w-0">
                           <div className={cn(
                             'w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center shrink-0 shadow-sm',
-                            categoryColors[service.category]
+                            getCategoryColor(service.category)
                           )}>
-                            <span className="text-lg">{categoryIcons[service.category]}</span>
+                            <span className="text-lg">{getCategoryIcon(service.category)}</span>
                           </div>
                           <div className="min-w-0">
                             <p className="text-sm font-semibold text-foreground truncate">
                               {service.providerName}
                             </p>
-                            <Badge className={cn('text-[9px] px-1.5 py-0 h-4 border-0 mt-0.5', categoryBadgeStyles[service.category])}>
+                            <Badge className={cn('text-[9px] px-1.5 py-0 h-4 border-0 mt-0.5', getCategoryBadge(service.category))}>
                               {service.category}
                             </Badge>
                           </div>
@@ -910,22 +1085,83 @@ export function ServicesPage() {
               <Label className="text-sm font-medium">Categoria *</Label>
               <Select
                 value={newService.category}
-                onValueChange={(value) => setNewService(prev => ({ ...prev, category: value as ServiceCategory }))}
+                onValueChange={(value) => setNewService(prev => ({ ...prev, category: value }))}
+                disabled={serviceTypesLoading}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Selecione uma categoria" />
+                  <SelectValue placeholder={serviceTypesLoading ? 'Carregando...' : 'Selecione uma categoria'} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="automotivo">🚙 Automotivo</SelectItem>
-                  <SelectItem value="mobilidade">📱 Mobilidade</SelectItem>
-                  <SelectItem value="construção">🏗️ Construção</SelectItem>
-                  <SelectItem value="manutenção">🔧 Manutenção</SelectItem>
-                  <SelectItem value="limpeza">🧹 Limpeza</SelectItem>
-                  <SelectItem value="transporte">🚗 Transporte</SelectItem>
-                  <SelectItem value="tecnologia">💻 Tecnologia</SelectItem>
-                  <SelectItem value="outros">📦 Outros</SelectItem>
+                  {serviceTypes.length > 0 ? (
+                    serviceTypes.map(t => (
+                      <SelectItem key={t.id} value={t.name}>
+                        {t.icon ? `${t.icon} ` : ''}{t.name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <>
+                      <SelectItem value="automotivo">🚙 Automotivo</SelectItem>
+                      <SelectItem value="mobilidade">📱 Mobilidade</SelectItem>
+                      <SelectItem value="construção">🏗️ Construção</SelectItem>
+                      <SelectItem value="manutenção">🔧 Manutenção</SelectItem>
+                      <SelectItem value="limpeza">🧹 Limpeza</SelectItem>
+                      <SelectItem value="transporte">🚗 Transporte</SelectItem>
+                      <SelectItem value="tecnologia">💻 Tecnologia</SelectItem>
+                      <SelectItem value="outros">📦 Outros</SelectItem>
+                    </>
+                  )}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Photos */}
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium flex items-center gap-1.5">
+                <ImageIcon className="h-3.5 w-3.5 text-emerald-600" />
+                Fotos do serviço
+                <span className="text-[10px] text-muted-foreground font-normal">(até 5)</span>
+              </Label>
+              <div className="grid grid-cols-5 gap-2">
+                {photoPreviews.map((url, idx) => (
+                  <div
+                    key={`photo-${idx}`}
+                    className="relative aspect-square rounded-md overflow-hidden border border-border bg-muted"
+                  >
+                    {/* photo preview */}
+                    <img
+                      src={url}
+                      alt={`Foto ${idx + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePhoto(idx)}
+                      className="absolute top-0.5 right-0.5 h-5 w-5 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80"
+                      aria-label="Remover foto"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                {photoPreviews.length < 5 && (
+                  <label
+                    htmlFor="service-photo-input"
+                    className="aspect-square rounded-md border-2 border-dashed border-border hover:border-emerald-400 dark:hover:border-emerald-700 flex flex-col items-center justify-center cursor-pointer text-muted-foreground hover:text-emerald-600 transition-colors"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span className="text-[9px] mt-0.5">Adicionar</span>
+                  </label>
+                )}
+              </div>
+              <input
+                id="service-photo-input"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                multiple
+                className="sr-only"
+                onChange={handlePhotoChange}
+              />
+              <p className="text-[10px] text-muted-foreground">JPEG, PNG, WebP ou GIF. Máx 5MB por foto.</p>
             </div>
 
             {/* Price & Location */}
@@ -958,16 +1194,29 @@ export function ServicesPage() {
                 onClick={() => {
                   setShowAddDialog(false)
                   setNewService({ name: '', description: '', category: '', price: '', location: '' })
+                  setPhotoFiles([])
+                  setPhotoPreviews([])
                 }}
+                disabled={submittingService}
               >
                 Cancelar
               </Button>
               <Button
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
                 onClick={handleAddService}
+                disabled={submittingService}
               >
-                <Plus className="h-4 w-4 mr-1" />
-                Adicionar
+                {submittingService ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    Enviando...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4 mr-1" />
+                    Adicionar
+                  </>
+                )}
               </Button>
             </div>
           </div>
@@ -992,9 +1241,9 @@ export function ServicesPage() {
                 <div className="flex items-center gap-3">
                   <div className={cn(
                     'w-12 h-12 rounded-xl bg-gradient-to-br flex items-center justify-center shrink-0',
-                    categoryColors[selectedService.category]
+                    getCategoryColor(selectedService.category)
                   )}>
-                    <span className="text-xl">{categoryIcons[selectedService.category]}</span>
+                    <span className="text-xl">{getCategoryIcon(selectedService.category)}</span>
                   </div>
                   <div>
                     <p className="font-semibold text-foreground">{selectedService.name}</p>
@@ -1033,6 +1282,20 @@ export function ServicesPage() {
                   <span className="font-medium text-foreground">{selectedService.reviewCount} avaliações</span>
                 </div>
               </div>
+
+              {/* Photos */}
+              {selectedService.photos && selectedService.photos.length > 0 && (
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {selectedService.photos.map((url, i) => (
+                    <img
+                      key={`photo-${i}`}
+                      src={url}
+                      alt={`${selectedService.name} - foto ${i + 1}`}
+                      className="h-24 w-32 object-cover rounded-md border border-border shrink-0"
+                    />
+                  ))}
+                </div>
+              )}
 
               {/* Description */}
               {selectedService.description && (

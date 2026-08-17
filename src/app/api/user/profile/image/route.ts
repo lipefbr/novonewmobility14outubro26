@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
+import { getSession } from '@/lib/auth'
 import fs from 'fs'
 import path from 'path'
 
@@ -15,15 +16,25 @@ const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 // User.profileImage. Returns the new profileImage URL.
 export async function POST(request: NextRequest) {
   try {
+    // BACK-3: Require authentication. Previously this route trusted the
+    // `userId` field sent by the client (formData / JSON body), which meant
+    // any unauthenticated request could overwrite ANY user's profile photo.
+    // Now the userId always comes from the session — the client-supplied
+    // userId is ignored.
+    const session = await getSession(request)
+    if (!session) {
+      return error('Não autenticado', 401)
+    }
+
     const contentType = request.headers.get('content-type') || ''
 
-    let userId = ''
     let buffer: Buffer | null = null
     let mime = ''
+    const userId = session.userId
 
     if (contentType.includes('multipart/form-data')) {
       const formData = await request.formData()
-      userId = String(formData.get('userId') || '')
+      // userId comes from the session (set above), NOT from the client.
       const file = formData.get('file')
       if (!file || !(file instanceof File)) {
         return error('Arquivo de imagem não encontrado (campo "file")', 400)
@@ -45,7 +56,7 @@ export async function POST(request: NextRequest) {
       buffer = Buffer.from(arrayBuffer)
     } else if (contentType.includes('application/json')) {
       const body = await request.json()
-      userId = String(body.userId || '')
+      // userId comes from the session (set above), NOT from the client.
       const dataUri = String(body.image || body.dataUri || '')
       if (!dataUri) {
         return error('Imagem base64 não fornecida (campo "image")', 400)

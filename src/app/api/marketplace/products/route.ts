@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { userId, name, description, price, originalPrice, category, imageUrl, images, stock, cashbackPercent, sellerName, tags, isFeatured } = body
+    const { userId, name, description, price, originalPrice, category, imageUrl, images, specifications, stock, cashbackPercent, sellerName, tags, isFeatured } = body
 
     // Check admin or lojista
     const user = await prisma.user.findUnique({ where: { id: userId } })
@@ -69,6 +69,33 @@ export async function POST(request: NextRequest) {
       return error('Name, price, and category are required')
     }
 
+    // Validate images array (max 15 photo URLs)
+    let imagesJson: string | null = null
+    if (Array.isArray(images)) {
+      const validImages = images.filter((u: unknown) => typeof u === 'string' && u.length > 0).slice(0, 15)
+      imagesJson = validImages.length > 0 ? JSON.stringify(validImages) : null
+    } else if (typeof images === 'string' && images.length > 0) {
+      // Allow pre-stringified JSON for backward compat
+      imagesJson = images
+    }
+
+    // Validate specifications object (technical attributes)
+    let specsJson: string | null = null
+    if (specifications && typeof specifications === 'object' && !Array.isArray(specifications)) {
+      const cleaned: Record<string, string> = {}
+      for (const [k, v] of Object.entries(specifications as Record<string, unknown>)) {
+        if (typeof v === 'string' && v.trim().length > 0) {
+          cleaned[k] = v.trim()
+        } else if (typeof v === 'number' && !isNaN(v)) {
+          cleaned[k] = String(v)
+        }
+      }
+      specsJson = Object.keys(cleaned).length > 0 ? JSON.stringify(cleaned) : null
+    } else if (typeof specifications === 'string' && specifications.length > 0) {
+      // Allow pre-stringified JSON for backward compat
+      specsJson = specifications
+    }
+
     const product = await prisma.marketplaceProduct.create({
       data: {
         name,
@@ -77,7 +104,8 @@ export async function POST(request: NextRequest) {
         originalPrice: originalPrice || null,
         category,
         imageUrl: imageUrl || null,
-        images: images ? JSON.stringify(images) : null,
+        images: imagesJson,
+        specifications: specsJson,
         stock: stock || 0,
         cashbackPercent: cashbackPercent || 0,
         sellerName: sellerName || user.name,

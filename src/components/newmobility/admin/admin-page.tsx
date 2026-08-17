@@ -28,7 +28,7 @@ import {
   ArrowUpDown, Receipt, PieChart, Filter, Download, Calendar,
   MessageSquare, Send, Gift, Ticket, Gamepad2, Network, Percent,
   TreePine, Coins, Trophy, AlertCircle, Heart, UsersRound, Layers,
-  LogIn, Loader2, UserPlus, KeyRound,
+  LogIn, Loader2, UserPlus, KeyRound, Wrench,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -254,6 +254,17 @@ interface GameConfigItem {
   updatedAt: string;
 }
 
+// ---------- Service Types (Item 8 — admin CRUD for the Services module) ----------
+interface AdminServiceType {
+  id: string;
+  name: string;
+  icon?: string | null;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ---------- Achievements ----------
 interface AchievementItem {
   id: string;
@@ -393,6 +404,7 @@ const adminPageToTab: Record<string, string> = {
   talkmobi: 'talkmobi',
   'talkmobi-subscriptions': 'talkmobi-subscriptions',
   telemedicina: 'telemedicina',
+  'service-types': 'service-types',
 }
 
 export function AdminPage() {
@@ -418,6 +430,10 @@ export function AdminPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [planFilter, setPlanFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  // Item 13 (sponsor validation): toggle to filter the Users tab to only
+  // users with referredById=null AND role != 'admin' (i.e., users that the
+  // admin needs to link to a sponsor). Mirrored on the API as `noSponsor`.
+  const [noSponsorFilter, setNoSponsorFilter] = useState(false)
   const [userPage, setUserPage] = useState(1)
   const [savingConfig, setSavingConfig] = useState(false)
   const [showNewAnnouncement, setShowNewAnnouncement] = useState(false)
@@ -475,6 +491,19 @@ export function AdminPage() {
   const [viewingUser, setViewingUser] = useState<ViewUserData | null>(null)
   const [loadingViewUser, setLoadingViewUser] = useState(false)
   const [viewUserBeneficiaries, setViewUserBeneficiaries] = useState<any[]>([])
+
+  // Item 13 (sponsor validation) — "Vincular patrocinador" dialog state.
+  // Lets the admin assign a sponsor (referredById) to a user that was
+  // created without one. The admin types an email or referral code; we
+  // validate it client-side via /api/referrals/validate?code=... and then
+  // PUT { referredById } to /api/admin/users/[id] (the route accepts an
+  // email/referralCode/id string and resolves it server-side too).
+  const [linkSponsorDialogOpen, setLinkSponsorDialogOpen] = useState(false)
+  const [linkSponsorTarget, setLinkSponsorTarget] = useState<AdminUser | null>(null)
+  const [linkSponsorQuery, setLinkSponsorQuery] = useState('')
+  const [linkSponsorResolved, setLinkSponsorResolved] = useState<{ name: string } | null>(null)
+  const [linkSponsorChecking, setLinkSponsorChecking] = useState(false)
+  const [linkSponsorSaving, setLinkSponsorSaving] = useState(false)
 
   // Plan dialog
   const [planDialogOpen, setPlanDialogOpen] = useState(false)
@@ -589,6 +618,16 @@ export function AdminPage() {
   const [driverGoalsTarget, setDriverGoalsTarget] = useState<string>('ambos')
   const [driverGoalsTargetLoading, setDriverGoalsTargetLoading] = useState(false)
   const [driverGoalsTargetSaving, setDriverGoalsTargetSaving] = useState(false)
+
+  // ---------- Service Types (Item 8 — admin CRUD) ----------
+  const [serviceTypes, setServiceTypes] = useState<AdminServiceType[]>([])
+  const [serviceTypesLoading, setServiceTypesLoading] = useState(false)
+  const [serviceTypeDialogOpen, setServiceTypeDialogOpen] = useState(false)
+  const [editingServiceType, setEditingServiceType] = useState<AdminServiceType | null>(null)
+  const [serviceTypeForm, setServiceTypeForm] = useState({
+    name: '', icon: '', isActive: true, sortOrder: 99,
+  })
+  const [serviceTypeSaving, setServiceTypeSaving] = useState(false)
 
   // ---------- Game Config (inside Bets tab) ----------
   const [gameConfigs, setGameConfigs] = useState<GameConfigItem[]>([])
@@ -716,7 +755,8 @@ export function AdminPage() {
     if (activeTab === 'streak-rewards') loadStreakRewards()
     if (activeTab === 'events') loadEvents()
     if (activeTab === 'faq') loadFAQs()
-  }, [activeTab, searchQuery, planFilter, statusFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter, ticketPriorityFilter, voucherStatusFilter, voucherPage, betStatusFilter, betPage, matrixSelectedUser, matrixType])
+    if (activeTab === 'service-types') loadServiceTypes()
+  }, [activeTab, searchQuery, planFilter, statusFilter, noSponsorFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter, ticketPriorityFilter, voucherStatusFilter, voucherPage, betStatusFilter, betPage, matrixSelectedUser, matrixType])
 
   const loadStats = async () => {
     try {
@@ -729,6 +769,9 @@ export function AdminPage() {
   const loadUsers = async () => {
     try {
       const params = new URLSearchParams({ userId: user?.id || '', search: searchQuery, plan: planFilter, status: statusFilter, page: String(userPage) })
+      // Item 13: forward the "Sem patrocinador" toggle to the API so the
+      // server filters by referredById=null AND role != 'admin'.
+      if (noSponsorFilter) params.set('noSponsor', 'true')
       const data = await apiFetch<{ users: AdminUser[]; total: number; page: number; totalPages: number }>(`/admin/users?${params}`)
       setUsers(data)
     } catch { /* ignore */ }
@@ -1228,6 +1271,88 @@ export function AdminPage() {
       loadGameConfigs()
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao excluir')
+    }
+  }
+
+  // ---------- Service Types (Item 8 — admin CRUD) ----------
+  const loadServiceTypes = async () => {
+    setServiceTypesLoading(true)
+    try {
+      const data = await apiFetch<{ types: AdminServiceType[] }>(`/admin/service-types?userId=${user?.id}`)
+      setServiceTypes(data.types || [])
+    } catch { /* ignore */ } finally { setServiceTypesLoading(false) }
+  }
+
+  const handleOpenCreateServiceType = () => {
+    setEditingServiceType(null)
+    setServiceTypeForm({ name: '', icon: '', isActive: true, sortOrder: 99 })
+    setServiceTypeDialogOpen(true)
+  }
+
+  const handleOpenEditServiceType = (t: AdminServiceType) => {
+    setEditingServiceType(t)
+    setServiceTypeForm({
+      name: t.name,
+      icon: t.icon || '',
+      isActive: t.isActive,
+      sortOrder: t.sortOrder,
+    })
+    setServiceTypeDialogOpen(true)
+  }
+
+  const handleSaveServiceType = async () => {
+    if (!serviceTypeForm.name.trim()) {
+      toast.error('Informe o nome do tipo de serviço')
+      return
+    }
+    setServiceTypeSaving(true)
+    try {
+      const payload: Record<string, unknown> = {
+        userId: user?.id,
+        name: serviceTypeForm.name.trim(),
+        icon: serviceTypeForm.icon.trim() || null,
+        isActive: Boolean(serviceTypeForm.isActive),
+        sortOrder: Number(serviceTypeForm.sortOrder) || 99,
+      }
+      if (editingServiceType) {
+        await apiFetch(`/admin/service-types/${editingServiceType.id}`, {
+          method: 'PUT', body: JSON.stringify(payload),
+        })
+        toast.success('Tipo de serviço atualizado!')
+      } else {
+        await apiFetch('/admin/service-types', {
+          method: 'POST', body: JSON.stringify(payload),
+        })
+        toast.success('Tipo de serviço criado!')
+      }
+      setServiceTypeDialogOpen(false)
+      loadServiceTypes()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao salvar tipo de serviço')
+    } finally { setServiceTypeSaving(false) }
+  }
+
+  const handleToggleServiceTypeActive = async (t: AdminServiceType) => {
+    try {
+      await apiFetch(`/admin/service-types/${t.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ userId: user?.id, isActive: !t.isActive }),
+      })
+      toast.success(t.isActive ? 'Tipo desativado' : 'Tipo ativado')
+      loadServiceTypes()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao alternar status')
+    }
+  }
+
+  const handleDeleteServiceType = async (t: AdminServiceType) => {
+    if (!confirm(`Excluir o tipo "${t.name}"?`)) return
+    try {
+      await apiFetch(`/admin/service-types/${t.id}?userId=${user?.id}`, { method: 'DELETE' })
+      toast.success('Tipo excluído')
+      loadServiceTypes()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao excluir tipo')
     }
   }
 
@@ -1871,6 +1996,84 @@ export function AdminPage() {
       toast.error('Erro ao atualizar usuário')
     } finally {
       setSavingUser(false)
+    }
+  }
+
+  // ---------- Item 13: Vincular patrocinador ----------
+  // Opens a dialog to assign a sponsor (referredById) to a user that was
+  // created without one. The admin types the sponsor's email or referral
+  // code; we resolve it via /api/referrals/validate (only validates codes)
+  // and via /api/admin/users?search=... (resolves emails). The PUT itself
+  // accepts id/email/referralCode and resolves server-side, so this
+  // client-side lookup is purely a UX affordance.
+  const handleOpenLinkSponsor = (u: AdminUser) => {
+    setLinkSponsorTarget(u)
+    setLinkSponsorQuery('')
+    setLinkSponsorResolved(null)
+    setLinkSponsorDialogOpen(true)
+  }
+
+  // Live-check the typed sponsor (debounced by the user's typing cadence —
+  // we only check on blur and on Enter to avoid spamming the API on every
+  // keystroke).
+  const checkSponsorQuery = async (raw: string) => {
+    const q = raw.trim()
+    if (!q) {
+      setLinkSponsorResolved(null)
+      return
+    }
+    setLinkSponsorChecking(true)
+    try {
+      // First try the referral code validator (works for codes only).
+      const codeRes = await fetch(`/api/referrals/validate?code=${encodeURIComponent(q.toUpperCase())}`)
+      const codeData = await codeRes.json().catch(() => null)
+      if (codeData?.valid && codeData?.referrerName) {
+        setLinkSponsorResolved({ name: codeData.referrerName })
+        return
+      }
+      // Fall back to the admin users search — this handles email matches.
+      const searchRes = await fetch(`/api/admin/users?userId=${user?.id || ''}&search=${encodeURIComponent(q)}&limit=1`)
+      const searchData = await searchRes.json().catch(() => null)
+      const found = searchData?.users?.[0]
+      if (found && (found.email?.toLowerCase() === q.toLowerCase() || found.referralCode?.toUpperCase() === q.toUpperCase())) {
+        setLinkSponsorResolved({ name: `${found.name} (${found.email})` })
+        return
+      }
+      setLinkSponsorResolved(null)
+    } catch {
+      setLinkSponsorResolved(null)
+    } finally {
+      setLinkSponsorChecking(false)
+    }
+  }
+
+  const handleLinkSponsor = async () => {
+    if (!linkSponsorTarget || !linkSponsorQuery.trim()) return
+    if (!linkSponsorResolved) {
+      toast.error('Patrocinador não encontrado. Verifique o email ou código informado.')
+      return
+    }
+    setLinkSponsorSaving(true)
+    try {
+      // The PUT route resolves the sponsor by id/email/referralCode
+      // server-side (with a cycle check), so we just forward the raw query.
+      await apiFetch(`/admin/users/${linkSponsorTarget.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          userId: user?.id,
+          referredById: linkSponsorQuery.trim(),
+        }),
+      })
+      toast.success(`Patrocinador vinculado a ${linkSponsorTarget.name}.`)
+      setLinkSponsorDialogOpen(false)
+      setLinkSponsorTarget(null)
+      setLinkSponsorQuery('')
+      setLinkSponsorResolved(null)
+      loadUsers()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao vincular patrocinador')
+    } finally {
+      setLinkSponsorSaving(false)
     }
   }
 
@@ -2641,6 +2844,18 @@ export function AdminPage() {
                   <option value="active">Ativos</option>
                   <option value="inactive">Inativos</option>
                 </select>
+                {/* Item 13 (sponsor validation) — toggle filter to show only
+                    users without a sponsor (referredById=null AND role != admin). */}
+                <Button
+                  variant={noSponsorFilter ? 'default' : 'outline'}
+                  size="sm"
+                  className={`h-9 gap-1.5 text-xs shrink-0 ${noSponsorFilter ? 'bg-amber-600 hover:bg-amber-700 text-white' : ''}`}
+                  onClick={() => { setNoSponsorFilter(v => !v); setUserPage(1) }}
+                  title="Mostrar apenas usuários sem patrocinador (exceto administradores)"
+                >
+                  <Network className="h-3.5 w-3.5" />
+                  {noSponsorFilter ? 'Filtro ativo: Sem patrocinador' : 'Sem patrocinador'}
+                </Button>
                 <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs" onClick={handleExportCSV}>
                   <Download className="h-3.5 w-3.5" /> Exportar CSV
                 </Button>
@@ -2720,6 +2935,22 @@ export function AdminPage() {
                         </td>
                         <td className="p-3 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {/* Item 13 (sponsor validation) — show a "Vincular
+                                patrocinador" action only for users that have no
+                                sponsor AND are not admins (the seed admin is the
+                                only user allowed to have no sponsor). */}
+                            {!u.referredById && u.role !== 'admin' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 gap-1 text-amber-600 hover:text-amber-700"
+                                onClick={() => handleOpenLinkSponsor(u)}
+                                title="Vincular um patrocinador a este usuário"
+                              >
+                                <Network className="h-3.5 w-3.5" />
+                                <span className="hidden xl:inline">Vincular</span>
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -4350,6 +4581,126 @@ export function AdminPage() {
           )}
         </TabsContent>
 
+        {/* ===== SERVICE TYPES TAB (Item 8) ===== */}
+        <TabsContent value="service-types" className="mt-4 space-y-4">
+          <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
+            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Wrench className="h-4 w-4 text-emerald-600" />
+                  <h3 className="text-sm font-semibold text-foreground">Tipos de Serviço</h3>
+                  <Badge variant="secondary" className="text-[10px]">{serviceTypes.length}</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Gerencie as categorias disponíveis no módulo de Serviços. Tipos desativados não aparecem no dropdown público, mas registros históricos continuam legíveis.
+                </p>
+              </div>
+              <Button
+                className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shrink-0"
+                onClick={handleOpenCreateServiceType}
+              >
+                <Plus className="h-4 w-4" /> Novo Tipo
+              </Button>
+            </CardContent>
+          </Card>
+
+          {serviceTypesLoading ? (
+            <Card>
+              <CardContent className="flex items-center justify-center py-12">
+                <span className="h-6 w-6 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
+                <span className="ml-3 text-sm text-muted-foreground">Carregando tipos...</span>
+              </CardContent>
+            </Card>
+          ) : serviceTypes.length === 0 ? (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <Wrench className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-lg font-medium text-foreground">Nenhum tipo cadastrado</p>
+                <p className="text-sm text-muted-foreground mt-1">Crie o primeiro tipo de serviço para aparecer no módulo de Serviços.</p>
+                <Button
+                  className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
+                  onClick={handleOpenCreateServiceType}
+                >
+                  <Plus className="h-4 w-4" /> Criar Tipo
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50">
+                      <tr className="text-left">
+                        <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Ordem</th>
+                        <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Ícone</th>
+                        <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Nome</th>
+                        <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Status</th>
+                        <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide text-right">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {serviceTypes.map(t => (
+                        <tr key={t.id} className="border-t border-border hover:bg-muted/30">
+                          <td className="p-3 text-xs text-muted-foreground">{t.sortOrder}</td>
+                          <td className="p-3 text-lg">{t.icon || '🛠️'}</td>
+                          <td className="p-3 font-medium text-foreground">{t.name}</td>
+                          <td className="p-3">
+                            <Badge
+                              className={
+                                t.isActive
+                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[10px]'
+                                  : 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400 text-[10px]'
+                              }
+                            >
+                              {t.isActive ? 'Ativo' : 'Inativo'}
+                            </Badge>
+                          </td>
+                          <td className="p-3">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => handleToggleServiceTypeActive(t)}
+                                title={t.isActive ? 'Desativar' : 'Ativar'}
+                              >
+                                {t.isActive ? (
+                                  <ToggleRight className="h-4 w-4 text-emerald-600" />
+                                ) : (
+                                  <ToggleLeft className="h-4 w-4 text-muted-foreground" />
+                                )}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => handleOpenEditServiceType(t)}
+                                title="Editar"
+                              >
+                                <Edit className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs hover:text-red-500"
+                                onClick={() => handleDeleteServiceType(t)}
+                                title="Excluir"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
         {/* ===== VOUCHERS TAB ===== */}
         <TabsContent value="vouchers" className="mt-4 space-y-4">
           <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
@@ -5518,6 +5869,89 @@ export function AdminPage() {
           <AdminTelemedicinaPanel />
         </TabsContent>
       </Tabs>
+
+      {/* ===== SERVICE TYPE DIALOG (Item 8) ===== */}
+      <Dialog open={serviceTypeDialogOpen} onOpenChange={setServiceTypeDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wrench className="h-4 w-4 text-emerald-600" />
+              {editingServiceType ? 'Editar Tipo de Serviço' : 'Novo Tipo de Serviço'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingServiceType
+                ? 'Atualize o nome, ícone ou status deste tipo.'
+                : 'Crie uma nova categoria que aparecerá no dropdown do módulo de Serviços.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Nome *</Label>
+              <Input
+                value={serviceTypeForm.name}
+                onChange={(e) => setServiceTypeForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="Ex: Bem-estar, Pet, Beleza..."
+                className="h-9 text-sm"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Ícone (emoji)</Label>
+              <Input
+                value={serviceTypeForm.icon}
+                onChange={(e) => setServiceTypeForm(f => ({ ...f, icon: e.target.value }))}
+                placeholder="Ex: 🐾, 💅, 🎓"
+                className="h-9 text-sm"
+                maxLength={4}
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">Use um emoji curto (opcional).</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Ordem</Label>
+                <Input
+                  type="number"
+                  value={serviceTypeForm.sortOrder}
+                  onChange={(e) => setServiceTypeForm(f => ({ ...f, sortOrder: Number(e.target.value) }))}
+                  className="h-9 text-sm"
+                />
+              </div>
+              <div className="flex items-end pb-1.5">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={serviceTypeForm.isActive}
+                    onChange={(e) => setServiceTypeForm(f => ({ ...f, isActive: e.target.checked }))}
+                    className="rounded border-input"
+                  />
+                  <Label className="text-xs cursor-pointer">Ativo</Label>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2 pt-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setServiceTypeDialogOpen(false)}
+              disabled={serviceTypeSaving}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={handleSaveServiceType}
+              disabled={serviceTypeSaving}
+            >
+              {serviceTypeSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  Salvando...
+                </>
+              ) : editingServiceType ? 'Salvar' : 'Criar'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ===== GAME CONFIG DIALOG ===== */}
       <Dialog open={gameConfigDialogOpen} onOpenChange={setGameConfigDialogOpen}>
@@ -7264,6 +7698,98 @@ export function AdminPage() {
               </Button>
             </DialogFooter>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== Item 13 — VINCULAR PATROCINADOR DIALOG =====
+          Lets the admin assign a sponsor (referredById) to a user created
+          without one. The dialog accepts an email OR referral code, runs a
+          live check via /api/referrals/validate + /api/admin/users?search=,
+          and PUTs the result to /api/admin/users/[id] (which resolves the
+          sponsor server-side and validates against cycles). */}
+      <Dialog open={linkSponsorDialogOpen} onOpenChange={setLinkSponsorDialogOpen}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Network className="h-4 w-4 text-amber-600" />
+              Vincular Patrocinador
+            </DialogTitle>
+            <DialogDescription>
+              Atribua um patrocinador a este usuário. Informe o email ou código de indicação.
+            </DialogDescription>
+          </DialogHeader>
+
+          {linkSponsorTarget && (
+            <div className="rounded-lg border border-border bg-muted/40 p-2.5 text-xs">
+              <p className="text-muted-foreground">Usuário selecionado:</p>
+              <p className="font-medium text-foreground">{linkSponsorTarget.name}</p>
+              <p className="text-muted-foreground">{linkSponsorTarget.email}</p>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="link-sponsor-query" className="text-xs">
+              Email ou código de indicação do patrocinador *
+            </Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="link-sponsor-query"
+                placeholder="ex: cliente@newmobility.com ou CLIENTE001"
+                value={linkSponsorQuery}
+                onChange={(e) => {
+                  setLinkSponsorQuery(e.target.value)
+                  setLinkSponsorResolved(null)
+                }}
+                onBlur={(e) => checkSponsorQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    checkSponsorQuery(linkSponsorQuery)
+                  }
+                }}
+                className="pl-9"
+              />
+              {linkSponsorChecking && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 border-2 border-amber-300 border-t-amber-600 rounded-full animate-spin" />
+              )}
+              {!linkSponsorChecking && linkSponsorResolved && (
+                <Check className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-500" />
+              )}
+            </div>
+            {linkSponsorQuery && !linkSponsorChecking && linkSponsorResolved && (
+              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <Check className="h-3 w-3" />
+                Patrocinador: <span className="font-medium">{linkSponsorResolved.name}</span>
+              </p>
+            )}
+            {linkSponsorQuery && !linkSponsorChecking && !linkSponsorResolved && (
+              <p className="text-[11px] text-rose-600 dark:text-rose-400">
+                Patrocinador não encontrado. Verifique o email ou código informado.
+              </p>
+            )}
+            <p className="text-[10px] text-muted-foreground">
+              O sistema valida se o patrocinador existe e se a vinculação não cria um ciclo na rede.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLinkSponsorDialogOpen(false)} disabled={linkSponsorSaving}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-700 text-white gap-2"
+              onClick={handleLinkSponsor}
+              disabled={linkSponsorSaving || !linkSponsorQuery.trim() || !linkSponsorResolved}
+            >
+              {linkSponsorSaving ? (
+                <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <Network className="h-4 w-4" />
+              )}
+              Vincular
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

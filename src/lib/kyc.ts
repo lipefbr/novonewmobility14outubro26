@@ -133,8 +133,10 @@ export function getKycBlockMessage(user: KycAwareUser | null | undefined): strin
 }
 
 /**
- * The 5 document types the user must upload (per the NewMobility spec).
- * Order matters: CNH frente → CNH verso → RG frente → RG verso → comprovante.
+ * The 6 document types the user must upload (per the NewMobility spec).
+ * Order matters: CNH frente → CNH verso → RG frente → RG verso → comprovante → selfie.
+ * The selfie (user holding the document) was added per BACK-4 to fix the
+ * "Tipo de documento inválido" error when uploading the selfie step.
  */
 export const KYC_DOC_TYPES = [
   'cnh_front',
@@ -142,6 +144,7 @@ export const KYC_DOC_TYPES = [
   'rg_front',
   'rg_back',
   'proof_address',
+  'selfie_document',
 ] as const
 
 export type KycDocType = (typeof KYC_DOC_TYPES)[number]
@@ -152,4 +155,5 @@ export const KYC_DOC_LABELS: Record<KycDocType, string> = {
   rg_front: 'RG Frente',
   rg_back: 'RG Verso',
   proof_address: 'Comprovante de Endereço',
+  selfie_document: 'Selfie com Documento',
 }

@@ -104,7 +104,7 @@ const DOC_METAS: DocMeta[] = [
     Icon: MapPin,
   },
   {
-    type: 'selfie',
+    type: 'selfie_document',
     title: 'Selfie com Documento',
     description: 'Foto segurando o documento de identificação ao lado do rosto',
     Icon: Camera,

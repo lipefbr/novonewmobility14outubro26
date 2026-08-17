@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
         items: {
           include: {
             product: {
-              select: { name: true, imageUrl: true, category: true },
+              select: { name: true, imageUrl: true, category: true, sellerName: true },
             },
           },
         },
@@ -102,6 +102,7 @@ export async function GET(request: NextRequest) {
         cashbackPercent: item.cashbackPercent,
         category: item.product?.category,
         imageUrl: item.product?.imageUrl,
+        sellerName: item.product?.sellerName,
       })),
     }))
 

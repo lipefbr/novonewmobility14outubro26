@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { db, prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function GET(request: Request) {
@@ -34,25 +34,60 @@ export async function GET(request: Request) {
       profileImage: r.profileImage,
     }))
 
-    // Network stats
+    // Network stats — direct
     const totalDirect = directReferralData.length
     const activeDirect = directReferralData.filter((r) => r.isActive).length
+    const pendingDirect = totalDirect - activeDirect
 
-    // Count total network (all descendants)
-    async function countNetwork(parentId: string): Promise<number> {
+    // Collect ALL network descendants (no depth limit) with their `isActive`
+    // flag. This drives the accurate network-wide active/pending counts shown
+    // in the "Meus Indicados" top section (Task 10). The previous code only
+    // counted direct actives and computed `activeNetworkPercent` from that
+    // subset, which understated the real activation rate.
+    const allDescendants: { id: string; isActive: boolean }[] = []
+    async function collectDescendants(parentId: string) {
       const children = await db.find(
         'User',
         '"referredById" = $1',
         [parentId]
       ) as any[]
-      let total = children.length
       for (const child of children) {
-        total += await countNetwork(child.id)
+        allDescendants.push({ id: child.id, isActive: !!child.isActive })
+        await collectDescendants(child.id)
       }
-      return total
     }
+    await collectDescendants(userId)
 
-    const totalNetwork = await countNetwork(userId)
+    const totalNetwork = allDescendants.length
+    const activeNetwork = allDescendants.filter((d) => d.isActive).length
+    const pendingNetwork = totalNetwork - activeNetwork
+
+    // Total referral earnings: sum of every cashback row where the CURRENT
+    // user is the recipient (userId) and the source (fromUserId) is one of
+    // the user's network descendants. Covers all three cashback tables
+    // (entrada / residual / vendas). Amounts are stored as Int cents.
+    const networkIds = allDescendants.map((d) => d.id)
+    let totalEarningsCents = 0
+    if (networkIds.length > 0) {
+      const [entradaSum, residualSum, vendasSum] = await Promise.all([
+        prisma.cashbackEntry.aggregate({
+          where: { userId, fromUserId: { in: networkIds } },
+          _sum: { amount: true },
+        }),
+        prisma.cashbackResidual.aggregate({
+          where: { userId, fromUserId: { in: networkIds } },
+          _sum: { amount: true },
+        }),
+        prisma.cashbackSales.aggregate({
+          where: { userId, fromUserId: { in: networkIds } },
+          _sum: { amount: true },
+        }),
+      ])
+      totalEarningsCents =
+        (entradaSum._sum.amount ?? 0) +
+        (residualSum._sum.amount ?? 0) +
+        (vendasSum._sum.amount ?? 0)
+    }
 
     // Build simple referral tree for visualization
     async function buildTree(parentId: string, depth: number, maxDepth: number) {
@@ -62,7 +97,7 @@ export async function GET(request: Request) {
         '"referredById" = $1',
         [parentId]
       ) as any[]
-      const tree = []
+      const tree: any[] = []
       for (const child of children) {
         const subTree = await buildTree(child.id, depth + 1, maxDepth)
         tree.push({
@@ -83,9 +118,13 @@ export async function GET(request: Request) {
       directReferrals: directReferralData,
       stats: {
         totalDirect,
-        totalNetwork,
         activeDirect,
-        activeNetworkPercent: totalNetwork > 0 ? Math.round((activeDirect / totalNetwork) * 100) : 0,
+        pendingDirect,
+        totalNetwork,
+        activeNetwork,
+        pendingNetwork,
+        activeNetworkPercent: totalNetwork > 0 ? Math.round((activeNetwork / totalNetwork) * 100) : 0,
+        totalEarningsCents,
       },
       referralTree,
     })

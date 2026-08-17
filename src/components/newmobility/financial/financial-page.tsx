@@ -72,6 +72,7 @@ import {
   Receipt,
   Coins,
   HandCoins,
+  Building2,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
@@ -671,20 +672,22 @@ export function FinancialPage() {
     'withdrawal->gratification': 0, 'withdrawal->bills': 0, 'withdrawal->paymentInvoice': 0,
   }
   // Labels and balances for every wallet that can appear in the transfer dialog.
-  // `bills` (Saldo para Faturas) is backed by the `balancePending` column on the User model.
-  // `paymentInvoice` (Saldo Pagamento Fatura) is the dedicated invoice-payment wallet (client spec §18).
+  // NOTE (BACK-12.2): `bills` (Saldo para Faturas / balancePending) was removed
+  // from the transfer options because it duplicated `paymentInvoice` (Saldo
+  // Pagamento de Fatura / balancePaymentInvoice). Only ONE invoice-balance
+  // option is exposed now, so users can't accidentally move money out of the
+  // invoice-reserved wallet through a duplicate destination. The `balancePending`
+  // column remains in the DB but is no longer a transfer source/destination.
   const balanceLabels: Record<string, string> = {
     withdrawal: t('financial.balance.withdrawal'), mobility: t('financial.balance.mobility'),
     shopping: t('financial.balance.shopping'), food: t('financial.balance.food'),
     pharmacy: t('financial.balance.pharmacy'), gratification: t('financial.balance.gratification'),
-    bills: t('financial.balance.bills'),
     paymentInvoice: t('financial.balance.paymentInvoice'),
   }
   const balanceValues: Record<string, number> = {
     withdrawal: user?.balanceWithdrawal || 0, mobility: user?.balanceMobility || 0,
     shopping: user?.balanceShopping || 0, food: user?.balanceFood || 0,
     pharmacy: user?.balancePharmacy || 0, gratification: user?.balanceGratification || 0,
-    bills: user?.balancePending || 0,
     paymentInvoice: user?.balancePaymentInvoice || 0,
   }
   // `withdrawal` (Saldo para Saque) can only be a transfer SOURCE - never a destination.
@@ -1807,7 +1810,10 @@ export function FinancialPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Bank Details */}
+      {/* Bank Details — pulled from the user's real registration (Dados Pessoais).
+          Previously this was hardcoded "Banco do Brasil / 1234-5 / 67890-1" which
+          had no relation to the user's actual bank. Now it reads from
+          user.bankCode/bankAgency/bankAccount/bankType/pixKey (set in Dados Pessoais). */}
       <Card className="shadow-sm bg-card">
         <CardHeader>
           <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
@@ -1816,24 +1822,54 @@ export function FinancialPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label className="text-xs text-muted-foreground">Banco</Label>
-              <p className="text-sm font-medium text-foreground mt-0.5">Banco do Brasil</p>
+          {user?.bankCode || user?.bankAgency || user?.bankAccount || user?.pixKey ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label className="text-xs text-muted-foreground">Banco</Label>
+                <p className="text-sm font-medium text-foreground mt-0.5">
+                  {user?.bankCode || '—'}
+                </p>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Tipo de Conta</Label>
+                <p className="text-sm font-medium text-foreground mt-0.5">
+                  {user?.bankType === 'cc' ? 'Conta Corrente'
+                    : user?.bankType === 'cp' ? 'Conta Poupança'
+                    : user?.bankType || '—'}
+                </p>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Agência</Label>
+                <p className="text-sm font-medium text-foreground mt-0.5">
+                  {user?.bankAgency || '—'}
+                </p>
+              </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Conta</Label>
+                <p className="text-sm font-medium text-foreground mt-0.5">
+                  {user?.bankAccount || '—'}
+                </p>
+              </div>
+              {user?.pixKey && (
+                <div className="sm:col-span-2">
+                  <Label className="text-xs text-muted-foreground">Chave PIX</Label>
+                  <p className="text-sm font-medium text-foreground mt-0.5 font-mono">
+                    {user.pixKey}
+                  </p>
+                </div>
+              )}
             </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Tipo de Conta</Label>
-              <p className="text-sm font-medium text-foreground mt-0.5">Conta Corrente</p>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <Building2 className="h-8 w-8 text-muted-foreground/40 mb-2" />
+              <p className="text-sm text-muted-foreground">
+                Você ainda não cadastrou seus dados bancários.
+              </p>
+              <p className="text-xs text-muted-foreground/70 mt-1">
+                Acesse <strong>Dados Pessoais</strong> para cadastrar banco, agência, conta e chave PIX.
+              </p>
             </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Agência</Label>
-              <p className="text-sm font-medium text-foreground mt-0.5">1234-5</p>
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Conta</Label>
-              <p className="text-sm font-medium text-foreground mt-0.5">67890-1</p>
-            </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 

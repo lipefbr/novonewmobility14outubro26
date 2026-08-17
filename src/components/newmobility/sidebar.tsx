@@ -37,6 +37,7 @@ import {
   FileText,
   ShieldCheck,
   Wifi,
+  HeartPulse,
   type LucideIcon,
 } from 'lucide-react'
 import { useStore, type PageKey } from '@/lib/store'
@@ -71,6 +72,7 @@ const allMenuItems: MenuItem[] = [
   { key: 'dashboard', labelKey: 'sidebar.dashboard', icon: Home, groupKey: 'sidebar.group.main', shortcut: '⌘1' },
   { key: 'apps', labelKey: 'sidebar.apps', icon: Smartphone, groupKey: 'sidebar.group.main', shortcut: '⌘2' },
   { key: 'talkmobi', labelKey: 'sidebar.talkmobi', icon: Wifi, groupKey: 'sidebar.group.main', isNew: true },
+  { key: 'telemedicina', labelKey: 'sidebar.telemedicina', icon: HeartPulse, groupKey: 'sidebar.group.main', isNew: true },
   { key: 'bank', labelKey: 'sidebar.bank', icon: Building2, groupKey: 'sidebar.group.main' },
   { key: 'profile', labelKey: 'sidebar.profile', icon: User, groupKey: 'sidebar.group.main' },
   { key: 'kyc', labelKey: 'sidebar.kyc', icon: ShieldCheck, groupKey: 'sidebar.group.main', isNew: true },
