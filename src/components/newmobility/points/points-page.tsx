@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useStore } from '@/lib/store'
 import { formatDate } from '@/lib/utils'
 import { pointsApi } from '@/lib/api'
@@ -10,32 +11,22 @@ import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { AchievementsSection } from './achievements-section'
 
-// Real history item shape returned by /api/points -> `history[]`.
+// Shape of a normalized history entry the UI consumes. The /api/points
+// endpoint returns PointTransaction rows with `createdAt` instead of `date`,
+// so the loader normalizes them into this shape before storing in state.
 interface PointHistoryEntry {
   id: string
-  userId: string
-  amount: number
   type: string
-  description: string | null
-  referenceId: string | null
-  createdAt: string
+  amount: number
+  description: string
+  date: string
 }
 
-// Mock history — used ONLY as a loading fallback while the API is in flight
-// or if the API call fails. Replaced by real PointTransaction data once the
-// fetch resolves.
-const mockPointHistory = [
-  { id: '1', type: 'direct_referral', amount: 2, description: 'Indicação direta ativa - Ana Paula', date: '2025-01-15' },
-  { id: '2', type: 'service_use', amount: 1, description: 'Uso do App Mobilidade', date: '2025-01-14' },
-  { id: '3', type: 'purchase', amount: 1, description: 'Compra no Shopping', date: '2025-01-13' },
-  { id: '4', type: 'evaluation_received', amount: 1, description: 'Avaliação positiva recebida', date: '2025-01-12' },
-  { id: '5', type: 'payment', amount: 2, description: 'Pagamento mensal em dia', date: '2025-01-10' },
-  { id: '6', type: 'direct_referral', amount: 2, description: 'Indicação direta ativa - Roberto', date: '2025-01-08' },
-  { id: '7', type: 'evaluation_upline', amount: 1, description: 'Avaliação do upline', date: '2025-01-06' },
-  { id: '8', type: 'service_use', amount: 1, description: 'Uso do App Mobilidade', date: '2025-01-05' },
-  { id: '9', type: 'direct_referral', amount: 2, description: 'Indicação direta ativa - Maria', date: '2025-01-03' },
-  { id: '10', type: 'purchase', amount: 1, description: 'Compra no Shopping', date: '2025-01-02' },
-]
+// Initial empty state — the page shows a loading skeleton until the API
+// resolves, then either the real history (if any) or an explicit empty
+// state. We NEVER seed the UI with hardcoded fake data (previous versions
+// used a 10-entry mock array as the initial state which leaked on first
+// paint and confused users with phantom purchases they never made).
 
 const typeLabels: Record<string, string> = {
   direct_referral: 'Indicação',
@@ -117,13 +108,13 @@ export function PointsPage() {
   const personalPoints = user?.personalPoints ?? 0
   const networkPoints = Math.max(totalPoints - personalPoints, 0)
 
-  // Real PointTransaction history from /api/points — falls back to mock only
-  // while the API is loading or if the fetch fails.
-  const [history, setHistory] = useState<typeof mockPointHistory>(mockPointHistory)
+  // Real PointTransaction history from /api/points. Initial state is empty
+  // — we show a loading skeleton while the request is in flight, then either
+  // the real history (if any) or an explicit "no transactions" empty state.
+  // No hardcoded mock fallback is ever displayed to the user.
+  const [history, setHistory] = useState<PointHistoryEntry[]>([])
   const [loadingHistory, setLoadingHistory] = useState(true)
-  const [totalEarned, setTotalEarned] = useState<number>(
-    mockPointHistory.reduce((acc, p) => acc + p.amount, 0)
-  )
+  const [totalEarned, setTotalEarned] = useState<number>(0)
 
   const [howToEarn, setHowToEarn] = useState<HowToEarnItem[]>(FALLBACK_HOW_TO_EARN)
   const [loadingConfig, setLoadingConfig] = useState(true)
@@ -160,7 +151,12 @@ export function PointsPage() {
         }
       } catch (err) {
         console.error('Failed to load points history:', err)
-        // keep mock fallback on error
+        // On error: show empty state, NOT mock data. The user can refresh
+        // the page to retry the fetch.
+        if (!cancelled) {
+          setHistory([])
+          setTotalEarned(0)
+        }
       } finally {
         if (!cancelled) setLoadingHistory(false)
       }
@@ -281,7 +277,25 @@ export function PointsPage() {
         </CardHeader>
         <CardContent className="p-0">
           <div className="divide-y max-h-80 overflow-y-auto custom-scrollbar">
-            {history.length === 0 && !loadingHistory ? (
+            {loadingHistory ? (
+              // Loading skeleton — 5 placeholder rows match the height of a
+              // real history entry so the layout doesn't shift on resolve.
+              Array.from({ length: 5 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between px-4 py-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-4 w-16 rounded-full" />
+                    <div className="space-y-1.5">
+                      <Skeleton className="h-3.5 w-40 rounded" />
+                      <Skeleton className="h-3 w-20 rounded" />
+                    </div>
+                  </div>
+                  <Skeleton className="h-4 w-8 rounded" />
+                </div>
+              ))
+            ) : history.length === 0 ? (
               <div className="px-4 py-8 text-center text-sm text-muted-foreground">
                 Nenhuma transação de pontos registrada ainda.
               </div>

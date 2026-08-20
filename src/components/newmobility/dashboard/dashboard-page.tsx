@@ -655,12 +655,12 @@ export function DashboardPage() {
                 </thead>
                 <tbody>
                   {[
-                    { tipo: 'CashBack Entrada', qtd: dashboardData?.cashbackEntrada?.totalUsers ?? 0, valor: dashboardData?.cashbackEntrada?.totalEarned ?? 0, desc: 'Membros na matriz de entrada (4×5)', cor: 'text-emerald-600', isCurrency: true },
-                    { tipo: 'CashBack Residual', qtd: dashboardData?.cashbackResidual?.totalUsers ?? 0, valor: dashboardData?.cashbackResidual?.totalEarned ?? 0, desc: 'Membros na matriz residual (4×7)', cor: 'text-teal-600', isCurrency: true },
-                    { tipo: 'CashBack Vendas', qtd: dashboardData?.cashbackVendas?.totalUsers ?? 0, valor: dashboardData?.cashbackVendas?.totalEarned ?? 0, desc: 'Membros na matriz de vendas (4×9)', cor: 'text-amber-600', isCurrency: true },
-                    { tipo: 'Indicações Diretas', qtd: dashboardData?.directReferralCount ?? 0, valor: 0, desc: 'Pessoas indicadas diretamente por você', cor: 'text-emerald-600', isCurrency: false },
-                    { tipo: 'Pontos de Carreira', qtd: dashboardData?.career?.points ?? user?.careerPoints ?? 0, valor: 0, desc: 'Pontos acumulados no plano de carreira', cor: 'text-amber-600', isCurrency: false },
-                    { tipo: 'Rede Total', qtd: dashboardData?.network?.totalSize ?? 0, valor: 0, desc: 'Tamanho total da sua rede (todos os níveis)', cor: 'text-emerald-600', isCurrency: false },
+                    { tipo: 'CashBack Entrada', qtd: dashboardData?.cashbackEntrada?.totalUsers ?? 0, valor: dashboardData?.cashbackEntrada?.totalEarned ?? 0, desc: 'Membros na matriz de entrada (4×5)', cor: 'text-emerald-600', isCurrency: true, isPoints: false },
+                    { tipo: 'CashBack Residual', qtd: dashboardData?.cashbackResidual?.totalUsers ?? 0, valor: dashboardData?.cashbackResidual?.totalEarned ?? 0, desc: 'Membros na matriz residual (4×7)', cor: 'text-teal-600', isCurrency: true, isPoints: false },
+                    { tipo: 'CashBack Vendas', qtd: dashboardData?.cashbackVendas?.totalUsers ?? 0, valor: dashboardData?.cashbackVendas?.totalEarned ?? 0, desc: 'Membros na matriz de vendas (4×9)', cor: 'text-amber-600', isCurrency: true, isPoints: false },
+                    { tipo: 'Indicações Diretas', qtd: dashboardData?.directReferralCount ?? 0, valor: 0, desc: 'Pessoas indicadas diretamente por você', cor: 'text-emerald-600', isCurrency: false, isPoints: false },
+                    { tipo: 'Pontos de Carreira', qtd: dashboardData?.career?.points ?? user?.careerPoints ?? 0, valor: dashboardData?.career?.points ?? user?.careerPoints ?? 0, desc: 'Pontos acumulados no plano de carreira', cor: 'text-amber-600', isCurrency: false, isPoints: true },
+                    { tipo: 'Rede Total', qtd: dashboardData?.network?.totalSize ?? 0, valor: 0, desc: 'Tamanho total da sua rede (todos os níveis)', cor: 'text-emerald-600', isCurrency: false, isPoints: false },
                   ].map((row, i) => (
                     <tr key={i} className={i % 2 === 0 ? 'bg-transparent' : 'bg-muted/20'}>
                       <td className="px-3 sm:px-4 py-2 sm:py-2.5 font-medium text-foreground">{row.tipo}</td>
@@ -668,7 +668,9 @@ export function DashboardPage() {
                       <td className="px-3 sm:px-4 py-2 sm:py-2.5 text-right font-semibold text-emerald-700 dark:text-emerald-400 hidden sm:table-cell">
                         {row.isCurrency
                           ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(row.valor / 100)
-                          : '—'}
+                          : row.isPoints
+                            ? `${row.valor.toLocaleString('pt-BR')} pts`
+                            : '—'}
                       </td>
                       <td className="px-3 sm:px-4 py-2 sm:py-2.5 text-muted-foreground text-xs hidden md:table-cell">{row.desc}</td>
                     </tr>

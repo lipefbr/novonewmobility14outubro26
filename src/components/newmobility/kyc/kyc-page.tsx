@@ -192,7 +192,7 @@ function StatusBanner({ status, reason }: { status: KycStatus; reason: string | 
       <div className="flex-1">
         <p className="font-semibold">Envie seus documentos</p>
         <p className="text-sm text-sky-700">
-          Para liberar saques, cashback e evolução de plano, envie os 5
+          Para liberar saques, cashback e evolução de plano, envie todos os
           documentos abaixo. Leva menos de 2 minutos.
         </p>
       </div>
@@ -600,7 +600,7 @@ export default function KycPage() {
                 ? 'Documentos enviados. Aguarde a análise da nossa equipe (geralmente 24h).'
                 : status === 'rejected'
                   ? 'Reenvie os documentos rejeitados acima para nova análise.'
-                  : 'Envie os 5 documentos acima para iniciar a verificação.'}
+                  : 'Envie todos os documentos acima para iniciar a verificação.'}
           </p>
         </CardContent>
       </Card>

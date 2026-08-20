@@ -50,12 +50,18 @@ import {
   UserPlus,
   Info,
   KeyRound,
+  Copy,
+  CheckCircle2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useStore } from '@/lib/store'
 import { apiFetch } from '@/lib/api'
 import { formatBRL } from '@/lib/format'
 import { formatDate, formatDateTime } from '@/lib/utils'
+import {
+  QUALIFICATION_OPTIONS,
+  qualificationLabel,
+} from '@/lib/qualifications'
 
 // ----- User types (10 options) -----
 
@@ -111,18 +117,15 @@ function roleBadgeClass(value?: string | null): string {
   }
 }
 
-// BACK-4 — qualification options mirror the registration dropdown
-// (register-page.tsx lines 101-108). There are 6 types, not just motorista
-// and entregador. Used in the "Editar Usuário" dialog so admins can set or
-// correct a user's qualification after registration.
-const QUALIFICATION_OPTIONS = [
-  { value: 'motorista', label: 'Motorista' },
-  { value: 'passageiro', label: 'Passageiro' },
-  { value: 'passageiro_60', label: 'Passageiro 60+' },
-  { value: 'passageiro_pcd', label: 'Passageiro com Mobilidade Reduzida' },
-  { value: 'comercio', label: 'Comércio' },
-  { value: 'entregador', label: 'Entregador' },
-]
+// BACK-4 — qualification options. Task 2-e (Item 4) expanded the dropdown
+// from 6 legacy options (motorista / passageiro / passageiro_60 /
+// passageiro_pcd / comercio / entregador) to 10 business-relevant codes per
+// the client spec. The constant is now imported from `@/lib/qualifications`
+// so the admin form, the backoffice personal-data card, and the
+// self-registration dropdown all share the same source of truth. Used in
+// the "Editar Usuário" dialog so admins can set or correct a user's
+// qualification after registration.
+const QUALIFICATION_DROPDOWN_OPTIONS = QUALIFICATION_OPTIONS
 
 function userTypeBadge(type?: string) {
   const t = USER_TYPES.find((x) => x.value === (type || 'usuario'))
@@ -130,9 +133,11 @@ function userTypeBadge(type?: string) {
 }
 
 // BACK-4 — human-readable label for a qualification value (or '—' when unset).
-function qualificationLabel(value?: string | null): string {
-  if (!value) return '—'
-  return QUALIFICATION_OPTIONS.find((q) => q.value === value)?.label || value
+// Delegates to the shared `qualificationLabel()` helper so legacy codes
+// (passageiro / passageiro_60 / passageiro_pcd / comercio) also resolve
+// correctly for users registered before Task 2-e expanded the dropdown.
+function getQualificationLabel(value?: string | null): string {
+  return qualificationLabel(value)
 }
 
 function planBadge(plan?: string) {
@@ -316,6 +321,29 @@ export function AdminUsersPanel() {
   const [createForm, setCreateForm] = useState<CreateFormData>(EMPTY_CREATE)
   const [creating, setCreating] = useState(false)
 
+  // ADM-4 — Item 4 (Permissões login/password). After creating a user OR
+  // resetting a password, the admin needs to see the resulting credentials
+  // (email + plaintext password) so they can share them with the user
+  // out-of-band (the password is never recoverable from the DB because we
+  // store only a sha256 hash). This dialog shows them and offers a
+  // copy-to-clipboard button.
+  const [credentialsOpen, setCredentialsOpen] = useState(false)
+  const [credentialsData, setCredentialsData] = useState<{
+    name: string
+    email: string
+    password: string
+    title: string
+    blurb: string
+  } | null>(null)
+
+  // ADM-4 — Reset Password dialog state. Opens when the admin clicks the
+  // "Redefinir Senha" action on a user row. The admin can either type a
+  // new password or click "Gerar senha" to auto-fill a random one.
+  const [resetOpen, setResetOpen] = useState(false)
+  const [resetTarget, setResetTarget] = useState<AdminUser | null>(null)
+  const [resetPassword, setResetPassword] = useState('')
+  const [resetting, setResetting] = useState(false)
+
   // ADM-4 — custom roles loaded from /admin/permissions so the Role select
   // can offer roles the admin created in the Permissões tab (e.g. financeiro,
   // marketing). Falls back to ROLE_OPTIONS_BASE only if the request fails.
@@ -415,9 +443,56 @@ export function AdminUsersPanel() {
     setViewOpen(true)
   }
 
-  // ADM-4 — create a new user (and optional admin/staff account) via the
-  // /api/admin/users/create endpoint. The created user can immediately log
-  // in with the email + password defined here.
+  // ADM-4 — Item 4 (Permissões login/password). Generate a random 10-char
+  // password locally (mirrors the server-side generator in
+  // /api/admin/users/[id]/reset-password/route.ts). Used by the "Gerar
+  // senha" button in both the Create User dialog and the Reset Password
+  // dialog. The alphabet excludes ambiguous chars (O/0, l/1, I) so the
+  // password is easy to read over the phone.
+  const generatePassword = () => {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
+    const length = 10
+    const bytes = new Uint8Array(length)
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      crypto.getRandomValues(bytes)
+    } else {
+      // Fallback (very rare path — crypto is available in all modern
+      // browsers and Node ≥ 19). Keeps the function total.
+      for (let i = 0; i < length; i++) bytes[i] = Math.floor(Math.random() * 256)
+    }
+    let out = ''
+    for (let i = 0; i < length; i++) out += alphabet[bytes[i] % alphabet.length]
+    return out
+  }
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text)
+        toast.success('Copiado para a área de transferência')
+        return
+      }
+    } catch {
+      /* fall through to legacy path */
+    }
+    // Legacy fallback for non-secure contexts (http). Creates a hidden
+    // textarea and runs document.execCommand('copy').
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.left = '-9999px'
+      document.body.appendChild(ta)
+      ta.focus()
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+      toast.success('Copiado para a área de transferência')
+    } catch {
+      toast.error('Não foi possível copiar automaticamente — selecione e copie manualmente.')
+    }
+  }
+
   const openCreate = () => {
     setCreateForm(EMPTY_CREATE)
     setCreateOpen(true)
@@ -454,7 +529,19 @@ export function AdminUsersPanel() {
           referredByCode: createForm.referredByCode || undefined,
         }),
       })
-      toast.success('Usuário criado! Ele pode fazer login com email + senha.')
+      // ADM-4 — Item 4: show the credentials in a success dialog so the
+      // admin can copy them and share with the new user. We can't read
+      // the password back from the server later (only sha256 is stored),
+      // so this is the admin's only chance to capture it.
+      setCredentialsData({
+        name: createForm.name.trim(),
+        email: createForm.email.trim(),
+        password: createForm.password,
+        title: 'Usuário criado com sucesso',
+        blurb:
+          'Compartilhe as credenciais abaixo com o usuário. A senha não será exibida novamente — guarde-a em local seguro.',
+      })
+      setCredentialsOpen(true)
       setCreateOpen(false)
       setCreateForm(EMPTY_CREATE)
       // Jump back to page 1 so the new user shows up at the top of the list.
@@ -464,6 +551,60 @@ export function AdminUsersPanel() {
       toast.error(err instanceof Error ? err.message : 'Erro ao criar usuário')
     } finally {
       setCreating(false)
+    }
+  }
+
+  // ADM-4 — Item 4: open the Reset Password dialog for a specific user.
+  // Pre-fills the password field with a freshly-generated random password
+  // so the admin can just confirm — or type their own if they prefer.
+  const openReset = (u: AdminUser) => {
+    setResetTarget(u)
+    setResetPassword(generatePassword())
+    setResetOpen(true)
+  }
+
+  // ADM-4 — Item 4: send the new password to /api/admin/users/[id]/reset-password.
+  // The server returns the plaintext password (so we can show it in the
+  // credentials dialog) — important when the admin leaves the field empty
+  // and lets the server generate one.
+  const handleReset = async () => {
+    if (!user?.id || !resetTarget) return
+    if (resetPassword && resetPassword.length < 6) {
+      toast.error('A senha deve ter pelo menos 6 caracteres')
+      return
+    }
+    setResetting(true)
+    try {
+      const res = await apiFetch<{
+        password: string
+        email: string
+        name: string
+        message: string
+      }>(`/admin/users/${resetTarget.id}/reset-password`, {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: user.id,
+          // Send the typed password; if empty, the server generates one.
+          newPassword: resetPassword || undefined,
+        }),
+      })
+      setCredentialsData({
+        name: res.name || resetTarget.name,
+        email: res.email || resetTarget.email,
+        password: res.password,
+        title: 'Senha redefinida com sucesso',
+        blurb:
+          'Compartilhe as credenciais abaixo com o usuário. A nova senha não será exibida novamente — guarde-a em local seguro.',
+      })
+      setResetOpen(false)
+      setCredentialsOpen(true)
+      setResetTarget(null)
+      setResetPassword('')
+      toast.success(res.message || 'Senha redefinida')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao redefinir senha')
+    } finally {
+      setResetting(false)
     }
   }
 
@@ -745,6 +886,20 @@ export function AdminUsersPanel() {
                               <Edit className="h-3.5 w-3.5" />
                               <span className="hidden xl:inline">Editar</span>
                             </Button>
+                            {/* ADM-4 — Item 4: Reset Password action. Generates
+                                a new password (or lets the admin type one) and
+                                displays the new credentials in a follow-up
+                                dialog so they can be shared with the user. */}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 gap-1 text-xs"
+                              onClick={() => openReset(u)}
+                              title="Redefinir senha do usuário"
+                            >
+                              <KeyRound className="h-3.5 w-3.5" />
+                              <span className="hidden xl:inline">Senha</span>
+                            </Button>
                           </div>
                         </td>
                       </tr>
@@ -823,7 +978,21 @@ export function AdminUsersPanel() {
                 <p className="text-[10px] text-muted-foreground">Será usado para login.</p>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Senha *</Label>
+                <Label className="text-xs flex items-center justify-between">
+                  <span>Senha *</span>
+                  {/* ADM-4 — Item 4: "Gerar senha" button. Fills the password
+                      field with a random 10-char password so the admin
+                      doesn't have to invent one. The admin can still type
+                      their own password if they prefer. */}
+                  <button
+                    type="button"
+                    onClick={() => setCreateForm((d) => ({ ...d, password: generatePassword() }))}
+                    className="text-[10px] text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 font-medium flex items-center gap-1"
+                    title="Gerar uma senha aleatória segura"
+                  >
+                    <RefreshCw className="h-3 w-3" /> Gerar senha
+                  </button>
+                </Label>
                 <div className="relative">
                   <KeyRound className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                   <Input
@@ -831,9 +1000,22 @@ export function AdminUsersPanel() {
                     value={createForm.password}
                     onChange={(e) => setCreateForm((d) => ({ ...d, password: e.target.value }))}
                     placeholder="mínimo 6 caracteres"
-                    className="pl-8"
+                    className="pl-8 pr-8 font-mono"
                   />
+                  {createForm.password && (
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(createForm.password)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      title="Copiar senha"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
+                <p className="text-[10px] text-muted-foreground">
+                  A senha será exibida novamente na tela de confirmação após criar o usuário.
+                </p>
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1011,9 +1193,9 @@ export function AdminUsersPanel() {
                   <strong> Permissões</strong>.
                 </p>
               </div>
-              {/* BACK-4 — Qualification dropdown (6 types, mirrors the
-                  registration dropdown). Lets the admin set or correct the
-                  user's qualification after registration. */}
+              {/* BACK-4 — Qualification dropdown (10 types per Task 2-e,
+                  mirrors the registration dropdown). Lets the admin set or
+                  correct the user's qualification after registration. */}
               <div className="space-y-1.5 pt-1">
                 <Label className="text-xs">Qualificação</Label>
                 <Select
@@ -1022,7 +1204,7 @@ export function AdminUsersPanel() {
                 >
                   <SelectTrigger><SelectValue placeholder="Selecione a qualificação" /></SelectTrigger>
                   <SelectContent>
-                    {QUALIFICATION_OPTIONS.map((q) => (
+                    {QUALIFICATION_DROPDOWN_OPTIONS.map((q) => (
                       <SelectItem key={q.value} value={q.value}>{q.label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -1137,7 +1319,7 @@ export function AdminUsersPanel() {
                 <Detail label="Telefone" value={viewing.phone || '—'} />
                 <Detail label="CPF" value={viewing.cpf || '—'} />
                 <Detail label="Tipo" value={userTypeBadge(viewing.userType).label} />
-                <Detail label="Qualificação" value={qualificationLabel(viewing.qualification)} />
+                <Detail label="Qualificação" value={getQualificationLabel(viewing.qualification)} />
                 <Detail label="Plano" value={viewing.plan === 'blue5' ? 'Blue 5 Premium' : viewing.plan === 'blue3' ? 'Blue 3' : 'Gratuito'} />
                 <Detail label="Role" value={roleLabel(viewing.role)} />
                 <Detail label="Status" value={viewing.isActive ? 'Ativo' : 'Inativo'} />
@@ -1178,6 +1360,166 @@ export function AdminUsersPanel() {
             }}>
               <Edit className="h-4 w-4" /> Editar
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ADM-4 — Item 4: Reset Password dialog. Lets the admin type a new
+          password or click "Gerar senha" to auto-fill a random one. The
+          plaintext password is sent to /api/admin/users/[id]/reset-password
+          which hashes it (sha256) and stores it. The server also returns
+          the plaintext back so we can display it in the credentials dialog
+          for the admin to share with the user. */}
+      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-emerald-600" />
+              Redefinir Senha
+            </DialogTitle>
+            <DialogDescription>
+              {resetTarget?.name} ({resetTarget?.email})
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/20 p-3 text-[11px] text-amber-800 dark:text-amber-300 flex gap-2">
+              <Info className="h-4 w-4 shrink-0 mt-0.5" />
+              <p>
+                A nova senha substitui a senha atual imediatamente. O usuário precisará usar a nova
+                senha no próximo login. A senha atual <strong>não pode ser recuperada</strong> depois
+                de redefinida.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs flex items-center justify-between">
+                <span>Nova senha *</span>
+                <button
+                  type="button"
+                  onClick={() => setResetPassword(generatePassword())}
+                  className="text-[10px] text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 font-medium flex items-center gap-1"
+                  title="Gerar uma senha aleatória segura"
+                >
+                  <RefreshCw className="h-3 w-3" /> Gerar senha
+                </button>
+              </Label>
+              <div className="relative">
+                <KeyRound className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  type="text"
+                  value={resetPassword}
+                  onChange={(e) => setResetPassword(e.target.value)}
+                  placeholder="mínimo 6 caracteres"
+                  className="pl-8 pr-8 font-mono"
+                />
+                {resetPassword && (
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(resetPassword)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    title="Copiar senha"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Deixe vazio para o servidor gerar uma senha aleatória segura.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetOpen(false)} disabled={resetting}>Cancelar</Button>
+            <Button
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={handleReset}
+              disabled={resetting}
+            >
+              {resetting
+                ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                : <KeyRound className="h-4 w-4" />}
+              Redefinir Senha
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ADM-4 — Item 4: Credentials success dialog. Shown after creating a
+          user OR after resetting a password. Displays the email + plaintext
+          password so the admin can copy them and share with the user. The
+          plaintext password is NOT recoverable from the DB (only sha256 is
+          stored), so this is the admin's only chance to capture it. */}
+      <Dialog open={credentialsOpen} onOpenChange={setCredentialsOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              {credentialsData?.title || 'Credenciais'}
+            </DialogTitle>
+            <DialogDescription>
+              {credentialsData?.blurb}
+            </DialogDescription>
+          </DialogHeader>
+          {credentialsData && (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-2">
+                <div className="space-y-1">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Nome</p>
+                  <p className="text-sm font-medium text-foreground break-words">{credentialsData.name}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide flex items-center justify-between">
+                    <span>Email (login)</span>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(credentialsData.email)}
+                      className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 flex items-center gap-1 normal-case tracking-normal"
+                    >
+                      <Copy className="h-3 w-3" /> Copiar
+                    </button>
+                  </p>
+                  <p className="text-sm font-medium text-foreground break-all">{credentialsData.email}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide flex items-center justify-between">
+                    <span>Senha</span>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(credentialsData.password)}
+                      className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 flex items-center gap-1 normal-case tracking-normal"
+                    >
+                      <Copy className="h-3 w-3" /> Copiar
+                    </button>
+                  </p>
+                  <p className="text-sm font-mono font-bold text-foreground break-all bg-background px-2 py-1 rounded border border-border">
+                    {credentialsData.password}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => copyToClipboard(`Email: ${credentialsData.email}\nSenha: ${credentialsData.password}`)}
+                className="w-full text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 font-medium flex items-center justify-center gap-1.5 py-2 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/20"
+              >
+                <Copy className="h-3.5 w-3.5" /> Copiar tudo (email + senha)
+              </button>
+              <p className="text-[10px] text-muted-foreground text-center">
+                O usuário pode fazer login na página de acesso da plataforma com essas credenciais.
+                Recomendamos que ele altere a senha após o primeiro login.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => {
+                if (credentialsData) {
+                  copyToClipboard(`Email: ${credentialsData.email}\nSenha: ${credentialsData.password}`)
+                }
+              }}
+            >
+              <Copy className="h-4 w-4" /> Copiar Credenciais
+            </Button>
+            <Button variant="outline" onClick={() => setCredentialsOpen(false)}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

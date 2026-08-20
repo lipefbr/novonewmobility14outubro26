@@ -9,6 +9,13 @@ import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { getPlanName, cn } from '@/lib/utils'
 import { apiFetch } from '@/lib/api'
+// ADM-7 — Use the canonical BRL formatter (handles NaN/null safely) so the
+// streak reward always renders as "R$ X,XX" when rewardType === 'cashback'
+// (matching what the admin configured) and "X pts" when rewardType === 'points'.
+// This closes the divergence between the Admin (which stores rewardAmount in
+// cents) and the backoffice (which previously rendered the raw integer as
+// points regardless of rewardType).
+import { formatBRL } from '@/lib/format'
 import {
   Flame, Trophy, Medal, Target, Star, Zap, Calendar,
   Crown, Award, Gift, TrendingUp, Users, Check,
@@ -140,12 +147,18 @@ export function GamificationPage() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {streak?.streakRewards.map((reward, i) => {
                 // ADM-7 — Render the reward correctly based on its type:
-                //   cashback  → "+R$ X,XX"  (amount is in BRL cents)
+                //   cashback  → "+R$ X,XX"  (amount is in BRL cents; formatBRL
+                //                            divides by 100 and formats as BRL)
                 //   points    → "+X pts"    (amount is the raw point count)
+                // The rewardType comes straight from the admin-managed
+                // StreakReward table, so an admin who configures R$ 10,00 for
+                // a 10-day streak (rewardType='cashback', rewardAmount=1000)
+                // will see "10 dias · +R$ 10,00" here — NOT "1000 pontos".
                 const isCashback = reward.rewardType === 'cashback'
+                const rawAmount = reward.amount ?? reward.points ?? 0
                 const rewardLabel = isCashback
-                  ? `+${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((reward.amount ?? reward.points ?? 0) / 100)}`
-                  : `+${reward.amount ?? reward.points ?? 0} pts`
+                  ? `+${formatBRL(rawAmount)}`
+                  : `+${rawAmount} pts`
                 return (
                   <div key={i} className={`p-3 rounded-lg border text-center ${
                     reward.claimed

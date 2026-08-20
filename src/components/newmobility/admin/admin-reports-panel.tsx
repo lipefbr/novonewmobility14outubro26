@@ -154,21 +154,48 @@ const MATRIX_OPTIONS: { value: string; label: string }[] = [
 ]
 
 const typeLabel = (t: string): string => {
+  // Task 2-c / Item 21 + Admin Item 1 — translate every English type key the
+  // backend may store on Transaction.type into a Portuguese label so the
+  // admin reports panel never shows raw English to the user. Falls back to
+  // categoryLabel() (which has the same Portuguese mapping for category keys)
+  // and finally to the raw value when no mapping exists.
   const map: Record<string, string> = {
     credit: 'Entrada',
     debit: 'Saída',
+    deposit: 'Depósito',
     withdrawal: 'Saque',
-    cashback_entry: 'Cashback Entrada',
-    cashback_residual: 'Cashback Residual',
-    cashback_sales: 'Cashback Vendas',
+    cashback: 'CashBack',
+    cashback_entry: 'CashBack Entrada',
+    cashback_entrada: 'CashBack Entrada',
+    cashback_residual: 'CashBack Residual',
+    cashback_sales: 'CashBack Vendas',
+    cashback_vendas: 'CashBack Vendas',
+    gratification: 'Gratificação',
     payment: 'Pagamento',
+    payment_invoice: 'Pagamento Fatura',
+    plan_payment: 'Pagamento de Plano',
+    plan_upgrade: 'Upgrade de Plano',
+    subscription: 'Assinatura',
     transfer: 'Transferência',
+    transfer_in: 'Transferência Recebida',
+    transfer_out: 'Transferência Envio',
     reward: 'Recompensa',
     challenge_reward: 'Recompensa Desafio',
-    plan_upgrade: 'Upgrade de Plano',
+    bonus: 'Bônus',
     voucher: 'Voucher',
+    referral: 'Indicação',
+    commission: 'Comissão',
+    purchase: 'Compra',
+    sale: 'Venda',
+    marketplace: 'Marketplace',
+    marketplace_purchase: 'Marketplace',
+    bills: 'Contas',
+    fee: 'Taxa',
+    withdrawal_fee: 'Taxa de Saque',
+    career_claim: 'Reivindicação de Carreira',
+    adjustment: 'Ajuste',
   }
-  return map[t] || t
+  return map[t] || categoryLabel(t)
 }
 
 const statusLabel = (s: string): string => {
@@ -476,7 +503,7 @@ export function AdminReportsPanel() {
       bg: 'bg-blue-50 dark:bg-blue-950/30',
     },
     {
-      label: 'Cashback Recebido',
+      label: 'CashBack Recebido',
       value: data?.summary.cashbackRecebido || 0,
       icon: TrendingUp,
       color: 'text-amber-600',

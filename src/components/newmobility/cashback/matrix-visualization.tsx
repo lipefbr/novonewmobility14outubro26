@@ -366,8 +366,8 @@ export function MatrixVisualization({ type, onUpgradeClick }: MatrixVisualizatio
             backgroundImage: `radial-gradient(circle, #fff 1px, transparent 1px)`,
             backgroundSize: '20px 20px',
           }} />
-          <div className="absolute inset-0 animate-shimmer" />
-          <CardContent className="p-3 sm:p-4 md:p-5 relative flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="absolute inset-0 animate-shimmer pointer-events-none" />
+          <CardContent className="p-3 sm:p-4 md:p-5 relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <Sparkles className="h-4 w-4 text-emerald-200" />

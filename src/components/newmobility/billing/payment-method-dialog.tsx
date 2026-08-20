@@ -113,13 +113,16 @@ export function PaymentMethodDialog({
       <DialogContent className="rounded-2xl shadow-lg sm:max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400 shrink-0">
+            <div className="p-2 rounded-xl bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400 shrink-0">
               <CreditCard className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <DialogTitle className="text-base">Confirmar Pagamento</DialogTitle>
+              <DialogTitle className="text-base flex items-center gap-2">
+                Marcar como pago (admin)
+              </DialogTitle>
               <DialogDescription className="text-xs">
-                Revise os dados e escolha a forma de pagamento.
+                Ação administrativa — registra a forma de pagamento e marca a
+                fatura como paga sem passar pelo gateway Asaas.
               </DialogDescription>
             </div>
           </div>
@@ -150,7 +153,10 @@ export function PaymentMethodDialog({
           <div className="space-y-2">
             <Label className="text-xs font-semibold text-foreground">Forma de Pagamento *</Label>
             <p className="text-[11px] text-muted-foreground -mt-1">
-              Esta é uma etapa de confirmação. Após clicar em &quot;Confirmar Pagamento&quot;, sua fatura será marcada como paga.
+              Task 2-e (Item 5): esta ação é administrativa e NÃO processa um
+              pagamento real — apenas registra a forma de pagamento informada e
+              marca a fatura como paga. Para pagamentos reais via gateway,
+              configure o Asaas em <strong>Admin → Asaas</strong>.
             </p>
             <RadioGroup
               value={method}
@@ -209,7 +215,7 @@ export function PaymentMethodDialog({
             Cancelar
           </Button>
           <Button
-            className="bg-emerald-600 hover:bg-emerald-700 text-white w-full sm:w-auto gap-2"
+            className="bg-amber-600 hover:bg-amber-700 text-white w-full sm:w-auto gap-2"
             onClick={handleConfirm}
             disabled={loading || !invoice}
           >
@@ -221,7 +227,7 @@ export function PaymentMethodDialog({
             ) : (
               <>
                 <CheckCircle2 className="h-4 w-4" />
-                Confirmar Pagamento
+                Marcar como Pago
               </>
             )}
           </Button>

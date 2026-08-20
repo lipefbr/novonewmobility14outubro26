@@ -17,7 +17,7 @@ import {
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { useAdminPermissions } from '@/lib/admin-permissions'
-import { formatCurrency, categoryLabel } from '@/lib/utils'
+import { formatCurrency, categoryLabel, cn } from '@/lib/utils'
 import { apiFetch, adminApi } from '@/lib/api'
 import {
   Shield, Users, DollarSign, TrendingUp, Activity, Settings, Search,
@@ -28,7 +28,7 @@ import {
   ArrowUpDown, Receipt, PieChart, Filter, Download, Calendar,
   MessageSquare, Send, Gift, Ticket, Gamepad2, Network, Percent,
   TreePine, Coins, Trophy, AlertCircle, Heart, UsersRound, Layers,
-  LogIn, Loader2, UserPlus, KeyRound, Wrench,
+  LogIn, Loader2, UserPlus, KeyRound, Wrench, Target,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -280,6 +280,143 @@ interface AchievementItem {
   createdAt: string;
   updatedAt: string;
 }
+
+// ADM-5 — Canonical list of achievement variables. Each entry maps a code
+// (what the admin picks from the dropdown) to:
+//   - label: human-readable label (PT-BR) shown in the dropdown
+//   - description: short explanation of what triggers the achievement
+//   - suggestedName: default Name to pre-fill when this variable is selected
+//   - suggestedTarget: default targetValue (1 for one-shot, >1 for cumulative)
+//   - suggestedCategory: default category for this variable
+//
+// The matching logic in /api/achievements/route.ts (progressForCode) recognizes
+// these codes (and several legacy substring aliases) so the achievement
+// progress is computed correctly on the user-facing /api/achievements GET.
+//
+// The "code" stored in the Achievement table is what progressForCode reads,
+// so admins can still type a custom code (e.g. "ten_referrals") — the
+// dropdown just makes the common cases one-click.
+const ACHIEVEMENT_VARIABLES: Array<{
+  code: string
+  label: string
+  description: string
+  suggestedName: string
+  suggestedTarget: number
+  suggestedCategory: string
+}> = [
+  {
+    code: 'first_referral',
+    label: 'Primeira indicação',
+    description: 'Dispara quando o usuário faz sua 1ª indicação ativa.',
+    suggestedName: 'Primeira Indicação',
+    suggestedTarget: 1,
+    suggestedCategory: 'referral',
+  },
+  {
+    code: 'first_purchase',
+    label: 'Primeira compra',
+    description: 'Dispara no 1º pedido do marketplace.',
+    suggestedName: 'Primeira Compra',
+    suggestedTarget: 1,
+    suggestedCategory: 'financial',
+  },
+  {
+    code: 'first_withdrawal',
+    label: 'Primeiro saque',
+    description: 'Dispara quando o usuário solicita o 1º saque.',
+    suggestedName: 'Primeiro Saque',
+    suggestedTarget: 1,
+    suggestedCategory: 'financial',
+  },
+  {
+    code: 'streak_30',
+    label: 'Sequência de 30 dias',
+    description: 'Dispara quando a maior sequência de logins atinge 30 dias.',
+    suggestedName: 'Sequência de 30 Dias',
+    suggestedTarget: 30,
+    suggestedCategory: 'engagement',
+  },
+  {
+    code: 'kyc_approved',
+    label: 'KYC aprovado',
+    description: 'Dispara quando o documento do usuário é aprovado no KYC.',
+    suggestedName: 'KYC Aprovado',
+    suggestedTarget: 1,
+    suggestedCategory: 'milestone',
+  },
+  {
+    code: 'plan_upgraded',
+    label: 'Plano atualizado',
+    description: 'Dispara quando o usuário faz upgrade de plano (Blue 3/5).',
+    suggestedName: 'Upgrade de Plano',
+    suggestedTarget: 1,
+    suggestedCategory: 'milestone',
+  },
+  {
+    code: 'career_bronze',
+    label: 'Carreira Bronze',
+    description: 'Dispara quando o usuário atinge o rank Bronze na carreira.',
+    suggestedName: 'Carreira Bronze',
+    suggestedTarget: 50,
+    suggestedCategory: 'milestone',
+  },
+  {
+    code: 'career_silver',
+    label: 'Carreira Prata',
+    description: 'Dispara quando o usuário atinge o rank Prata na carreira.',
+    suggestedName: 'Carreira Prata',
+    suggestedTarget: 200,
+    suggestedCategory: 'milestone',
+  },
+  {
+    code: 'career_gold',
+    label: 'Carreira Ouro',
+    description: 'Dispara quando o usuário atinge o rank Ouro na carreira.',
+    suggestedName: 'Carreira Ouro',
+    suggestedTarget: 500,
+    suggestedCategory: 'milestone',
+  },
+  {
+    code: 'career_diamond',
+    label: 'Carreira Diamante',
+    description: 'Dispara quando o usuário atinge o rank Diamante na carreira.',
+    suggestedName: 'Carreira Diamante',
+    suggestedTarget: 1000,
+    suggestedCategory: 'milestone',
+  },
+  {
+    code: 'marketplace_sale',
+    label: 'Venda no marketplace',
+    description: 'Dispara quando o usuário completa uma venda no marketplace.',
+    suggestedName: 'Venda no Marketplace',
+    suggestedTarget: 1,
+    suggestedCategory: 'financial',
+  },
+  {
+    code: 'profile_completed',
+    label: 'Perfil completo',
+    description: 'Dispara quando o usuário preenche nome, CPF, telefone, cidade e estado.',
+    suggestedName: 'Perfil Completo',
+    suggestedTarget: 1,
+    suggestedCategory: 'engagement',
+  },
+  {
+    code: 'bank_data_filled',
+    label: 'Dados bancários preenchidos',
+    description: 'Dispara quando o usuário informa banco, agência e conta.',
+    suggestedName: 'Dados Bancários Preenchidos',
+    suggestedTarget: 1,
+    suggestedCategory: 'financial',
+  },
+  {
+    code: 'social_connected',
+    label: 'Rede social conectada',
+    description: 'Dispara quando o usuário conecta uma rede social ao perfil.',
+    suggestedName: 'Rede Social Conectada',
+    suggestedTarget: 1,
+    suggestedCategory: 'engagement',
+  },
+]
 
 // ---------- Career Plans ----------
 interface CareerPlanItem {
@@ -602,9 +739,24 @@ export function AdminPage() {
   const [releaseBalanceSaving, setReleaseBalanceSaving] = useState(false)
 
   // Create gratification dialog (used from gratifications tab)
+  // Task 2-c / Admin Item 2 — form includes the fields required by the spec:
+  //   - targetUserId (admin selects which user gets the gratification)
+  //   - name (human-readable label shown in the user's Metas list)
+  //   - type (machine-readable category key, e.g. 'leadership')
+  //   - category (wallet/balance bucket, e.g. 'gratification')
+  //   - amountBrl (reward value in BRL reais, converted to cents on submit)
+  //   - qualification (PT-BR free-text describing what the user must do to
+  //     claim this gratification, e.g. 'Ao fechar o 5º nível')
+  //   - description (admin-only note)
   const [gratificationCreateOpen, setGratificationCreateOpen] = useState(false)
   const [gratificationForm, setGratificationForm] = useState({
-    targetUserId: '', type: 'leadership', amountBrl: '', category: 'gratification', description: '',
+    targetUserId: '',
+    name: '',
+    type: 'leadership',
+    amountBrl: '',
+    category: 'gratification',
+    qualification: '',
+    description: '',
   })
   const [gratificationSaving, setGratificationSaving] = useState(false)
   const [gratificationUserSearch, setGratificationUserSearch] = useState('')
@@ -613,11 +765,44 @@ export function AdminPage() {
   const [gratificationUserSearched, setGratificationUserSearched] = useState(false)
   const gratificationSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // BACK-7 — driver-goals benefit target config ('motorista' | 'entregador' | 'ambos').
-  // Stored as a Gratification row with type='driver_goals_config'.
+  // BACK-7 + Task 2-c / Item 7 — driver-goals benefit target config
+  // ('motorista' | 'entregador' | 'ambos').
+  //
+  // Stored as a Gratification row with type='driver_goals_config'. This is
+  // the OVERALL module visibility — controls who can see the Metas menu item
+  // in the sidebar AND who can access the gratifications page at all.
   const [driverGoalsTarget, setDriverGoalsTarget] = useState<string>('ambos')
   const [driverGoalsTargetLoading, setDriverGoalsTargetLoading] = useState(false)
   const [driverGoalsTargetSaving, setDriverGoalsTargetSaving] = useState(false)
+
+  // Task 2-c / Item 7.3 — per-benefit target qualification config.
+  // Stored as a JSON string on SystemConfig under the key 'metas_benefit_targets'.
+  // Shape: { [benefitType]: 'motorista' | 'entregador' | 'ambos' }.
+  // When a benefit type is NOT in the map, the gratifications page falls back
+  // to the overall `driverGoalsTarget` for that benefit.
+  const [benefitCatalog, setBenefitCatalog] = useState<Array<{
+    type: string
+    name: string
+    category: string
+    amount: number
+    description: string
+  }>>([])
+  const [benefitTargets, setBenefitTargets] = useState<Record<string, string>>({})
+  const [benefitTargetSavingKey, setBenefitTargetSavingKey] = useState<string | null>(null)
+
+  // Task 2-c / Item 7.3 (admin form) — array-based `metas.allowedQualifications`.
+  // Stored as a JSON string on SystemConfig under the key
+  // `metas.allowedQualifications`. Shape: ["motorista","entregador"].
+  // Preferred over the legacy single-value `driverGoalsTarget` (Gratification
+  // row with type='driver_goals_config'). When the array is non-empty, this
+  // is the authoritative gate; otherwise the legacy value is consulted.
+  const ALLOWED_QUALIFICATION_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+    { value: 'motorista', label: 'Motorista' },
+    { value: 'entregador', label: 'Entregador' },
+  ]
+  const [allowedQualifications, setAllowedQualifications] = useState<string[]>(['motorista', 'entregador'])
+  const [allowedQualificationsLoading, setAllowedQualificationsLoading] = useState(false)
+  const [allowedQualificationsSaving, setAllowedQualificationsSaving] = useState(false)
 
   // ---------- Service Types (Item 8 — admin CRUD) ----------
   const [serviceTypes, setServiceTypes] = useState<AdminServiceType[]>([])
@@ -835,25 +1020,44 @@ export function AdminPage() {
     } catch { /* ignore */ }
   }
 
-  // BACK-7 — load the driver-goals benefit target config from the API.
+  // BACK-7 + Task 2-c / Item 7 — load the driver-goals benefit target config
+  // (overall module visibility) AND the per-benefit targets from the API.
+  // Also loads the new array-based `allowedQualifications` (Item 7.3) which
+  // is the preferred gate for the Metas module.
   const loadDriverGoalsTarget = async () => {
     if (!user?.id) return
     setDriverGoalsTargetLoading(true)
+    setAllowedQualificationsLoading(true)
     try {
-      const data = await apiFetch<{ targetQualification: string }>(
-        `/admin/gratifications-config?userId=${user.id}`
-      )
+      const data = await apiFetch<{
+        targetQualification: string
+        allowedQualifications?: string[]
+        benefitTargets?: Record<string, string>
+        benefits?: Array<{ type: string; name: string; category: string; amount: number; description: string }>
+      }>(`/admin/gratifications-config?userId=${user.id}`)
       if (data?.targetQualification) {
         setDriverGoalsTarget(data.targetQualification)
       }
+      if (data?.benefitTargets) {
+        setBenefitTargets(data.benefitTargets as Record<string, string>)
+      }
+      if (data?.benefits && data.benefits.length > 0) {
+        setBenefitCatalog(data.benefits)
+      }
+      // Task 2-c / Item 7.3 — preferred array-based allowed qualifications.
+      // Falls back to the default ['motorista','entregador'] when missing.
+      if (Array.isArray(data?.allowedQualifications)) {
+        setAllowedQualifications(data.allowedQualifications as string[])
+      }
     } catch {
-      // Ignore — keep default 'ambos'.
+      // Ignore — keep defaults ('ambos', empty benefitTargets, default array).
     } finally {
       setDriverGoalsTargetLoading(false)
+      setAllowedQualificationsLoading(false)
     }
   }
 
-  // BACK-7 — save the driver-goals benefit target config to the API.
+  // BACK-7 + Task 2-c / Item 7 — save the OVERALL module visibility config.
   const saveDriverGoalsTarget = async (target: string) => {
     if (!user?.id) return
     setDriverGoalsTargetSaving(true)
@@ -863,11 +1067,65 @@ export function AdminPage() {
         body: JSON.stringify({ userId: user.id, targetQualification: target }),
       })
       setDriverGoalsTarget(target)
-      toast.success('Configuração de metas atualizada com sucesso')
+      toast.success('Visibilidade do módulo Metas atualizada com sucesso')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao salvar configuração de metas')
     } finally {
       setDriverGoalsTargetSaving(false)
+    }
+  }
+
+  // Task 2-c / Item 7.3 (admin form) — toggle a single qualification code in
+  // the `allowedQualifications` array and persist the full new array. The
+  // backend stores it as a JSON string on SystemConfig under the key
+  // `metas.allowedQualifications`.
+  const toggleAllowedQualification = async (code: string) => {
+    if (!user?.id) return
+    const lower = code.toLowerCase()
+    // Compute the next array locally first so the UI updates immediately
+    // (optimistic). The PUT replaces the whole array atomically.
+    const next = allowedQualifications.includes(lower)
+      ? allowedQualifications.filter((c) => c !== lower)
+      : [...allowedQualifications, lower]
+    setAllowedQualifications(next)
+    setAllowedQualificationsSaving(true)
+    try {
+      await apiFetch(`/admin/gratifications-config`, {
+        method: 'PUT',
+        body: JSON.stringify({ userId: user.id, allowedQualifications: next }),
+      })
+      toast.success(
+        next.length === 0
+          ? 'Módulo Metas oculto para todos os usuários (lista vazia).'
+          : `Módulo Metas visível para: ${next.map((c) => c === 'motorista' ? 'Motorista' : 'Entregador').join(', ')}`
+      )
+    } catch (err) {
+      // Revert on error
+      setAllowedQualifications(allowedQualifications)
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar qualificações permitidas')
+    } finally {
+      setAllowedQualificationsSaving(false)
+    }
+  }
+
+  // Task 2-c / Item 7.3 — save the per-benefit target qualification.
+  // Sends the FULL benefitTargets object (with the updated key) so the API
+  // can upsert it as a single JSON blob in SystemConfig.
+  const saveBenefitTarget = async (benefitType: string, target: string) => {
+    if (!user?.id) return
+    setBenefitTargetSavingKey(benefitType)
+    try {
+      const nextTargets = { ...benefitTargets, [benefitType]: target }
+      await apiFetch(`/admin/gratifications-config`, {
+        method: 'PUT',
+        body: JSON.stringify({ userId: user.id, benefitTargets: nextTargets }),
+      })
+      setBenefitTargets(nextTargets)
+      toast.success(`Benefício '${benefitType}' atualizado para: ${target === 'motorista' ? 'Motorista' : target === 'entregador' ? 'Entregador' : 'Ambos'}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar benefício')
+    } finally {
+      setBenefitTargetSavingKey(null)
     }
   }
 
@@ -1163,6 +1421,10 @@ export function AdminPage() {
       toast.error('Selecione um usuário')
       return
     }
+    if (!gratificationForm.name.trim()) {
+      toast.error('Informe um nome para a gratificação')
+      return
+    }
     const amountBrl = parseFloat(gratificationForm.amountBrl.replace(',', '.'))
     if (isNaN(amountBrl) || amountBrl <= 0) {
       toast.error('Informe um valor válido')
@@ -1176,17 +1438,35 @@ export function AdminPage() {
         body: JSON.stringify({
           userId: user?.id,
           targetUserId: gratificationForm.targetUserId,
+          name: gratificationForm.name.trim(),
           type: gratificationForm.type,
           amount: amountInCents,
           category: gratificationForm.category,
-          description: gratificationForm.description,
+          // qualification = PT-BR human-readable text describing the requirement
+          // to claim this gratification (e.g. "Ao fechar o 5º nível"). Persisted
+          // onto the Gratification.qualification column on the backend.
+          qualification: gratificationForm.qualification.trim() || null,
+          description: gratificationForm.description.trim()
+            ? gratificationForm.description.trim()
+            : gratificationForm.name.trim(),
         }),
       })
       toast.success('Gratificação criada com sucesso!')
       setGratificationCreateOpen(false)
-      setGratificationForm({ targetUserId: '', type: 'leadership', amountBrl: '', category: 'gratification', description: '' })
+      setGratificationForm({
+        targetUserId: '',
+        name: '',
+        type: 'leadership',
+        amountBrl: '',
+        category: 'gratification',
+        qualification: '',
+        description: '',
+      })
       setGratificationUserSearch('')
       setGratificationUserResults([])
+      // Refresh the financial summary so the new gratification shows up in the
+      // admin "Distribuição por Categoria" panel without a manual reload.
+      loadFinancial()
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao criar gratificação')
     } finally { setGratificationSaving(false) }
@@ -2678,7 +2958,7 @@ export function AdminPage() {
               {([
                 { key: 'financial' as const, label: 'Visão Geral', icon: PieChart },
                 { key: 'withdrawals' as const, label: 'Saques', icon: Wallet },
-                { key: 'cashback' as const, label: 'Cashback', icon: Receipt },
+                { key: 'cashback' as const, label: 'CashBack', icon: Receipt },
               ]).map((sub) => {
                 const SubIcon = sub.icon
                 const isActive = financialSubTab === sub.key
@@ -3497,7 +3777,7 @@ export function AdminPage() {
                         <option value="all">Todos</option>
                         <option value="deposit">Depósito</option>
                         <option value="withdrawal">Saque</option>
-                        <option value="cashback">Cashback</option>
+                        <option value="cashback">CashBack</option>
                         <option value="gratification">Gratificação</option>
                         <option value="marketplace_purchase">Marketplace</option>
                       </select>
@@ -3791,7 +4071,20 @@ export function AdminPage() {
                     <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => {
                       if (!financialData?.recentTransactions?.length) { toast.error('Nenhuma transação para exportar'); return }
                       const headers = ['Data', 'Usuário', 'Email', 'Tipo', 'Valor', 'Status', 'Descrição']
-                      const typeLabels: Record<string, string> = { deposit: 'Depósito', withdrawal: 'Saque', cashback_entry: 'CB Entrada', cashback_residual: 'CB Residual', cashback_sales: 'CB Vendas', gratification: 'Gratificação', plan_payment: 'Pag. Plano', marketplace_purchase: 'Marketplace', voucher: 'Voucher', bonus: 'Bônus' }
+                      const typeLabels: Record<string, string> = {
+                        deposit: 'Depósito', withdrawal: 'Saque',
+                        cashback_entry: 'CashBack Entrada', cashback_residual: 'CashBack Residual',
+                        cashback_sales: 'CashBack Vendas', cashback: 'CashBack',
+                        gratification: 'Gratificação', plan_payment: 'Pagamento de Plano',
+                        plan_upgrade: 'Upgrade de Plano', marketplace_purchase: 'Marketplace',
+                        marketplace: 'Marketplace', voucher: 'Voucher', bonus: 'Bônus',
+                        reward: 'Recompensa', referral: 'Indicação', commission: 'Comissão',
+                        purchase: 'Compra', sale: 'Venda', payment: 'Pagamento',
+                        payment_invoice: 'Pagamento Fatura', subscription: 'Assinatura',
+                        transfer: 'Transferência', transfer_in: 'Transferência Recebida',
+                        transfer_out: 'Transferência Envio', fee: 'Taxa',
+                        withdrawal_fee: 'Taxa de Saque', career_claim: 'Reivindicação de Carreira',
+                      }
                       const statusLabels: Record<string, string> = { pending: 'Pendente', approved: 'Aprovado', rejected: 'Rejeitado', paid: 'Pago' }
                       const rows = financialData.recentTransactions.map(t => [new Date(t.createdAt).toLocaleString('pt-BR'), t.userName, t.userEmail, typeLabels[t.type] || t.type, (t.amount / 100).toFixed(2), statusLabels[t.status] || t.status, t.description || ''])
                       const csvContent = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
@@ -3835,10 +4128,19 @@ export function AdminPage() {
                           .slice(0, 50)
                           .map(t => {
                             const typeLabels: Record<string, string> = {
-                              deposit: 'Depósito', withdrawal: 'Saque', cashback_entry: 'CB Entrada',
-                              cashback_residual: 'CB Residual', cashback_sales: 'CB Vendas',
+                              deposit: 'Depósito', withdrawal: 'Saque',
+                              cashback_entry: 'CashBack Entrada', cashback_residual: 'CashBack Residual',
+                              cashback_sales: 'CashBack Vendas', cashback: 'CashBack',
                               gratification: 'Gratificação', voucher: 'Voucher', bonus: 'Bônus',
-                              marketplace_purchase: 'Marketplace', plan_payment: 'Pag. Plano',
+                              marketplace_purchase: 'Marketplace', marketplace: 'Marketplace',
+                              plan_payment: 'Pagamento de Plano', plan_upgrade: 'Upgrade de Plano',
+                              payment: 'Pagamento', payment_invoice: 'Pagamento Fatura',
+                              subscription: 'Assinatura', reward: 'Recompensa',
+                              referral: 'Indicação', commission: 'Comissão',
+                              purchase: 'Compra', sale: 'Venda',
+                              transfer: 'Transferência', transfer_in: 'Transferência Recebida',
+                              transfer_out: 'Transferência Envio', fee: 'Taxa',
+                              withdrawal_fee: 'Taxa de Saque', career_claim: 'Reivindicação de Carreira',
                             }
                             const typeBadge: Record<string, string> = {
                               deposit: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
@@ -4456,7 +4758,10 @@ export function AdminPage() {
             </CardContent>
           </Card>
 
-          {/* BACK-7 — driver-goals benefit target config (who sees the Metas card) */}
+          {/* BACK-7 + Task 2-c / Item 7 — overall Metas module visibility config.
+              Controls who can see the Metas menu item in the sidebar AND who
+              can access the gratifications page at all. Per-benefit overrides
+              are configured in the card below. */}
           <Card className="border-blue-200 dark:border-blue-800">
             <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-start gap-3">
@@ -4465,16 +4770,19 @@ export function AdminPage() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <h4 className="text-sm font-semibold text-foreground">Metas Motorista / Entregador</h4>
+                    <h4 className="text-sm font-semibold text-foreground">Visibilidade do módulo Metas</h4>
                     <Badge className="bg-blue-100 text-blue-700 text-[10px]">BACK-7</Badge>
+                    <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">Item 7</Badge>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Define para qual tipo de usuário o benefício de metas (18 corridas/dia, 384/mês) é exibido na aba Metas.
+                    Define qual tipo de usuário enxerga o item <strong>Metas</strong> no menu lateral
+                    e pode acessar a página de gratificações. Usuários fora deste alvo veem uma tela
+                    de "acesso restrito" e o item some do menu.
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2 w-full sm:w-auto">
-                <Label className="text-xs text-muted-foreground whitespace-nowrap">Benefício aplica-se a:</Label>
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">Módulo visível para:</Label>
                 <Select
                   value={driverGoalsTarget}
                   onValueChange={(v) => saveDriverGoalsTarget(v)}
@@ -4484,9 +4792,9 @@ export function AdminPage() {
                     <SelectValue placeholder="Selecione..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="motorista">Motorista</SelectItem>
-                    <SelectItem value="entregador">Entregador</SelectItem>
-                    <SelectItem value="ambos">Ambos</SelectItem>
+                    <SelectItem value="motorista">Apenas Motorista</SelectItem>
+                    <SelectItem value="entregador">Apenas Entregador</SelectItem>
+                    <SelectItem value="ambos">Motorista e Entregador (Ambos)</SelectItem>
                   </SelectContent>
                 </Select>
                 {driverGoalsTargetSaving && <Loader2 className="h-4 w-4 animate-spin text-blue-600 shrink-0" />}
@@ -4494,11 +4802,181 @@ export function AdminPage() {
             </CardContent>
           </Card>
 
+          {/* Task 2-c / Item 7.3 (admin form) — array-based `metas.allowedQualifications`.
+              Preferred over the legacy single-value `targetQualification` above.
+              Stored as a JSON array on SystemConfig under the key
+              `metas.allowedQualifications` (e.g. ["motorista","entregador"]).
+              The sidebar and gratifications-page both consult this array first;
+              when it is non-empty, it is the authoritative gate. An empty array
+              hides the module from everyone (useful for staging). When the
+              array is absent/invalid, the legacy targetQualification above is
+              consulted as a fallback. */}
+          <Card className="border-emerald-200 dark:border-emerald-800">
+            <CardContent className="p-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400 shrink-0">
+                    <Shield className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="text-sm font-semibold text-foreground">Qualificações permitidas</h4>
+                      <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">Item 7.3</Badge>
+                      <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 text-[10px]">Preferencial</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground max-w-2xl">
+                      Marque quais qualificações podem acessar o módulo <strong>Metas</strong>.
+                      Esta configuração é armazenada no <code className="text-[10px] px-1 py-0.5 rounded bg-muted-foreground/10">SystemConfig</code> sob a
+                      chave <code className="text-[10px] px-1 py-0.5 rounded bg-muted-foreground/10">metas.allowedQualifications</code> como um
+                      array JSON (ex.: <code className="text-[10px] px-1 py-0.5 rounded bg-muted-foreground/10">["motorista","entregador"]</code>).
+                      Quando o array está vazio, o módulo fica oculto para todos.
+                    </p>
+                  </div>
+                </div>
+                {allowedQualificationsSaving && (
+                  <div className="flex items-center gap-1.5 text-[10px] text-emerald-700 dark:text-emerald-400">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Salvando...
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {ALLOWED_QUALIFICATION_OPTIONS.map((opt) => {
+                  const checked = allowedQualifications.includes(opt.value)
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => toggleAllowedQualification(opt.value)}
+                      disabled={allowedQualificationsLoading || allowedQualificationsSaving}
+                      aria-pressed={checked}
+                      className={cn(
+                        'group flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium transition-all duration-150',
+                        checked
+                          ? 'border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-700'
+                          : 'border-border bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                        (allowedQualificationsLoading || allowedQualificationsSaving) && 'opacity-60 cursor-not-allowed'
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'flex items-center justify-center h-4 w-4 rounded border transition-colors',
+                          checked
+                            ? 'border-emerald-500 bg-emerald-500 text-white'
+                            : 'border-muted-foreground/40 bg-background'
+                        )}
+                      >
+                        {checked && <Check className="h-3 w-3" />}
+                      </span>
+                      <span>{opt.label}</span>
+                    </button>
+                  )
+                })}
+                {allowedQualifications.length === 0 && (
+                  <Badge variant="outline" className="text-[10px] text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700">
+                    Lista vazia — módulo oculto para todos
+                  </Badge>
+                )}
+              </div>
+              <div className="mt-3 pt-3 border-t border-border/50 flex items-center gap-2 text-[10px] text-muted-foreground">
+                <Shield className="h-3 w-3" />
+                <span>
+                  Configuração atual: <code className="text-[10px] px-1 py-0.5 rounded bg-muted-foreground/10">
+                    {JSON.stringify(allowedQualifications)}
+                  </code>
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Task 2-c / Item 7.3 — per-benefit target qualification.
+              For each benefit in the catalog, the admin can pick which user
+              type (motorista / entregador / ambos) should see it. Benefits
+              whose target equals the overall module visibility can be left as
+              "Padrão do módulo" (empty). */}
+          <Card className="border-emerald-200 dark:border-emerald-800">
+            <CardHeader className="pb-3">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400 shrink-0">
+                  <Target className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <CardTitle className="text-sm">Benefícios — alvo por qualificação</CardTitle>
+                    <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">Item 7</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Para cada benefício do catálogo de Metas, escolha se ele deve ser exibido
+                    apenas para <strong>Motorista</strong>, apenas para <strong>Entregador</strong>,
+                    ou para <strong>Ambos</strong>. Quando "Padrão do módulo" está selecionado,
+                    o benefício herda a configuração global acima.
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {benefitCatalog.length === 0 ? (
+                <div className="p-4 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Carregando benefícios...</span>
+                </div>
+              ) : (
+                <div className="divide-y divide-border max-h-96 overflow-y-auto custom-scrollbar">
+                  {benefitCatalog.map((b) => {
+                    const currentValue = benefitTargets[b.type] || ''
+                    const isSaving = benefitTargetSavingKey === b.type
+                    return (
+                      <div
+                        key={b.type}
+                        className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 p-3 hover:bg-muted/30 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-xs font-semibold text-foreground truncate">{b.name}</p>
+                            <Badge variant="outline" className="text-[9px]">{b.type}</Badge>
+                            {b.amount > 0 && (
+                              <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[9px]">
+                                {formatCurrency(b.amount)}
+                              </Badge>
+                            )}
+                          </div>
+                          {b.description && (
+                            <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">{b.description}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Label className="text-[10px] text-muted-foreground whitespace-nowrap hidden sm:inline">
+                            Benefício para:
+                          </Label>
+                          <Select
+                            value={currentValue}
+                            onValueChange={(v) => saveBenefitTarget(b.type, v)}
+                            disabled={isSaving}
+                          >
+                            <SelectTrigger className="w-full sm:w-[200px] h-8 text-xs">
+                              <SelectValue placeholder="Padrão do módulo" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="ambos">Ambos</SelectItem>
+                              <SelectItem value="motorista">Apenas Motorista</SelectItem>
+                              <SelectItem value="entregador">Apenas Entregador</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {isSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600 shrink-0" />}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {financialData ? (
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {[
-                  { label: 'Cashback Total', value: formatCurrency(financialData.overview.totalCashback), icon: Receipt, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+                  { label: 'CashBack Total', value: formatCurrency(financialData.overview.totalCashback), icon: Receipt, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
                   { label: 'Receita Total', value: formatCurrency(financialData.overview.totalRevenue), icon: DollarSign, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/30' },
                   { label: 'Em Circulação', value: formatCurrency(financialData.overview.totalInCirculation), icon: Wallet, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
                   { label: 'Saldo Plataforma', value: formatCurrency(financialData.overview.totalPlatformBalance), icon: CreditCard, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/30' },
@@ -5616,7 +6094,7 @@ export function AdminPage() {
                 // (so we format as R$ via formatCurrency); points are raw
                 // integers (so we just append "pts").
                 const isCashback = s.rewardType === 'cashback'
-                const rewardTypeLabel = isCashback ? 'Cashback' : 'Pontos'
+                const rewardTypeLabel = isCashback ? 'CashBack' : 'Pontos'
                 const rewardAmountStr = isCashback
                   ? formatCurrency(s.rewardAmount)
                   : `${s.rewardAmount} pts`
@@ -6026,53 +6504,122 @@ export function AdminPage() {
             <DialogDescription>Cadastre uma conquista que os usuários podem desbloquear.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            {/* ADM-5 — Variables help section (always visible, above the
+                code field per spec). Lists every canonical variable the
+                progressForCode() function in /api/achievements/route.ts
+                recognizes, with a short PT-BR description of what triggers
+                each one. The admin can pick any of these from the
+                "Variável" dropdown below — or type a custom code by
+                selecting "Outro (customizado)". */}
+            <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/20 p-3 space-y-1.5">
+              <p className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                <Info className="h-3 w-3" />
+                Variáveis disponíveis para o código da conquista
+              </p>
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                O sistema detecta automaticamente a estatística a partir do código. Use uma das
+                variáveis abaixo (recomendado) ou digite um código customizado.
+              </p>
+              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 text-[10px] leading-snug">
+                {ACHIEVEMENT_VARIABLES.map((v) => (
+                  <li key={v.code} className="flex flex-col">
+                    <span className="flex items-center gap-1">
+                      <code className="px-1 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-mono text-[10px]">{v.code}</code>
+                      <span className="font-medium text-foreground">{v.label}</span>
+                    </span>
+                    <span className="text-muted-foreground pl-0.5">{v.description}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Variável *</Label>
+                {/* ADM-5 — Dropdown of canonical variables. When the admin
+                    picks one, we pre-fill code/name/description/category/
+                    targetValue with the variable's suggested values so they
+                    can review and tweak. Selecting "Outro (customizado)"
+                    reveals the raw code Input below so the admin can type a
+                    legacy code (e.g. "ten_referrals", "cashback_1000"). */}
+                <Select
+                  value={
+                    achievementForm.code &&
+                    ACHIEVEMENT_VARIABLES.some((v) => v.code === achievementForm.code)
+                      ? achievementForm.code
+                      : '__custom'
+                  }
+                  onValueChange={(v) => {
+                    if (v === '__custom') {
+                      // Switch to custom mode — clear the code so the admin
+                      // can type, but keep name/description/etc as-is so
+                      // they don't lose what they already typed.
+                      setAchievementForm((f) => ({ ...f, code: '' }))
+                      return
+                    }
+                    const picked = ACHIEVEMENT_VARIABLES.find((x) => x.code === v)
+                    if (!picked) return
+                    // Pre-fill suggested fields ONLY when they're empty or
+                    // when we're creating a new achievement (editingAchievement
+                    // === null). For an existing achievement we only update
+                    // the code (admin already customized name/description).
+                    setAchievementForm((f) => ({
+                      ...f,
+                      code: picked.code,
+                      name: editingAchievement ? f.name : (f.name || picked.suggestedName),
+                      description: editingAchievement ? f.description : (f.description || picked.description),
+                      category: editingAchievement ? f.category : picked.suggestedCategory,
+                      targetValue: editingAchievement ? f.targetValue : (f.targetValue && f.targetValue !== 1 ? f.targetValue : picked.suggestedTarget),
+                    }))
+                  }}
+                  disabled={!!editingAchievement}
+                >
+                  <SelectTrigger className="h-9 text-sm">
+                    <SelectValue placeholder="Selecione uma variável" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ACHIEVEMENT_VARIABLES.map((v) => (
+                      <SelectItem key={v.code} value={v.code}>
+                        <span className="font-mono text-[10px] mr-1.5">{v.code}</span>
+                        <span className="text-xs">{v.label}</span>
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="__custom">
+                      <span className="text-xs text-muted-foreground italic">Outro (código customizado)</span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div>
                 <Label className="text-xs">Código *</Label>
-                {/* ADM-5 — Code variable help box.
-                    The system auto-detects which user stat to track from the
-                    achievement code via the progressForCode() function in
-                    /api/achievements/route.ts. Document every supported keyword
-                    here so the admin knows which substrings trigger which stat.
-                    Placed BETWEEN the "Código *" label and the input as per spec. */}
-                <details className="mt-1 mb-1.5 group">
-                  <summary className="cursor-pointer text-[10px] text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 select-none list-none flex items-center gap-1">
-                    <Info className="h-3 w-3" />
-                    <span className="font-medium">Variáveis disponíveis para o código</span>
-                    <ChevronDown className="h-3 w-3 ml-0.5 transition-transform group-open:rotate-180" />
-                  </summary>
-                  <div className="mt-1.5 p-2.5 rounded-md bg-muted/60 border border-border text-[10px] text-muted-foreground space-y-1.5">
-                    <p className="font-medium text-foreground">O sistema detecta a estatística pela palavra-chave no código:</p>
-                    <ul className="space-y-0.5 leading-relaxed">
-                      <li><code className="text-emerald-600 dark:text-emerald-400">cashback</code> → Total de CashBack acumulado (R$ em cents)</li>
-                      <li><code className="text-emerald-600 dark:text-emerald-400">withdraw</code> / <code className="text-emerald-600 dark:text-emerald-400">saque</code> → Número de saques realizados</li>
-                      <li><code className="text-emerald-600 dark:text-emerald-400">voucher</code> → Vouchers resgatados</li>
-                      <li><code className="text-emerald-600 dark:text-emerald-400">plan_upgrade</code> / <code className="text-emerald-600 dark:text-emerald-400">upgrade</code> / <code className="text-emerald-600 dark:text-emerald-400">plan</code> → Upgrades de plano</li>
-                      <li><code className="text-emerald-600 dark:text-emerald-400">marketplace</code> / <code className="text-emerald-600 dark:text-emerald-400">purchase</code> / <code className="text-emerald-600 dark:text-emerald-400">compra</code> → Pedidos no marketplace</li>
-                      <li><code className="text-emerald-600 dark:text-emerald-400">ride</code> / <code className="text-emerald-600 dark:text-emerald-400">corrida</code> → Corridas realizadas (motorista/entregador)</li>
-                      <li><code className="text-emerald-600 dark:text-emerald-400">bet_streak</code> / <code className="text-emerald-600 dark:text-emerald-400">login_streak</code> / <code className="text-emerald-600 dark:text-emerald-400">streak</code> / <code className="text-emerald-600 dark:text-emerald-400">weekly_active</code> → Maior sequência de logins</li>
-                      <li><code className="text-emerald-600 dark:text-emerald-400">bet</code> / <code className="text-emerald-600 dark:text-emerald-400">aposta</code> / <code className="text-emerald-600 dark:text-emerald-400">game_win</code> / <code className="text-emerald-600 dark:text-emerald-400">victory</code> → Apostas vencedoras</li>
-                      <li><code className="text-emerald-600 dark:text-emerald-400">career</code> / <code className="text-emerald-600 dark:text-emerald-400">top_earner</code> → Pontos de carreira</li>
-                      <li><code className="text-emerald-600 dark:text-emerald-400">loyalty</code> / <code className="text-emerald-600 dark:text-emerald-400">fidelity</code> / <code className="text-emerald-600 dark:text-emerald-400">ano</code> / <code className="text-emerald-600 dark:text-emerald-400">mes</code> → Meses de cadastro ativo</li>
-                      <li><code className="text-emerald-600 dark:text-emerald-400">security</code> / <code className="text-emerald-600 dark:text-emerald-400">seguran</code> → Recursos de segurança ativados</li>
-                      <li><code className="text-emerald-600 dark:text-emerald-400">referral</code> / <code className="text-emerald-600 dark:text-emerald-400">indic</code> / <code className="text-emerald-600 dark:text-emerald-400">network</code> → Indicações diretas</li>
-                    </ul>
-                    <p className="pt-1 border-t border-border/60">
-                      <span className="font-medium text-foreground">Exemplos:</span>{' '}
-                      <code className="text-emerald-600 dark:text-emerald-400">first_referral</code>,{' '}
-                      <code className="text-emerald-600 dark:text-emerald-400">cashback_1000</code>,{' '}
-                      <code className="text-emerald-600 dark:text-emerald-400">streak_30</code>,{' '}
-                      <code className="text-emerald-600 dark:text-emerald-400">ride_100</code>,{' '}
-                      <code className="text-emerald-600 dark:text-emerald-400">career_bronze</code>
-                    </p>
-                  </div>
-                </details>
-                <Input value={achievementForm.code} disabled={!!editingAchievement} onChange={(e) => setAchievementForm(f => ({ ...f, code: e.target.value }))} placeholder="ex: first_referral" className="h-9 text-sm" />
+                {/* ADM-5 — Code field. Disabled when editing an existing
+                    achievement (the code is the unique key — changing it
+                    would break the user-achievement linkage). When creating
+                    a new achievement and a canonical variable is selected,
+                    the field is read-only (filled by the dropdown). When
+                    "Outro (customizado)" is selected, the field is editable
+                    so the admin can type a legacy/advanced code. */}
+                <Input
+                  value={achievementForm.code}
+                  disabled={
+                    !!editingAchievement ||
+                    (!!achievementForm.code &&
+                      ACHIEVEMENT_VARIABLES.some((v) => v.code === achievementForm.code))
+                  }
+                  onChange={(e) => setAchievementForm((f) => ({ ...f, code: e.target.value }))}
+                  placeholder="ex: first_referral ou digite um código customizado"
+                  className="h-9 text-sm font-mono"
+                />
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  {editingAchievement
+                    ? 'O código não pode ser alterado após a criação (é a chave única).'
+                    : 'Escolha uma variável no dropdown acima ou digite um código customizado.'}
+                </p>
               </div>
-              <div>
-                <Label className="text-xs">Nome *</Label>
-                <Input value={achievementForm.name} onChange={(e) => setAchievementForm(f => ({ ...f, name: e.target.value }))} placeholder="ex: Primeira Indicação" className="h-9 text-sm" />
-              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Nome *</Label>
+              <Input value={achievementForm.name} onChange={(e) => setAchievementForm(f => ({ ...f, name: e.target.value }))} placeholder="ex: Primeira Indicação" className="h-9 text-sm" />
             </div>
             <div>
               <Label className="text-xs">Descrição</Label>
@@ -6416,7 +6963,7 @@ export function AdminPage() {
                 <Label className="text-xs">Categoria</Label>
                 <select value={faqForm.category} onChange={(e) => setFaqForm(f => ({ ...f, category: e.target.value }))} className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm">
                   <option value="geral">Geral</option>
-                  <option value="cashback">Cashback</option>
+                  <option value="cashback">CashBack</option>
                   <option value="financeiro">Financeiro</option>
                   <option value="indicacoes">Indicações</option>
                   <option value="carreira">Carreira</option>
@@ -7576,9 +8123,13 @@ export function AdminPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ===== CREATE GRATIFICATION DIALOG ===== */}
+      {/* ===== CREATE GRATIFICATION DIALOG =====
+          Task 2-c / Admin Item 2 — the form now collects every field required
+          by the spec: name, type/category, reward value, qualification
+          requirement, and an admin-only description. Submitting calls
+          handleCreateGratification, which POSTs to /api/admin/gratifications/assign. */}
       <Dialog open={gratificationCreateOpen} onOpenChange={setGratificationCreateOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Gift className="h-4 w-4 text-emerald-600" />
@@ -7639,6 +8190,17 @@ export function AdminPage() {
                 </div>
               )}
             </div>
+
+            {/* Name — required, human-readable label shown on the user's Metas list */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Nome <span className="text-rose-500">*</span></Label>
+              <Input
+                value={gratificationForm.name}
+                onChange={(e) => setGratificationForm(d => ({ ...d, name: e.target.value }))}
+                placeholder="Ex: Bônus de liderança, Auxílio combustível..."
+              />
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Tipo</Label>
@@ -7649,6 +8211,10 @@ export function AdminPage() {
                     <SelectItem value="retirement_fund">Fundo Aposentadoria</SelectItem>
                     <SelectItem value="telemedicine">Telemedicina</SelectItem>
                     <SelectItem value="tow_truck">Guincho</SelectItem>
+                    <SelectItem value="fuel_aid">Auxílio Combustível</SelectItem>
+                    <SelectItem value="car_wash">Vale Ducha</SelectItem>
+                    <SelectItem value="vacation_6mo">Férias 6 Meses</SelectItem>
+                    <SelectItem value="vacation_12mo">Férias 12 Meses</SelectItem>
                     <SelectItem value="custom">Personalizada</SelectItem>
                   </SelectContent>
                 </Select>
@@ -7682,6 +8248,20 @@ export function AdminPage() {
                   : 'Valor em reais'}
               </p>
             </div>
+            {/* Qualification requirement — PT-BR human-readable text describing
+                what the user must do to claim this gratification. Mirrors the
+                "qualification" column on the Gratification model. */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Qualificação necessária</Label>
+              <Input
+                value={gratificationForm.qualification}
+                onChange={(e) => setGratificationForm(d => ({ ...d, qualification: e.target.value }))}
+                placeholder="Ex: Ao fechar o 5º nível · 6 meses de cadastro ativo..."
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Condição que o usuário deve cumprir para reivindicar esta gratificação.
+              </p>
+            </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Descrição</Label>
               <Input
@@ -7692,7 +8272,7 @@ export function AdminPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setGratificationCreateOpen(false)} disabled={gratificationSaving}>Cancelar</Button>
-              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleCreateGratification} disabled={gratificationSaving || !gratificationForm.targetUserId || !gratificationForm.amountBrl}>
+              <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={handleCreateGratification} disabled={gratificationSaving || !gratificationForm.targetUserId || !gratificationForm.name.trim() || !gratificationForm.amountBrl}>
                 {gratificationSaving ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Gift className="h-4 w-4" />}
                 Criar Gratificação
               </Button>

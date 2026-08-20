@@ -19,8 +19,9 @@ import { success, error } from '@/lib/api-utils'
  */
 
 // Default plan seeds — used only when the Plan table is completely empty
-// (e.g. fresh DB). Values mirror the legacy hardcoded prices so behaviour
-// is unchanged on first boot. Admin edits afterwards are persisted to the
+// (e.g. fresh DB). Values mirror the canonical NewMobility mensalidade
+// (R$ 999,90 for both Blue 3 and Blue 5 per Task 2-b) so behaviour is
+// unchanged on first boot. Admin edits afterwards are persisted to the
 // same rows and surfaced via this endpoint.
 const DEFAULT_PLANS_SEED = [
   {
@@ -38,12 +39,14 @@ const DEFAULT_PLANS_SEED = [
     id: 'blue3',
     code: 'blue3',
     name: 'Blue 3',
-    priceCents: 9700,
-    description: 'Plano Blue 3 com acesso completo às matrizes e apps.',
+    // Task 2-b: Blue 3 mensalidade is R$ 999,90 (same as Blue 5). Blue 3
+    // ONLY liberates 3 níveis of Cashback Entrada — Residual and Vendas
+    // are blocked. The description explicitly states this so users see
+    // the difference between Blue 3 and Blue 5.
+    priceCents: 99990,
+    description: 'Libera 3 níveis do Cashback Entrada',
     features: [
-      'Cashback Entrada (matriz 4x5)',
-      'Cashback Residual (matriz 4x7)',
-      'Cashback Vendas (matriz 4x9)',
+      'Cashback Entrada (3 níveis da matriz 4x5)',
       'App Mobilidade',
       'App Refeição',
       'App Farmácia',
@@ -58,11 +61,16 @@ const DEFAULT_PLANS_SEED = [
   {
     id: 'blue5',
     code: 'blue5',
-    name: 'Blue 5',
-    priceCents: 14700,
-    description: 'Plano Blue 5 premium com benefícios exclusivos.',
+    name: 'Blue 5 Premium',
+    // Task 2-b: Blue 5 mensalidade is R$ 999,90. Blue 5 unlocks ALL
+    // three cashback matrices (5 Entrada + 7 Residual + 9 Vendas).
+    priceCents: 99990,
+    description: 'Libera 5 níveis do Cashback Entrada + 7 níveis Residual + 9 níveis Vendas.',
     features: [
       'Tudo do plano Blue 3',
+      'Cashback Entrada (5 níveis da matriz 4x5)',
+      'Cashback Residual (7 níveis da matriz 4x7)',
+      'Cashback Vendas (9 níveis da matriz 4x9)',
       'Gratificações exclusivas',
       'Prioridade no suporte',
       'Bônus de adesão aumentado',

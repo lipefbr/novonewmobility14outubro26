@@ -15,17 +15,18 @@ import {
 import { userApi } from '@/lib/api'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import {
+  QUALIFICATION_OPTIONS,
+  qualificationLabel as resolveQualificationLabel,
+} from '@/lib/qualifications'
 
 // ---------- Static option lists ----------
 
-const QUALIFICATION_OPTIONS = [
-  { value: 'motorista', label: 'Motorista' },
-  { value: 'passageiro', label: 'Passageiro' },
-  { value: 'passageiro_60', label: 'Passageiro 60+' },
-  { value: 'passageiro_pcd', label: 'Passageiro com Mobilidade Reduzida' },
-  { value: 'comercio', label: 'Comércio' },
-  { value: 'entregador', label: 'Entregador' },
-] as const
+// Task 2-e (Item 4): the qualification dropdown now lives in
+// `@/lib/qualifications` and is shared with the admin "Editar Usuário"
+// dialog and the self-registration form. Re-exported here under the local
+// constant name the rest of this file already uses.
+const QUALIFICATION_OPTIONS_LOCAL = QUALIFICATION_OPTIONS
 
 const MARITAL_STATUS_OPTIONS = [
   'Solteiro(a)',
@@ -82,7 +83,12 @@ function toDateInputValue(iso: string | Date | null | undefined): string {
 
 function getQualificationLabel(value: string | null | undefined): string {
   if (!value) return '-'
-  return QUALIFICATION_OPTIONS.find((o) => o.value === value)?.label || value
+  // Delegate to the shared helper so legacy codes (passageiro / passageiro_60
+  // / passageiro_pcd / comercio) also resolve to a friendly label for users
+  // registered before Task 2-e expanded the dropdown. Falls back to the raw
+  // value when neither table recognises the code.
+  const label = resolveQualificationLabel(value)
+  return label === '—' ? value : label
 }
 
 // ---------- Types ----------
@@ -320,7 +326,7 @@ export function PersonalDataSection({ userId }: { userId: string }) {
                     <SelectValue placeholder="Selecione" />
                   </SelectTrigger>
                   <SelectContent>
-                    {QUALIFICATION_OPTIONS.map((opt) => (
+                    {QUALIFICATION_OPTIONS_LOCAL.map((opt) => (
                       <SelectItem key={opt.value} value={opt.value}>
                         {opt.label}
                       </SelectItem>

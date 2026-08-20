@@ -1,7 +1,7 @@
 'use client'
 
 // ============================================================================
-// Earnings Simulator — Task 14-E rewrite
+// Earnings Simulator — Task 2-b (Item 13) rewrite
 // ============================================================================
 //
 // Why this file exists (and why the previous version was broken):
@@ -11,15 +11,25 @@
 //     Any change to a slider would silently swallow the API error and the
 //     projection would stay null forever — which is exactly what users
 //     reported ("simulator isn't updating / has wrong calculations").
+//   • The previous "Task 14-E rewrite" then introduced six legacy
+//     "Premium 1-5" placeholder plans with prices 99/299/499/999/1.999 BRL
+//     that did NOT correspond to any real NewMobility plan tier. That has
+//     now been corrected.
 //
-// What this rewrite does:
+// What this rewrite does (Task 2-b, Item 13):
 //   • Pure client-side computation via `useMemo` — no API call, no network
 //     latency, no silent error swallowing. Every slider movement recomputes
 //     the projection instantly.
-//   • All six plans per the task spec: Gratuito, Premium 1-5 with prices
-//     0 / 99 / 299 / 499 / 999 / 1.999 BRL.
+//   • Three ACTUAL NewMobility plan tiers:
+//       - Gratuito (R$ 0/mês)      — no cashback matrices unlocked.
+//       - Blue 3  (R$ 999,90/mês)  — unlocks 3 níveis of Cashback Entrada
+//                                     (Residual and Vendas are NOT unlocked).
+//       - Blue 5  (R$ 999,90/mês)  — unlocks 5 níveis Entrada + 7 níveis
+//                                     Residual + 9 níveis Vendas.
 //   • Each matrix (Entrada 4x5, Residual 4x7, Vendas 4x9) is simulated
-//     with the exact level percentages from the spec:
+//     ONLY for the levels the selected plan unlocks. Blue 3 therefore
+//     only projects 3 levels of Entrada; Residual and Vendas are 0.
+//     Level percentages (per client spec):
 //       Entrada  : 5 / 10 / 10 / 5 / 5
 //       Residual : 10 / 9 / 5 / 5 / 4 / 3 / 2
 //       Vendas   : 0.10 × 9 levels
@@ -28,6 +38,10 @@
 //       CashBack Entrada  : R$ 999,00   → each level's earning = 999 × pct
 //       CashBack Residual : R$ 1.399,00 → each level's earning = 1399 × pct
 //       CashBack Vendas   : R$ 199,90   → each level's earning = 199,90 × pct
+//   • Direct-referral cashback = 10% of the plan mensalidade (R$ 99,99
+//     per referral for both Blue 3 and Blue 5). For Gratuito, 0.
+//   • ROI = (totalMonthlyEarnings / mensalidade) × 100. For Gratuito,
+//     ROI is null (no mensalidade to divide by).
 //   • Inputs:
 //       - plan (select)
 //       - directReferrals (1-1000, default 4)
@@ -63,14 +77,30 @@ import {
   Wallet,
   Sparkles,
   Award,
+  Lock,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 // ---------------------------------------------------------------------------
-// Plan definitions
+// Plan definitions (Task 2-b — Item 13)
+// ---------------------------------------------------------------------------
+// The simulator now uses the ACTUAL NewMobility plan tiers instead of the
+// legacy "Premium 1-5" placeholders. Per the task spec:
+//   - Gratuito (R$ 0/mês)      — no cashback matrices unlocked.
+//   - Blue 3  (R$ 999,90/mês)  — unlocks 3 níveis of Cashback Entrada
+//                                 (Residual and Vendas are NOT unlocked).
+//   - Blue 5  (R$ 999,90/mês)  — unlocks 5 níveis of Cashback Entrada +
+//                                 7 níveis of Cashback Residual +
+//                                 9 níveis of Cashback Vendas.
+// Both Blue 3 and Blue 5 share the same mensalidade of R$ 999,90.
+//
+// Direct-referral cashback = 10% of the plan mensalidade (R$ 99,99 per
+// referral for both Blue 3 and Blue 5). For Gratuito, no cashback at all.
+//
+// ROI = (totalMonthlyEarnings / mensalidade) × 100.
 // ---------------------------------------------------------------------------
 
-type PlanCode = 'gratuito' | 'premium_1' | 'premium_2' | 'premium_3' | 'premium_4' | 'premium_5'
+type PlanCode = 'gratuito' | 'blue3' | 'blue5'
 
 interface PlanOption {
   code: PlanCode
@@ -81,6 +111,20 @@ interface PlanOption {
   tagline: string
   /** Tailwind accent classes for the picker button when selected. */
   selectedClass: string
+  /**
+   * Which cashback matrices this plan unlocks, and how many levels of
+   * each. Drives the simulate() function so Blue 3 only computes 3
+   * levels of Entrada (no Residual, no Vendas) while Blue 5 computes
+   * all three matrices in full.
+   */
+  unlocks: {
+    /** Number of Cashback Entrada levels unlocked (0-5). */
+    entrada: number
+    /** Number of Cashback Residual levels unlocked (0-7). */
+    residual: number
+    /** Number of Cashback Vendas levels unlocked (0-9). */
+    vendas: number
+  }
 }
 
 const PLAN_OPTIONS: PlanOption[] = [
@@ -88,43 +132,29 @@ const PLAN_OPTIONS: PlanOption[] = [
     code: 'gratuito',
     label: 'Gratuito',
     priceCents: 0,
-    tagline: 'R$ 0/mês',
+    tagline: 'R$ 0/mês · Sem cashback',
     selectedClass: 'border-gray-400 bg-gray-50 dark:bg-gray-900/40 dark:border-gray-600',
+    unlocks: { entrada: 0, residual: 0, vendas: 0 },
   },
   {
-    code: 'premium_1',
-    label: 'Premium 1',
-    priceCents: 9900,
-    tagline: 'R$ 99/mês',
-    selectedClass: 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-600',
+    code: 'blue3',
+    label: 'Blue 3',
+    priceCents: 99990,
+    tagline: 'R$ 999,90/mês · 3 níveis Entrada',
+    selectedClass: 'border-teal-400 bg-teal-50 dark:bg-teal-950/30 dark:border-teal-600',
+    // Blue 3 ONLY liberates Cashback Entrada, capped at 3 levels.
+    // Residual and Vendas are blocked — the user must upgrade to Blue 5
+    // to unlock them.
+    unlocks: { entrada: 3, residual: 0, vendas: 0 },
   },
   {
-    code: 'premium_2',
-    label: 'Premium 2',
-    priceCents: 29900,
-    tagline: 'R$ 299/mês',
+    code: 'blue5',
+    label: 'Blue 5 Premium',
+    priceCents: 99990,
+    tagline: 'R$ 999,90/mês · 5 + 7 + 9 níveis',
     selectedClass: 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-600',
-  },
-  {
-    code: 'premium_3',
-    label: 'Premium 3',
-    priceCents: 49900,
-    tagline: 'R$ 499/mês',
-    selectedClass: 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-600',
-  },
-  {
-    code: 'premium_4',
-    label: 'Premium 4',
-    priceCents: 99900,
-    tagline: 'R$ 999/mês',
-    selectedClass: 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-600',
-  },
-  {
-    code: 'premium_5',
-    label: 'Premium 5',
-    priceCents: 199900,
-    tagline: 'R$ 1.999/mês',
-    selectedClass: 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-600',
+    // Blue 5 unlocks all three matrices in full.
+    unlocks: { entrada: 5, residual: 7, vendas: 9 },
   },
 ]
 
@@ -278,6 +308,21 @@ function projectMatrix(
  * Compute the full simulation result for the given inputs.
  * Pure function — no side effects, no async. Wrapped in `useMemo` so
  * the result recomputes instantly whenever an input changes.
+ *
+ * Task 2-b (Item 13) rules:
+ *   - Gratuito: no cashback at all (direct referrals, entrada, residual,
+ *     vendas all return 0). ROI = null.
+ *   - Blue 3:   direct-referral cashback = 10% of R$ 999,90 (R$ 99,99)
+ *               per referral. Entrada = 3 levels only. Residual = 0.
+ *               Vendas = 0. ROI = totalMonthly / 99990 × 100.
+ *   - Blue 5:   direct-referral cashback = 10% of R$ 999,90 (R$ 99,99)
+ *               per referral. Entrada = 5 levels, Residual = 7 levels,
+ *               Vendas = 9 levels. ROI = totalMonthly / 99990 × 100.
+ *
+ * Each matrix uses a FIXED CashBack base value (BACK-13):
+ *   - Entrada  base = R$ 999,00  (99900 cents)
+ *   - Residual base = R$ 1.399,00 (139900 cents)
+ *   - Vendas   base = R$ 199,90 (19990 cents)
  */
 function simulate(params: {
   plan: PlanCode
@@ -287,21 +332,28 @@ function simulate(params: {
 }): SimulationResult {
   const planOption = PLAN_OPTIONS.find((p) => p.code === params.plan) ?? PLAN_OPTIONS[0]
   const planPriceCents = planOption.priceCents
+  const unlocks = planOption.unlocks
 
   const safeDirectReferrals = Math.max(0, Math.floor(params.directReferrals))
   const safeAvgSpend = Math.max(0, Math.floor(params.avgMonthlySpendCents))
   const safeFill = Math.max(0, Math.min(100, params.matrixFillPercent))
 
-  // Direct-referral cashback: 10% of plan price per referral (one-time).
+  // Direct-referral cashback: 10% of the plan mensalidade per referral
+  // (one-time). For Gratuito (priceCents = 0) this is 0.
   const directReferralCashback =
     safeDirectReferrals * Math.round((planPriceCents * DIRECT_REFERRAL_CASHBACK_PCT) / 100)
 
-  // BACK-13: each matrix uses a FIXED CashBack base — NOT the plan price
-  // nor the user's avg monthly spend. Earnings are independent of plan
-  // tier; the plan only affects the direct-referral cashback below.
-  const entradaMonthly = projectMatrix(ENTRADA_LEVELS, CB_ENTRADA_BASE_CENTS, safeFill)
-  const residualMonthly = projectMatrix(RESIDUAL_LEVELS, CB_RESIDUAL_BASE_CENTS, safeFill)
-  const vendasMonthly = projectMatrix(VENDAS_LEVELS, CB_VENDAS_BASE_CENTS, safeFill)
+  // Each matrix is projected ONLY for the levels the plan unlocks.
+  //   - Blue 3 unlocks 3 entrada levels → slice(0, 3).
+  //   - Blue 5 unlocks all 5 entrada + all 7 residual + all 9 vendas.
+  //   - Gratuito unlocks nothing → all three projections are empty.
+  const entradaLevels = ENTRADA_LEVELS.slice(0, Math.max(0, unlocks.entrada))
+  const residualLevels = RESIDUAL_LEVELS.slice(0, Math.max(0, unlocks.residual))
+  const vendasLevels = VENDAS_LEVELS.slice(0, Math.max(0, unlocks.vendas))
+
+  const entradaMonthly = projectMatrix(entradaLevels, CB_ENTRADA_BASE_CENTS, safeFill)
+  const residualMonthly = projectMatrix(residualLevels, CB_RESIDUAL_BASE_CENTS, safeFill)
+  const vendasMonthly = projectMatrix(vendasLevels, CB_VENDAS_BASE_CENTS, safeFill)
 
   const totalMonthly = entradaMonthly.total + residualMonthly.total + vendasMonthly.total
   const totalAnnual = totalMonthly * 12
@@ -329,7 +381,9 @@ function simulate(params: {
 
 export function EarningsSimulator() {
   // --- Inputs (draft state, mutated by sliders/inputs) ---
-  const [plan, setPlan] = useState<PlanCode>('premium_2')
+  // Default to Blue 5 Premium so the user sees the full earnings
+  // projection on first load (the most attractive scenario).
+  const [plan, setPlan] = useState<PlanCode>('blue5')
   const [directReferrals, setDirectReferrals] = useState<number>(4)
   const [avgMonthlySpendBRL, setAvgMonthlySpendBRL] = useState<number>(200)
   const [matrixFillPercent, setMatrixFillPercent] = useState<number>(50)
@@ -638,16 +692,30 @@ export function EarningsSimulator() {
                       <p className="text-[10px] text-muted-foreground">Pago uma vez por indicação</p>
                     </div>
                   </div>
-                  <p className="text-2xl font-bold text-foreground tabular-nums">
-                    {formatBRL(result.directReferralCashback)}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground mt-1">
-                    {result.directReferrals} indicaç{result.directReferrals === 1 ? 'ão' : 'ões'} ×{' '}
-                    {formatBRL(
-                      Math.round((result.planPriceCents * DIRECT_REFERRAL_CASHBACK_PCT) / 100)
-                    )}{' '}
-                    por indicação
-                  </p>
+                  {result.planPriceCents > 0 ? (
+                    <>
+                      <p className="text-2xl font-bold text-foreground tabular-nums">
+                        {formatBRL(result.directReferralCashback)}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        {result.directReferrals} indicaç{result.directReferrals === 1 ? 'ão' : 'ões'} ×{' '}
+                        {formatBRL(
+                          Math.round((result.planPriceCents * DIRECT_REFERRAL_CASHBACK_PCT) / 100)
+                        )}{' '}
+                        por indicação (10% da mensalidade)
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-bold text-muted-foreground tabular-nums">
+                        —
+                      </p>
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+                        <Lock className="h-3 w-3" />
+                        Plano gratuito não gera cashback por indicação
+                      </p>
+                    </>
+                  )}
                 </CardContent>
               </Card>
 
@@ -662,16 +730,32 @@ export function EarningsSimulator() {
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                         Ganhos Entrada
                       </p>
-                      <p className="text-[10px] text-muted-foreground">Matriz 4x5 · 5 níveis</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Matriz 4x5 ·{' '}
+                        {PLAN_OPTIONS.find((p) => p.code === result.plan)?.unlocks.entrada ?? 0}{' '}
+                        níveis desbloqueados
+                      </p>
                     </div>
                   </div>
-                  <p className="text-2xl font-bold text-foreground tabular-nums">
-                    {formatBRL(result.entradaMonthly.total)}
-                    <span className="text-sm font-medium text-muted-foreground">/mês</span>
-                  </p>
-                  <p className="text-[11px] text-muted-foreground mt-1">
-                    CashBack Entrada: {formatBRL(CB_ENTRADA_BASE_CENTS)} × % por nível
-                  </p>
+                  {result.entradaMonthly.levels.length > 0 ? (
+                    <>
+                      <p className="text-2xl font-bold text-foreground tabular-nums">
+                        {formatBRL(result.entradaMonthly.total)}
+                        <span className="text-sm font-medium text-muted-foreground">/mês</span>
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        CashBack Entrada: {formatBRL(CB_ENTRADA_BASE_CENTS)} × % por nível
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-bold text-muted-foreground tabular-nums">—</p>
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+                        <Lock className="h-3 w-3" />
+                        Bloqueado no plano gratuito
+                      </p>
+                    </>
+                  )}
                 </CardContent>
               </Card>
 
@@ -686,21 +770,39 @@ export function EarningsSimulator() {
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                         Ganhos Residual
                       </p>
-                      <p className="text-[10px] text-muted-foreground">Matriz 4x7 · 7 níveis</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Matriz 4x7 ·{' '}
+                        {PLAN_OPTIONS.find((p) => p.code === result.plan)?.unlocks.residual ?? 0}{' '}
+                        níveis desbloqueados
+                      </p>
                     </div>
                   </div>
-                  <p className="text-2xl font-bold text-foreground tabular-nums">
-                    {formatBRL(result.residualMonthly.total)}
-                    <span className="text-sm font-medium text-muted-foreground">/mês</span>
-                  </p>
-                  <p className="text-[11px] text-muted-foreground mt-1">
-                    CashBack Residual: {formatBRL(CB_RESIDUAL_BASE_CENTS)} × % por nível
-                  </p>
+                  {result.residualMonthly.levels.length > 0 ? (
+                    <>
+                      <p className="text-2xl font-bold text-foreground tabular-nums">
+                        {formatBRL(result.residualMonthly.total)}
+                        <span className="text-sm font-medium text-muted-foreground">/mês</span>
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        CashBack Residual: {formatBRL(CB_RESIDUAL_BASE_CENTS)} × % por nível
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-bold text-muted-foreground tabular-nums">—</p>
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+                        <Lock className="h-3 w-3" />
+                        {result.plan === 'blue3'
+                          ? 'Bloqueado no Blue 3 — faça upgrade para Blue 5'
+                          : 'Bloqueado no plano gratuito'}
+                      </p>
+                    </>
+                  )}
                 </CardContent>
               </Card>
 
               {/* Vendas */}
-              <Card className="rounded-2xl shadow-sm bg-gradient-to-br from-purple-50 to-purple-100/40 dark:from-purple-950/20 dark:to-purple-900/10 border-purple-200 dark:border-purple-800">
+              <Card className="rounded-2xl shadow-sm bg-gradient-to-br from-purple-50 to-purple-100/40 dark:from-purple-950/20 dark:to-purple-900/10 border-purple-200 dark:border-amber-800">
                 <CardContent className="p-5">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="p-2 rounded-xl bg-purple-100 dark:bg-purple-900/30">
@@ -710,33 +812,53 @@ export function EarningsSimulator() {
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                         Ganhos Vendas
                       </p>
-                      <p className="text-[10px] text-muted-foreground">Matriz 4x9 · 9 níveis</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Matriz 4x9 ·{' '}
+                        {PLAN_OPTIONS.find((p) => p.code === result.plan)?.unlocks.vendas ?? 0}{' '}
+                        níveis desbloqueados
+                      </p>
                     </div>
                   </div>
-                  <p className="text-2xl font-bold text-foreground tabular-nums">
-                    {formatBRL(result.vendasMonthly.total)}
-                    <span className="text-sm font-medium text-muted-foreground">/mês</span>
-                  </p>
-                  <p className="text-[11px] text-muted-foreground mt-1">
-                    CashBack Vendas: {formatBRL(CB_VENDAS_BASE_CENTS)} × % por nível
-                  </p>
+                  {result.vendasMonthly.levels.length > 0 ? (
+                    <>
+                      <p className="text-2xl font-bold text-foreground tabular-nums">
+                        {formatBRL(result.vendasMonthly.total)}
+                        <span className="text-sm font-medium text-muted-foreground">/mês</span>
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-1">
+                        CashBack Vendas: {formatBRL(CB_VENDAS_BASE_CENTS)} × % por nível
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-bold text-muted-foreground tabular-nums">—</p>
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+                        <Lock className="h-3 w-3" />
+                        {result.plan === 'blue3'
+                          ? 'Bloqueado no Blue 3 — faça upgrade para Blue 5'
+                          : 'Bloqueado no plano gratuito'}
+                      </p>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             </div>
 
-            {/* Detailed per-level breakdowns */}
+            {/* Detailed per-level breakdowns — only render tables for
+                matrices the selected plan actually unlocks. Empty matrices
+                are hidden to keep the UI focused. */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {renderMatrixTable(
+              {result.entradaMonthly.levels.length > 0 && renderMatrixTable(
                 'Entrada 4x5',
                 result.entradaMonthly,
                 `CashBack Entrada fixo (${formatBRL(CB_ENTRADA_BASE_CENTS)}) × %`
               )}
-              {renderMatrixTable(
+              {result.residualMonthly.levels.length > 0 && renderMatrixTable(
                 'Residual 4x7',
                 result.residualMonthly,
                 `CashBack Residual fixo (${formatBRL(CB_RESIDUAL_BASE_CENTS)}) × %`
               )}
-              {renderMatrixTable(
+              {result.vendasMonthly.levels.length > 0 && renderMatrixTable(
                 'Vendas 4x9',
                 result.vendasMonthly,
                 `CashBack Vendas fixo (${formatBRL(CB_VENDAS_BASE_CENTS)}) × %`

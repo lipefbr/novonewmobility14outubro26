@@ -165,18 +165,62 @@ export function getStatusLabel(status: string): string {
  * Used by:
  *  - admin-page.tsx "Resumo por Categoria" / "Distribuição por Categoria" panels
  *  - admin-reports-panel.tsx "Por Categoria" card and transactions table
+ *  - gratifications admin summary ("Distribuição por Categoria")
+ *  - financial-page category badges (via local categoryLabels + getTransactionLabel)
  *
+ * Task 2-c / Item 21 + Admin Item 1: covers every English key the backend
+ * may store on Transaction.category so the admin/user summaries never show
+ * raw English (cashback, withdrawal, plan_payment, marketplace_purchase,
+ * bills, paymentInvoice, free, withdrawal_fee, plan_upgrade, deposit,
+ * voucher, bonus, cashback_entry/residual/sales, gratification, …).
  * Falls back to the raw key if unknown so we never show empty strings.
  */
 export const CATEGORY_LABELS: Record<string, string> = {
+  // Wallet / balance categories
   withdrawal: 'Saque',
   mobility: 'Mobilidade',
   shopping: 'Compras',
   food: 'Refeição',
+  meal: 'Refeição',
   pharmacy: 'Farmácia',
   gratification: 'Gratificação',
   marketplace: 'Marketplace',
+  marketplace_purchase: 'Marketplace',
+  bills: 'Contas',
+  paymentInvoice: 'Pagamento Fatura',
+  payment_invoice: 'Pagamento Fatura',
+  free: 'Saldo Livre',
   other: 'Outros',
+  // Transaction type-style categories (also often stored on `category`)
+  deposit: 'Depósito',
+  transfer: 'Transferência',
+  transfer_in: 'Transferência Recebida',
+  transfer_out: 'Transferência Envio',
+  payment: 'Pagamento',
+  plan_payment: 'Pagamento de Plano',
+  plan_upgrade: 'Upgrade de Plano',
+  subscription: 'Assinatura',
+  voucher: 'Voucher',
+  bonus: 'Bônus',
+  reward: 'Recompensa',
+  referral: 'Indicação',
+  purchase: 'Compra',
+  sale: 'Venda',
+  commission: 'Comissão',
+  career_claim: 'Reivindicação de Carreira',
+  // CashBack families
+  cashback: 'CashBack',
+  cashback_entry: 'CashBack Entrada',
+  cashback_entrada: 'CashBack Entrada',
+  cashback_residual: 'CashBack Residual',
+  cashback_vendas: 'CashBack Vendas',
+  cashback_sales: 'CashBack Vendas',
+  // Fees / adjustments
+  withdrawal_fee: 'Taxa de Saque',
+  fee: 'Taxa',
+  adjustment: 'Ajuste',
+  // Catch-all for system-managed config rows
+  system_config: 'Configuração do Sistema',
 }
 
 /**

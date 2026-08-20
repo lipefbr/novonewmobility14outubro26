@@ -43,6 +43,14 @@ interface UserStats {
   careerPoints: number
   monthsActive: number
   securityFeaturesEnabled: number
+  // ADM-5 — flags for the canonical achievement variables added in
+  // task 2-d (admin "Nova Conquista" dropdown). Each is a 0/1 indicator
+  // so the corresponding one-shot achievement (targetValue=1) unlocks as
+  // soon as the condition is true.
+  kycApproved: number
+  profileCompleted: number
+  bankDataFilled: number
+  socialConnected: number
   createdAt: Date | null
 }
 
@@ -106,8 +114,12 @@ function progressForCode(code: string, stats: UserStats): number {
   if (c.includes('voucher')) return stats.voucherCount
   if (c.includes('plan_upgrade') || c.includes('upgrade') || c.includes('plan'))
     return stats.planUpgradeCount
-  if (c.includes('marketplace') || c.includes('purchase') || c.includes('compra'))
-    return stats.marketplaceOrdersCount
+  // ADM-5 — explicit "purchase" check must come BEFORE the generic
+  // "marketplace" check so "first_purchase" maps to marketplaceOrdersCount
+  // (orders placed by the user), while "marketplace_sale" maps to the
+  // same count (we don't yet distinguish buy vs sell at the order level).
+  if (c.includes('purchase') || c.includes('compra')) return stats.marketplaceOrdersCount
+  if (c.includes('marketplace')) return stats.marketplaceOrdersCount
   if (c.includes('ride') || c.includes('corrida')) return stats.ridesCount
   if (c.includes('bet_streak') || c.includes('login_streak') || c.includes('streak') || c.includes('weekly_active'))
     return stats.longestStreak
@@ -117,6 +129,13 @@ function progressForCode(code: string, stats: UserStats): number {
   if (c.includes('loyalty') || c.includes('fidelity') || c.includes('ano') || c.includes('mes'))
     return stats.monthsActive
   if (c.includes('security') || c.includes('seguran')) return stats.securityFeaturesEnabled
+  // ADM-5 — canonical one-shot flags from the admin "Nova Conquista"
+  // dropdown. Recognized after the keyword-based checks above so the
+  // generic "career_*" / "streak_*" aliases still work for legacy codes.
+  if (c.includes('kyc')) return stats.kycApproved
+  if (c.includes('profile')) return stats.profileCompleted
+  if (c.includes('bank')) return stats.bankDataFilled
+  if (c.includes('social')) return stats.socialConnected
   // Referral / indication checks last (so "first_referral" doesn't catch "first_bet").
   if (c.includes('referral') || c.includes('indic') || c.includes('network'))
     return stats.referralsCount
@@ -140,6 +159,16 @@ export async function GET(req: NextRequest) {
         createdAt: true,
         phone: true,
         email: true,
+        // ADM-5 — fields used by the canonical one-shot achievement
+        // variables (kyc_approved, profile_completed, bank_data_filled).
+        name: true,
+        cpf: true,
+        city: true,
+        state: true,
+        kycStatus: true,
+        bankCode: true,
+        bankAgency: true,
+        bankAccount: true,
       },
     })
     if (!user) return error('User not found', 404)
@@ -206,6 +235,20 @@ export async function GET(req: NextRequest) {
       careerPoints: user.careerPoints ?? 0,
       monthsActive: user.createdAt ? monthsSince(user.createdAt) : 0,
       securityFeaturesEnabled,
+      // ADM-5 — derive the four canonical one-shot flags from the user
+      // row we already loaded. Each is 1 (true) when the condition is met
+      // and 0 otherwise, so a targetValue=1 achievement unlocks as soon
+      // as the condition becomes true.
+      kycApproved: user.kycStatus === 'approved' ? 1 : 0,
+      profileCompleted:
+        !!(user.name && user.email && user.cpf && user.phone && user.city && user.state)
+          ? 1
+          : 0,
+      bankDataFilled:
+        !!(user.bankCode && user.bankAgency && user.bankAccount) ? 1 : 0,
+      // social_connected — no social-accounts model yet, so always 0 for
+      // now. Will be wired up when the social-accounts feature lands.
+      socialConnected: 0,
       createdAt: user.createdAt,
     }
 

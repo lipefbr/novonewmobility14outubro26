@@ -54,7 +54,80 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { apiFetch } from '@/lib/api'
+
+// Task 2-c / Item 7 — shape returned by the public /api/gratifications-config
+// endpoint. Used to decide whether to show the "Metas" (gratifications) menu
+// item to the current user.
+interface MetasConfig {
+  // Legacy single-value field ('motorista' | 'entregador' | 'ambos'). Kept
+  // for backwards compatibility — superseded by `allowedQualifications`.
+  targetQualification?: 'motorista' | 'entregador' | 'ambos'
+  // Task 2-c / Item 7.3 — preferred array-based config. JSON array stored on
+  // the SystemConfig table under the key `metas.allowedQualifications`.
+  // Example: ["motorista","entregador"]. When present and non-empty, this is
+  // the authoritative source of truth; the legacy targetQualification is only
+  // consulted as a fallback when allowedQualifications is missing.
+  allowedQualifications?: string[]
+}
+
+// Decide whether the current user is allowed to see the Metas menu item based
+// on the admin-configured `allowedQualifications` (preferred) or the legacy
+// `targetQualification` (fallback). Falls back to true (visible) when the
+// config can't be loaded — this preserves the original behaviour for
+// motorista/entregador users on first run before the admin sets anything.
+//
+// "Motorista" identity is inferred from any of:
+//   - userType === 'motorista'
+//   - qualification === 'motorista' (UserType.code set by admin)
+//   - isDriver === true (legacy boolean flag — treated as motorista)
+// "Entregador" identity is inferred from:
+//   - userType === 'entregador'
+//   - qualification === 'entregador'
+//   - isDelivery === true (legacy boolean flag — treated as entregador)
+function userCanSeeMetas(
+  user: { userType?: string; qualification?: string | null; isDriver?: boolean; isDelivery?: boolean } | null,
+  config: MetasConfig | null
+): boolean {
+  const u = user as any
+  const userType = String(u?.userType || '').toLowerCase()
+  const qualification = String(u?.qualification || '').toLowerCase()
+  const isMotorista =
+    userType === 'motorista' ||
+    qualification === 'motorista' ||
+    u?.isDriver === true
+  const isEntregador =
+    userType === 'entregador' ||
+    qualification === 'entregador' ||
+    u?.isDelivery === true
+
+  // Preferred path: array-based `allowedQualifications` from SystemConfig
+  // (key `metas.allowedQualifications`). An empty array hides the module
+  // from everyone; a missing array falls through to the legacy logic.
+  const allowed = config?.allowedQualifications
+  if (Array.isArray(allowed)) {
+    if (allowed.length === 0) return false
+    const matches = allowed.some((code) => {
+      const c = String(code || '').toLowerCase()
+      if (c === 'motorista') return isMotorista
+      if (c === 'entregador') return isEntregador
+      // Unknown codes are ignored (defensive — admin form only exposes
+      // motorista/entregador, but the array may contain custom codes
+      // added by future admin tooling).
+      return false
+    })
+    return matches
+  }
+
+  // Legacy fallback — single-value `targetQualification` stored on the
+  // Gratification row with type='driver_goals_config'.
+  const target = config?.targetQualification || 'ambos'
+  if (target === 'motorista') return isMotorista
+  if (target === 'entregador') return isEntregador
+  // 'ambos' (or any unknown value) — show to motorista OR entregador only.
+  return isMotorista || isEntregador
+}
 
 interface MenuItem {
   key: PageKey
@@ -105,6 +178,29 @@ export function Sidebar() {
   const { activePage, setActivePage, logout, sidebarCollapsed, setSidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen, user } = useStore()
   const { t } = useTranslation()
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+  // Task 2-c / Item 7 — admin-configured Metas module visibility.
+  // Loaded once on mount from the public /api/gratifications-config endpoint
+  // (no admin role required). When null (loading or fetch error) we keep the
+  // Metas item visible by default — `userCanSeeMetas` falls back to 'ambos'.
+  const [metasConfig, setMetasConfig] = useState<MetasConfig | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadConfig() {
+      try {
+        const data = await apiFetch<MetasConfig>('/gratifications-config')
+        // Accept either the new array-based allowedQualifications or the
+        // legacy targetQualification — userCanSeeMetas handles both.
+        if (!cancelled && data && (data.allowedQualifications || data.targetQualification)) {
+          setMetasConfig(data)
+        }
+      } catch {
+        // Silent fail — keep null so userCanSeeMetas uses the 'ambos' default.
+      }
+    }
+    loadConfig()
+    return () => { cancelled = true }
+  }, [])
 
   const handleItemClick = (key: PageKey) => {
     setActivePage(key)
@@ -123,9 +219,14 @@ export function Sidebar() {
   // Filter menu items based on user role (admin-only items hidden for normal users)
   const isAdmin = user?.role === 'admin'
   const isLojista = user?.userType === 'lojista'
+  // Task 2-c / Item 7 — Metas (gratifications) menu item is gated by the
+  // admin-configured targetQualification. Only motorista/entregador users
+  // matching the config see it. Admins always see it so they can preview.
+  const canSeeMetas = isAdmin || userCanSeeMetas(user, metasConfig)
   const menuItems = allMenuItems.filter(item => {
     if (item.adminOnly && !isAdmin) return false
     if (item.lojistaOnly && !isLojista) return false
+    if (item.key === 'gratifications' && !canSeeMetas) return false
     return true
   })
 

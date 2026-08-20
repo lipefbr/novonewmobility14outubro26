@@ -116,9 +116,15 @@ export async function PUT(
     if (isDriver !== undefined) updateData.isDriver = isDriver
     if (isDelivery !== undefined) updateData.isDelivery = isDelivery
 
-    // BACK-4 — qualification (one of: motorista | passageiro | passageiro_60 |
-    // passageiro_pcd | comercio | entregador). Mirrors the registration
-    // dropdown. Allow clearing by sending an empty string.
+    // BACK-4 — qualification. Task 2-e (Item 4) expanded the dropdown to 10
+    // business-relevant options per the client spec: motorista, entregador,
+    // cliente, lojista, mototaxista, motofretista, motorista_app, taxista,
+    // caminhoneiro, outros. Mirrors the shared QUALIFICATION_OPTIONS in
+    // `@/lib/qualifications` (used by the registration dropdown + backoffice
+    // personal-data-section). Legacy codes (passageiro / passageiro_60 /
+    // passageiro_pcd / comercio) are still accepted and rendered with their
+    // friendly labels by `qualificationLabel()`. Allow clearing by sending
+    // an empty string.
     if (qualification !== undefined) updateData.qualification = qualification || null
 
     // Role

@@ -30,7 +30,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'sidebar.referrals': 'Meus Indicados',
     'sidebar.minha-rede': 'Minha Rede',
     'sidebar.cashback': 'CashBack',
-    'sidebar.financial': 'Indicador',
+    'sidebar.financial': 'Financeiro',
     'sidebar.voucher': 'Voucher',
     'sidebar.support': 'Suporte',
     'sidebar.logout': 'Sair',
@@ -102,7 +102,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'cashback.totalEarnings': 'Total de Ganhos CashBack',
 
     // Financial
-    'financial.title': 'Indicador',
+    'financial.title': 'Financeiro',
     'financial.subtitle': 'Gerencie seus saldos e saques',
     'financial.withdraw': 'Solicitar Saque',
     'financial.balance.withdrawal': 'Saldo para Saque',
@@ -359,7 +359,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Mobile Nav
     'mobileNav.dashboard': 'Início',
     'mobileNav.cashback': 'CashBack',
-    'mobileNav.financial': 'Indicador',
+    'mobileNav.financial': 'Financeiro',
     'mobileNav.referrals': 'Indicados',
     'mobileNav.profile': 'Perfil',
 

@@ -436,13 +436,26 @@ export function VoucherPage() {
   }
 
   /**
-   * Auto-fill the redeem dialog with the welcome voucher's code and open
-   * the dialog so the user can confirm redemption with one click.
+   * Apply the welcome voucher directly via its database ID.
+   *
+   * Task 2-e (Item 12): previously this opened the redeem-by-code dialog
+   * pre-filled with the welcome voucher's code, which then hit
+   * POST /api/vouchers/redeem. That endpoint historically rejected
+   * `signup_bonus` vouchers (the `getBalanceField` mapping didn't include
+   * it) and would 400 with "Tipo de voucher inválido: signup_bonus" —
+   * so the user clicked "Aplicar" and got an error.
+   *
+   * Now we route directly through `handleRedeemById(welcomeVoucher.id)`
+   * which calls POST /api/vouchers/[id]/redeem. That endpoint always
+   * credits `balanceShopping` (the right destination for a welcome
+   * voucher per spec §7 — non-withdrawable, spendable in the
+   * marketplace / app). The /api/vouchers/redeem-by-code route was also
+   * patched to handle signup_bonus, but going by-id is faster and
+   * skips the dialog round-trip.
    */
   const handleApplyWelcomeVoucher = () => {
-    if (!welcomeVoucher?.code) return
-    setRedeemCode(welcomeVoucher.code)
-    setRedeemDialogOpen(true)
+    if (!welcomeVoucher?.id) return
+    handleRedeemById(welcomeVoucher.id)
   }
 
   const filtered = vouchers.filter((v) => {
@@ -586,6 +599,12 @@ export function VoucherPage() {
    * `balanceShopping` wallet (non-withdrawable per spec §7). On success
    * the local voucher list is refreshed so the redeemed voucher moves to
    * the "used" tab and the user's balance store is updated.
+   *
+   * Task 2-e (Item 12): also refreshes the welcome-voucher banner state
+   * after a successful redeem — if the user just redeemed their
+   * signup_bonus voucher, the banner should hide (no more unused
+   * signup_bonus voucher exists) instead of still showing the now-used
+   * code + "Aplicar" button.
    */
   const handleRedeemById = async (voucherId: string) => {
     if (!user?.id) return
@@ -598,6 +617,11 @@ export function VoucherPage() {
       })
       // Refresh voucher list so the redeemed voucher moves to "used".
       fetchVouchers()
+      // Task 2-e (Item 12): refresh the welcome-voucher banner so the
+      // "Aplicar" button hides once the signup_bonus voucher has been
+      // redeemed (the GET /voucher/generate-signup-bonus endpoint only
+      // returns UNUSED signup_bonus vouchers, so it will now return null).
+      refreshWelcomeVoucher()
       // Update user balances in the global store so other pages reflect the change.
       if (result?.user) {
         updateUser({
@@ -733,9 +757,10 @@ export function VoucherPage() {
                     welcomeVoucher?.amount ??
                       getWelcomeAmountForUserType(user?.userType)
                   )}{' '}
-                  em Mobilidade
+                  em Saldo Compras
                 </strong>{' '}
-                ao se cadastrar. Use em corridas e viagens no app parceiro.
+                ao se cadastrar. Use em compras no marketplace e no app
+                parceiro. Voucher é SOMENTE PARA USO — não pode ser sacado.
               </p>
 
               {/* Existing welcome voucher: show code + actions */}
@@ -770,11 +795,23 @@ export function VoucherPage() {
                     <Button
                       type="button"
                       size="sm"
-                      className="h-8 gap-1.5 bg-white text-emerald-700 hover:bg-emerald-50 font-semibold"
+                      className="h-8 gap-1.5 bg-white text-emerald-700 hover:bg-emerald-50 font-semibold disabled:opacity-70"
                       onClick={handleApplyWelcomeVoucher}
+                      disabled={
+                        redeemingVoucherId === welcomeVoucher?.id
+                      }
                     >
-                      <Check className="h-3.5 w-3.5" />
-                      Aplicar
+                      {redeemingVoucherId === welcomeVoucher?.id ? (
+                        <>
+                          <span className="h-3.5 w-3.5 border-2 border-emerald-700/30 border-t-emerald-700 rounded-full animate-spin" />
+                          Aplicando...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="h-3.5 w-3.5" />
+                          Aplicar
+                        </>
+                      )}
                     </Button>
                   </div>
                 </div>

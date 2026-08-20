@@ -8,11 +8,11 @@ import { formatCurrency, formatDate } from '@/lib/utils'
 import {
   Gift, Check, Clock, Car, ShoppingBag, Heart, Shield, Phone, Stethoscope,
   Fuel, UtensilsCrossed, Wrench, Home, Bike, Banknote, Loader2,
-  Plane, Calendar, Trophy, Award, Star, Target
+  Plane, Calendar, Trophy, Award, Star, Target, ShieldAlert
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '@/lib/store'
-import { gratificationsApi } from '@/lib/api'
+import { gratificationsApi, apiFetch } from '@/lib/api'
 import { toast } from 'sonner'
 import {
   Dialog,
@@ -115,7 +115,7 @@ const fallbackCategories: GratificationCategory[] = [
         type: 'vacation_6mo',
         category: 'vacation',
         isClaimed: false,
-        description: 'R$ 5.000 + 10 dias de férias. One-time aos 6 meses de cadastro ativo.',
+        description: 'R$ 5.000 + 10 dias de férias. Único aos 6 meses de cadastro ativo.',
       },
       {
         id: 'ferias_12_meses',
@@ -124,7 +124,7 @@ const fallbackCategories: GratificationCategory[] = [
         type: 'vacation_12mo',
         category: 'vacation',
         isClaimed: false,
-        description: 'R$ 20.000 + 20 dias de férias. One-time aos 12 meses de cadastro ativo.',
+        description: 'R$ 20.000 + 20 dias de férias. Único aos 12 meses de cadastro ativo.',
       },
     ],
   },
@@ -140,7 +140,7 @@ const fallbackCategories: GratificationCategory[] = [
         type: 'cashback_bonus_prize',
         category: 'prize',
         isClaimed: false,
-        description: 'R$ 15.000 — One-time ao fechar equipe com 1.364 usuários.',
+        description: 'R$ 15.000 — Único ao fechar equipe com 1.364 usuários.',
       },
     ],
   },
@@ -257,6 +257,112 @@ export function GratificationsPage() {
     monthlyGoalReached: boolean
   } | null>(null)
 
+  // Task 2-c / Item 7 — admin-configured Metas module visibility.
+  // Loaded from the public /api/gratifications-config endpoint. While null
+  // (loading or fetch error) we keep `accessAllowed = true` so the page
+  // renders normally for motorista/entregador users on first run.
+  //
+  // Two layers are supported:
+  //   1. `allowedQualifications` (preferred, Task 2-c / Item 7.3) — JSON array
+  //      stored on SystemConfig under `metas.allowedQualifications`.
+  //      Example: ["motorista","entregador"]. When present and non-empty,
+  //      this is authoritative.
+  //   2. `targetQualification` (legacy) — single value stored on a
+  //      Gratification row with type='driver_goals_config'. Used only as a
+  //      fallback when allowedQualifications is missing.
+  const [metasConfig, setMetasConfig] = useState<{
+    targetQualification?: 'motorista' | 'entregador' | 'ambos'
+    allowedQualifications?: string[]
+    benefitTargets?: Record<string, 'motorista' | 'entregador' | 'ambos'>
+  } | null>(null)
+  const [accessChecking, setAccessChecking] = useState(true)
+
+  // Resolve the per-benefit target for a given benefit `type`. Falls back to
+  // the overall `targetQualification` when no per-benefit override exists.
+  const resolveBenefitTarget = useCallback(
+    (benefitType: string): 'motorista' | 'entregador' | 'ambos' => {
+      const overall = metasConfig?.targetQualification || 'ambos'
+      const perBenefit = metasConfig?.benefitTargets?.[benefitType]
+      return perBenefit || overall
+    },
+    [metasConfig]
+  )
+
+  // Whether a given benefit should be visible to the current user, based on
+  // its per-benefit target qualification.
+  //
+  // "Motorista" identity is inferred from any of:
+  //   - userType === 'motorista'
+  //   - qualification === 'motorista'
+  //   - isDriver === true (legacy boolean flag — treated as motorista)
+  // "Entregador" identity is inferred from:
+  //   - userType === 'entregador'
+  //   - qualification === 'entregador'
+  //   - isDelivery === true (legacy boolean flag — treated as entregador)
+  const benefitVisibleToUser = useCallback(
+    (benefitType: string): boolean => {
+      const u = user as any
+      const userType = String(u?.userType || '').toLowerCase()
+      const qualification = String(u?.qualification || '').toLowerCase()
+      const isMotorista =
+        userType === 'motorista' ||
+        qualification === 'motorista' ||
+        u?.isDriver === true
+      const isEntregador =
+        userType === 'entregador' ||
+        qualification === 'entregador' ||
+        u?.isDelivery === true
+
+      // Preferred path: array-based `allowedQualifications`. When set, the
+      // benefit is visible only if the user's qualification is in the array.
+      // We do NOT consult per-benefit overrides when the array is set — the
+      // array is the overall module gate, and per-benefit overrides are
+      // still consulted below via `resolveBenefitTarget` for finer control.
+      const allowed = metasConfig?.allowedQualifications
+      if (Array.isArray(allowed) && allowed.length > 0) {
+        const moduleAllowed = allowed.some((code) => {
+          const c = String(code || '').toLowerCase()
+          if (c === 'motorista') return isMotorista
+          if (c === 'entregador') return isEntregador
+          return false
+        })
+        if (!moduleAllowed) return false
+        // Fall through to the per-benefit check below — the user passed the
+        // overall module gate, but the specific benefit may still be hidden.
+      }
+
+      const target = resolveBenefitTarget(benefitType)
+      if (target === 'motorista') return isMotorista
+      if (target === 'entregador') return isEntregador
+      return isMotorista || isEntregador
+    },
+    [user, resolveBenefitTarget, metasConfig]
+  )
+
+  // Load the public Metas config (no admin role required). Done in parallel
+  // with the gratifications fetch so the page renders fast.
+  useEffect(() => {
+    let cancelled = false
+    async function loadConfig() {
+      try {
+        const data = await apiFetch<{
+          targetQualification?: 'motorista' | 'entregador' | 'ambos'
+          allowedQualifications?: string[]
+          benefitTargets?: Record<string, 'motorista' | 'entregador' | 'ambos'>
+        }>('/gratifications-config')
+        if (!cancelled && data && (data.allowedQualifications || data.targetQualification)) {
+          setMetasConfig(data)
+        }
+      } catch {
+        // Silent fail — keep null so the page falls back to default behaviour.
+      } finally {
+        if (!cancelled) setAccessChecking(false)
+      }
+    }
+    loadConfig()
+    return () => { cancelled = true }
+  }, [])
+
   // Fetch gratifications from API
   const fetchGratifications = useCallback(async () => {
     if (!user?.id) {
@@ -302,9 +408,17 @@ export function GratificationsPage() {
       // client spec §5: fuel voucher, car wash, vacations, driver goals,
       // cashback prize) — only those not already present as per-user DB rows
       // (matched by `type`) so we don't double-list.
+      //
+      // Task 2-c / Item 7 — catalog items are also filtered by the per-benefit
+      // `targetQualification` set by the admin. A benefit whose target is
+      // 'motorista' is hidden from entregadores and vice-versa; 'ambos' is
+      // visible to both. Per-user DB rows (already-claimed gratifications)
+      // are NOT filtered — once a user has been credited, they should always
+      // see the row, even if the admin later tightens the per-benefit target.
       const existingTypes = new Set(apiGratifications.map((g) => g.type))
       const catalogItems: GratificationItem[] = (data.catalog || [])
         .filter((c: any) => !existingTypes.has(c.type))
+        .filter((c: any) => benefitVisibleToUser(c.type))
         .map((c: any, idx: number) => ({
           id: `catalog_${c.type}_${idx}`,
           name: c.name || c.type || 'Gratificação',
@@ -322,19 +436,32 @@ export function GratificationsPage() {
         setCategories(grouped)
         setIsUsingFallback(false)
       } else {
-        // API returned empty - use fallback
-        setCategories(fallbackCategories)
+        // API returned empty - use fallback. Apply the same per-benefit filter
+        // so a non-motorista/entregador user doesn't see driver-only benefits.
+        const filteredFallback = fallbackCategories
+          .map((cat) => ({
+            ...cat,
+            items: cat.items.filter((item) => benefitVisibleToUser(item.type)),
+          }))
+          .filter((cat) => cat.items.length > 0)
+        setCategories(filteredFallback.length > 0 ? filteredFallback : fallbackCategories)
         setIsUsingFallback(true)
       }
     } catch (err) {
       console.error('[Gratifications] Error fetching gratifications:', err)
-      // On error, use fallback data
-      setCategories(fallbackCategories)
+      // On error, use fallback data — also filtered by per-benefit config.
+      const filteredFallback = fallbackCategories
+        .map((cat) => ({
+          ...cat,
+          items: cat.items.filter((item) => benefitVisibleToUser(item.type)),
+        }))
+        .filter((cat) => cat.items.length > 0)
+      setCategories(filteredFallback.length > 0 ? filteredFallback : fallbackCategories)
       setIsUsingFallback(true)
     } finally {
       setIsLoading(false)
     }
-  }, [user?.id])
+  }, [user?.id, benefitVisibleToUser])
 
   useEffect(() => {
     fetchGratifications()
@@ -419,6 +546,57 @@ export function GratificationsPage() {
     u?.qualification === 'entregador' ||
     u?.isDriver === true ||
     u?.isDelivery === true
+
+  // Task 2-c / Item 7 — overall Metas module access control.
+  // The admin sets EITHER:
+  //   - `allowedQualifications` (preferred, Item 7.3): JSON array stored on
+  //     SystemConfig under `metas.allowedQualifications`, e.g.
+  //     ["motorista","entregador"]. When present and non-empty, this is the
+  //     authoritative gate.
+  //   - `targetQualification` (legacy): single value stored on a Gratification
+  //     row with type='driver_goals_config' ('motorista' | 'entregador' |
+  //     'ambos'). Used only as a fallback.
+  // The sidebar already uses the same config to hide the menu item; here we
+  // ALSO check on the page itself so that a non-authorized user who navigates
+  // directly to the URL sees an access-denied card instead of the full
+  // gratifications content. Admins always pass. While the config is loading
+  // we render normally (fail-open) so motorista/entregador users aren't
+  // blocked on slow networks.
+  const moduleAccessAllowed = (() => {
+    if (u?.role === 'admin') return true
+    if (accessChecking || !metasConfig) return true
+    // `benefitVisibleToUser` resolves the per-benefit target; for the special
+    // '__module__' key it falls back to the overall targetQualification.
+    // It also consults `allowedQualifications` as a hard module-level gate.
+    return benefitVisibleToUser('__module__')
+  })()
+
+  if (!moduleAccessAllowed) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Metas</h2>
+          <p className="text-sm text-gray-500">Acompanhe suas metas, benefícios e gratificações disponíveis</p>
+        </div>
+        <Card className="shadow-sm border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20">
+          <CardContent className="p-6 flex flex-col items-center text-center gap-3">
+            <div className="p-3 rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400">
+              <ShieldAlert className="h-8 w-8" />
+            </div>
+            <h3 className="text-base font-semibold text-amber-800 dark:text-amber-300">
+              Acesso restrito
+            </h3>
+            <p className="text-sm text-amber-700 dark:text-amber-400 max-w-md">
+              O módulo <strong>Metas</strong> está disponível apenas para usuários
+              com qualificação de <strong>Motorista</strong> ou <strong>Entregador</strong>.
+              Se você é motorista ou entregador e ainda não vê o conteúdo,
+              contate o suporte para atualizar seu tipo de usuário.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">

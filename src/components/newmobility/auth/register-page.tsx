@@ -97,18 +97,22 @@ const steps = [
   { key: 'review', label: 'Revisão', icon: Check },
 ]
 
-// Qualification options (required field at registration)
-const qualificationOptions = [
-  { value: 'motorista', label: 'Motorista' },
-  { value: 'passageiro', label: 'Passageiro' },
-  { value: 'passageiro_60', label: 'Passageiro 60+' },
-  { value: 'passageiro_pcd', label: 'Passageiro com Mobilidade Reduzida' },
-  { value: 'comercio', label: 'Comércio' },
-  { value: 'entregador', label: 'Entregador' },
-] as const
+// Qualification options (required field at registration).
+// Task 2-e (Item 4): now imported from `@/lib/qualifications` so the
+// self-registration dropdown stays in sync with the admin "Editar Usuário"
+// dialog and the backoffice "Dados Pessoais" card. The shared constant
+// covers the 10 business-relevant qualifications per the client spec:
+// Motorista, Entregador, Cliente, Lojista, Mototaxista, Motofretista,
+// Motorista de App, Taxista, Caminhoneiro, Outros.
+import {
+  QUALIFICATION_OPTIONS as qualificationOptions,
+  qualificationLabel as getQualificationLabelShared,
+} from '@/lib/qualifications'
 
 function getQualificationLabel(value: string): string {
-  return qualificationOptions.find((o) => o.value === value)?.label || value
+  // Delegate to the shared helper so legacy codes also resolve.
+  const label = getQualificationLabelShared(value)
+  return label === '—' ? value : label
 }
 
 export function RegisterPage() {

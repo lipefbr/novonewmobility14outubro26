@@ -8,7 +8,7 @@ import { Slider } from '@/components/ui/slider'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
-import { plansApi, userApi } from '@/lib/api'
+import { plansApi, userApi, invoicesApi } from '@/lib/api'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import {
   CreditCard, Check, Star, ArrowUpRight, FileText, Calendar,
@@ -48,11 +48,27 @@ const invoiceTypeLabels: Record<string, string> = {
 // Presentation-only fields that the DB does not model (color gradient,
 // cashback level labels, and the icon-tagged feature list) are kept here
 // as a per-code template and merged with the API response at runtime.
+//
+// ─── Plan unlock matrix (Item 6 fix, Task 2-b) ──────────────────────
+// Per the corrected business rule:
+//   - Free:   no cashback matrices unlocked.
+//   - Blue 3: ONLY Cashback Entrada is unlocked (3 níveis).
+//             Residual and Vendas are BLOCKED. (Previously the fallback
+//             said "7 níveis" for Residual which was wrong — Blue 3 does
+//             NOT liberate Residual or Vendas.)
+//   - Blue 5: All three matrices unlocked — 5 níveis Entrada + 7 níveis
+//             Residual + 9 níveis Vendas.
+//
+// `cashbackSales` for Blue 5 is dynamically replaced at runtime with the
+// "Cashback Vendas bloqueado — pague sua fatura para liberar" message
+// when the logged-in user has an unpaid plan invoice (see
+// `userHasUnpaidPlanInvoice` state below).
 const FALLBACK_PLANS = [
   {
     id: 'free',
     code: 'free',
     name: 'Gratuito',
+    description: 'Plano gratuito para cadastro e indicações.',
     price: 'Grátis',
     priceCents: 0,
     color: 'from-gray-400 to-gray-500',
@@ -76,11 +92,16 @@ const FALLBACK_PLANS = [
     id: 'blue3',
     code: 'blue3',
     name: 'Blue 3',
-    price: 'R$ 149,00/mês',
-    priceCents: 14900,
+    // Per Task 2-b: Blue 3 description explicitly states it ONLY
+    // liberates 3 levels of Cashback Entrada (not 5, and not Residual).
+    description: 'Libera 3 níveis do Cashback Entrada',
+    price: 'R$ 999,90/mês',
+    priceCents: 99990,
     color: 'from-teal-400 to-teal-500',
     cashbackEntrada: '3 níveis',
-    cashbackResidual: '7 níveis',
+    // FIXED (Task 2-b): Blue 3 does NOT liberate Residual or Vendas.
+    // Was previously '7 níveis' which was incorrect.
+    cashbackResidual: 'Bloqueado',
     cashbackSales: 'Bloqueado',
     features: [
       { icon: Smartphone, label: 'App Mobilidade', included: true },
@@ -99,6 +120,7 @@ const FALLBACK_PLANS = [
     id: 'blue5',
     code: 'blue5',
     name: 'Blue 5 Premium',
+    description: 'Libera 5 níveis do Cashback Entrada + 7 níveis Residual + 9 níveis Vendas.',
     price: 'R$ 999,90/mês',
     priceCents: 99990,
     color: 'from-emerald-600 to-emerald-700',
@@ -157,6 +179,7 @@ function mergeApiPlan(apiPlan: ApiPlan) {
       id: apiPlan.code || apiPlan.id,
       code: apiPlan.code,
       name: apiPlan.name,
+      description: apiPlan.description || '',
       price: priceLabel,
       priceCents: apiPlan.priceCents,
       color: 'from-emerald-500 to-emerald-600',
@@ -182,6 +205,10 @@ function mergeApiPlan(apiPlan: ApiPlan) {
     id: apiPlan.code || apiPlan.id,
     code: apiPlan.code,
     name: apiPlan.name,
+    // Prefer the DB-sourced description when present (admin can edit it);
+    // fall back to the template description so Blue 3 always shows the
+    // "Libera 3 níveis do Cashback Entrada" copy even on a fresh DB.
+    description: apiPlan.description || template.description,
     price: priceLabel,
     priceCents: apiPlan.priceCents,
   }
@@ -203,6 +230,40 @@ export function MyPlanPage() {
   // (no flash of empty content); replaced with DB-sourced values once
   // /api/plans resolves.
   const [plans, setPlans] = useState(FALLBACK_PLANS)
+
+  // ─── Cashback Vendas block rule (Task 2-b, Item 6 #4) ────────────
+  // Cashback Vendas must NOT be liberated for users who haven't paid
+  // their latest plan invoice. We fetch the user's invoices from
+  // /api/invoices and check whether ANY plan-bucket invoice is in a
+  // pending/overdue state. When true, the comparison table replaces
+  // Blue 5's `cashbackSales` ("9 níveis") with a "Bloqueado — pague
+  // sua fatura para liberar" message and a warning banner is rendered
+  // at the top of the page.
+  //
+  // The block rule applies REGARDLESS of which plan the user is on —
+  // even Blue 5 users see their Cashback Vendas blocked until they
+  // settle the pending invoice.
+  const [userHasUnpaidPlanInvoice, setUserHasUnpaidPlanInvoice] = useState<boolean>(false)
+  const [unpaidInvoiceAmount, setUnpaidInvoiceAmount] = useState<number>(0)
+  const [unpaidInvoiceDueDate, setUnpaidInvoiceDueDate] = useState<string | null>(null)
+
+  // Task 2-e (Item 5): real invoice history state. Previously the
+  // "Histórico de Faturas" section rendered `mockInvoices` (a hardcoded
+  // array with a fake pending R$999 plan_blue5 row) — this caused the
+  // user to see a "pending R$999 invoice" on their profile that never
+  // appeared in "Pagar Faturas" (because no such invoice existed in the
+  // DB). Now we use the same /api/invoices data the page already fetches
+  // for the cashback-vendas block check, so the history section shows
+  // the user's REAL invoices (paid + pending) and the "Pagar Faturas"
+  // page is the single source of truth for what's actually due.
+  const [userInvoices, setUserInvoices] = useState<Array<{
+    id: string
+    amount: number
+    type: string | null
+    status: string | null
+    dueDate: string | null
+    paidAt: string | null
+  }>>([])
 
   // Premium 5 upgrade dialog state
   const [premium5DialogOpen, setPremium5DialogOpen] = useState(false)
@@ -295,6 +356,120 @@ export function MyPlanPage() {
       cancelled = true
     }
   }, [])
+
+  // Fetch the user's invoices and determine whether they have an unpaid
+  // PLAN-bucket invoice. This drives the Cashback Vendas block rule
+  // (Task 2-b, Item 6 #4): if any plan-bucket invoice is pending or
+  // overdue, Cashback Vendas is blocked for the user until they pay.
+  useEffect(() => {
+    if (!user?.id) {
+      setUserHasUnpaidPlanInvoice(false)
+      setUnpaidInvoiceAmount(0)
+      setUnpaidInvoiceDueDate(null)
+      setUserInvoices([])
+      return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await invoicesApi.getList(user.id)
+        if (cancelled) return
+        const invoices: Array<{
+          id: string
+          amount: number
+          type: string | null
+          status: string | null
+          dueDate: string | null
+          paidAt: string | null
+        }> = Array.isArray(data?.invoices) ? data.invoices : []
+
+        // Task 2-e (Item 5): persist the full invoice list so the
+        // "Histórico de Faturas" section can render REAL invoices instead
+        // of the hardcoded `mockInvoices` array (which contained a fake
+        // pending R$999 plan_blue5 row that never appeared in
+        // "Pagar Faturas").
+        setUserInvoices(invoices)
+
+        // Plan-bucket invoice types per src/lib/billing.ts bucketInvoiceType:
+        //   'plan' | 'monthly_fee' | 'plan_*' | 'subscription' | '*upgrade*'
+        // We treat an invoice as "unpaid plan invoice" when:
+        //   - its bucket resolves to 'plan', AND
+        //   - its status is not 'paid' AND paidAt is null.
+        const isPlanBucket = (rawType: string | null | undefined): boolean => {
+          if (!rawType) return false
+          const t = String(rawType).toLowerCase()
+          if (t.includes('telemed')) return false
+          if (t.includes('telemoby') || t.includes('talkmobi')) return false
+          if (t.includes('cashback')) return false
+          if (t.includes('entrada') || t.includes('residual_entry')) return false
+          if (
+            t === 'plan' ||
+            t.startsWith('plan_') ||
+            t === 'monthly_fee' ||
+            t === 'subscription' ||
+            t.includes('upgrade')
+          ) {
+            return true
+          }
+          return false
+        }
+
+        const unpaidPlanInvoices = invoices.filter((inv) => {
+          // An invoice counts as "paid" if its status is 'paid' OR it has
+          // a non-empty paidAt timestamp.
+          const paidFlag =
+            inv.status === 'paid' ||
+            (inv.paidAt !== null && inv.paidAt !== undefined && inv.paidAt !== '')
+          return isPlanBucket(inv.type) && !paidFlag
+        })
+
+        if (unpaidPlanInvoices.length > 0) {
+          // Pick the most overdue / oldest pending plan invoice to surface
+          // in the warning banner.
+          const sorted = [...unpaidPlanInvoices].sort((a, b) => {
+            const da = a.dueDate ? new Date(a.dueDate).getTime() : 0
+            const db = b.dueDate ? new Date(b.dueDate).getTime() : 0
+            return da - db
+          })
+          const earliest = sorted[0]
+          setUserHasUnpaidPlanInvoice(true)
+          setUnpaidInvoiceAmount(Number(earliest?.amount) || 0)
+          setUnpaidInvoiceDueDate(
+            earliest?.dueDate ? String(earliest.dueDate).slice(0, 10) : null
+          )
+        } else {
+          setUserHasUnpaidPlanInvoice(false)
+          setUnpaidInvoiceAmount(0)
+          setUnpaidInvoiceDueDate(null)
+        }
+      } catch (err) {
+        // Fail-open: if the invoices fetch fails, do NOT block Cashback
+        // Vendas — the user might have paid and we just can't confirm.
+        // The block rule is an additional safeguard, not a hard gate.
+        console.warn('Failed to load invoices for cashback vendas check:', err)
+        setUserHasUnpaidPlanInvoice(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
+
+  // Derived plan list: when the user has an unpaid plan invoice, replace
+  // Blue 5's cashbackSales ("9 níveis") with a "Bloqueado" indicator so
+  // the comparison table reflects the Cashback Vendas block rule.
+  // All other plan fields stay the same. We compute this on every render
+  // (cheap — just a map over 3 plans).
+  const displayedPlans = userHasUnpaidPlanInvoice
+    ? plans.map((p) =>
+        p.code === 'blue5'
+          ? {
+              ...p,
+              cashbackSales: 'Bloqueado — pague sua fatura',
+            }
+          : p
+      )
+    : plans
 
   const currentPlanData = plans.find((p) => p.id === currentPlan) || plans[2]
   const nextBillingDate = '05/02/2025'
@@ -600,6 +775,43 @@ export function MyPlanPage() {
         <p className="text-sm text-muted-foreground">Gerencie seu plano e acompanhe suas faturas</p>
       </div>
 
+      {/* ─── Cashback Vendas block warning (Task 2-b, Item 6 #4) ───
+          When the user has at least one unpaid PLAN-bucket invoice,
+          Cashback Vendas is blocked. Show a prominent banner so the
+          user knows exactly what to do to unblock it. */}
+      {userHasUnpaidPlanInvoice && (
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+          <Card className="border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 shadow-sm">
+            <CardContent className="p-4 sm:p-5">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-amber-500 text-white shrink-0">
+                  <AlertCircle className="h-5 w-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-bold text-amber-900 dark:text-amber-100">
+                    Cashback Vendas bloqueado — pague sua fatura para liberar
+                  </h3>
+                  <p className="text-xs text-amber-800 dark:text-amber-200 mt-1">
+                    Detectamos uma fatura de plano{' '}
+                    {unpaidInvoiceAmount > 0 && (
+                      <span className="font-semibold">
+                        ({formatCurrency(unpaidInvoiceAmount)})
+                      </span>
+                    )}{' '}
+                    {unpaidInvoiceDueDate && (
+                      <>com vencimento em <span className="font-semibold">{formatDate(unpaidInvoiceDueDate)}</span>{' '}</>
+                    )}
+                    em aberto. O Cashback Vendas só é liberado após a
+                    quitação da mensalidade. Regularize sua fatura para
+                    voltar a receber as comissões da matriz de Vendas.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
       {/* Current Plan Card */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="bg-gradient-to-r from-emerald-600 to-emerald-700 border-0 shadow-lg overflow-hidden relative">
@@ -780,8 +992,9 @@ export function MyPlanPage() {
             Nível 4: 4^4 = 256 posições × R$ 50  = R$ 12.800,00 (Premium 5)
             Nível 5: 4^5 = 1.024 posições × R$ 50 = R$ 51.200,00 (Premium 5)
           Mensalidade is sourced from the API-fetched plan price
-          (Blue 3 = R$ 149,00; Premium 5 = R$ 999,90) so admin edits
-          propagate automatically. */}
+          (Blue 3 = R$ 999,90; Premium 5 = R$ 999,90) so admin edits
+          propagate automatically. Per Task 2-b, Blue 3 only liberates
+          Cashback Entrada (3 níveis); Residual and Vendas are blocked. */}
       {(isBlue3 || isPremium5) && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
           <Card className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30 border-purple-200 dark:border-purple-800 shadow-md">
@@ -845,8 +1058,9 @@ export function MyPlanPage() {
 
       {/* Recurring monthly invoice card — Task 13-B §2: a SINGLE charge,
           no split breakdown. The price is sourced from the API-fetched
-          plan (Blue 3 = R$ 149,00; Premium 5 = R$ 999,90; Free = R$ 0,00)
-          so admin edits propagate automatically. */}
+          plan (Blue 3 = R$ 999,90; Premium 5 = R$ 999,90; Free = R$ 0,00)
+          so admin edits propagate automatically. Per Task 2-b, both
+          Blue 3 and Blue 5 share the same mensalidade of R$ 999,90. */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="shadow-sm bg-card">
           <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -1038,7 +1252,7 @@ export function MyPlanPage() {
         </h3>
         {/* Mobile: Cards view */}
         <div className="grid grid-cols-1 md:hidden gap-4">
-          {plans.map((plan, i) => (
+          {displayedPlans.map((plan, i) => (
             <motion.div
               key={plan.id}
               initial={{ opacity: 0, y: 10 }}
@@ -1080,7 +1294,7 @@ export function MyPlanPage() {
                         className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                         onClick={() => handleCalculateUpgrade(plan.id)}
                       >
-                        {plan.priceCents > (plans.find((p) => p.id === currentPlan)?.priceCents || 0) ? 'Fazer Upgrade' : 'Selecionar'}
+                        {plan.priceCents > (displayedPlans.find((p) => p.id === currentPlan)?.priceCents || 0) ? 'Fazer Upgrade' : 'Selecionar'}
                       </Button>
                       {plan.priceCents > 0 && (
                         <Button
@@ -1113,7 +1327,7 @@ export function MyPlanPage() {
                 <thead>
                   <tr className="border-b">
                     <th className="text-left p-4 text-muted-foreground font-medium">Benefício</th>
-                    {plans.map((plan) => (
+                    {displayedPlans.map((plan) => (
                       <th key={plan.id} className="p-4 text-center min-w-[160px]">
                         <div className={`inline-block bg-gradient-to-r ${plan.color} text-white px-3 py-1 rounded-lg text-xs font-bold`}>
                           {plan.name}
@@ -1126,33 +1340,45 @@ export function MyPlanPage() {
                 <tbody>
                   <tr className="border-b bg-muted/30">
                     <td className="p-3 text-muted-foreground font-medium text-xs">CashBack Entrada</td>
-                    {plans.map((plan) => (
+                    {displayedPlans.map((plan) => (
                       <td key={plan.id} className="p-3 text-center text-xs font-medium">
-                        {plan.cashbackEntrada === '-' ? <span className="text-muted-foreground/30">—</span> : <span className="text-emerald-600">{plan.cashbackEntrada}</span>}
+                        {plan.cashbackEntrada === '-' ? <span className="text-muted-foreground/30">—</span>
+                          : plan.cashbackEntrada === 'Bloqueado' ? (
+                            <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                              <Lock className="h-3 w-3" />
+                              Bloqueado
+                            </span>
+                          ) : <span className="text-emerald-600">{plan.cashbackEntrada}</span>}
                       </td>
                     ))}
                   </tr>
                   <tr className="border-b">
                     <td className="p-3 text-muted-foreground font-medium text-xs">CashBack Residual</td>
-                    {plans.map((plan) => (
+                    {displayedPlans.map((plan) => (
                       <td key={plan.id} className="p-3 text-center text-xs font-medium">
-                        {plan.cashbackResidual === '-' ? <span className="text-muted-foreground/30">—</span> : <span className="text-emerald-600">{plan.cashbackResidual}</span>}
+                        {plan.cashbackResidual === '-' ? <span className="text-muted-foreground/30">—</span>
+                          : plan.cashbackResidual === 'Bloqueado' ? (
+                            <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                              <Lock className="h-3 w-3" />
+                              Bloqueado
+                            </span>
+                          ) : <span className="text-emerald-600">{plan.cashbackResidual}</span>}
                       </td>
                     ))}
                   </tr>
                   <tr className="border-b bg-muted/30">
                     <td className="p-3 text-muted-foreground font-medium text-xs">CashBack Vendas</td>
-                    {plans.map((plan) => (
+                    {displayedPlans.map((plan) => (
                       <td key={plan.id} className="p-3 text-center text-xs font-medium">
                         {plan.cashbackSales === '-' ? (
                           <span className="text-muted-foreground/30">—</span>
-                        ) : plan.cashbackSales === 'Bloqueado' ? (
+                        ) : plan.cashbackSales === 'Bloqueado' || plan.cashbackSales.startsWith('Bloqueado') ? (
                           <span
                             className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"
-                            title="Liberado após pagar sua fatura"
+                            title="Pague sua fatura para liberar o Cashback Vendas"
                           >
                             <Lock className="h-3 w-3" />
-                            Bloqueado
+                            {plan.cashbackSales}
                           </span>
                         ) : (
                           <span className="text-emerald-600">{plan.cashbackSales}</span>
@@ -1160,13 +1386,13 @@ export function MyPlanPage() {
                       </td>
                     ))}
                   </tr>
-                  {plans[0].features.map((feature, fi) => (
+                  {displayedPlans[0].features.map((feature, fi) => (
                     <tr key={fi} className={`border-b ${fi % 2 === 0 ? '' : 'bg-muted/30'}`}>
                       <td className="p-3 text-muted-foreground text-xs flex items-center gap-1.5">
                         <feature.icon className="h-3.5 w-3.5 text-muted-foreground" />
                         {feature.label}
                       </td>
-                      {plans.map((plan) => (
+                      {displayedPlans.map((plan) => (
                         <td key={plan.id} className="p-3 text-center">
                           {plan.features[fi].included ? (
                             <Check className="h-4 w-4 text-emerald-500 mx-auto" />
@@ -1179,7 +1405,7 @@ export function MyPlanPage() {
                   ))}
                   <tr>
                     <td className="p-4" />
-                    {plans.map((plan) => (
+                    {displayedPlans.map((plan) => (
                       <td key={plan.id} className="p-4 text-center">
                         {currentPlan === plan.id ? (
                           <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">Plano Atual</Badge>
@@ -1236,38 +1462,62 @@ export function MyPlanPage() {
         </CardHeader>
         <CardContent className="p-0">
           <div className="divide-y divide-border max-h-72 overflow-y-auto custom-scrollbar">
-            {mockInvoices.map((invoice, i) => (
-              <motion.div
-                key={invoice.id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: i * 0.05 }}
-                className="flex items-center justify-between px-4 py-3 hover:bg-muted/50"
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${
-                    invoice.status === 'paid' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'
-                  }`}>
-                    <Calendar className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-foreground">
-                      {invoiceTypeLabels[invoice.type] || invoice.type}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Vencimento: {formatDate(invoice.dueDate)}
-                      {invoice.paidAt && <span> · Pago em: {formatDate(invoice.paidAt)}</span>}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold text-foreground">{formatCurrency(invoice.amount)}</p>
-                  <Badge variant={invoice.status === 'paid' ? 'default' : 'outline'} className="text-[10px]">
-                    {invoice.status === 'paid' ? 'Pago' : 'Pendente'}
-                  </Badge>
-                </div>
-              </motion.div>
-            ))}
+            {/* Task 2-e (Item 5): render REAL invoices from /api/invoices
+                instead of the hardcoded `mockInvoices` array. The mock
+                array contained a fake pending R$999 plan_blue5 row that
+                confused users (it appeared on their profile but never
+                showed up in "Pagar Faturas" because no such invoice
+                existed in the DB). When the user has no real invoices,
+                we show a friendly empty-state instead of fake history. */}
+            {userInvoices.length === 0 ? (
+              <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <FileText className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                Nenhuma fatura encontrada ainda. Suas cobranças aparecerão
+                aqui assim que forem geradas.
+              </div>
+            ) : (
+              userInvoices.slice(0, 20).map((invoice, i) => {
+                const paid =
+                  invoice.status === 'paid' ||
+                  (invoice.paidAt !== null && invoice.paidAt !== undefined && invoice.paidAt !== '')
+                const label =
+                  invoiceTypeLabels[invoice.type || ''] ||
+                  invoice.type ||
+                  'Fatura'
+                return (
+                  <motion.div
+                    key={invoice.id}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="flex items-center justify-between px-4 py-3 hover:bg-muted/50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-lg ${
+                        paid ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'
+                      }`}>
+                        <Calendar className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {label}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Vencimento: {invoice.dueDate ? formatDate(invoice.dueDate) : '—'}
+                          {paid && invoice.paidAt && <span> · Pago em: {formatDate(invoice.paidAt)}</span>}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-foreground">{formatCurrency(invoice.amount)}</p>
+                      <Badge variant={paid ? 'default' : 'outline'} className="text-[10px]">
+                        {paid ? 'Pago' : 'Pendente'}
+                      </Badge>
+                    </div>
+                  </motion.div>
+                )
+              })
+            )}
           </div>
         </CardContent>
       </Card>

@@ -9045,3 +9045,1187 @@ Stage Summary:
 - Commit 5e14ceb pushed para origin/main.
 - Lint: apenas 13 erros require() preexistentes em .js root (nenhum novo).
 - ATENÇÃO: rodar `bun run db:push` na LipeHost antes do redeploy para criar as novas tabelas/colunas (MarketplaceReview, MarketplaceFavorite, specifications, images).
+
+---
+Task ID: 2-a
+Agent: subagent (career plan separated fields — Item 9 backoffice + Item 6 admin)
+Task: Restructure the Plano de Carreira to separate fields — Item 9 (Backoffice) + Item 6 (Admin). Replace the old single "Tipo de Recompensa + Bônus Mensal/Pontos" combo with 4 distinct fields (Pontos Mínimos, Recompensa Carteira Saque, Recompensa Carteira Compras, Recompensa Pontos, Gratificação free-text) and wire the claim flow to actually credit the right wallets + create a Gratification record.
+
+Work Log:
+- Read worklog.md (Tasks 1 through BACKLOG-14-ITEMS) and inspected the current state of all affected files. Discovered that **the entire feature had already been implemented by a prior subagent** (referenced as Task BACK-9 in earlier worklog entries). The current task is essentially a verification + small audit-trail enhancement pass.
+- Inspecionei o estado atual de todos os 6 arquivos:
+  * `prisma/schema.prisma` (linhas 731-755) — `CareerPlan` já tem TODOS os 5 campos separados: `minPoints Int @default(0)`, `rewardWithdrawalCents Int @default(0)` (9.1), `rewardShoppingCents Int @default(0)` (9.2), `rewardPoints Int @default(0)` (9.3), `gratification String?` (9.4). Os campos legados `bonusCents Int @default(0)` e `rewardType String @default("real")` foram mantidos para compatibilidade — são espelhados a partir de `rewardWithdrawalCents` pelas rotas admin CRUD.
+  * `src/app/api/career/route.ts` (GET, 143 linhas) — já retorna os 5 campos separados no payload de cada plano + no `nextRank`. Computa `achieved` dinamicamente a partir de `user.careerPoints`. Tem fallback defensivo para respostas cached antigas (`p.rewardWithdrawalCents ?? p.bonusCents ?? 0`).
+  * `src/app/api/career/claim/route.ts` (POST + GET, 176 linhas) — já implementa o fluxo completo: verifica `careerPoints >= plan.minPoints`, crédita `rewardWithdrawalCents → balanceWithdrawal`, `rewardShoppingCents → balanceShopping`, `rewardPoints → careerPoints` (todos incrementais dentro de uma `$transaction`), cria um `Gratification` record com `type='career_claim'`, `category='career'`, `isClaimed=true`, `claimedAt=now()`, `frequency='one_time'`, e retorna 409 "Gratificação já reivindicada" se o user já reclamou aquele planId (idempotência via prefix `[plan:<planId>]` no campo `description`). O GET retorna a lista de claims para o UI poder desabilitar o botão.
+  * `src/app/api/admin/career-plans/route.ts` (POST, 127 linhas) + `[id]/route.ts` (PUT/DELETE, 106 linhas) — já aceitam e persistem os 4 campos separados. O POST espelha `rewardWithdrawalCents` em `bonusCents` e força `rewardType='real'` quando há valor de saque. O PUT faz o mesmo espelhamento condicional e aceita partial updates (cada campo é opcional no body).
+  * `src/components/newmobility/career/career-page.tsx` (1397 linhas) — já exibe os 4 campos separados em cada card (Pontos Mínimos, Carteira Saque, Carteira Compras, Pontos, Gratificação free-text). Tem um helper `formatReward(level)` que compõe uma string pipe-separated de todas as recompensas não-zero (ex.: "Saque: R$ 2.000,00 · Compras: R$ 500,00 · 1.000 pts"). Tem botão "Reivindicar Gratificação" em cada plano alcançado (filtra `currentPoints >= l.pointsRequired`), com state de loading por plano e badge "Reivindicada" + data após o claim. Tem uma seção "Gratificações Desbloqueadas" no rodapé que lista todos os planos alcançados com seus claims. Após um claim bem-sucedido, refaz o fetch da lista de planos para propagar o novo `achieved` flag (caso o `rewardPoints` creditado desbloqueie o próximo plano).
+  * `src/components/newmobility/admin/admin-page.tsx` (7798 linhas, linhas 5491-5572 + 6126-6238) — o painel admin de Career Plans já tem um grid de cards mostrando todos os 4 campos separados por plano, e um Dialog de create/edit com 4 inputs separados dentro de um bloco visual "Recompensas (separadas)" com fundo emerald: Pontos Mínimos (number), 9.1 Carteira Saque (number com step=0.01, conversão reais↔cents no onChange), 9.2 Carteira Compras (mesmo padrão), 9.3 Recompensa Pontos (number step=1), 9.4 Gratificação (textarea 2 linhas).
+
+- PEQUENA MELHORIA introduzida — `src/app/api/career/claim/route.ts` (5 linhas alteradas):
+  * O `qualification` field do `Gratification.create` agora inclui o texto livre da gratificação (item 9.4) snapshot no momento do claim, além do nome do plano. Antes: `qualification: \`Plano de Carreira: ${plan.name}\``. Depois: `qualification: plan.gratification ? \`Plano de Carreira: ${plan.name} — ${plan.gratification}\` : \`Plano de Carreira: ${plan.name}\``.
+  * Justificativa: como o admin pode editar o campo `gratification` de um plano a qualquer momento depois que um user já reclamou, o snapshot no momento do claim preserva o texto exato do bônus que foi pago — útil para auditoria financeira e para o painel admin de Gratificações.
+  * O campo `description` (`[plan:<planId>] <planName>`) foi mantido inalterado pois é o usado pelo lookup de idempotência — não pode mudar de formato sem quebrar o GET `/api/career/claim`.
+
+- SCHEMA — `bun run db:push` retornou "The database is already in sync with the Prisma schema" (nenhuma mudança de schema foi necessária; todos os 5 campos já existiam). `prisma generate` rodado automaticamente como parte do db:push — Prisma Client v6.19.2 regenerado.
+
+- LINT & TYPE CHECK:
+  * `bun run lint` (full project) → 13 erros pré-existentes em `keep-alive.js`, `persistent-server.js`, `process-manager.js`, `run-forever.js`, `supervisor.js` (documentados no DEPLOY-FIX-LIPEHOST-1). **0 erros novos.**
+  * `npx eslint` nos 6 arquivos do escopo (career/route.ts, career/claim/route.ts, admin/career-plans/route.ts, admin/career-plans/[id]/route.ts, career-page.tsx, admin-page.tsx) → 0 erros, 0 warnings.
+  * `GET /api/career?userId=test-nonexistent` → HTTP 404 (path de erro correto).
+  * `POST /api/career/claim` com userId inexistente → HTTP 404 (path de erro correto).
+
+Stage Summary:
+- **Toda a funcionalidade pedida já estava implementada** por um subagente anterior (Task BACK-9). Esta task foi essencialmente uma verificação + 1 pequena melhoria de audit-trail no `claim/route.ts` (5 linhas) para incluir o texto livre da gratificação no campo `qualification` do `Gratification` record no momento do claim.
+- **Schema**: `CareerPlan` já tem os 5 campos separados (`minPoints`, `rewardWithdrawalCents`, `rewardShoppingCents`, `rewardPoints`, `gratification`) + campos legados (`bonusCents`, `rewardType`) mantidos em sync para backward compat. `bun run db:push` confirmou que o DB está em sync — nenhuma migração necessária.
+- **API**:
+  * `GET /api/career?userId=X` retorna os 5 campos separados por plano + flag `achieved` dinâmica.
+  * `POST /api/career/claim` crédita as 3 recompensas nas carteiras/pontos corretas dentro de uma transaction, cria um `Gratification` record com `type='career_claim'`, `isClaimed=true`, e retorna 409 se já foi reclamado (idempotente via prefix `[plan:ID]` no description).
+  * `GET /api/career/claim?userId=X` retorna a lista de planos já reclamados para o UI desabilitar o botão.
+  * Admin CRUD (POST/PUT) aceita e persiste os 4 campos separados + espelha em campos legados.
+- **Backoffice UI** (`career-page.tsx`): cada card mostra Pontos Mínimos, Carteira Saque, Carteira Compras, Pontos, Gratificação free-text. Botão "Reivindicar Gratificação" em cada plano alcançado, com loading state e badge "Reivindicada" + data após o claim. Seção "Gratificações Desbloqueadas" no rodapé lista o histórico. Após claim, refaz fetch para propagar o novo `achieved` flag.
+- **Admin UI** (`admin-page.tsx`): grid de cards mostra os 4 campos separados por plano (Pontos Mínimos, 9.1 Saque, 9.2 Compras, 9.3 Pontos, 9.4 Gratificação). Dialog de create/edit tem 4 inputs separados dentro de um bloco visual emerald com conversão reais↔cents no onChange para os campos monetários.
+- Arquivos alterados (1):
+  * `src/app/api/career/claim/route.ts` (+5/-1 linhas) — `qualification` agora inclui o snapshot do texto livre da gratificação no momento do claim para auditoria.
+- Arquivo criado (1):
+  * `/home/z/my-project/agent-ctx/2-a-career-plan-separated-fields.md` — registro de trabalho detalhado do subagente.
+- **0 erros de lint novos, 0 erros de TypeScript novos.** DB já estava em sync com o schema. Dev server roda limpo (HTTP 200).
+- **Não foi necessário rodar `bun run db:push` para mudanças de schema** — todos os 5 campos já existiam fisicamente no banco SQLite local. Ainda assim, rodei o comando para confirmar o estado ("The database is already in sync with the Prisma schema").
+
+---
+Task ID: 2-b
+Agent: subagent (Meu Plano / Comparação de Planos + Simulador — Item 6 + Item 13)
+Task: Fix Meu Plano / Comparação de Planos (Item 6) + Simulador values (Item 13). Sync plan comparison with Admin DB, fix Blue3 cashback description (only 3 níveis Entrada, not 5/7), implement Cashback Vendas block rule (block when user has unpaid plan invoice), and rewrite the earnings simulator to use the ACTUAL NewMobility plan tiers (Gratuito / Blue 3 / Blue 5 Premium — all R$ 999,90 mensalidade except Gratuito) instead of the legacy "Premium 1-5" placeholders.
+
+Work Log:
+- Read worklog.md (Tasks 1 through 2-a) for context. A previous subagent (BACK-6 + BACK-13 / "agent-b-plan-pricing-sync") had already done a first pass on this area: synced plan prices with the Admin seed, added the per-level potential cards (N1-N5 + Mensalidade), and added the fixed CashBack base constants to the simulator. However, several issues remained that this task explicitly calls out:
+  * Blue 3's `cashbackResidual` was still '7 níveis' — WRONG per the corrected business rule (Blue 3 should ONLY liberate 3 níveis of Cashback Entrada; Residual and Vendas must be Bloqueado).
+  * Blue 3 had no explicit description saying "Libera 3 níveis do Cashback Entrada".
+  * Cashback Vendas was always shown as "9 níveis" for Blue 5 in the comparison table, with NO check against the user's invoice payment status. The block rule was not implemented.
+  * The simulator still used the legacy 6 plan options (Gratuito + Premium 1-5 with prices 99/299/499/999/1999 BRL) which do not correspond to any real NewMobility plan tier.
+  * The simulator computed ALL matrix levels regardless of the selected plan (so Blue 3 would have shown 5 Entrada + 7 Residual + 9 Vendas — wrong).
+  * The /api/simulator/calculate route still used the old per-plan multiplier approach with wrong prices (free=0, blue3=9900, blue5=19900).
+
+- Inspecionei o estado atual de todos os arquivos relevantes:
+  * `src/components/newmobility/myplan/myplan-page.tsx` (1722 linhas) — FALLBACK_PLANS, mergeApiPlan, comparison table.
+  * `src/components/newmobility/simulator/earnings-simulator.tsx` (770 linhas) — PLAN_OPTIONS, simulate(), result rendering.
+  * `src/app/api/simulator/calculate/route.ts` (99 linhas) — PLAN_MULTIPLIERS, PLAN_PRICES, projection logic.
+  * `src/app/api/plans/route.ts` — public plans endpoint, DEFAULT_PLANS_SEED.
+  * `src/app/api/admin/plans/route.ts` — admin plans endpoint, DEFAULT_PLANS_SEED.
+  * `src/app/api/plans/calculate-upgrade/route.ts` — upgrade calculation (left unchanged; uses different price model for the Blue3→Blue5 upgrade flow).
+  * `src/lib/api.ts` — invoicesApi already exported (line 227); added to the myplan-page imports.
+  * `src/lib/billing.ts` — bucketInvoiceType logic used as reference for the "plan-bucket invoice" classification in the cashback vendas block rule.
+  * `prisma/schema.prisma` — Plan model fields (priceCents, description, features, matrixEntradaId, etc.); Invoice model fields (status, paidAt, type, dueDate). Provider left as `sqlite` per task instructions.
+
+- ITEM 6 — `src/components/newmobility/myplan/myplan-page.tsx` changes:
+  * **FALLBACK_PLANS Blue 3 fix**: changed `cashbackResidual` from `'7 níveis'` → `'Bloqueado'`. Was previously wrong — Blue 3 does NOT liberate Residual. Kept `cashbackEntrada: '3 níveis'` (already correct) and `cashbackSales: 'Bloqueado'` (already correct). Added explicit `description: 'Libera 3 níveis do Cashback Entrada'` per the task spec.
+  * **FALLBACK_PLANS Blue 3 price fix**: changed `priceCents` from `14900` (R$ 149,00) → `99990` (R$ 999,90) and `price` from `'R$ 149,00/mês'` → `'R$ 999,90/mês'`. Per the task spec, both Blue 3 and Blue 5 share the same mensalidade of R$ 999,90.
+  * **FALLBACK_PLANS Blue 5**: added explicit `description: 'Libera 5 níveis do Cashback Entrada + 7 níveis Residual + 9 níveis Vendas.'` and a header comment explaining the corrected plan unlock matrix.
+  * **FALLBACK_PLANS Free**: added explicit `description: 'Plano gratuito para cadastro e indicações.'` so the mergeApiPlan `description` field is always present.
+  * **mergeApiPlan**: added `description` field to BOTH the template-found branch and the no-template branch. The template-found branch now prefers `apiPlan.description || template.description` so the DB-sourced description wins when present (admin can edit it), but the template description (e.g. "Libera 3 níveis do Cashback Entrada") is used as a fallback so a fresh DB still shows the correct copy.
+  * **Cashback Vendas block rule (Item 6 #4)**: added 3 new state variables (`userHasUnpaidPlanInvoice`, `unpaidInvoiceAmount`, `unpaidInvoiceDueDate`) and a new `useEffect` that fetches the user's invoices via `invoicesApi.getList(user.id)` on mount. The effect classifies each invoice by `bucketInvoiceType` logic (plan / cashback / telemedicina / telemoby / other) — only plan-bucket invoices (type starts with `plan_`, equals `monthly_fee`/`subscription`, or contains `upgrade`) count. An invoice is "unpaid" when `status !== 'paid'` AND `paidAt` is empty. When at least one unpaid plan invoice exists, `userHasUnpaidPlanInvoice=true` and the earliest-due unpaid invoice's amount + dueDate are captured for the warning banner. Fail-open on fetch error (don't block cashback vendas if we can't confirm).
+  * **Derived `displayedPlans`**: when `userHasUnpaidPlanInvoice` is true, replaces Blue 5's `cashbackSales` ('9 níveis') with `'Bloqueado — pague sua fatura'`. All other plan fields stay the same. Computed on every render (cheap map over 3 plans).
+  * **Warning banner**: added a prominent amber banner at the top of the page (above the Current Plan card) when `userHasUnpaidPlanInvoice` is true. Shows "Cashback Vendas bloqueado — pague sua fatura para liberar" with the unpaid invoice amount and due date.
+  * **Comparison table Mobile + Desktop**: switched from `plans.map(...)` → `displayedPlans.map(...)` for both the mobile cards view and the desktop table view. The CashBack Vendas row now renders the "Bloqueado — pague sua fatura" message with a Lock icon when the user has an unpaid invoice. Also added the Lock icon + "Bloqueado" rendering for `cashbackEntrada` and `cashbackResidual` when they equal 'Bloqueado' (for Blue 3's Residual and Vendas). Updated the `startsWith('Bloqueado')` check so it catches both `'Bloqueado'` and `'Bloqueado — pague sua fatura'`.
+  * **Imports**: added `invoicesApi` to the existing `import { plansApi, userApi } from '@/lib/api'` line.
+  * **Comment updates**: updated the "Plan active confirmation card" comment block to reflect that Blue 3 = R$ 999,90 (was R$ 149,00) and that Blue 3 only liberates Cashback Entrada. Updated the "Recurring monthly invoice card" comment block similarly.
+
+- ITEM 13 — `src/components/newmobility/simulator/earnings-simulator.tsx` changes:
+  * **PLAN_OPTIONS rewrite**: replaced the 6 legacy plans (Gratuito + Premium 1-5 with prices 0/99/299/499/999/1999) with the 3 ACTUAL NewMobility plan tiers:
+    - `gratuito` (R$ 0/mês) — `unlocks: { entrada: 0, residual: 0, vendas: 0 }`
+    - `blue3` (R$ 999,90/mês) — `unlocks: { entrada: 3, residual: 0, vendas: 0 }`
+    - `blue5` (R$ 999,90/mês) — `unlocks: { entrada: 5, residual: 7, vendas: 9 }`
+    Each PlanOption now carries an `unlocks` field that drives the simulate() function.
+  * **`PlanCode` type**: narrowed from `'gratuito' | 'premium_1' | ... | 'premium_5'` → `'gratuito' | 'blue3' | 'blue5'`.
+  * **`simulate()` rewrite**: now slices each matrix's levels array based on the plan's `unlocks` config. Blue 3 → `ENTRADA_LEVELS.slice(0, 3)` (3 levels only), Residual/Vendas empty. Blue 5 → all 5 Entrada + all 7 Residual + all 9 Vendas. Gratuito → all empty. Direct-referral cashback unchanged (10% of plan mensalidade = R$ 99,99 per referral for both Blue 3 and Blue 5; 0 for Gratuito). ROI = `(totalMonthly × 100) / planPriceCents` — null for Gratuito.
+  * **Default plan**: changed `useState<PlanCode>('premium_2')` → `useState<PlanCode>('blue5')` so the user sees the full earnings projection on first load.
+  * **Result rendering**: each breakdown card (Direct referrals, Entrada, Residual, Vendas) now conditionally renders either the R$ value (when the plan unlocks that matrix) OR a "Bloqueado" indicator with Lock icon (when the plan doesn't unlock it). For Blue 3, Residual and Vendas cards show "Bloqueado no Blue 3 — faça upgrade para Blue 5". For Gratuito, all 4 cards show "Bloqueado no plano gratuito". The card subtitle now shows the actual number of unlocked levels (e.g. "Matriz 4x5 · 3 níveis desbloqueados" for Blue 3, "Matriz 4x5 · 5 níveis desbloqueados" for Blue 5).
+  * **Detailed per-level breakdown tables**: only rendered for matrices the selected plan actually unlocks. Empty matrices are hidden to keep the UI focused.
+  * **Direct-referral card copy**: added "(10% da mensalidade)" to the per-referral explanation so the user understands where the R$ 99,99 comes from.
+  * **Imports**: added `Lock` to the lucide-react imports.
+  * **Header comment block**: rewrote the file header to document the new 3-plan structure, the per-plan unlock rules, the direct-referral cashback formula, and the ROI formula.
+
+- ITEM 13 — `src/app/api/simulator/calculate/route.ts` (full rewrite):
+  * Replaced the per-plan "multiplier" approach with the same `unlocks` config used by the client.
+  * `PLAN_PRICES`: `{ free: 0, blue3: 99990, blue5: 99990 }` (was `{ free: 0, blue3: 9900, blue5: 19900 }`).
+  * `PLAN_UNLOCKS`: `{ free: {0,0,0}, blue3: {3,0,0}, blue5: {5,7,9} }`.
+  * `PLAN_NAMES`: `{ free: 'Gratuito', blue3: 'Blue 3', blue5: 'Blue 5 Premium' }`.
+  * Fixed CashBack base constants: `CB_ENTRADA_BASE_CENTS = 99900`, `CB_RESIDUAL_BASE_CENTS = 139900`, `CB_VENDAS_BASE_CENTS = 19990` (mirrors the client).
+  * Matrix level percentages: `ENTRADA_LEVEL_PCTS = [5, 10, 10, 5, 5]`, `RESIDUAL_LEVEL_PCTS = [10, 9, 5, 5, 4, 3, 2]`, `VENDAS_LEVEL_PCTS = [0.1 × 9]` (mirrors DEFAULT_*_LEVELS in src/lib/api-utils.ts).
+  * `projectMatrix()` helper: takes `(levelPcts, unlockedLevels, baseCents, fillPercent)` and returns `{ levels: MatrixLevelProjection[], total }`. Only computes levels up to `min(levelPcts.length, unlockedLevels)`.
+  * Response shape now includes: `plan`, `planName`, `directReferrals`, `matrixFillPercent`, `planPrice`, `perReferralCashback`, `directReferralCashback`, `entrada { levels, total }`, `residual { levels, total }`, `vendas { levels, total }`, `totalMonthly`, `totalAnnual`, `roi`, `cashbackBases { entrada, residual, vendas }`, `comparisons` (per-plan summary for blue3 and blue5).
+  * Removed the old `ENTRADA_LEVELS` / `RESIDUAL_LEVELS` / `VENDAS_LEVELS` imports from `@/lib/api-utils` (no longer needed — the route now has its own level percentage constants).
+  * Added `MatrixLevelProjection` interface to fix the TypeScript `never[]` inference error.
+
+- DB updates (via a one-shot `bun run` script):
+  * Updated the existing `Plan` rows in the local SQLite DB to match the corrected seed values:
+    - `blue3`: `priceCents` 9700 → 99990, `name` 'Blue 3' → 'Blue 3' (unchanged), `description` 'Plano Blue 3 com acesso completo às matrizes e apps.' → 'Libera 3 níveis do Cashback Entrada', `features` updated to remove the misleading 'Cashback Residual' and 'Cashback Vendas' entries (Blue 3 doesn't liberate them).
+    - `blue5`: `priceCents` 14700 → 99990, `name` 'Blue 5' → 'Blue 5 Premium', `description` 'Plano Blue 5 premium com benefícios exclusivos.' → 'Libera 5 níveis do Cashback Entrada + 7 níveis Residual + 9 níveis Vendas.', `features` updated to explicitly list all three cashback matrices.
+  * Verified via `curl http://localhost:3000/api/plans` that the API now returns the correct prices and descriptions.
+
+- API seed updates (for fresh installs):
+  * `src/app/api/plans/route.ts` `DEFAULT_PLANS_SEED`: updated `blue3.priceCents` 9700 → 99990, `blue3.description` → 'Libera 3 níveis do Cashback Entrada', `blue3.features` updated; `blue5.priceCents` 14700 → 99990, `blue5.name` 'Blue 5' → 'Blue 5 Premium', `blue5.description` → 'Libera 5 níveis do Cashback Entrada + 7 níveis Residual + 9 níveis Vendas.', `blue5.features` updated.
+  * `src/app/api/admin/plans/route.ts` `DEFAULT_PLANS_SEED`: same updates (blue3 14900 → 99990, blue5 99990 unchanged but description/features updated). Both seeds now match the canonical Task 2-b values.
+
+- VERIFICATION:
+  * `npx eslint` on the 5 modified files (myplan-page.tsx, earnings-simulator.tsx, simulator/calculate/route.ts, plans/route.ts, admin/plans/route.ts) → 0 errors, 0 warnings.
+  * `npx tsc --noEmit --skipLibCheck --project tsconfig.json` → 0 errors in the modified files (the only pre-existing errors are in unrelated files like `keep-alive.js`, `persistent-server.js`, etc.).
+  * `bun run lint` (full project) → 13 pre-existing errors in `.js` root files (keep-alive, persistent-server, process-manager, run-forever, supervisor) — all `@typescript-eslint/no-require-imports` errors documented in DEPLOY-FIX-LIPEHOST-1. **0 new errors**.
+  * `POST /api/simulator/calculate` with `{plan: 'blue5', directReferrals: 4, matrixFillPercent: 50}` → HTTP 200, returns:
+    - directReferralCashback: 39996 cents (R$ 399,96 = 4 × R$ 99,99) ✓
+    - entrada.total: 3606390 cents (R$ 36.063,90 — 5 levels at 50% fill) ✓
+    - residual.total: 35629732 cents (R$ 356.297,32 — 7 levels at 50% fill) ✓
+    - vendas.total: 3495240 cents (R$ 34.952,40 — 9 levels at 50% fill) ✓
+    - totalMonthly: 42731362 cents (R$ 427.313,62) ✓
+    - roi: 42735.64% ✓
+  * `POST /api/simulator/calculate` with `{plan: 'blue3', directReferrals: 4, matrixFillPercent: 50}` → HTTP 200, returns:
+    - entrada.total: 409590 cents (R$ 4.095,90 — only 3 levels) ✓
+    - residual.total: 0 (empty levels array) ✓
+    - vendas.total: 0 (empty levels array) ✓
+    - roi: 409.63% ✓
+  * `POST /api/simulator/calculate` with `{plan: 'free', directReferrals: 4, matrixFillPercent: 50}` → HTTP 200, returns all zeros, roi: 0 ✓
+  * `GET /api/plans` → returns the 3 plans with corrected prices (99990 for both blue3 and blue5) and descriptions.
+  * `GET /api/invoices?userId=admin` → returns `[]` (admin has no invoices) → `userHasUnpaidPlanInvoice` will be false → Cashback Vendas NOT blocked (correct behaviour).
+
+Stage Summary:
+- **Blue 3 cashback description FIXED**: Blue 3 now correctly shows `cashbackEntrada: '3 níveis'`, `cashbackResidual: 'Bloqueado'`, `cashbackSales: 'Bloqueado'` in both the FALLBACK_PLANS template and the DB. The description explicitly states "Libera 3 níveis do Cashback Entrada". Was previously showing '7 níveis' for Residual which was incorrect.
+- **Plan comparison synced with Admin DB**: prices and descriptions come from the `Plan` table via `/api/plans`. The DB was updated to the canonical Task 2-b values (R$ 999,90 for both Blue 3 and Blue 5; corrected descriptions). The API seeds (`/api/plans/route.ts` and `/api/admin/plans/route.ts`) were also updated so fresh installs get the right values. Admin edits through the admin UI continue to propagate to the myplan page via the existing `mergeApiPlan` flow.
+- **Missing level values (N1-N5 + Mensalidade)**: these were ALREADY present in the code (added by the previous BACK-6/BACK-13 subagent). Verified they are correct: N1=R$ 200,00, N2=R$ 1.600,00, N3=R$ 6.400,00, N4=R$ 12.800,00 (Premium 5 only), N5=R$ 51.200,00 (Premium 5 only), Mensalidade=formatCurrency(currentPlanData.priceCents) which now resolves to R$ 999,90 for both Blue 3 and Blue 5. Updated the surrounding comments to reflect the new R$ 999,90 mensalidade for Blue 3 (was previously documented as R$ 149,00).
+- **Cashback Vendas block rule IMPLEMENTED**: when the logged-in user has at least one unpaid plan-bucket invoice, Blue 5's `cashbackSales` in the comparison table is replaced with "Bloqueado — pague sua fatura" (with Lock icon). A prominent amber warning banner appears at the top of the page explaining the block and showing the unpaid invoice amount + due date. Fail-open on fetch error. The block applies regardless of which plan the user is on (even Blue 5 users see their Cashback Vendas blocked until they pay).
+- **Simulator REWRITTEN to use actual plan tiers**: removed the legacy 6 "Premium 1-5" placeholder plans. Now uses 3 plans (Gratuito / Blue 3 / Blue 5 Premium) with the correct mensalidade (R$ 0 / R$ 999,90 / R$ 999,90). Each plan carries an `unlocks` config that drives which matrix levels are projected: Blue 3 → 3 Entrada levels only (no Residual, no Vendas); Blue 5 → all 5+7+9 levels. Direct-referral cashback = 10% of mensalidade (R$ 99,99 per referral). ROI = (totalMonthly × 100) / mensalidade. The breakdown cards conditionally show "Bloqueado" with Lock icon for matrices the selected plan doesn't unlock, with helpful copy like "Bloqueado no Blue 3 — faça upgrade para Blue 5".
+- **API route `/api/simulator/calculate` REWRITTEN** to mirror the client logic: same 3 plans, same `unlocks` config, same fixed CashBack base constants, same matrix level percentages. Response shape now includes `planName`, `perReferralCashback`, `cashbackBases`, and a `comparisons` array for the 3 plans. Removed the old `ENTRADA_LEVELS` / `RESIDUAL_LEVELS` / `VENDAS_LEVELS` imports from `@/lib/api-utils` (no longer needed).
+- Arquivos alterados (5):
+  * `src/components/newmobility/myplan/myplan-page.tsx` (+~120/-40 linhas) — Blue 3 cashback fix, description field, cashback vendas block rule (state + useEffect + displayedPlans + warning banner), comparison table uses displayedPlans, Lock icon rendering for Bloqueado cells.
+  * `src/components/newmobility/simulator/earnings-simulator.tsx` (+~150/-80 linhas) — PLAN_OPTIONS rewrite (3 plans with `unlocks`), simulate() respects unlocks, result rendering shows Bloqueado for locked matrices, default plan blue5, Lock icon import.
+  * `src/app/api/simulator/calculate/route.ts` (full rewrite, ~210 linhas) — PLAN_PRICES/PLAN_UNLOCKS/PLAN_NAMES, projectMatrix helper with MatrixLevelProjection interface, fixed CashBack base constants, comparisons array.
+  * `src/app/api/plans/route.ts` (+~30/-15 linhas) — DEFAULT_PLANS_SEED updated to canonical Task 2-b values (blue3 99990, blue5 99990, corrected descriptions/features).
+  * `src/app/api/admin/plans/route.ts` (+~30/-15 linhas) — same DEFAULT_PLANS_SEED updates.
+- **DB updated**: existing `Plan` rows for `blue3` and `blue5` updated in-place to the canonical values (priceCents=99990, corrected name/description/features). Verified via `curl /api/plans`.
+- **0 erros de lint novos, 0 erros de TypeScript novos.** Dev server roda limpo (HTTP 200 on /api/plans, /api/simulator/calculate, /api/invoices).
+- **Não foi necessário rodar `bun run db:push`** — apenas os DADOS existentes das rows `blue3`/`blue5` foram atualizados via `prisma.plan.update`. O schema do Prisma não foi alterado (provider continua `sqlite` conforme instrução do task).
+
+---
+Task ID: 2-d
+Agent: subagent (Admin panel fixes — Items 3, 4, 5, 7)
+Task: Fix 4 Admin panel issues — Telemedicina separation (Item 3), Permissões login/password (Item 4), Conquistas variables list (Item 5), Recompensa de Sequência divergence (Item 7).
+
+Work Log:
+- Read worklog.md (Tasks 1 through 2-b) for context. Noted prior agents already implemented: career plan separated fields (BACK-9), plan comparison sync + simulator rewrite (2-b), gratifications config (BACK-7), services + admin service types (8-b), and the backoffice gamification-page.tsx already had a comment block referencing "ADM-7" suggesting the streak reward rendering divergence had been previously addressed.
+
+- **Item 3 (Telemedicina separation) — VERIFIED ALREADY DONE.** Inspected `src/components/newmobility/admin/admin-layout.tsx` lines 82-84 and `src/components/newmobility/admin/admin-page.tsx` lines 6018-6030. Telemedicina and TalkMobi are already separate sidebar entries AND separate TabsContent blocks:
+  * `talkmobi` (Planos TalkMobi — TalkMobiManager) — edit TalkMobi plan catalogue
+  * `talkmobi-subscriptions` (Assinaturas TalkMobi — AdminTalkMobiSubscriptionsPanel) — approve subscription requests
+  * `telemedicina` (Telemedicina — AdminTelemedicinaPanel) — approve activation requests, fixed R$ 49,90/mês pricing
+  No combined view exists. No code changes needed for Item 3.
+
+- **Item 4 (Permissões — link login/password to new user) — IMPLEMENTED.** The Create User dialog (`admin-users-panel.tsx`) already required email + password + role (ADM-4 by prior agent). Added the missing pieces:
+  * **New API route** `src/app/api/admin/users/[id]/reset-password/route.ts` (~95 lines): POST endpoint that accepts `{ userId (admin), newPassword? }`. Verifies admin role, verifies target user exists, hashes the new password with sha256 (via `hashPassword()` from `@/lib/api-utils`), persists it, and returns the plaintext password + user email + name in the response so the admin can copy and share with the user. If `newPassword` is omitted/empty, auto-generates a 10-char random password using `crypto.getRandomValues()` and a safe alphabet (no ambiguous chars like O/0, l/1, I). Returns 400 if password is < 6 chars, 403 if requester is not admin, 404 if target user not found.
+  * **`admin-users-panel.tsx` updates** (+~280 lines):
+    - Added "Senha" button (KeyRound icon) to each user row in the actions column.
+    - Added Reset Password dialog with password Input + "Gerar senha" button + copy-to-clipboard button + amber warning box explaining the password is unrecoverable after reset.
+    - Added Credentials success dialog (shown after Create OR Reset) with the user's name/email/password displayed in a bordered card, plus "Copiar" buttons for each field, a "Copiar tudo (email + senha)" button, and a footer button. Explains that the password is unrecoverable from the DB (only sha256 is stored).
+    - Added "Gerar senha" button next to the password field in the Create User dialog (calls the same `generatePassword()` helper).
+    - Added `generatePassword()` helper — 10-char safe-alphabet password using `crypto.getRandomValues()` with a `Math.random()` fallback for very old environments.
+    - Added `copyToClipboard()` helper with `navigator.clipboard.writeText` primary path and a hidden-textarea + `document.execCommand('copy')` fallback for non-secure contexts (http).
+    - After Create succeeds, the Create dialog closes and the Credentials dialog opens with the email + password (the admin's only chance to capture the plaintext since only sha256 is stored).
+  * **`admin-permissions-panel.tsx` update** (+10 lines): Added a paragraph to the existing "Como funciona o login" info box pointing admins to the "Senha" button in the Users tab when they need to reset a user's password.
+
+- **Item 5 (Conquistas — list available variables) — IMPLEMENTED.**
+  * **`admin-page.tsx` updates** (+155/-50 lines):
+    - Added a new `ACHIEVEMENT_VARIABLES` constant (typed array of 14 canonical variables) right after the `AchievementItem` interface. Each entry has `code`, `label` (PT-BR), `description`, `suggestedName`, `suggestedTarget`, `suggestedCategory`. The 14 variables match the task spec exactly:
+      `first_referral`, `first_purchase`, `first_withdrawal`, `streak_30`, `kyc_approved`, `plan_upgraded`, `career_bronze`, `career_silver`, `career_gold`, `career_diamond`, `marketplace_sale`, `profile_completed`, `bank_data_filled`, `social_connected`.
+    - Replaced the old `<details>` substring-keyword help box with a always-visible emerald-bordered card listing all 14 canonical variables in a 2-column grid, each showing the code in a monospace badge + PT-BR label + description.
+    - Replaced the code Input with a 2-column grid: (1) "Variável" Select dropdown listing all 14 canonical variables + "Outro (código customizado)" option, and (2) "Código" Input that is auto-filled (and disabled) when a canonical variable is picked, or editable when "Outro" is selected.
+    - When a canonical variable is selected from the dropdown, the form auto-fills `code`, `name`, `description`, `category`, `targetValue` with the variable's suggested values (only when creating a new achievement — editing preserves the admin's existing customizations).
+    - When editing an existing achievement, both the dropdown and the Input are disabled (the code is the unique key — changing it would break user-achievement linkage).
+  * **`/api/achievements/route.ts` updates** (+35/-5 lines):
+    - Extended the `UserStats` interface with 4 new fields: `kycApproved`, `profileCompleted`, `bankDataFilled`, `socialConnected` (all 0/1 indicators).
+    - Added 4 new branches in `progressForCode()` to recognize the new keyword substrings (`kyc`, `profile`, `bank`, `social`). Placed AFTER the existing keyword checks so legacy codes like `career_bronze` still map to `careerPoints` (not the new `bank` check which would incorrectly catch "career_bronze"... actually wait — "career_bronze" contains neither "kyc", "profile", "bank", nor "social", so the order is fine; the existing `career` keyword check fires first for `career_bronze`).
+    - Added a separate `purchase` check before the generic `marketplace` check so `first_purchase` and `marketplace_sale` both map to `marketplaceOrdersCount` (we don't yet distinguish buy vs sell at the order level).
+    - Extended the user `findUnique` `select` to include `name`, `cpf`, `city`, `state`, `kycStatus`, `bankCode`, `bankAgency`, `bankAccount` (the fields needed to compute the 4 new flags).
+    - Derived the 4 flags in the `stats` object: `kycApproved = (kycStatus === 'approved') ? 1 : 0`, `profileCompleted = !!(name && email && cpf && phone && city && state) ? 1 : 0`, `bankDataFilled = !!(bankCode && bankAgency && bankAccount) ? 1 : 0`, `socialConnected = 0` for now (no social-accounts model exists yet — when it lands, this flag can be wired up).
+
+- **Item 7 (Recompensa de Sequência divergence) — VERIFIED + REFACTORED.** The backoffice `gamification-page.tsx` already had the correct rendering logic (a prior agent's ADM-7 comment block documented it). Refactored for consistency with the project's preferred helper:
+  * **`gamification-page.tsx` updates** (+13/-4 lines):
+    - Replaced the inline `new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((reward.amount ?? reward.points ?? 0) / 100)` call with `formatBRL(reward.amount ?? reward.points ?? 0)` from `@/lib/format`. The two are functionally equivalent (both divide by 100 and format as BRL), but `formatBRL` is the canonical helper used throughout the project (e.g. `financial-cards.tsx`, `myplan-page.tsx`) and handles edge cases (NaN, null, undefined) safely.
+    - Expanded the ADM-7 comment block to explicitly call out the divergence scenario the task spec described: "admin who configures R$ 10,00 for a 10-day streak (rewardType='cashback', rewardAmount=1000) will see '10 dias · +R$ 10,00' here — NOT '1000 pontos'".
+
+- **End-to-end verification (via curl + bun scripts against the running dev server):**
+  * `GET /api/gamification/streak?userId=admin-root` → 200, returns `streakRewards` array.
+  * Seeded a test StreakReward via `prisma.streakReward.upsert` with `streakDays=10, rewardType='cashback', rewardAmount=1000` (R$ 10,00).
+  * `GET /api/gamification/streak?userId=admin-root` → 200, returns `{ days: 10, points: 1000, amount: 1000, rewardType: 'cashback', claimed: false }`.
+  * Verified `formatBRL(1000)` returns `"R$ 10,00"` — confirming the backoffice would render `+R$ 10,00` (NOT "1000 pontos"). ✓
+  * `POST /api/admin/users/admin-root/reset-password` with `{ newPassword: "test123456" }` → 200, returns `{ password: "test123456", email: "admin@newmobility.com", name: "Admin NewMobility", message: "..." }`. ✓
+  * `POST /api/admin/users/admin-root/reset-password` with no `newPassword` → 200, auto-generated a 10-char password like `"pktN2LayXM"`. ✓
+  * `POST /api/admin/users/admin-root/reset-password` with `{ newPassword: "abc" }` → 400 "A senha deve ter pelo menos 6 caracteres". ✓
+  * `POST /api/admin/users/admin-root/reset-password` with non-admin `userId` → 403 "Unauthorized". ✓
+  * `POST /api/admin/users/nonexistent-target/reset-password` → 404 "User not found". ✓
+  * Restored admin password back to `admin123` (the seed value) after testing.
+  * Created test achievements with codes `kyc_approved`, `profile_completed`, `bank_data_filled` via `POST /api/admin/achievements`.
+  * `GET /api/achievements?userId=admin-root` returned correct progress for each:
+    - `kyc_approved` → progress=0/1 (admin's kycStatus is null) ✓
+    - `profile_completed` → progress=1/1, earned=true (admin has name+email+cpf+phone+city+state all set) ✓
+    - `bank_data_filled` → progress=0/1 (admin's bankCode/bankAgency/bankAccount are null) ✓
+  * Cleaned up all 3 test achievements + the test StreakReward after verification.
+  * `GET /` → 200 (homepage compiles cleanly).
+  * `GET /api/admin/streak-rewards?userId=admin-root` → 200.
+  * `GET /api/admin/achievements?userId=admin-root` → 200.
+
+- **Lint & TypeScript check:**
+  * `bun run lint` (full project) → 13 pre-existing errors in `.js` root files (keep-alive, persistent-server, process-manager, run-forever, supervisor) — all `@typescript-eslint/no-require-imports` errors documented in DEPLOY-FIX-LIPEHOST-1. **0 new errors.**
+  * `npx eslint` on the 5 modified files (admin-users-panel.tsx, admin-page.tsx, admin-permissions-panel.tsx, gamification-page.tsx, achievements/route.ts, reset-password/route.ts) → 0 errors, 0 warnings.
+  * `npx tsc --noEmit --skipLibCheck` → only pre-existing errors in unrelated files (accredited-network, cashback/matrix-overview, cashback, dashboard, kyc, matrix-types, admin-page.tsx lines 238/2427/3203/3207/5105 about PointsConfigData.raw, AdminPlan.code, AdminVoucher.amount — all unrelated to my changes). **0 new TypeScript errors in any file I touched.**
+
+Stage Summary:
+- **Item 3 (Telemedicina separation)**: Already implemented by a prior agent — Telemedicina and TalkMobi are separate sidebar entries (`admin-layout.tsx` lines 82-84) and separate TabsContent blocks (`admin-page.tsx` lines 6018-6030). No code changes were needed; verified and moved on.
+- **Item 4 (Permissões login/password)**: Implemented a complete login/password management flow:
+  - **New API**: `POST /api/admin/users/[id]/reset-password` accepts an optional `newPassword`; if omitted, auto-generates a 10-char secure random password. Hashes (sha256) and persists it. Returns the plaintext password so the admin can copy and share with the user. Auth-gated (admin role only); returns 400/403/404 for error paths.
+  - **Admin UI**: Added "Senha" button (KeyRound icon) to each user row → opens Reset Password dialog with password input + "Gerar senha" button + copy-to-clipboard button + amber warning box. After successful reset, a Credentials success dialog opens showing email + new password with "Copiar" buttons.
+  - **Create User dialog**: Added "Gerar senha" button next to the password field. After successful creation, the Create dialog closes and the Credentials success dialog opens with the new user's email + password (the admin's only chance to capture the plaintext, since only sha256 is stored).
+  - **Permissões panel**: Added a paragraph in the "Como funciona o login" info box pointing admins to the "Senha" button in the Users tab.
+  - **Flow documented**: Admin creates user (email + password) → user gets credentials (displayed in the Credentials dialog) → user logs in at the platform's login page. Admin can reset a forgotten password anytime via the "Senha" button → new credentials displayed → user uses them to log in.
+- **Item 5 (Conquistas variables list)**: Implemented a comprehensive variable picker:
+  - **`ACHIEVEMENT_VARIABLES` constant** (14 entries matching the task spec exactly) defined in `admin-page.tsx` — each entry carries `code`, `label`, `description`, `suggestedName`, `suggestedTarget`, `suggestedCategory`.
+  - **Always-visible help card** (emerald border, above the code field per spec) lists all 14 variables in a 2-column grid with monospace code badges + PT-BR labels + descriptions.
+  - **Select dropdown** ("Variável *") lists all 14 canonical variables + "Outro (código customizado)". When a canonical variable is picked, the form auto-fills `code`, `name`, `description`, `category`, `targetValue` with the variable's suggested values (only when creating — editing preserves the admin's customizations).
+  - **Code Input** is auto-filled and disabled when a canonical variable is selected; editable when "Outro" is selected; always disabled when editing an existing achievement (code is the unique key).
+  - **API extension**: `progressForCode()` in `/api/achievements/route.ts` now recognizes `kyc`, `profile`, `bank`, `social` keyword substrings and maps them to 4 new `UserStats` flags derived from the user record (`kycApproved`, `profileCompleted`, `bankDataFilled`, `socialConnected`). Verified end-to-end: `profile_completed` achievement correctly returns `progress=1, earned=true` for the admin user (who has all profile fields filled).
+- **Item 7 (Recompensa de Sequência divergence)**: Verified the divergence was already fixed by a prior agent (ADM-7 comment block + correct `rewardType === 'cashback'` branching in `gamification-page.tsx`). Refactored the inline `Intl.NumberFormat` call to use the canonical `formatBRL()` helper from `@/lib/format` for consistency with the rest of the codebase. Verified end-to-end: admin configures `rewardType='cashback', rewardAmount=1000` (R$ 10,00) for a 10-day streak → API returns `{ amount: 1000, rewardType: 'cashback' }` → backoffice renders `+${formatBRL(1000)}` → `+R$ 10,00` (NOT "1000 pontos"). ✓
+- **Schema**: `prisma/schema.prisma` was NOT modified (provider left as `sqlite` per task instructions). All 4 items were addressable with code changes only — no DB schema changes needed (the `StreakReward`, `Achievement`, and `User` models already had all the fields needed: `rewardType`, `rewardAmount`, `code`, `name`, `cpf`, `phone`, `city`, `state`, `kycStatus`, `bankCode`, `bankAgency`, `bankAccount`).
+- Arquivos alterados (5):
+  * `src/components/newmobility/gamification/gamification-page.tsx` (+13/-4 linhas) — Item 7: use `formatBRL()` for cashback label, expanded ADM-7 comment.
+  * `src/components/newmobility/admin/admin-page.tsx` (+155/-50 linhas) — Item 5: `ACHIEVEMENT_VARIABLES` constant + achievement form refactor (always-visible help card + Select dropdown for code + auto-fill suggested fields).
+  * `src/app/api/achievements/route.ts` (+35/-5 linhas) — Item 5: `UserStats` extension (4 new flags) + `progressForCode()` new keyword branches + user `select` extension (name/cpf/city/state/kycStatus/bankCode/bankAgency/bankAccount).
+  * `src/components/newmobility/admin/admin-users-panel.tsx` (+~280/-15 linhas) — Item 4: Reset Password button + dialog + Credentials success dialog + Generate Password button in Create dialog + `generatePassword()`/`copyToClipboard()` helpers.
+  * `src/components/newmobility/admin/admin-permissions-panel.tsx` (+10/-0 linhas) — Item 4: info box paragraph pointing to the "Senha" reset button.
+- Arquivo criado (1):
+  * `src/app/api/admin/users/[id]/reset-password/route.ts` (~95 linhas) — Item 4: POST endpoint to reset a user's password (auto-generate or admin-provided). Returns the plaintext password + user email + name. Auth-gated; 400/403/404 error paths.
+- **0 erros de lint novos, 0 erros de TypeScript novos.** Dev server roda limpo (HTTP 200 em todas as rotas testadas). Admin password restaurado para `admin123` após os testes. Test achievements e test StreakReward limpos do DB após verificação.
+
+---
+Task ID: 2-c
+Agent: Main Agent (Item 7 + Admin Item 2 + Item 21 + Admin Item 1)
+
+Task: Fix Metas (Item 7) + Gratificações button (Admin Item 2) + English nomenclature (Item 21 + Admin Item 1)
+
+Work Log:
+
+== Item 7: Metas — restrict to Motorista/Entregador + Admin config ==
+
+The existing implementation already gated the "Metas" menu item (sidebar.tsx)
+and the gratifications-page.tsx access by the legacy single-value
+`targetQualification` ('motorista' | 'entregador' | 'ambos') stored on a
+Gratification row with type='driver_goals_config'. This task explicitly asked
+for the config to live on the SystemConfig table under the key
+`metas.allowedQualifications` as a JSON array like ["motorista","entregador"].
+
+Implemented the new array-based config layer while keeping the legacy
+targetQualification as a fallback (so existing deployments keep working):
+
+1. /api/gratifications-config/route.ts (public, no admin role required)
+   - Added `ALLOWED_QUALIFICATIONS_KEY = 'metas.allowedQualifications'`.
+   - Added `parseAllowedQualifications()` helper that parses/validates the
+     JSON array stored in SystemConfig.
+   - GET now ALSO reads the SystemConfig row and returns
+     `allowedQualifications: string[]` (defaults to ['motorista','entregador']).
+   - Re-exported the new constant/helper for sharing with the admin route.
+
+2. /api/admin/gratifications-config/route.ts (admin-only)
+   - GET now also returns `allowedQualifications` (array) and
+     `allowedQualificationOptions` (the form's checkbox options).
+   - PUT accepts an optional `allowedQualifications: string[]` body field.
+     Unknown codes are dropped by `sanitizeAllowedQualifications()`; an empty
+     array is allowed (hides the module from everyone — useful for staging).
+     Stored via `prisma.systemConfig.upsert()` under the
+     `metas.allowedQualifications` key as a JSON string.
+
+3. src/components/newmobility/sidebar.tsx
+   - `MetasConfig` type now accepts both `targetQualification?` and
+     `allowedQualifications?` (both optional).
+   - `userCanSeeMetas()` consults `allowedQualifications` first; if the array
+     is present and non-empty, it is authoritative. An empty array hides the
+     module from everyone. When the array is missing/invalid, falls back to
+     the legacy targetQualification logic.
+   - Loader accepts either field.
+
+4. src/components/newmobility/gratifications/gratifications-page.tsx
+   - `metasConfig` state type updated to allow both fields.
+   - `benefitVisibleToUser()` now consults `allowedQualifications` as a hard
+     module-level gate (when set, non-matching users see NO benefits at all,
+     even if the per-benefit override would allow them). Per-benefit overrides
+     still apply on top.
+   - `moduleAccessAllowed` continues to delegate to `benefitVisibleToUser`
+     so the "Acesso Restrito" card is shown when the user is not in the
+     allowed list.
+
+5. Admin form (admin-page.tsx, in the Gratifications tab)
+   - Added a new "Qualificações permitidas" card with two toggle buttons
+     (Motorista / Entregador). Each click calls `toggleAllowedQualification()`
+     which optimistically updates the local state, then PUTs the full new
+     array to `/api/admin/gratifications-config`.
+   - Shows the current JSON array inline so the admin sees the exact value
+     being stored. Shows a warning badge when the array is empty.
+   - Loading/saving spinners, disabled state, and toast feedback all wired up.
+
+== Admin Item 2: "Criar Gratificações" button ==
+
+Verified the existing implementation is correct and functional:
+- Button at admin-page.tsx (~line 4717 in the Gratifications tab) calls
+  `setGratificationCreateOpen(true)` on click — works correctly.
+- Dialog at admin-page.tsx (~line 8006) opens with a complete form:
+    * target user (debounced search with auto-populate)
+    * name (required)
+    * type (select: leadership, retirement_fund, telemedicine, tow_truck,
+            fuel_aid, car_wash, vacation_6mo, vacation_12mo, custom)
+    * category (select: gratification, withdrawal, mobility, food,
+                pharmacy, shopping)
+    * amountBrl (reward value in BRL reais, converted to cents on submit)
+    * qualification (PT-BR free-text requirement description)
+    * description (admin-only note)
+- Submit handler `handleCreateGratification()` POSTs to
+  `/api/admin/gratifications/assign` with all fields. The endpoint persists
+  the row including the `qualification` column, encodes name/description
+  into the description field as "Name — description" (matching the public
+  gratifications handler convention), and returns HTTP 201.
+- Verified end-to-end with a test POST: returns 201 with the created row
+  including `qualification: "Ao testar"`. Cleaned up the test row afterwards.
+
+The previous reports of the button being "stuck" appear to have been fixed
+by the prior ADM-2 work (debounced user search + auto-populate + visible
+loading/empty/error states). No additional fix was needed here.
+
+== Item 21 + Admin Item 1: English nomenclature ==
+
+Verified the translation map is already in place and applied everywhere
+categories are displayed:
+
+1. src/lib/utils.ts — `CATEGORY_LABELS` map (exported) covers every English
+   key the backend may store on Transaction.category:
+     cashback_entrada → CashBack Entrada
+     cashback_residual → CashBack Residual
+     cashback_sales / cashback_vendas → CashBack Vendas
+     withdrawal → Saque, deposit → Depósito, transfer → Transferência
+     transfer_in → Transferência Recebida, transfer_out → Transferência Envio
+     payment → Pagamento, payment_invoice / paymentInvoice → Pagamento Fatura
+     commission → Comissão, bonus → Bônus, reward → Recompensa
+     referral → Indicação, purchase → Compra, sale → Venda
+     subscription → Assinatura, gratification → Gratificação
+     career_claim → Reivindicação de Carreira
+     plan_payment → Pagamento de Plano, plan_upgrade → Upgrade de Plano
+     marketplace / marketplace_purchase → Marketplace, voucher → Voucher
+     withdrawal_fee → Taxa de Saque, fee → Taxa, adjustment → Ajuste
+     bills → Contas, mobility → Mobilidade, shopping → Compras
+     food / meal → Refeição, pharmacy → Farmácia
+     paymentInvoice → Pagamento Fatura, free → Saldo Livre, other → Outros
+     system_config → Configuração do Sistema
+   Plus the `categoryLabel()` helper that falls back to the raw key.
+
+2. src/components/newmobility/financial/financial-page.tsx
+   - Local `typeLabels` (transaction.type) and `categoryLabels`
+     (transaction.category) maps both have all the same translations.
+   - `getTransactionLabel(tx)` prefers category label → type label → raw,
+     so badges, CSV export, and the transactions table all show Portuguese.
+   - Charts (BarChart, AreaChart, PieChart) use Portuguese names directly.
+   - Filter chips and the export dialog dropdown are already in Portuguese.
+
+3. src/components/newmobility/gratifications/gratifications-page.tsx
+   - `mapApiCategoryToUi()` maps API category strings to Portuguese UI
+     labels (mobility→Mobilidade, shopping→Compras, leadership→Liderança,
+     insurance→Seguros, health→Saúde, benefits→Benefícios, vacation→Férias,
+     prize→Prêmios Especiais, fuel/car_wash→Auxílios Mensais).
+   - Individual gratification items display `item.name` which comes from the
+     API (admin-provided PT-BR name) or the description prefix.
+
+4. src/components/newmobility/admin/admin-page.tsx
+   - Imports `categoryLabel` from @/lib/utils and uses it for the
+     "Distribuição por Categoria" panel in the Gratifications admin tab
+     (line ~3885) and the tooltip on the chart (line ~3864).
+   - Has local `typeLabels` maps in the financial transactions table
+     (lines ~4017, ~4073) and CSV export with all the same translations.
+
+No raw English category names should be visible anywhere on these pages.
+
+== Verification ==
+
+- `bun run lint` on all 6 changed files: 0 new errors.
+  (Pre-existing errors in keep-alive.js / persistent-server.js /
+  process-manager.js / run-forever.js / supervisor.js are unrelated —
+  they predate this task and use CommonJS `require()`.)
+- GET /api/gratifications-config returns:
+    {"targetQualification":"ambos","allowedQualifications":["motorista","entregador"],...}
+- GET /api/admin/gratifications-config?userId=<admin> returns:
+    {...,"allowedQualifications":["motorista","entregador"],
+     "allowedQualificationOptions":[{"value":"motorista","label":"Motorista"},
+                                    {"value":"entregador","label":"Entregador"}]}
+- PUT /api/admin/gratifications-config with
+    {userId, allowedQualifications:["motorista"]} → 200, persists to
+    SystemConfig(key='metas.allowedQualifications'). Subsequent GET confirms.
+- POST /api/admin/gratifications/assign with full body → 201, creates row
+  with `qualification` column populated. (Test row cleaned up.)
+- Dev server compiled all changed routes cleanly (no errors in dev.log).
+
+Files changed:
+- src/app/api/gratifications-config/route.ts (added allowedQualifications)
+- src/app/api/admin/gratifications-config/route.ts (read/write allowedQualifications)
+- src/components/newmobility/sidebar.tsx (userCanSeeMetas uses array first)
+- src/components/newmobility/gratifications/gratifications-page.tsx
+  (benefitVisibleToUser + moduleAccessAllowed consult allowedQualifications)
+- src/components/newmobility/admin/admin-page.tsx
+  (new "Qualificações permitidas" admin form with checkboxes + toggle handler)
+
+Files verified (already correct, no changes needed):
+- src/components/newmobility/financial/financial-page.tsx (translation maps in place)
+- src/lib/utils.ts (CATEGORY_LABELS map in place)
+- src/app/api/admin/gratifications/assign/route.ts (Admin Item 2 endpoint works)
+
+Issues / Notes:
+- Did NOT change prisma/schema.prisma provider (kept sqlite) as instructed.
+- The new `metas.allowedQualifications` SystemConfig key is ADDITIVE — the
+  legacy `targetQualification` (Gratification row with type=
+  'driver_goals_config') is still maintained for backwards compatibility
+  and is only consulted as a fallback when the array is absent. This means
+  existing deployments that only configured targetQualification keep working
+  unchanged until the admin explicitly uses the new array-based form.
+- The admin UI shows BOTH controls (legacy single-value select AND new
+  array-based checkboxes) with a "Preferencial" badge on the new one so the
+  admin understands which takes precedence. If the admin wants to fully
+  migrate to the new mechanism, they can leave the legacy select at 'ambos'
+  and use only the checkboxes.
+
+---
+Task ID: 2-e
+Agent: Main Agent (Item 3 + Item 4 + Item 5 + Item 12)
+
+Task: Fix Bank update (Item 3) + Qualificação field (Item 4) + Pagar Fatura (Item 5) + Voucher de Boas-Vindas (Item 12)
+
+Work Log:
+
+== Item 3: Bank update — verified working, no code changes needed ==
+
+Tested the bank save flow end-to-end:
+
+1. PUT /api/user/profile with body { userId, bankCode:"341",
+   bankAgency:"1234", bankAccount:"56789-0", bankType:"cc",
+   pixKey:"test@pix.com", pixEnabled:true } → 200, returns the saved
+   bank fields.
+
+2. GET /api/user/profile?userId=... → returns the SAME saved values
+   (bankCode:"341", bankAgency:"1234", etc.).
+
+3. PUT with all-null values → 200, returns bankCode:null etc.
+
+4. GET again → returns nulls (confirmed the previous save was
+   overwritten, not just cached).
+
+The PUT route (`src/app/api/user/profile/route.ts`) already accepts
+all 6 bank fields (bankCode, bankAgency, bankAccount, bankType,
+pixKey, pixEnabled), builds `updateData` only for fields that are
+`!== undefined`, and calls `prisma.user.update({where:{id:userId},
+data:updateData})`. The frontend (`bank-page.tsx`) already sends the
+body correctly and hydrates the form from the PUT response. The flow
+works end-to-end — the bug report appears to have been from before
+commit `eba84a0` ("feat: fix 13 backoffice + 7 admin issues"). No
+code changes were needed beyond a clarifying comment.
+
+== Item 4: Qualificação field — expanded to 10 options, shared constant ==
+
+Created `src/lib/qualifications.ts` with a shared `QUALIFICATION_OPTIONS`
+constant containing the 10 business-relevant qualifications per the
+client spec:
+
+  Motorista, Entregador, Cliente, Lojista, Mototaxista, Motofretista,
+  Motorista de App, Taxista, Caminhoneiro, Outros
+
+Also exports `LEGACY_QUALIFICATION_OPTIONS` (passageiro / passageiro_60
+/ passageiro_pcd / comercio) and a `qualificationLabel()` helper that
+resolves any code (current or legacy) to a friendly PT-BR label.
+
+Replaced the local 6-option constants in three files with the shared
+import:
+
+1. `src/components/newmobility/admin/admin-users-panel.tsx` — the
+   admin "Editar Usuário" dialog now offers all 10 qualifications.
+2. `src/components/newmobility/profile/personal-data-section.tsx` —
+   the backoffice "Dados Pessoais" card offers all 10 qualifications.
+3. `src/components/newmobility/auth/register-page.tsx` — the
+   self-registration dropdown offers all 10 qualifications.
+
+The PUT /api/admin/users/[id] route already accepted `qualification`
+(verified by reading the code AND testing: PUT with
+qualification:"mototaxista" → 200, returns qualification:"mototaxista").
+
+== Item 5: Pagar Fatura — real payment flow + missing invoice fix ==
+
+Two sub-issues:
+
+=== 5a: "Pagar Fatura" marks paid without real payment ===
+
+The previous flow opened a PaymentMethodDialog that, on confirm, hit
+POST /api/billing/pay/[id] which immediately marks the invoice as
+paid. No real payment was processed.
+
+Fixed by adding a 4-case decision tree in `handlePay`:
+
+1. Invoice has `asaasPaymentId` → open AsaasPaymentDialog (view
+   existing PIX/Boleto details).
+2. Asaas is configured → open AsaasPaymentDialog (create a REAL Asaas
+   payment — PIX QR code or Boleto barcode). The invoice stays
+   pending until the Asaas webhook confirms payment.
+3. Asaas NOT configured + admin → open PaymentMethodDialog as a manual
+   "Marcar como pago (admin)" override (records paymentMethod for
+   audit).
+4. Asaas NOT configured + non-admin → open a new
+   "Pagamento não disponível" notice dialog. The invoice is NOT
+   marked as paid. The user is pointed to support to settle
+   out-of-band.
+
+New file: `src/app/api/asaas/status/route.ts` — public GET endpoint
+that returns `{ configured: boolean }`. Used by the billing page to
+decide which flow to use. Does NOT require admin (only the boolean
+flag is exposed).
+
+Modified `src/components/newmobility/billing/payment-method-dialog.tsx`
+to make it explicitly admin-only:
+- Title: "Marcar como pago (admin)" (was "Confirmar Pagamento")
+- Description: "Ação administrativa — registra a forma de pagamento e
+  marca a fatura como paga sem passar pelo gateway Asaas."
+- Helper text under the selector: "esta ação é administrativa e NÃO
+  processa um pagamento real"
+- Confirm button: amber "Marcar como Pago" (was emerald
+  "Confirmar Pagamento") so the admin visually distinguishes it from
+  a real payment.
+
+Added a new "Pagamento não disponível" Dialog at the bottom of the
+billing page. Shows the invoice summary + a clear "entre em contato
+com o suporte NewMobility" message + a "Nenhum valor foi cobrado. A
+fatura permanece pendente até que o pagamento seja confirmado pelo
+suporte" reassurance.
+
+=== 5b: R$999 invoice missing from "Pagar Faturas" ===
+
+Root cause: `src/components/newmobility/myplan/myplan-page.tsx` had a
+hardcoded `mockInvoices` array (used as a fallback for the "Histórico
+de Faturas" section) containing a fake pending R$999 plan_blue5 row.
+This row was never backed by a real DB invoice, so the billing page
+(which queries the DB via /api/billing) had nothing to show — the
+user saw a "pending R$999 invoice" on their profile but it never
+appeared in "Pagar Faturas".
+
+Fixed by:
+- Adding a `userInvoices` state variable to myplan-page.tsx.
+- Populating it from the same /api/invoices fetch the page already
+  does for the cashback-vendas block check.
+- Replacing the `mockInvoices.map(...)` in the "Histórico de Faturas"
+  section with `userInvoices.slice(0, 20).map(...)`.
+- Adding a friendly empty-state when the user has no real invoices.
+
+The billing list endpoint (`GET /api/billing`) was already correct —
+it returns ALL invoices for the user with no type/status filter that
+would hide the R$999 invoice. Verified by creating a test R$999
+invoice via POST /api/billing and confirming it appeared in the GET
+response.
+
+== Item 12: Voucher de Boas-Vindas — fixed redemption bug ==
+
+Two issues found and fixed:
+
+=== 12a: signup_bonus / plan_bonus types rejected by /api/vouchers/redeem ===
+
+The `getBalanceField()` function in
+`src/app/api/vouchers/redeem/route.ts` only handled 6 voucher types
+(mobility, food, pharmacy, shopping, gratification, paymentInvoice).
+The `signup_bonus` and `plan_bonus` types (used by the welcome voucher
+and the plan-bonus voucher) returned null, causing a 400 error:
+"Tipo de voucher inválido: signup_bonus".
+
+The by-id endpoint (`/api/vouchers/[id]/redeem`) already credits
+balanceShopping for ALL voucher types — this task brings the by-code
+endpoint into agreement by adding two new cases:
+
+  case 'signup_bonus': return 'balanceShopping'
+  case 'plan_bonus': return 'balanceShopping'
+
+Both credit `balanceShopping` (Saldo Compras) per spec §7 (non-
+withdrawable, spendable in the marketplace / app).
+
+=== 12b: Welcome voucher "Aplicar" button UX ===
+
+Three changes to `src/components/newmobility/voucher/voucher-page.tsx`:
+
+1. Updated the welcome voucher banner copy from "em Mobilidade" to
+   "em Saldo Compras" (accurate — signup_bonus credits
+   balanceShopping, not balanceMobility).
+
+2. Changed `handleApplyWelcomeVoucher` to call `handleRedeemById`
+   directly (using the voucher's database ID) instead of opening the
+   redeem-by-code dialog. This skips a dialog round-trip and uses the
+   more reliable by-id endpoint.
+
+3. Added a loading state to the "Aplicar" button (spinner + disabled)
+   while the redeem request is in-flight, and added a
+   `refreshWelcomeVoucher()` call after a successful `handleRedeemById`
+   so the welcome banner hides once the signup_bonus voucher has been
+   redeemed (the GET /voucher/generate-signup-bonus endpoint only
+   returns UNUSED signup_bonus vouchers, so it will now return null).
+
+Verified end-to-end:
+- POST /api/voucher/generate-signup-bonus { userId } → 201, creates a
+  signup_bonus voucher.
+- POST /api/vouchers/redeem { userId, code } → 200, marks voucher as
+  used, credits 1000 cents to balanceShopping. (Previously returned
+  400 "Tipo de voucher inválido: signup_bonus".)
+- POST /api/vouchers/[id]/redeem { userId } → 200, same behavior via
+  the by-id endpoint.
+
+== Verification ==
+
+- `bun run lint` on all changed files: 0 new errors.
+  (Pre-existing errors in keep-alive.js / persistent-server.js /
+  process-manager.js / run-forever.js / supervisor.js are unrelated
+  CommonJS files that predate this task.)
+- `bun x tsc --noEmit` on changed files: 0 errors.
+- Dev server compiles all changed routes cleanly (verified via
+  `tail dev.log` — no compile errors, all routes return 200/201).
+
+Files changed (11):
+
+New (2):
+- src/lib/qualifications.ts
+- src/app/api/asaas/status/route.ts
+
+Modified (9):
+- src/components/newmobility/portals/bank-page.tsx (Item 3 — verified,
+  no code changes beyond a clarifying comment)
+- src/components/newmobility/admin/admin-users-panel.tsx (Item 4)
+- src/components/newmobility/profile/personal-data-section.tsx (Item 4)
+- src/components/newmobility/auth/register-page.tsx (Item 4)
+- src/components/newmobility/billing/billing-page.tsx (Item 5)
+- src/components/newmobility/billing/payment-method-dialog.tsx (Item 5)
+- src/components/newmobility/myplan/myplan-page.tsx (Item 5)
+- src/app/api/vouchers/redeem/route.ts (Item 12)
+- src/components/newmobility/voucher/voucher-page.tsx (Item 12)
+
+Files verified (already correct, no changes needed):
+- src/app/api/user/profile/route.ts (Item 3 — PUT already persists
+  bank fields)
+- src/app/api/admin/users/[id]/route.ts (Item 4 — PUT already accepts
+  qualification field)
+- src/app/api/billing/route.ts (Item 5 — GET already returns all
+  invoices without filtering)
+- src/app/api/billing/pay/[invoiceId]/route.ts (Item 5 — POST already
+  marks as paid; the fix is in the frontend which now only lets admins
+  reach this endpoint when Asaas is not configured)
+- src/app/api/voucher/generate-signup-bonus/route.ts (Item 12 — already
+  idempotent and correct)
+- src/app/api/vouchers/[id]/redeem/route.ts (Item 12 — already credits
+  balanceShopping for all voucher types)
+- src/app/api/auth/register/route.ts (Item 12 — already calls
+  generateVoucherForUser on registration)
+
+Schema:
+- prisma/schema.prisma was NOT modified (provider kept as `sqlite`
+  per task instructions). All 4 items were addressable with code
+  changes only — no DB schema changes needed.
+
+Test data cleanup:
+- Test invoices created during verification (2 for the admin user)
+  were deleted via a one-off Prisma script.
+- Test user's bank data was reset to null.
+- Test user's qualification was reset to "motorista".
+- 2 test signup_bonus vouchers redeemed during verification remain in
+  the DB as `isUsed:true` (they correctly show in the "used" tab and
+  don't affect the welcome banner).
+
+Issues / Notes:
+- The bank save flow (Item 3) was already correct in the current code.
+  The bug report appears to have been from before commit `eba84a0`.
+  Verified end-to-end and added a clarifying comment.
+- The "R$999 invoice missing" (Item 5) was a UI artifact caused by a
+  hardcoded `mockInvoices` array in myplan-page.tsx. The billing API
+  was already correct — the fix is purely frontend (use real
+  /api/invoices data instead of mocks).
+- The voucher signup_bonus type was missing from the
+  `getBalanceField()` mapping in /api/vouchers/redeem/route.ts. The
+  by-id endpoint already credited balanceShopping for all types — this
+  task brings the by-code endpoint into agreement.
+- The PaymentMethodDialog is now admin-only (non-admin users never
+  see it — they get the "Pagamento não disponível" notice instead).
+  The dialog's copy was updated to make the administrative nature
+  explicit.
+
+---
+Task ID: 2-f
+Agent: Subagent (2-f)
+Task: Item 16 — Purchases report: replace MOCK data with real API; Item 8 — Pontuações: ensure points (not R$) for level requirements + remove mock history
+
+== Item 16: Relatórios de Compras — raw/mock → real API ==
+
+Problem:
+- `src/components/newmobility/portals/purchases-page.tsx` (159 lines) was
+  rendering 10 hardcoded mock purchases (`mockPurchases` array). No API
+  endpoint existed at `/api/purchases` or `/api/reports/purchases`.
+
+Fix:
+
+1. NEW endpoint — `src/app/api/purchases/route.ts` (GET):
+   - Required query param: `userId` (returns 400 if missing).
+   - Optional: `page`, `limit` (default 20, capped at 100),
+     `category` ('mobility' | 'pharmacy' | 'food' | 'shopping' | 'all'),
+     `fromDate` / `toDate` (ISO date strings).
+   - Fetches REAL MarketplaceOrder rows for the user via
+     `prisma.marketplaceOrder.findMany`, including order items +
+     product (for category + sellerName).
+   - Returns "treated" records (not raw DB rows):
+       { id, date (ISO), item (joined product names), category
+         (normalized to the 4 UI buckets), amount (BRL cents),
+         cashback (BRL cents), status ('paid'|'pending'|'shipped'|
+         'cancelled'|'completed'), seller }
+   - Summary block (unfiltered totals for the page header):
+       { totalSpent, totalPurchases, totalCashback, thisMonthCount,
+         thisMonthSpent }
+   - Pagination metadata: { page, limit, total, totalPages }
+   - Privacy: every query is scoped to `where: { userId }`. Never
+     exposes other users' data.
+   - Empty state: when user has no MarketplaceOrder rows, returns
+     `purchases: []` and zeroed summary so the UI shows the empty
+     state (not mock data).
+
+2. REWRITTEN `src/components/newmobility/portals/purchases-page.tsx`:
+   - DELETED the `mockPurchases` array (10 hardcoded entries) and the
+     derived `totalSpent` / `totalCashback` from mock.
+   - Added `useEffect` that fetches `/api/purchases?userId=...&limit=100`.
+   - Added `loading` state with a 6-row skeleton (using `Skeleton`
+     from `@/components/ui/skeleton`) that matches the row height of a
+     real purchase entry — no layout shift when data arrives.
+   - Added `error` state with a friendly "Não foi possível carregar
+     suas compras. Tente novamente." message.
+   - Added an explicit empty state that distinguishes between "no
+     purchases yet" (`purchases.length === 0`) and "no purchases match
+     the active filter" (`filtered.length === 0` but `purchases.length
+     > 0`). Different copy for each case.
+   - Summary header now shows THREE cards driven by the API's
+     unfiltered totals:
+       - TOTAL GASTO (totalSpent)
+       - COMPRAS (totalPurchases)
+       - COMPRAS ESTE MÊS (thisMonthCount)
+     Replaced the old "CASHBACK RECEBIDO" card with the "this month"
+     card so the user sees current-month activity at a glance.
+   - Below the filter bar, added a "filtered totals" row showing the
+     count + subtotal + cashback for the ACTIVE filter selection (so
+     the user sees both lifetime totals and filtered totals).
+   - Kept the search + category filter UI (search box + Select
+     dropdown). Filters are applied CLIENT-SIDE on top of the
+     server-returned page for instant UX (no extra round-trip per
+     filter change). Search matches both `item` and `seller`.
+   - Per-row display now shows: category badge, item name,
+     date · seller, amount, cashback (or status badge if no cashback).
+   - `disabled={loading}` on the search input + Select so users can't
+     change filters while the initial fetch is in flight.
+
+3. Verified end-to-end via curl:
+   - GET /api/purchases (no userId) → 400 `{"error":"userId is required"}`
+   - GET /api/purchases?userId=nonexistent → 200 `{purchases:[], summary:{...zeros}, pagination:{page:1,limit:20,total:0,totalPages:1}}`
+   - GET /api/purchases?userId=<real_user> → 200 with empty array
+     (test user has no marketplace orders; correct empty state).
+   - GET /api/purchases?userId=<real_user>&category=mobility&page=1&limit=5
+     → 200 (pagination + category params honored, limit clamped).
+
+== Item 8: Pontuações — monetary → points ==
+
+Audit findings:
+
+1. `src/components/newmobility/career/career-page.tsx` — ALREADY CORRECT:
+   - "Min. Pontos" displays `{formatNumber(level.pointsRequired)}` (an
+     integer, e.g. "3.400" or "500.000") — NOT `formatCurrency`. This
+     applies to:
+       * Next Rank card (line 911)
+       * Desktop timeline cards (line 1191)
+       * Mobile timeline cards (line 1302)
+       * Progress bar header (line 766: "X/Y pontos")
+   - `level.pointsRequired` is sourced from `CareerPlan.minPoints` (Int
+     field in schema.prisma) via `/api/career` — no cents conversion.
+   - The ONLY R$ displays in career-page.tsx are inside `formatReward()`
+     which intentionally formats `rewardWithdrawalCents` /
+     `rewardShoppingCents` as BRL currency (BACK-9 design: these are
+     actual cash rewards in Carteira Saque / Carteira Compras, NOT
+     points). `rewardPoints` is rendered as "X pts". This is correct
+     behavior — the task description's example "Pontos Mínimos: 3.400
+     (not R$ 34,00)" was already satisfied by the existing code.
+
+2. `src/components/newmobility/points/achievements-section.tsx` —
+   ALREADY CORRECT (fixed in prior task BACK-8):
+   - `formatProgress()` returns `${progress.toLocaleString('pt-BR')} /
+     ${targetValue.toLocaleString('pt-BR')} pts` — always pts, never R$.
+   - The `pointsReward` display shows `+{pointsReward} pts`.
+
+3. `src/components/newmobility/admin/admin-page.tsx` — ALREADY CORRECT:
+   - Career plan card (line 6012): `<p>{c.minPoints}</p>` — raw integer,
+     no `formatCurrency` call.
+   - Streak reward card (line 6096-6100): correctly distinguishes
+     `rewardType === 'cashback'` (formatCurrency) vs `points` ("X pts").
+   - Admin career-plan form uses `<Input type="number">` for minPoints
+     (no currency formatting on input).
+
+4. `src/components/newmobility/points/points-page.tsx` — MOCK HISTORY
+   REMOVED:
+   - Previously had a `mockPointHistory` array of 10 hardcoded entries
+     (Indicação Ana Paula, Compra no Shopping, etc.) used as the
+     INITIAL state for `history` and to seed `totalEarned`. This meant
+     users saw fake phantom transactions on first paint (before the
+     /api/points fetch resolved) and on fetch failure.
+   - DELETED the `mockPointHistory` array entirely.
+   - Replaced the `PointHistoryEntry` interface (which had API-internal
+     fields like `userId`, `referenceId`) with a slim normalized shape
+     `{ id, type, amount, description, date }`.
+   - Initialized `history = []` and `totalEarned = 0` (instead of the
+     mock-reduce sum).
+   - On fetch ERROR: now also resets `history = []` and `totalEarned = 0`
+     (previously kept the mock fallback on error).
+   - Added a 5-row loading skeleton (using `Skeleton` component) for
+     the history list while `loadingHistory` is true. Previously the
+     list rendered empty during loading, which felt like a bug.
+   - All point values render as raw integers: `+{entry.amount}`,
+     `{totalEarned}`, `{totalPoints}`, `{personalPoints}`,
+     `{networkPoints}`. No `formatCurrency` is ever applied to point
+     values anywhere in the points page.
+
+== Verification ==
+
+- `bun run lint` on all changed files: 0 new errors.
+  (Pre-existing errors in keep-alive.js / persistent-server.js /
+  process-manager.js / run-forever.js / supervisor.js are unrelated
+  CommonJS files that predate this task.)
+- Dev server compiles the new /api/purchases route cleanly (verified
+  via `tail dev.log` — `○ Compiling /api/purchases ...` → 200 with
+  correct JSON shape for both empty and populated cases).
+- curl tests confirm:
+  - Missing userId → 400 with error message
+  - Valid userId with no orders → 200 with empty purchases + zeroed
+    summary (drives the empty state in the UI)
+  - Valid userId + category + pagination params → 200 (params honored)
+- No R$ display leaks into the points or career pages. Every place
+  that legitimately shows BRL currency (cashback, withdrawals,
+  rewardWithdrawalCents, rewardShoppingCents, marketplace order
+  amounts, voucher amounts) is unchanged and correct.
+
+Files changed (3):
+
+New (1):
+- src/app/api/purchases/route.ts
+
+Modified (2):
+- src/components/newmobility/portals/purchases-page.tsx (rewritten —
+  removed all mock data, wired to real API, added loading skeleton +
+  empty state + summary header)
+- src/components/newmobility/points/points-page.tsx (removed
+  mockPointHistory array, replaced with empty initial state + loading
+  skeleton, added Skeleton import, reset state on fetch error)
+
+Files verified (already correct, no changes needed):
+- src/components/newmobility/career/career-page.tsx (already shows
+  pointsRequired as integer via formatNumber; only R$ displays are
+  for legitimately-cash rewardWithdrawalCents / rewardShoppingCents
+  per BACK-9 design)
+- src/components/newmobility/points/achievements-section.tsx (BACK-8
+  already replaced R$ with "X / Y pts" in formatProgress)
+- src/components/newmobility/admin/admin-page.tsx (admin career plan
+  card shows raw integer minPoints, no formatCurrency)
+- src/app/api/career/route.ts (returns minPoints as integer; mapPlan
+  does not convert to cents)
+- src/app/api/points/route.ts (returns PointTransaction rows with
+  integer amount field; no currency conversion)
+- prisma/schema.prisma (NOT modified — provider kept as `sqlite`
+  per task instructions; CareerPlan.minPoints is Int, MarketplaceOrder
+  fields unchanged)
+
+Issues / Notes:
+- The task description's example "Pontos Mínimos: 3.400 (not R$ 34,00)"
+  appears to refer to a state that was already corrected by prior
+  tasks (BACK-8 for achievements, BACK-9 for career-plan reward
+  separation). Audited all points/career/achievements surfaces and
+  confirmed no current code path renders minPoints as currency.
+- The main residual mock-data leak was the `mockPointHistory` array in
+  points-page.tsx, which has now been removed. The remaining
+  `FALLBACK_HOW_TO_EARN` array is intentionally kept — it's a default
+  config (point values per action) that the /api/points/config endpoint
+  overrides, NOT user-specific transaction data.
+- The new /api/purchases endpoint reads from MarketplaceOrder (the
+  authoritative source for "purchases" in the platform). The existing
+  /api/financial/transactions endpoint remains untouched (it serves a
+  different purpose — the financial transactions ledger covering all
+  transaction types, not just purchases).
+- When the test user (cmq1a3jptvl36d9ct9xj2bik5) has zero
+  MarketplaceOrder rows, the UI correctly shows the empty state with
+  "Nenhuma compra realizada ainda" + "Suas compras no marketplace
+  aparecerão aqui." — no mock data leak.
+
+---
+Task ID: 2-e (verification + Item 5 hardening)
+Agent: Main Agent — Bank update (Item 3) + Qualificação (Item 4) + Pagar Fatura (Item 5) + Voucher (Item 12)
+
+Scope
+
+This pass re-verified the four backlog items previously addressed under
+task 2-e (see prior worklog entry `Task ID: 2-e`), and added one
+important backend hardening for Item 5 that the prior pass left as a
+frontend-only restriction.
+
+Files changed in this pass (2)
+
+1. `src/app/api/billing/pay/[invoiceId]/route.ts` — Item 5 hardening.
+   The prior pass changed the frontend (`billing-page.tsx`) so that
+   non-admin users no longer reach the manual mark-as-paid flow — they
+   see a "Pagamento não disponível" dialog when Asaas is not configured
+   (admin override stays via `PaymentMethodDialog`). However, the
+   backend endpoint at `POST /api/billing/pay/[invoiceId]` still
+   accepted calls from the invoice OWNER (any non-admin user), so a
+   malicious user could bypass the frontend restriction and mark their
+   own invoice as paid by POSTing directly to the endpoint. This is
+   exactly the bug the task description calls out: "Pagar Fatura must
+   NOT instantly mark as paid … Keep manual 'Marcar como pago' ONLY
+   for admin."
+
+   Fix: the endpoint is now ADMIN-ONLY. The previous ownership check
+   (`if (invoice.userId !== targetUserId && !isAdmin) return 403`) was
+   replaced with a stricter check that rejects every non-admin caller
+   (even the invoice owner) with a clear 403 message:
+     "Apenas administradores podem marcar faturas como pagas
+      manualmente. Para pagar sua fatura, use o gateway de pagamento
+      Asaas (PIX / Boleto / Cartão)."
+   The legitimate path for a non-admin user to mark an invoice paid is
+   the Asaas webhook (`POST /api/asaas/webhook`), which Asaas calls
+   when the user actually pays the PIX QR / Boleto / credit card.
+
+   Also updated the file-header comment to reflect the new policy
+   (admin-only — real payment confirmation goes through the Asaas
+   webhook).
+
+2. `src/app/api/admin/users/[id]/route.ts` — Item 4 comment refresh.
+   Updated the inline comment for the `qualification` field to
+   enumerate the 10 business-relevant options expanded under task 2-e
+   (motorista, entregador, cliente, lojista, mototaxista, motofretista,
+   motorista_app, taxista, caminhoneiro, outros) and to note that
+   legacy codes (passageiro / passageiro_60 / passageiro_pcd / comercio)
+   are still accepted and rendered with friendly labels by
+   `qualificationLabel()`. Behaviour is unchanged — the PUT already
+   persisted `qualification` (and `qualification || null` for the empty
+   case) before this pass.
+
+Verification (end-to-end curl tests against the running dev server)
+
+Item 3 — Bank update (verified, no code change needed):
+
+  PUT /api/user/profile { userId, bankCode:"341", bankAgency:"1234",
+    bankAccount:"56789-0", bankType:"cc", pixKey:"test@pix.com",
+    pixEnabled:true } → 200, returns the saved values.
+
+  GET /api/user/profile?userId=... → returns the same saved values
+    (bankCode:"341", bankAgency:"1234", bankAccount:"56789-0",
+    bankType:"cc", pixKey:"test@pix.com", pixEnabled:true).
+
+  PUT /api/user/profile { ...all bank fields null... } → 200, returns
+    bankCode:null, etc. (cleanup).
+
+  The `bank-page.tsx` frontend already hydrates from
+  `/api/user/profile?userId=...` on mount, sends all 6 bank fields on
+  PUT, hydrates from the PUT response, and updates the Zustand store.
+  The bug report appears to have been from before a prior fix; the
+  flow works end-to-end.
+
+Item 4 — Qualificação (verified, no code change needed beyond comment):
+
+  PUT /api/admin/users/[id] { userId:admin, qualification:"mototaxista" }
+    → 200, returns user with qualification:"mototaxista".
+
+  GET /api/user/profile?userId=... → returns qualification:"mototaxista"
+    (persists across reads).
+
+  PUT /api/admin/users/[id] { qualification:"motorista" } → 200
+    (reset back to the original value).
+
+  The admin "Editar Usuário" dialog (`admin-users-panel.tsx`),
+  backoffice "Dados Pessoais" card (`personal-data-section.tsx`), and
+  self-registration dropdown (`register-page.tsx`) all import the
+  shared `QUALIFICATION_OPTIONS` constant from `@/lib/qualifications`
+  and render all 10 options. Legacy codes still resolve to friendly
+  labels via `qualificationLabel()`.
+
+Item 5 — Pagar Fatura (hardened backend + verified):
+
+  GET /api/asaas/status?userId=test-user → { configured:false }
+    (Asaas not configured in this environment, so the billing page
+    shows the "Pagamento não disponível" notice to non-admin users
+    and the admin manual "Marcar como pago" override for admins).
+
+  POST /api/billing { userId, type:"plan_test", amount:99900,
+    dueDate:"2026-09-30", description:"Test R$999 invoice" } → 201,
+    creates the R$999 invoice (this is the "missing R$999 invoice"
+    scenario — confirms the API accepts and persists any positive
+    amount).
+
+  GET /api/billing?userId=... → returns the new invoice in the
+    pending group; summary { total:1, pending:1, overdue:0, paid:0 }.
+    Confirms the listing returns ALL pending invoices — no filter
+    hides the R$999 row.
+
+  POST /api/billing/pay/<id> { userId:<non-admin invoice owner>,
+    paymentMethod:"pix" } → 403 with the new admin-only message.
+    (Previously returned 200 and marked the invoice as paid.)
+
+  POST /api/billing/pay/<id> { userId:<admin>, paymentMethod:"pix" }
+    → 200, marks invoice as paid (status:"paid", paymentMethod:"pix",
+    paidAt set) AND auto-creates the next month's renewal invoice
+    ("Test R$999 invoice (renovação mensal)").
+
+  GET /api/billing?userId=... → summary { total:2, pending:1, paid:1 }
+    (1 paid original + 1 pending renewal).
+
+  Cleanup: deleted the 2 test invoices, the test plan_bonus voucher,
+  and the related notifications.
+
+  The billing-page.tsx frontend already (a) calls
+  `/api/billing/ensure-monthly` on page load to auto-generate any
+  missing monthly plan invoice (the "R$999 invoice missing" root
+  cause — the mockInvoices array in myplan-page.tsx was the actual
+  source of the phantom R$999 row, and that has been replaced with
+  real /api/invoices data in a prior pass); (b) fetches Asaas status
+  in parallel; (c) routes the "Pagar" click through the 4-case
+  handlePay (existing Asaas payment → view dialog; Asaas configured
+  → create Asaas payment dialog; admin without Asaas → manual
+  PaymentMethodDialog; non-admin without Asaas → "Pagamento não
+  disponível" notice, NO mark-paid call).
+
+Item 12 — Voucher (verified, no code change needed):
+
+  POST /api/voucher/generate-signup-bonus { userId } → 201, creates
+    a signup_bonus voucher (R$10,00 = 1000 cents for "usuario"
+    userType; gratuito=R$5, motorista=R$20, etc.).
+
+  GET /api/vouchers?userId=... → returns the new voucher in the
+    active list; totalActive reflects the amount.
+
+  POST /api/vouchers/<id>/redeem { userId } → 200, marks voucher as
+    used, credits 1000 cents to balanceShopping. Returns the new
+    balance (1000) and the balanceName ("Saldo Compras").
+
+  GET /api/user/profile?userId=... → balanceShopping:1000 (was 0
+    before redeem).
+
+  POST /api/voucher/generate-signup-bonus { userId } → 201 (creates
+    a fresh signup_bonus voucher — idempotency only applies while an
+    UNUSED signup_bonus voucher exists).
+
+  POST /api/vouchers/redeem { userId, code:"NM-XXXX-XXXX" } → 200,
+    marks the by-code voucher as used, credits 1000 cents to
+    balanceShopping. (Previously returned 400 "Tipo de voucher
+    inválido: signup_bonus"; the prior pass added `signup_bonus`
+    and `plan_bonus` cases to `getBalanceField()` so this now works.)
+
+  GET /api/voucher/generate-signup-bonus?userId=... → { voucher:null }
+    after redeem (the GET only returns UNUSED signup_bonus vouchers,
+    so the welcome banner hides its "Aplicar" button after a
+    successful redeem).
+
+  Registration flow (`/api/auth/register`) already auto-generates a
+  signup_bonus voucher sized to "gratuito" (R$5,00) on new account
+  creation, plus a welcome notification. No change needed.
+
+  Cleanup: deleted the 2 test vouchers, reset balanceShopping to 0,
+  deleted the related voucher_redeem transactions and notifications.
+
+Lint / TypeScript
+
+  `bun run lint` on all changed files: 0 new errors. (Pre-existing
+  errors in keep-alive.js / persistent-server.js / process-manager.js
+  / run-forever.js / supervisor.js are unrelated CommonJS files that
+  predate this task.)
+
+  `bun x tsc --noEmit` on the changed files: 0 errors. (Pre-existing
+  errors in `src/app/api/admin/users/[id]/pix/route.ts` reference a
+  `pixKeyType` column that was never added to the Prisma schema —
+  unrelated to this task and not touched.)
+
+  Dev server compiles all routes cleanly (verified via `tail dev.log`
+  — `○ Compiling /api/asaas/status ...` → 200; `POST /api/billing/pay
+  /... → 403` for non-admin, `200` for admin; all other routes
+  return 200/201 with correct JSON shapes).
+
+Schema
+
+  `prisma/schema.prisma` was NOT modified (provider kept as `sqlite`
+  per task instructions). All 4 items were addressable with code
+  changes only:
+    - User.bankCode/bankAgency/bankAccount/bankType/pixKey/pixEnabled
+      already existed.
+    - User.qualification already existed (String?).
+    - Invoice model already had `paymentMethod` column.
+    - Voucher model already had `type` column.
+
+Issues / Notes
+
+- Item 3 (bank save): the prior worklog entry already noted this was
+  fixed in commit `eba84a0`. Re-verified end-to-end with curl —
+  PUT persists, GET returns the saved values, frontend hydrates
+  correctly. No code change needed.
+
+- Item 4 (qualification): the prior worklog entry already moved the
+  dropdown to the shared `@/lib/qualifications` constant with 10
+  options. Re-verified the admin PUT persists `qualification` and
+  the GET returns the saved value. Only change in this pass was a
+  comment refresh in the admin user route to enumerate the 10
+  options (the prior inline comment still mentioned the old 6
+  codes).
+
+- Item 5 (Pagar Fatura): the prior pass changed the frontend but
+  left the backend endpoint callable by invoice owners. This pass
+  closes that loophole — `POST /api/billing/pay/[invoiceId]` is
+  now admin-only, with a clear 403 message pointing non-admins to
+  the Asaas payment flow. The Asaas webhook remains the only
+  legitimate path for non-admin users to mark an invoice paid.
+
+- Item 12 (voucher): the prior pass added `signup_bonus` and
+  `plan_bonus` to the `getBalanceField()` mapping in
+  `/api/vouchers/redeem` (by-code endpoint). Re-verified both
+  endpoints (by-id and by-code) credit balanceShopping correctly
+  for signup_bonus vouchers, and that the welcome banner hides
+  after a successful redeem. No code change needed.
+
+- The R$999 invoice "missing" report was a UI artifact (mockInvoices
+  in myplan-page.tsx). The prior pass replaced the mock array with
+  real /api/invoices data. Confirmed by creating a real R$999
+  invoice via the API and seeing it appear in the billing list —
+  the listing returns ALL pending invoices with no type/amount
+  filter that would hide any row.
+
+- Test data created during verification (2 test invoices for the
+  test user, 2 test signup_bonus vouchers, related transactions +
+  notifications) was cleaned up after testing. The test user's
+  bank data, qualification, and balances were reset to their
+  pre-test state.
+
+---
+Task ID: BACKLOG-21-ITEMS
+Agent: Main Orchestrator + 6 subagents (2-a through 2-f)
+Task: Resolver 21 itens do backoffice + 9 itens do admin NewMobility (revisão completa)
+
+Work Log (orchestrator direct fixes):
+- Item 1 (Dashboard "ESTA PONTOS"): Investigado via agent-browser. O Detalhamento de Ganhos mostrava "—" na coluna Valor Total para "Pontos de Carreira". Corrigido para mostrar "X pts" (ex: "300 pts") tornando o campo informativo. Labels verificadas como corretas.
+- Item 11 (Cashback layout overlap): matrix-visualization.tsx — adicionado `z-10` ao CardContent e `pointer-events-none` ao overlay shimmer para garantir que o texto fique sempre acima da animação.
+- Item 20 (Indicador→Financeiro): i18n.ts — corrigido `sidebar.financial` de "Indicador" para "Financeiro" (PT), `financial.title` de "Indicador" para "Financeiro", `mobileNav.financial` de "Indicador" para "Financeiro".
+- Item 14 (Apps 404): Verificado via agent-browser — links apontam para /mobile/login, /motorista/login, /lojista/login, /admingeral/login. Sem 404.
+- Item 15 (KYC selfie): Verificado via agent-browser — "Selfie com Documento" aparece como 6º tipo de documento. Corrigido texto "5 documentos" para "todos os documentos".
+- Item 19 (Matrizes): Documentado como PENDENTE — requer validação de regra de negócio (spillover R$96.500/R$750.000, nomenclatura "Vendas").
+
+Subagent work:
+- Task 2-a (Plano de Carreira): Verificado JÁ IMPLEMENTADO por agente anterior. Separação de campos (minPoints, rewardWithdrawalCents, rewardShoppingCents, rewardPoints, gratification) confirmada. Pequena melhoria: gratification text snapshot no claim.
+- Task 2-b (Meu Plano + Simulador): Blue3 corrigido para 3 níveis (não 5). Valores N1-N3 adicionados (R$200/R$1.600/R$6.400). Mensalidade R$999,90. Cashback Vendas bloqueado para Blue3 e para usuários com fatura em aberto. Simulador reescrito: planos Premium 1-5 (99-1999) removidos, substituídos por Gratuito/Blue3/Blue5 (R$999,90). Bases CashBack corretas (999/1399/199,90).
+- Task 2-c (Metas + Gratificações + i18n): Metas restrito a motorista/entregador via SystemConfig. Admin config screen criada. "Criar Gratificações" verificado como funcional. Tradução de nomenclatura inglesa verificada (CATEGORY_LABELS já aplicado).
+- Task 2-d (Admin features): Telemedicina separado do TalkMobi no admin. Permissões: fluxo de login/senha com reset password. Conquistas: 14 variáveis listadas com descrições. Recompensa de Sequência: divergência corrigida (formatBRL em vez de pontos).
+- Task 2-e (Profile + Bank + Billing + Voucher): Bank update verificado como funcional. Qualificação com 10 opções no admin. Billing: auto-marcar como pago bloqueado para não-admins (apenas Asaas ou admin). R$999 invoice aparece na listagem. Voucher signup auto-gerado, redemption credita balanceShopping.
+- Task 2-f (Purchases + Pontuações): Purchases page reescrita sem MOCK — API real /api/purchases criada. Pontuações: mockPointHistory removido, valores em pontos (não R$).
+
+Stage Summary:
+- 29 de 30 itens resolvidos (apenas Item 19 - Matrizes - pendente por regra de negócio).
+- Commit será pushed para origin/main.
+- Lint: apenas 13 erros require() preexistentes em .js root (nenhum novo).
+- Schema: postgresql (para LipeHost). Local dev usado sqlite temporariamente.
+- ATENÇÃO: rodar `bun run db:push` na LipeHost antes do redeploy se houver mudanças de schema (não houve mudanças de schema neste session — apenas código).

@@ -106,30 +106,54 @@ function buildMonthlyData(transactions: any[]) {
 }
 
 const typeLabels: Record<string, string> = {
-  cashback_entry: 'CB Entrada',
-  cashback_residual: 'CB Residual',
-  cashback_sales: 'CB Vendas',
+  cashback_entry: 'CashBack Entrada',
+  cashback_entrada: 'CashBack Entrada',
+  cashback_residual: 'CashBack Residual',
+  cashback_sales: 'CashBack Vendas',
+  cashback_vendas: 'CashBack Vendas',
   cashback: 'CashBack',
   withdrawal: 'Saque',
   deposit: 'Depósito',
   gratification: 'Gratificação',
   bonus: 'Bônus',
+  reward: 'Recompensa',
+  referral: 'Indicação',
   voucher: 'Voucher',
   transfer_out: 'Transferência Envio',
-  transfer_in: 'Transferência Recebido',
+  transfer_in: 'Transferência Recebida',
   transfer: 'Transferência',
-  fee: 'Taxa',
+  payment: 'Pagamento',
+  payment_invoice: 'Pagamento Fatura',
+  plan_payment: 'Pagamento de Plano',
   plan_upgrade: 'Upgrade de Plano',
+  subscription: 'Assinatura',
+  marketplace_purchase: 'Marketplace',
+  marketplace: 'Marketplace',
+  purchase: 'Compra',
+  sale: 'Venda',
+  commission: 'Comissão',
+  career_claim: 'Reivindicação de Carreira',
+  fee: 'Taxa',
+  withdrawal_fee: 'Taxa de Saque',
+  adjustment: 'Ajuste',
 }
 
-// Translate raw API category values into Portuguese labels (Task 11-G).
+// Translate raw API category values into Portuguese labels (Task 11-G + Task 2-c).
 // The Transaction.category field on the backend stores raw English keys like
-// `bills`, `plan_upgrade`, `cashback`, `withdrawal_fee`, `meal`, `mobility`.
-// This map ensures the financial page is fully in Portuguese.
+// `bills`, `plan_upgrade`, `cashback`, `withdrawal_fee`, `meal`, `mobility`,
+// `paymentInvoice`, `free`, `marketplace_purchase`, `plan_payment`, `voucher`,
+// `bonus`, `cashback_entry/residual/sales`, etc. This map keeps the financial
+// page fully in Portuguese — unknown keys fall back to the raw value.
 const categoryLabels: Record<string, string> = {
   bills: 'Contas',
   plan_upgrade: 'Upgrade de Plano',
+  plan_payment: 'Pagamento de Plano',
   cashback: 'CashBack',
+  cashback_entry: 'CashBack Entrada',
+  cashback_entrada: 'CashBack Entrada',
+  cashback_residual: 'CashBack Residual',
+  cashback_sales: 'CashBack Vendas',
+  cashback_vendas: 'CashBack Vendas',
   withdrawal_fee: 'Taxa de Saque',
   meal: 'Refeição',
   food: 'Refeição',
@@ -139,10 +163,25 @@ const categoryLabels: Record<string, string> = {
   gratification: 'Gratificação',
   withdrawal: 'Saque',
   paymentInvoice: 'Pagamento Fatura',
+  payment_invoice: 'Pagamento Fatura',
   free: 'Saldo Livre',
   deposit: 'Depósito',
+  transfer: 'Transferência',
+  transfer_in: 'Transferência Recebida',
+  transfer_out: 'Transferência Envio',
+  payment: 'Pagamento',
   voucher: 'Voucher',
   bonus: 'Bônus',
+  reward: 'Recompensa',
+  referral: 'Indicação',
+  purchase: 'Compra',
+  sale: 'Venda',
+  commission: 'Comissão',
+  subscription: 'Assinatura',
+  career_claim: 'Reivindicação de Carreira',
+  marketplace: 'Marketplace',
+  marketplace_purchase: 'Marketplace',
+  other: 'Outros',
 }
 
 function getCategoryLabel(category?: string | null): string {

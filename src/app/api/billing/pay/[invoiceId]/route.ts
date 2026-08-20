@@ -10,13 +10,17 @@ import { generateVoucherForUser } from '@/lib/voucher'
 // plan slug like 'blue3' / 'blue5') and user.isActive = true (un-blocks the
 // user since they just regularised their account).
 //
-// This is a manual "mark as paid" endpoint. Real Asaas payment confirmation
-// is handled elsewhere (via the Asaas webhook); this endpoint is the
-// fallback used by the billing page when an invoice has no `asaasPaymentId`.
+// Task 2-e (Item 5): this endpoint is now ADMIN-ONLY. Real Asaas payment
+// confirmation is handled by the Asaas webhook (/api/asaas/webhook), which
+// is the ONLY legitimate way for a non-admin user to mark their invoice
+// paid (Asaas calls the webhook when the user actually pays the PIX QR /
+// Boleto / credit card). Allowing invoice owners to mark their own
+// invoices paid through this endpoint would let any user bypass payment
+// entirely by POSTing here directly — that defeats the whole billing flow.
 //
 // Body (optional):
 //   { userId, paymentMethod }
-//     - `userId`        — when supplied by an admin/system caller.
+//     - `userId`        — admin caller id (required for session resolution).
 //     - `paymentMethod` — one of 'pix' | 'boleto' | 'credit_card'. Stored on
 //                         the Invoice row (the schema already has this column)
 //                         so the UI can show a "Pago via PIX" badge. When
@@ -58,14 +62,20 @@ export async function POST(
       return error('Invoice not found', 404)
     }
 
-    // Ownership check: only the invoice owner (or an admin) may mark it paid.
+    // Ownership check: only an admin may call this endpoint (Task 2-e Item 5).
+    // Real users must pay through Asaas, which confirms via the webhook.
+    // Non-admin callers — even the invoice owner — are rejected.
     const caller = await prisma.user.findUnique({ where: { id: targetUserId } })
     if (!caller) {
       return error('Caller not found', 404)
     }
     const isAdmin = caller.role === 'admin'
-    if (invoice.userId !== targetUserId && !isAdmin) {
-      return error('Forbidden: invoice does not belong to caller', 403)
+    if (!isAdmin) {
+      return error(
+        'Apenas administradores podem marcar faturas como pagas manualmente. ' +
+          'Para pagar sua fatura, use o gateway de pagamento Asaas (PIX / Boleto / Cartão).',
+        403
+      )
     }
 
     // Normalize the chosen payment method. Reject unknown values so we

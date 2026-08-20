@@ -192,6 +192,16 @@ export function AdminPermissionsPanel() {
                 um novo usuário com acesso ao painel, vá na aba <strong>Usuários</strong> e clique em{' '}
                 <strong>&quot;Criar Usuário&quot;</strong>.
               </p>
+              {/* ADM-4 — Item 4: short hint about the password reset action
+                  available on each user row in the Users tab. */}
+              <p className="text-xs text-foreground/80 leading-relaxed pt-1 border-t border-emerald-200/60 dark:border-emerald-800/60">
+                <KeyRound className="h-3 w-3 inline -mt-0.5 mr-1 text-emerald-600" />
+                Esqueceu a senha de um usuário? Na aba <strong>Usuários</strong>, clique no botão{' '}
+                <strong>&quot;Senha&quot;</strong> na coluna de ações da linha correspondente para redefinir
+                a senha. Você pode digitar uma nova senha ou clicar em <strong>&quot;Gerar senha&quot;</strong>{' '}
+                para criar uma aleatória. As credenciais (email + nova senha) serão exibidas em seguida para
+                você compartilhar com o usuário.
+              </p>
             </div>
           </div>
         </CardContent>

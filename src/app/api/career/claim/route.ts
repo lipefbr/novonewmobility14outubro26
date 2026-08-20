@@ -113,11 +113,19 @@ export async function POST(req: NextRequest) {
           // still get a sensible number.
           amount: withdrawalCents + shoppingCents,
           category: 'career',
+          // `description` keeps the `[plan:ID] Name` format used for the
+          // idempotency lookup. The free-text gratification bonus description
+          // (item 9.4) is stored in `qualification` so admins have a full
+          // audit trail of which bonus was paid out at the time of the claim
+          // (the plan's gratification text may be edited later by an admin,
+          // so we snapshot it here).
           description: buildClaimDescription(planId, plan.name),
           isClaimed: true,
           claimedAt: new Date(),
           frequency: 'one_time',
-          qualification: `Plano de Carreira: ${plan.name}`,
+          qualification: plan.gratification
+            ? `Plano de Carreira: ${plan.name} — ${plan.gratification}`
+            : `Plano de Carreira: ${plan.name}`,
         },
       }),
     ])

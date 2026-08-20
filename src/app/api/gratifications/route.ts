@@ -29,14 +29,14 @@ const STATIC_FALLBACK_GRATIFICATIONS = [
     name: 'Férias 6 Meses',
     amount: 500000, // R$ 5.000 + 10 dias
     category: 'vacation',
-    description: 'R$ 5.000 + 10 dias de férias. One-time aos 6 meses de cadastro ativo.',
+    description: 'R$ 5.000 + 10 dias de férias. Único aos 6 meses de cadastro ativo.',
   },
   {
     type: 'vacation_12mo',
     name: 'Férias 12 Meses',
     amount: 2000000, // R$ 20.000 + 20 dias
     category: 'vacation',
-    description: 'R$ 20.000 + 20 dias de férias. One-time aos 12 meses de cadastro ativo.',
+    description: 'R$ 20.000 + 20 dias de férias. Único aos 12 meses de cadastro ativo.',
   },
   {
     type: 'driver_daily_goal',
@@ -57,7 +57,7 @@ const STATIC_FALLBACK_GRATIFICATIONS = [
     name: 'Prêmio CashBack Gratificação',
     amount: 1500000, // R$ 15.000
     category: 'prize',
-    description: 'R$ 15.000 — One-time ao fechar equipe com 1.364 usuários.',
+    description: 'R$ 15.000 — Único ao fechar equipe com 1.364 usuários.',
   },
 ]
 

@@ -6,6 +6,15 @@ import { success, error } from '@/lib/api-utils'
 // IMPORTANT (client spec §7): vouchers are "SOMENTE PARA USO - NÃO PODE SER SACADO",
 // meaning they MUST NEVER credit the withdrawable balance (balanceWithdrawal).
 // Only usage-restricted wallets are valid destinations for voucher redemptions.
+//
+// Task 2-e (Item 12): added `signup_bonus` and `plan_bonus` mappings. Both
+// credit `balanceShopping` (Saldo Compras) — the welcome/plan-bonus voucher
+// is intended for general in-app usage (marketplace / mobility / shopping)
+// and shopping is the most permissive non-withdrawable wallet. Previously
+// these two types returned null which caused a "Tipo de voucher inválido"
+// error when a user tried to redeem the welcome voucher by code (the
+// /api/vouchers/[id]/redeem endpoint already credits balanceShopping for
+// every type, so this brings the two endpoints into agreement).
 function getBalanceField(voucherType: string): string | null {
   switch (voucherType) {
     case 'mobility': return 'balanceMobility'
@@ -14,6 +23,10 @@ function getBalanceField(voucherType: string): string | null {
     case 'shopping': return 'balanceShopping'
     case 'gratification': return 'balanceGratification'
     case 'paymentInvoice': return 'balancePaymentInvoice'
+    // Welcome / plan-bonus vouchers credit Saldo Compras (non-withdrawable
+    // per spec §7) so the user can spend them in the marketplace / app.
+    case 'signup_bonus': return 'balanceShopping'
+    case 'plan_bonus': return 'balanceShopping'
     // 'withdrawal' and 'cashback' are intentionally NOT allowed — vouchers cannot
     // credit the withdrawable wallet.
     default:

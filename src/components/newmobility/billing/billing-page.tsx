@@ -5,6 +5,14 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { useStore } from '@/lib/store'
@@ -32,6 +40,7 @@ import {
   Loader2,
   Receipt,
   ShieldAlert,
+  ShieldCheck,
   Wallet,
 } from 'lucide-react'
 
@@ -132,23 +141,42 @@ const BUCKET_ORDER: InvoiceBucket[] = ['plan', 'cashback', 'telemedicina', 'tele
 
 export function BillingPage() {
   const { user } = useStore()
+  const isAdmin = user?.role === 'admin'
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<BillingResponse | null>(null)
   const [payingId, setPayingId] = useState<string | null>(null)
 
-  // AsaasPaymentDialog state — opened by the "Pagar" button when the invoice
-  // already has an `asaasPaymentId` (otherwise we open the PaymentMethodDialog
-  // below to collect PIX/Boleto/Cartão BEFORE marking it as paid).
+  // Task 2-e (Item 5): fetch whether the Asaas gateway is configured.
+  // When true, the "Pagar" button opens the AsaasPaymentDialog (real
+  // PIX/Boleto payment). When false, we show a clear "Pagamento não
+  // disponível — entre em contato com o suporte" message instead of
+  // silently marking the invoice as paid. Admins additionally get a
+  // "Marcar como pago (admin)" manual override button.
+  const [asaasConfigured, setAsaasConfigured] = useState<boolean | null>(null)
+
+  // AsaasPaymentDialog state — opened by the "Pagar" button when the
+  // invoice already has an `asaasPaymentId` OR when Asaas is configured
+  // and the user is paying a fresh invoice (Task 2-e Item 5: previously
+  // the fresh-invoice path opened PaymentMethodDialog which silently
+  // marked the invoice as paid — now it routes through Asaas too).
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [paymentInvoice, setPaymentInvoice] = useState<BillingInvoice | null>(null)
 
-  // PaymentMethodDialog state — per BACK-5, clicking "Pagar" on an invoice
-  // without an `asaasPaymentId` no longer marks it paid instantly. Instead
-  // we open this dialog so the user picks a method + reviews the amount/due
-  // date before confirming.
+  // PaymentMethodDialog state — Task 2-e (Item 5): now used ONLY for the
+  // admin-only "Marcar como pago (admin)" flow. Non-admin users never
+  // see this dialog. It records the chosen paymentMethod on the Invoice
+  // row (for audit) and marks the invoice as paid without going through
+  // the Asaas gateway.
   const [methodDialogOpen, setMethodDialogOpen] = useState(false)
   const [methodDialogInvoice, setMethodDialogInvoice] = useState<BillingInvoice | null>(null)
   const [methodDialogLoading, setMethodDialogLoading] = useState(false)
+
+  // Task 2-e (Item 5): "Pagamento não disponível" notice dialog shown to
+  // non-admin users when Asaas is not configured. Replaces the old
+  // silent mark-as-paid behavior — the user is now explicitly told that
+  // payment can't be processed and pointed to support.
+  const [unavailableDialogOpen, setUnavailableDialogOpen] = useState(false)
+  const [unavailableDialogInvoice, setUnavailableDialogInvoice] = useState<BillingInvoice | null>(null)
 
   // --------------------------------------------------------------------------
   // Data loading
@@ -186,6 +214,29 @@ export function BillingPage() {
     }
   }, [user?.id])
 
+  // Task 2-e (Item 5): fetch the Asaas gateway status once on mount. We
+  // intentionally do NOT block the billing list on this — both fetches run
+  // in parallel. If the status check fails we default to `false` (i.e.
+  // show the "Pagamento não disponível" notice), which is safer than
+  // silently letting the user click through to a broken Asaas dialog.
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await apiFetch<{ configured: boolean }>(
+          `/asaas/status?userId=${user.id}`
+        )
+        if (!cancelled) setAsaasConfigured(Boolean(res?.configured))
+      } catch {
+        if (!cancelled) setAsaasConfigured(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
+
   useEffect(() => {
     refresh()
   }, [refresh])
@@ -210,32 +261,61 @@ export function BillingPage() {
   }, [user?.id])
 
   // --------------------------------------------------------------------------
-  // Pay handler — per BACK-5, this now opens the PaymentMethodDialog BEFORE
-  // marking the invoice as paid. The actual mark-as-paid call is performed
-  // by `handleConfirmPayment` once the user picks PIX/Boleto/Cartão.
+  // Pay handler — Task 2-e (Item 5):
+  //   1. If the invoice already has an asaasPaymentId, open the
+  //      AsaasPaymentDialog to show the existing PIX/Boleto details.
+  //   2. If Asaas is configured, open the AsaasPaymentDialog to create a
+  //      REAL Asaas payment (PIX QR code or Boleto barcode). The invoice
+  //      is only marked as paid after the Asaas webhook confirms payment.
+  //   3. If Asaas is NOT configured AND the user is an admin, open the
+  //      PaymentMethodDialog as a manual "Marcar como pago (admin)"
+  //      override. The chosen paymentMethod is recorded on the Invoice.
+  //   4. If Asaas is NOT configured AND the user is not an admin, show a
+  //      "Pagamento não disponível" notice — the invoice is NOT marked as
+  //      paid. The user is pointed to support to settle out-of-band.
   // --------------------------------------------------------------------------
   const handlePay = useCallback(
     async (invoice: BillingInvoice) => {
-      // If the invoice has an existing Asaas payment, open the dialog to
-      // show the PIX/Boleto details (or to verify status).
+      // Case 1: invoice already has an Asaas payment — open the dialog in
+      // "view existing payment" mode.
       if (invoice.asaasPaymentId) {
         setPaymentInvoice(invoice)
         setPaymentDialogOpen(true)
         return
       }
 
-      // Otherwise open the payment-method selection dialog. The user must
-      // explicitly confirm a method before the invoice is marked as paid.
-      setMethodDialogInvoice(invoice)
-      setMethodDialogOpen(true)
+      // Case 2: Asaas is configured — open the AsaasPaymentDialog so the
+      // user picks PIX or Boleto and gets a real payment instrument (QR
+      // code or barcode). The invoice stays pending until Asaas confirms.
+      if (asaasConfigured) {
+        setPaymentInvoice(invoice)
+        setPaymentDialogOpen(true)
+        return
+      }
+
+      // Case 3: Asaas not configured + admin → manual mark-as-paid. The
+      // admin picks a paymentMethod (PIX/Boleto/Cartão) for audit purposes
+      // and the invoice is marked as paid directly.
+      if (isAdmin) {
+        setMethodDialogInvoice(invoice)
+        setMethodDialogOpen(true)
+        return
+      }
+
+      // Case 4: Asaas not configured + non-admin → show the "not
+      // available" notice. The invoice is NOT marked as paid.
+      setUnavailableDialogInvoice(invoice)
+      setUnavailableDialogOpen(true)
     },
-    []
+    [asaasConfigured, isAdmin]
   )
 
-  // Called by PaymentMethodDialog when the user confirms a payment method.
-  // Calls POST /api/billing/pay/[id] with the chosen paymentMethod in the
-  // body. The API marks the invoice as paid AND stores paymentMethod on the
-  // Invoice record (the schema already has that column).
+  // Called by PaymentMethodDialog when an admin confirms the manual
+  // mark-as-paid override. Hits POST /api/billing/pay/[id] with the chosen
+  // paymentMethod. The endpoint marks the invoice as paid AND stores
+  // paymentMethod on the Invoice row (the schema already has that column).
+  // This path is admin-only — non-admin users never reach it because
+  // `handlePay` routes them to the unavailable-dialog instead.
   const handleConfirmPayment = useCallback(
     async (method: PaymentMethod) => {
       const invoice = methodDialogInvoice
@@ -248,15 +328,18 @@ export function BillingPage() {
           body: JSON.stringify({ userId: user?.id, paymentMethod: method }),
         })
         const methodLbl = paymentMethodLabel(method) ?? method
-        toast.success(`Pagamento de ${formatBRL(Number(invoice.amount) || 0)} confirmado via ${methodLbl}`, {
-          description: `Fatura de ${bucketLabel(invoice.bucket)} marcada como paga.`,
-        })
+        toast.success(
+          `Fatura marcada como paga (admin) via ${methodLbl}`,
+          {
+            description: `${formatBRL(Number(invoice.amount) || 0)} · ${bucketLabel(invoice.bucket)}`,
+          }
+        )
         setMethodDialogOpen(false)
         setMethodDialogInvoice(null)
         await refresh()
       } catch (err) {
-        console.error('Failed to mark invoice as paid', err)
-        toast.error('Erro ao processar pagamento', {
+        console.error('Failed to mark invoice as paid (admin)', err)
+        toast.error('Erro ao marcar fatura como paga', {
           description: err instanceof Error ? err.message : 'Tente novamente.',
         })
       } finally {
@@ -420,9 +503,11 @@ export function BillingPage() {
       />
 
       {/* ---------------------------------------------------------------- */}
-      {/* Payment-method selection dialog (BACK-5)                         */}
-      {/* Opens for invoices without an `asaasPaymentId`. The user must    */}
-      {/* pick PIX / Boleto / Cartão before the invoice is marked as paid. */}
+      {/* Payment-method selection dialog (Task 2-e Item 5)                */}
+      {/* Admin-only "Marcar como pago (admin)" override. Opens when an    */}
+      {/* admin clicks "Pagar" on an invoice that has no asaasPaymentId    */}
+      {/* AND Asaas is not configured. Non-admin users never see this —   */}
+      {/* they get the "Pagamento não disponível" notice dialog below.     */}
       {/* ---------------------------------------------------------------- */}
       <PaymentMethodDialog
         open={methodDialogOpen}
@@ -432,6 +517,83 @@ export function BillingPage() {
         onConfirm={handleConfirmPayment}
         loading={methodDialogLoading}
       />
+
+      {/* ---------------------------------------------------------------- */}
+      {/* "Pagamento não disponível" notice (Task 2-e Item 5)              */}
+      {/* Shown to non-admin users when Asaas is not configured. Replaces   */}
+      {/* the old silent mark-as-paid flow — the user is now explicitly     */}
+      {/* told that payment can't be processed online and pointed to        */}
+      {/* support so they can settle out-of-band.                          */}
+      {/* ---------------------------------------------------------------- */}
+      <Dialog open={unavailableDialogOpen} onOpenChange={setUnavailableDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400 shrink-0">
+                <AlertCircle className="h-5 w-5" />
+              </div>
+              Pagamento não disponível
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              O gateway de pagamento Asaas ainda não foi configurado por um
+              administrador. Não é possível processar o pagamento online.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div className="rounded-xl border border-border bg-muted/40 dark:bg-muted/20 p-3 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+                  Fatura
+                </span>
+                <span className="text-xs font-mono text-foreground truncate max-w-[200px]">
+                  #{String(unavailableDialogInvoice?.id || '').toUpperCase().slice(0, 12)}
+                </span>
+              </div>
+              <p className="text-sm font-medium text-foreground">
+                {unavailableDialogInvoice?.description ||
+                  unavailableDialogInvoice?.type ||
+                  'Fatura NewMobility'}
+              </p>
+              <div className="flex items-baseline justify-between pt-1">
+                <span className="text-xs text-muted-foreground">Valor</span>
+                <span className="text-lg font-bold text-foreground tabular-nums">
+                  {formatBRL(Math.abs(Number(unavailableDialogInvoice?.amount) || 0))}
+                </span>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 p-3 space-y-2">
+              <p className="text-sm text-amber-900 dark:text-amber-200 font-medium">
+                O pagamento online ainda não está habilitado nesta plataforma.
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                Entre em contato com o <strong>suporte NewMobility</strong> para
+                regularizar esta fatura via PIX manual, transferência bancária
+                ou boleto. Após a confirmação do pagamento, a fatura será
+                marcada como paga e sua conta regularizada.
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-muted/40 dark:bg-muted/20 border border-border p-3 flex items-start gap-2">
+              <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Nenhum valor foi cobrado. A fatura permanece <strong>pendente</strong> até
+                que o pagamento seja confirmado pelo suporte.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => setUnavailableDialogOpen(false)}
+            >
+              Entendi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
