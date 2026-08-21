@@ -804,6 +804,182 @@ export function AdminPage() {
   const [allowedQualificationsLoading, setAllowedQualificationsLoading] = useState(false)
   const [allowedQualificationsSaving, setAllowedQualificationsSaving] = useState(false)
 
+  // ---------- Goal Configs (admin CRUD — "motorista 20 viagens → R$ 5,00") ----------
+  interface GoalConfigItem {
+    id: string
+    name: string
+    description: string | null
+    targetQualification: string
+    metricCode: string
+    metricLabel: string
+    targetValue: number
+    rewardCents: number
+    rewardWallet: string
+    frequency: string
+    isActive: boolean
+    sortOrder: number
+    createdAt: string
+  }
+  const [goalConfigs, setGoalConfigs] = useState<GoalConfigItem[]>([])
+  const [goalConfigsLoading, setGoalConfigsLoading] = useState(false)
+  const [goalConfigDialogOpen, setGoalConfigDialogOpen] = useState(false)
+  const [editingGoalConfig, setEditingGoalConfig] = useState<GoalConfigItem | null>(null)
+  const [goalConfigForm, setGoalConfigForm] = useState({
+    name: '',
+    description: '',
+    targetQualification: 'motorista',
+    metricCode: 'trips_daily',
+    metricLabel: 'viagens finalizadas',
+    targetValue: 20,
+    rewardBrl: '5,00',
+    rewardWallet: 'gratification',
+    frequency: 'daily',
+    isActive: true,
+    sortOrder: 99,
+  })
+  const [goalConfigSaving, setGoalConfigSaving] = useState(false)
+
+  const loadGoalConfigs = useCallback(async () => {
+    if (!user?.id) return
+    setGoalConfigsLoading(true)
+    try {
+      const data = await apiFetch<{ configs: GoalConfigItem[] }>(
+        `/admin/goal-configs?userId=${user.id}`
+      )
+      if (data?.configs) setGoalConfigs(data.configs)
+    } catch (err) {
+      console.error('Failed to load goal configs:', err)
+    } finally {
+      setGoalConfigsLoading(false)
+    }
+  }, [user?.id])
+
+  // Parse BRL string ("5,00" or "5.00" or "5") to cents
+  function parseBrlToCents(brl: string): number {
+    const cleaned = brl.replace(/[^\d,.]/g, '').replace(/\./g, '').replace(',', '.')
+    const value = parseFloat(cleaned)
+    return Number.isFinite(value) && value >= 0 ? Math.round(value * 100) : 0
+  }
+
+  // Format cents to BRL string for input display
+  function centsToBrlInput(cents: number): string {
+    return (cents / 100).toFixed(2).replace('.', ',')
+  }
+
+  const openCreateGoalConfig = () => {
+    setEditingGoalConfig(null)
+    setGoalConfigForm({
+      name: '',
+      description: '',
+      targetQualification: 'motorista',
+      metricCode: 'trips_daily',
+      metricLabel: 'viagens finalizadas',
+      targetValue: 20,
+      rewardBrl: '5,00',
+      rewardWallet: 'gratification',
+      frequency: 'daily',
+      isActive: true,
+      sortOrder: 99,
+    })
+    setGoalConfigDialogOpen(true)
+  }
+
+  const openEditGoalConfig = (item: GoalConfigItem) => {
+    setEditingGoalConfig(item)
+    setGoalConfigForm({
+      name: item.name,
+      description: item.description || '',
+      targetQualification: item.targetQualification,
+      metricCode: item.metricCode,
+      metricLabel: item.metricLabel,
+      targetValue: item.targetValue,
+      rewardBrl: centsToBrlInput(item.rewardCents),
+      rewardWallet: item.rewardWallet,
+      frequency: item.frequency,
+      isActive: item.isActive,
+      sortOrder: item.sortOrder,
+    })
+    setGoalConfigDialogOpen(true)
+  }
+
+  const saveGoalConfig = async () => {
+    if (!user?.id) return
+    if (!goalConfigForm.name.trim()) {
+      toast.error('Informe o nome da meta')
+      return
+    }
+    if (goalConfigForm.targetValue < 1) {
+      toast.error('O valor-alvo deve ser maior que zero')
+      return
+    }
+    setGoalConfigSaving(true)
+    try {
+      const payload = {
+        userId: user.id,
+        name: goalConfigForm.name.trim(),
+        description: goalConfigForm.description.trim() || null,
+        targetQualification: goalConfigForm.targetQualification,
+        metricCode: goalConfigForm.metricCode,
+        metricLabel: goalConfigForm.metricLabel.trim() || 'viagens finalizadas',
+        targetValue: Math.floor(goalConfigForm.targetValue),
+        rewardCents: parseBrlToCents(goalConfigForm.rewardBrl),
+        rewardWallet: goalConfigForm.rewardWallet,
+        frequency: goalConfigForm.frequency,
+        isActive: goalConfigForm.isActive,
+        sortOrder: Math.floor(goalConfigForm.sortOrder || 99),
+      }
+
+      if (editingGoalConfig) {
+        await apiFetch(`/admin/goal-configs/${editingGoalConfig.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        })
+        toast.success('Meta atualizada com sucesso!')
+      } else {
+        await apiFetch(`/admin/goal-configs`, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        })
+        toast.success('Meta criada com sucesso!')
+      }
+      setGoalConfigDialogOpen(false)
+      await loadGoalConfigs()
+    } catch (err) {
+      console.error('Failed to save goal config:', err)
+      toast.error('Erro ao salvar meta')
+    } finally {
+      setGoalConfigSaving(false)
+    }
+  }
+
+  const deleteGoalConfig = async (id: string) => {
+    if (!user?.id) return
+    if (!confirm('Tem certeza que deseja excluir esta meta?')) return
+    try {
+      await apiFetch(`/admin/goal-configs/${id}?userId=${user.id}`, { method: 'DELETE' })
+      toast.success('Meta excluída com sucesso!')
+      await loadGoalConfigs()
+    } catch (err) {
+      console.error('Failed to delete goal config:', err)
+      toast.error('Erro ao excluir meta')
+    }
+  }
+
+  const toggleGoalConfigActive = async (item: GoalConfigItem) => {
+    if (!user?.id) return
+    try {
+      await apiFetch(`/admin/goal-configs/${item.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ userId: user.id, isActive: !item.isActive }),
+      })
+      await loadGoalConfigs()
+      toast.success(item.isActive ? 'Meta desativada' : 'Meta ativada')
+    } catch (err) {
+      console.error('Failed to toggle goal config:', err)
+      toast.error('Erro ao alterar status')
+    }
+  }
+
   // ---------- Service Types (Item 8 — admin CRUD) ----------
   const [serviceTypes, setServiceTypes] = useState<AdminServiceType[]>([])
   const [serviceTypesLoading, setServiceTypesLoading] = useState(false)
@@ -927,6 +1103,7 @@ export function AdminPage() {
     if (activeTab === 'gratifications') {
       loadFinancial()
       loadDriverGoalsTarget()
+      loadGoalConfigs()
     }
     // New tabs
     if (activeTab === 'vouchers') loadVouchers()
@@ -4971,6 +5148,342 @@ export function AdminPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* ===== Goal Configs CRUD — "motorista 20 viagens → R$ 5,00" ===== */}
+          <Card className="border-emerald-200 dark:border-emerald-800">
+            <CardContent className="p-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400 shrink-0">
+                    <Target className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="text-sm font-semibold text-foreground">Metas por Tipo de Usuário</h4>
+                      <Badge className="bg-emerald-100 text-emerald-700 text-[10px]">CONFIGURÁVEL</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Crie metas customizadas por tipo de usuário (ex: Motorista — 20 viagens finalizadas/dia → R$ 5,00).
+                      As metas ativas aparecem para o usuário na aba <strong>Metas</strong> do backoffice.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shrink-0"
+                  onClick={openCreateGoalConfig}
+                >
+                  <Plus className="h-4 w-4" /> Nova Meta
+                </Button>
+              </div>
+
+              {goalConfigsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
+                  <span className="ml-2 text-sm text-muted-foreground">Carregando metas...</span>
+                </div>
+              ) : goalConfigs.length === 0 ? (
+                <div className="text-center py-8 px-4 rounded-xl border border-dashed border-emerald-200 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/10">
+                  <Target className="h-8 w-8 mx-auto text-emerald-400 mb-2" />
+                  <p className="text-sm font-medium text-foreground mb-1">Nenhuma meta configurada ainda</p>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Crie metas como "Motorista: 20 viagens/dia → R$ 5,00" para motivar seus usuários.
+                  </p>
+                  <Button size="sm" variant="outline" className="gap-2" onClick={openCreateGoalConfig}>
+                    <Plus className="h-3.5 w-3.5" /> Criar primeira meta
+                  </Button>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-border overflow-hidden overflow-x-auto">
+                  <table className="w-full text-xs sm:text-sm">
+                    <thead className="bg-muted/50">
+                      <tr className="border-b border-border">
+                        <th className="text-left font-semibold text-muted-foreground px-3 py-2.5">Meta</th>
+                        <th className="text-left font-semibold text-muted-foreground px-3 py-2.5">Tipo de Usuário</th>
+                        <th className="text-left font-semibold text-muted-foreground px-3 py-2.5 hidden sm:table-cell">Critério</th>
+                        <th className="text-right font-semibold text-muted-foreground px-3 py-2.5">Recompensa</th>
+                        <th className="text-left font-semibold text-muted-foreground px-3 py-2.5 hidden md:table-cell">Carteira</th>
+                        <th className="text-left font-semibold text-muted-foreground px-3 py-2.5 hidden lg:table-cell">Periodicidade</th>
+                        <th className="text-center font-semibold text-muted-foreground px-3 py-2.5">Status</th>
+                        <th className="text-right font-semibold text-muted-foreground px-3 py-2.5">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {goalConfigs.map((item) => (
+                        <tr key={item.id} className={`border-b border-border last:border-0 ${!item.isActive ? 'bg-muted/20 opacity-70' : ''}`}>
+                          <td className="px-3 py-2.5">
+                            <div className="font-medium text-foreground">{item.name}</div>
+                            {item.description && (
+                              <div className="text-[10px] text-muted-foreground line-clamp-1">{item.description}</div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <Badge variant="outline" className={
+                              item.targetQualification === 'motorista' ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400' :
+                              item.targetQualification === 'entregador' ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400' :
+                              'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400'
+                            }>
+                              {item.targetQualification === 'motorista' ? 'Motorista' :
+                               item.targetQualification === 'entregador' ? 'Entregador' :
+                               item.targetQualification === 'ambos' ? 'Ambos' : item.targetQualification}
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-2.5 hidden sm:table-cell">
+                            <span className="font-medium text-foreground">{item.targetValue}</span>
+                            <span className="text-muted-foreground"> {item.metricLabel}</span>
+                          </td>
+                          <td className="px-3 py-2.5 text-right">
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                              {formatCurrency(item.rewardCents)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 hidden md:table-cell text-muted-foreground capitalize">{item.rewardWallet}</td>
+                          <td className="px-3 py-2.5 hidden lg:table-cell text-muted-foreground capitalize">{item.frequency}</td>
+                          <td className="px-3 py-2.5 text-center">
+                            <button
+                              onClick={() => toggleGoalConfigActive(item)}
+                              className="inline-flex items-center justify-center"
+                              title={item.isActive ? 'Desativar' : 'Ativar'}
+                            >
+                              {item.isActive ? (
+                                <ToggleRight className="h-5 w-5 text-emerald-600" />
+                              ) : (
+                                <ToggleLeft className="h-5 w-5 text-muted-foreground" />
+                              )}
+                            </button>
+                          </td>
+                          <td className="px-3 py-2.5">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openEditGoalConfig(item)}>
+                                <Edit className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30" onClick={() => deleteGoalConfig(item.id)}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Goal Config Create/Edit Dialog */}
+          <Dialog open={goalConfigDialogOpen} onOpenChange={setGoalConfigDialogOpen}>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Target className="h-5 w-5 text-emerald-600" />
+                  {editingGoalConfig ? 'Editar Meta' : 'Nova Meta'}
+                </DialogTitle>
+                <DialogDescription>
+                  Configure uma meta para um tipo de usuário específico. Ex: Motorista — 20 viagens finalizadas/dia → R$ 5,00.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 py-2">
+                {/* Name */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Nome da Meta *</Label>
+                  <Input
+                    placeholder="Ex: Meta Diária Motorista"
+                    value={goalConfigForm.name}
+                    onChange={(e) => setGoalConfigForm({ ...goalConfigForm, name: e.target.value })}
+                  />
+                </div>
+
+                {/* Description */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Descrição (opcional)</Label>
+                  <Input
+                    placeholder="Ex: Bata 20 corridas por dia e ganhe R$ 5,00"
+                    value={goalConfigForm.description}
+                    onChange={(e) => setGoalConfigForm({ ...goalConfigForm, description: e.target.value })}
+                  />
+                </div>
+
+                {/* Target Qualification + Frequency */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Tipo de Usuário *</Label>
+                    <Select
+                      value={goalConfigForm.targetQualification}
+                      onValueChange={(v) => setGoalConfigForm({ ...goalConfigForm, targetQualification: v })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="motorista">Motorista</SelectItem>
+                        <SelectItem value="entregador">Entregador</SelectItem>
+                        <SelectItem value="ambos">Ambos (Motorista + Entregador)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Periodicidade *</Label>
+                    <Select
+                      value={goalConfigForm.frequency}
+                      onValueChange={(v) => setGoalConfigForm({ ...goalConfigForm, frequency: v })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="daily">Diária</SelectItem>
+                        <SelectItem value="weekly">Semanal</SelectItem>
+                        <SelectItem value="monthly">Mensal</SelectItem>
+                        <SelectItem value="one_time">Única (uma vez)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Metric + Target Value */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="space-y-1.5 sm:col-span-1">
+                    <Label className="text-xs font-medium">Métrica *</Label>
+                    <Select
+                      value={goalConfigForm.metricCode}
+                      onValueChange={(v) => {
+                        // Auto-fill metric label based on metricCode
+                        const labels: Record<string, string> = {
+                          trips_daily: 'viagens finalizadas',
+                          trips_monthly: 'viagens no mês',
+                          deliveries_daily: 'entregas realizadas',
+                          deliveries_monthly: 'entregas no mês',
+                          trips_total: 'viagens totais',
+                          sales_total: 'vendas realizadas',
+                          referrals_total: 'indicações realizadas',
+                          kyc_approved: 'documentos aprovados',
+                          custom: 'pontos',
+                        }
+                        setGoalConfigForm({ ...goalConfigForm, metricCode: v, metricLabel: labels[v] || 'pontos' })
+                      }}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="trips_daily">Viagens por dia</SelectItem>
+                        <SelectItem value="trips_monthly">Viagens por mês</SelectItem>
+                        <SelectItem value="deliveries_daily">Entregas por dia</SelectItem>
+                        <SelectItem value="deliveries_monthly">Entregas por mês</SelectItem>
+                        <SelectItem value="trips_total">Viagens totais</SelectItem>
+                        <SelectItem value="sales_total">Vendas totais</SelectItem>
+                        <SelectItem value="referrals_total">Indicações totais</SelectItem>
+                        <SelectItem value="kyc_approved">Documentos KYC aprovados</SelectItem>
+                        <SelectItem value="custom">Personalizada</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-1">
+                    <Label className="text-xs font-medium">Rótulo da Métrica</Label>
+                    <Input
+                      placeholder="viagens finalizadas"
+                      value={goalConfigForm.metricLabel}
+                      onChange={(e) => setGoalConfigForm({ ...goalConfigForm, metricLabel: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-1">
+                    <Label className="text-xs font-medium">Valor-Alvo *</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      placeholder="20"
+                      value={goalConfigForm.targetValue}
+                      onChange={(e) => setGoalConfigForm({ ...goalConfigForm, targetValue: Number(e.target.value) })}
+                    />
+                  </div>
+                </div>
+
+                {/* Reward + Wallet */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Recompensa (R$) *</Label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">R$</span>
+                      <Input
+                        placeholder="5,00"
+                        value={goalConfigForm.rewardBrl}
+                        onChange={(e) => setGoalConfigForm({ ...goalConfigForm, rewardBrl: e.target.value })}
+                        className="pl-9"
+                      />
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      Valor creditado quando o usuário bater a meta.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Carteira de Destino *</Label>
+                    <Select
+                      value={goalConfigForm.rewardWallet}
+                      onValueChange={(v) => setGoalConfigForm({ ...goalConfigForm, rewardWallet: v })}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="gratification">Gratificação</SelectItem>
+                        <SelectItem value="withdrawal">Saque</SelectItem>
+                        <SelectItem value="shopping">Compras</SelectItem>
+                        <SelectItem value="mobility">Mobilidade</SelectItem>
+                        <SelectItem value="food">Refeição</SelectItem>
+                        <SelectItem value="pharmacy">Farmácia</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Preview */}
+                <div className="rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/10 p-3">
+                  <p className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400 font-semibold mb-1">Pré-visualização</p>
+                  <p className="text-sm text-foreground">
+                    <Badge variant="outline" className="mr-2 bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400">
+                      {goalConfigForm.targetQualification === 'motorista' ? 'Motorista' :
+                       goalConfigForm.targetQualification === 'entregador' ? 'Entregador' :
+                       goalConfigForm.targetQualification === 'ambos' ? 'Ambos' : goalConfigForm.targetQualification}
+                    </Badge>
+                    <span className="font-medium">{goalConfigForm.targetValue || '—'}</span>
+                    <span className="text-muted-foreground"> {goalConfigForm.metricLabel || 'viagens finalizadas'}</span>
+                    <span className="mx-2 text-muted-foreground">→</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                      R$ {(parseBrlToCents(goalConfigForm.rewardBrl) / 100).toFixed(2).replace('.', ',')}
+                    </span>
+                    <span className="text-muted-foreground ml-1">na carteira de {goalConfigForm.rewardWallet}</span>
+                  </p>
+                </div>
+
+                {/* Active + Sort Order */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="goal-active"
+                      checked={goalConfigForm.isActive}
+                      onChange={(e) => setGoalConfigForm({ ...goalConfigForm, isActive: e.target.checked })}
+                      className="h-4 w-4 rounded border-input"
+                    />
+                    <Label htmlFor="goal-active" className="text-xs font-medium cursor-pointer">Meta ativa</Label>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Ordem</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={goalConfigForm.sortOrder}
+                      onChange={(e) => setGoalConfigForm({ ...goalConfigForm, sortOrder: Number(e.target.value) })}
+                      className="h-8"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => setGoalConfigDialogOpen(false)} disabled={goalConfigSaving}>
+                  Cancelar
+                </Button>
+                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2" onClick={saveGoalConfig} disabled={goalConfigSaving}>
+                  {goalConfigSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {editingGoalConfig ? 'Salvar Alterações' : 'Criar Meta'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {financialData ? (
             <>

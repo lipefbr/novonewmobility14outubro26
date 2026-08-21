@@ -308,6 +308,51 @@ model Gratification {
   user         User      @relation(fields: [userId], references: [id])
 }
 
+// ============================================================================
+// GoalConfig — Metas configuráveis pelo admin (Item: "permita o admin escolher
+// o tipo de usuário pra aquela meta, tipo motorista 20 viagens finalizadas
+// ganhar 5 reais")
+// ----------------------------------------------------------------------------
+// Cada linha representa UMA meta configurada pelo admin. Exemplos:
+//   - Motorista: 20 viagens finalizadas/dia → R$ 5,00 (gratification wallet)
+//   - Entregador: 15 entregas/dia → R$ 4,00 (gratification wallet)
+//   - Motorista: 100 viagens/mês → R$ 30,00 (withdrawal wallet)
+//   - Ambos: 500 corridas no total → R$ 50,00 (shopping wallet)
+//
+// O backoffice "Metas" lê essas configs e exibe para o usuário conforme sua
+// qualificação (targetQualification). O progresso (currentValue) é calculado
+// em runtime pela API /api/goal-configs baseado nasTransactions/Rides do user.
+// ============================================================================
+model GoalConfig {
+  id                   String   @id @default(cuid())
+  name                 String
+  description          String?
+  // Quem vê/qualifica para esta meta:
+  //   'motorista' | 'entregador' | 'ambos' | null (todos)
+  //   ou um código de UserType específico (ex: 'mototaxista')
+  targetQualification  String   @default("ambos")
+  // O que medir (código interno + rótulo humano):
+  //   metricCode: 'trips_daily' | 'trips_monthly' | 'deliveries_daily'
+  //               | 'deliveries_monthly' | 'trips_total' | 'sales_total'
+  //               | 'referrals_total' | 'kyc_approved' | 'custom'
+  //   metricLabel: rótulo exibido ao usuário, ex: "viagens finalizadas"
+  metricCode           String   @default("trips_daily")
+  metricLabel          String   @default("viagens finalizadas")
+  // Valor-alvo da meta (ex: 20 para "20 viagens")
+  targetValue          Int      @default(1)
+  // Recompensa (em centavos — ex: 500 = R$ 5,00)
+  rewardCents          Int      @default(0)
+  // Em qual carteira creditar a recompensa:
+  //   'gratification' | 'withdrawal' | 'shopping' | 'mobility' | 'food' | 'pharmacy'
+  rewardWallet         String   @default("gratification")
+  // Periodicidade: 'daily' | 'weekly' | 'monthly' | 'one_time'
+  frequency            String   @default("daily")
+  isActive             Boolean  @default(true)
+  sortOrder            Int      @default(99)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
 model PointTransaction {
   id          String   @id @default(cuid())
   userId      String

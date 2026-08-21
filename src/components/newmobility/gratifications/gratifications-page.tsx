@@ -290,15 +290,6 @@ export function GratificationsPage() {
 
   // Whether a given benefit should be visible to the current user, based on
   // its per-benefit target qualification.
-  //
-  // "Motorista" identity is inferred from any of:
-  //   - userType === 'motorista'
-  //   - qualification === 'motorista'
-  //   - isDriver === true (legacy boolean flag — treated as motorista)
-  // "Entregador" identity is inferred from:
-  //   - userType === 'entregador'
-  //   - qualification === 'entregador'
-  //   - isDelivery === true (legacy boolean flag — treated as entregador)
   const benefitVisibleToUser = useCallback(
     (benefitType: string): boolean => {
       const u = user as any
@@ -313,11 +304,6 @@ export function GratificationsPage() {
         qualification === 'entregador' ||
         u?.isDelivery === true
 
-      // Preferred path: array-based `allowedQualifications`. When set, the
-      // benefit is visible only if the user's qualification is in the array.
-      // We do NOT consult per-benefit overrides when the array is set — the
-      // array is the overall module gate, and per-benefit overrides are
-      // still consulted below via `resolveBenefitTarget` for finer control.
       const allowed = metasConfig?.allowedQualifications
       if (Array.isArray(allowed) && allowed.length > 0) {
         const moduleAllowed = allowed.some((code) => {
@@ -327,8 +313,6 @@ export function GratificationsPage() {
           return false
         })
         if (!moduleAllowed) return false
-        // Fall through to the per-benefit check below — the user passed the
-        // overall module gate, but the specific benefit may still be hidden.
       }
 
       const target = resolveBenefitTarget(benefitType)
@@ -362,6 +346,27 @@ export function GratificationsPage() {
     loadConfig()
     return () => { cancelled = true }
   }, [])
+
+  // ===== Admin-configured goal configs (per user type) =====
+  interface AdminGoalConfig {
+    id: string
+    name: string
+    description: string | null
+    targetQualification: string
+    metricCode: string
+    metricLabel: string
+    targetValue: number
+    currentValue: number
+    rewardCents: number
+    rewardWallet: string
+    frequency: string
+    progressPct: number
+    isAchieved: boolean
+    isClaimed: boolean
+  }
+  const [adminGoals, setAdminGoals] = useState<AdminGoalConfig[]>([])
+  const [adminGoalsLoading, setAdminGoalsLoading] = useState(false)
+  const [claimingGoalId, setClaimingGoalId] = useState<string | null>(null)
 
   // Fetch gratifications from API
   const fetchGratifications = useCallback(async () => {
@@ -466,6 +471,58 @@ export function GratificationsPage() {
   useEffect(() => {
     fetchGratifications()
   }, [fetchGratifications])
+
+  // Fetch admin-configured goals for this user's qualification
+  const fetchAdminGoals = useCallback(async () => {
+    if (!user?.id) return
+    setAdminGoalsLoading(true)
+    try {
+      const res = await fetch(`/api/goal-configs?userId=${user.id}`)
+      if (!res.ok) return
+      const data = await res.json()
+      if (data?.goals && Array.isArray(data.goals)) {
+        setAdminGoals(data.goals)
+      }
+    } catch {
+      // Silently ignore — admin goals are optional
+    } finally {
+      setAdminGoalsLoading(false)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    fetchAdminGoals()
+  }, [fetchAdminGoals])
+
+  // Claim an admin-configured goal reward
+  const handleClaimAdminGoal = async (goalId: string) => {
+    if (!user?.id) return
+    setClaimingGoalId(goalId)
+    try {
+      const res = await fetch('/api/goal-configs/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, goalConfigId: goalId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data?.error || 'Erro ao reivindicar meta')
+        return
+      }
+      toast.success(data?.message || 'Recompensa creditada com sucesso!')
+      // Refresh goals to update isClaimed state
+      await fetchAdminGoals()
+      // Also refresh user balance in store
+      if (data?.rewardWallet && data?.rewardCents) {
+        const balanceField = `balance${data.rewardWallet.charAt(0).toUpperCase()}${data.rewardWallet.slice(1)}`
+        updateUser({ [balanceField]: (user as any)[balanceField] + data.rewardCents } as any)
+      }
+    } catch {
+      toast.error('Erro ao reivindicar meta')
+    } finally {
+      setClaimingGoalId(null)
+    }
+  }
 
   // Open claim dialog
   const handleClaimClick = (item: GratificationItem) => {
@@ -661,6 +718,143 @@ export function GratificationsPage() {
                   </div>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* ===== Admin-configured Goals (per user type) ===== */}
+      {showDriverGoals && (adminGoalsLoading || adminGoals.length > 0) && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+          <Card className="shadow-sm bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 border-emerald-200 dark:border-emerald-800 overflow-hidden">
+            <div className="h-1 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-400" />
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3 mb-3">
+                <div className="p-2.5 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400 shrink-0">
+                  <Trophy className="h-5 w-5" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-emerald-800 dark:text-emerald-300 text-sm">
+                    Suas Metas Configuradas
+                  </h4>
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-0.5">
+                    Bata as metas abaixo para ganhar recompensas automáticas. O progresso é calculado em tempo real.
+                  </p>
+                </div>
+              </div>
+
+              {adminGoalsLoading ? (
+                <div className="flex items-center justify-center py-6">
+                  <div className="h-5 w-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="ml-2 text-xs text-muted-foreground">Carregando metas...</span>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {adminGoals.map((goal) => (
+                    <div
+                      key={goal.id}
+                      className={`bg-white/70 dark:bg-emerald-950/40 rounded-lg p-3 border ${
+                        goal.isAchieved
+                          ? 'border-emerald-300 dark:border-emerald-700'
+                          : 'border-emerald-100 dark:border-emerald-900/50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-bold text-foreground">{goal.name}</p>
+                            <Badge className={
+                              goal.targetQualification === 'motorista'
+                                ? 'bg-blue-100 text-blue-700 text-[9px]'
+                                : goal.targetQualification === 'entregador'
+                                  ? 'bg-amber-100 text-amber-700 text-[9px]'
+                                  : 'bg-emerald-100 text-emerald-700 text-[9px]'
+                            }>
+                              {goal.targetQualification === 'motorista' ? 'Motorista' :
+                               goal.targetQualification === 'entregador' ? 'Entregador' :
+                               goal.targetQualification === 'ambos' ? 'Ambos' : goal.targetQualification}
+                            </Badge>
+                            <Badge variant="outline" className="text-[9px] capitalize">
+                              {goal.frequency === 'daily' ? 'Diária' :
+                               goal.frequency === 'weekly' ? 'Semanal' :
+                               goal.frequency === 'monthly' ? 'Mensal' :
+                               goal.frequency === 'one_time' ? 'Única' : goal.frequency}
+                            </Badge>
+                          </div>
+                          {goal.description && (
+                            <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{goal.description}</p>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-[10px] text-muted-foreground uppercase">Recompensa</p>
+                          <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                            {formatCurrency(goal.rewardCents)}
+                          </p>
+                          <p className="text-[9px] text-muted-foreground capitalize">{goal.rewardWallet}</p>
+                        </div>
+                      </div>
+
+                      {/* Progress */}
+                      <div className="mt-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                            Progresso: {goal.currentValue}/{goal.targetValue} {goal.metricLabel}
+                          </span>
+                          <span className={`text-[10px] font-bold ${
+                            goal.isAchieved ? 'text-emerald-600' : 'text-muted-foreground'
+                          }`}>
+                            {goal.progressPct}%
+                          </span>
+                        </div>
+                        <div className="h-2 bg-emerald-100 dark:bg-emerald-900/40 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              goal.isAchieved
+                                ? 'bg-gradient-to-r from-emerald-500 to-teal-500'
+                                : 'bg-gradient-to-r from-emerald-400 to-teal-400'
+                            }`}
+                            style={{ width: `${goal.progressPct}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Claim button */}
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        {goal.isAchieved ? (
+                          goal.isClaimed ? (
+                            <Badge className="bg-emerald-100 text-emerald-700 text-[10px] gap-1">
+                              <Check className="h-3 w-3" /> Recompensa resgatada
+                            </Badge>
+                          ) : (
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 h-8"
+                              onClick={() => handleClaimAdminGoal(goal.id)}
+                              disabled={claimingGoalId === goal.id}
+                            >
+                              {claimingGoalId === goal.id ? (
+                                <div className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <Award className="h-3.5 w-3.5" />
+                              )}
+                              Resgatar Recompensa
+                            </Button>
+                          )
+                        ) : (
+                          <p className="text-[10px] text-muted-foreground">
+                            Faltam <span className="font-bold text-foreground">{Math.max(0, goal.targetValue - goal.currentValue)}</span> {goal.metricLabel}
+                          </p>
+                        )}
+                        {goal.isAchieved && !goal.isClaimed && (
+                          <Badge className="bg-amber-100 text-amber-700 text-[9px] animate-pulse">
+                            Meta atingida!
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </motion.div>
