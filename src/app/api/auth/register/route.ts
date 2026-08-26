@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { prisma } from '@/lib/db'
 import { hashPassword, generateReferralCode, success, error, sanitizeUser } from '@/lib/api-utils'
 import { generateVoucherForUser } from '@/lib/voucher'
+import { QUALIFICATION_OPTIONS, LEGACY_QUALIFICATION_OPTIONS } from '@/lib/qualifications'
 
 function generateId(): string {
   // Generate a cuid-like ID
@@ -124,14 +125,16 @@ export async function POST(request: Request) {
       return error('Senha é obrigatória e deve ter pelo menos 6 caracteres')
     }
 
-    // Qualification is REQUIRED at registration
-    const validQualifications = [
-      'motorista',
-      'passageiro',
-      'passageiro_60',
-      'passageiro_pcd',
-      'comercio',
-      'entregador',
+    // Qualification is REQUIRED at registration.
+    // Valid options come from the shared QUALIFICATION_OPTIONS list in
+    // `@/lib/qualifications` (10 business-relevant codes: motorista,
+    // entregador, cliente, lojista, mototaxista, motofretista, motorista_app,
+    // taxista, caminhoneiro, outros). Legacy codes (passageiro / passageiro_60
+    // / passageiro_pcd / comercio) are also accepted for backward compat
+    // with any pre-existing deployment that still uses them.
+    const validQualifications: string[] = [
+      ...QUALIFICATION_OPTIONS.map((o) => o.value),
+      ...LEGACY_QUALIFICATION_OPTIONS.map((o) => o.value),
     ]
     if (!qualification || typeof qualification !== 'string' || !validQualifications.includes(qualification)) {
       return error('Qualificação é obrigatória e deve ser uma das opções válidas')

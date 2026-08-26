@@ -41,6 +41,12 @@ function mapApiUserToUserData(apiUser: Record<string, unknown>, balances?: Recor
     personalPoints: (apiUser.personalPoints as number) ?? 0,
     stars: (apiUser.stars as number) ?? 0,
     isDriver: (apiUser.isDriver as boolean) ?? false,
+    isDelivery: (apiUser.isDelivery as boolean) ?? false,
+    // ADM-USERTYPE — qualification code persisted on User.qualification.
+    // Critical for the sidebar "trava de visualização" (view lock) so the
+    // correct menus show up for each category (motorista/entregador see
+    // Metas, lojista sees Portal do Lojista, etc.).
+    qualification: (apiUser.qualification as string | null) ?? null,
     role: (apiUser.role as string) || 'user',
     userType: (apiUser.userType as 'usuario' | 'lojista' | 'motorista') ?? 'usuario',
     profileImage: (apiUser.profileImage as string | null) || null,

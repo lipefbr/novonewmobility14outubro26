@@ -67,3 +67,149 @@ export function qualificationLabel(value?: string | null): string {
   if (legacy) return legacy.label
   return value
 }
+
+// ============================================================================
+// Category groups — used by the sidebar / page-level access control to decide
+// which menu items and features each qualification category can see.
+// ----------------------------------------------------------------------------
+// The "trava de visualização" (view lock) works as follows:
+//
+//   1. DRIVER_QUALIFICATIONS — categories that transport passengers.
+//      These see the "Metas" (driver goals) card and ride-related metrics.
+//      Includes: motorista, mototaxista, motorista_app, taxista
+//
+//   2. DELIVERY_QUALIFICATIONS — categories that transport cargo/packages.
+//      These also see the "Metas" card (delivery goals) and delivery metrics.
+//      Includes: entregador, motofretista, caminhoneiro
+//
+//   3. CONDUCTOR_QUALIFICATIONS — union of DRIVER + DELIVERY (anyone who
+//      drives for a living). Used to gate the Metas module as a whole
+//      (motorista/entregador equivalent).
+//
+//   4. LOJISTA_QUALIFICATIONS — merchant/store-owner categories.
+//      These see the "Portal do Lojista" menu and store-management tools.
+//      Includes: lojista (and legacy 'comercio')
+//
+//   5. CLIENT_QUALIFICATIONS — end-user / consumer categories.
+//      These see the standard consumer backoffice (no driver goals, no
+//      store portal). Includes: cliente (and legacy passageiro variants)
+//
+// Legacy codes (passageiro, passageiro_60, passageiro_pcd, comercio) are
+// mapped to their new-equivalent groups so users registered under the old
+// dropdown keep the same access they had before.
+// ============================================================================
+
+export const DRIVER_QUALIFICATIONS: readonly string[] = [
+  'motorista',
+  'mototaxista',
+  'motorista_app',
+  'taxista',
+] as const
+
+export const DELIVERY_QUALIFICATIONS: readonly string[] = [
+  'entregador',
+  'motofretista',
+  'caminhoneiro',
+] as const
+
+export const CONDUCTOR_QUALIFICATIONS: readonly string[] = [
+  ...DRIVER_QUALIFICATIONS,
+  ...DELIVERY_QUALIFICATIONS,
+] as const
+
+export const LOJISTA_QUALIFICATIONS: readonly string[] = [
+  'lojista',
+  'comercio', // legacy code
+] as const
+
+export const CLIENT_QUALIFICATIONS: readonly string[] = [
+  'cliente',
+  'passageiro',     // legacy
+  'passageiro_60',  // legacy
+  'passageiro_pcd', // legacy
+] as const
+
+/**
+ * Check if a user (by qualification code) is a "driver" — transports
+ * passengers. Used by the sidebar to decide if the Metas card should be
+ * visible (when combined with the admin `allowedQualifications` config).
+ *
+ * Returns true for: motorista, mototaxista, motorista_app, taxista.
+ */
+export function isDriverQualification(qualification?: string | null): boolean {
+  if (!qualification) return false
+  return (DRIVER_QUALIFICATIONS as readonly string[]).includes(qualification.toLowerCase())
+}
+
+/**
+ * Check if a user (by qualification code) is a "delivery" worker —
+ * transports cargo/packages. Used by the sidebar to decide if the Metas
+ * card should be visible (when combined with the admin config).
+ *
+ * Returns true for: entregador, motofretista, caminhoneiro.
+ */
+export function isDeliveryQualification(qualification?: string | null): boolean {
+  if (!qualification) return false
+  return (DELIVERY_QUALIFICATIONS as readonly string[]).includes(qualification.toLowerCase())
+}
+
+/**
+ * Check if a user (by qualification code) is any kind of conductor —
+ * driver OR delivery worker. This is the "motorista/entregador equivalent"
+ * check used to gate the Metas module as a whole.
+ *
+ * Returns true for: motorista, entregador, mototaxista, motofretista,
+ * motorista_app, taxista, caminhoneiro.
+ */
+export function isConductorQualification(qualification?: string | null): boolean {
+  return isDriverQualification(qualification) || isDeliveryQualification(qualification)
+}
+
+/**
+ * Check if a user (by qualification code) is a lojista (merchant).
+ * Returns true for: lojista, comercio (legacy).
+ */
+export function isLojistaQualification(qualification?: string | null): boolean {
+  if (!qualification) return false
+  return (LOJISTA_QUALIFICATIONS as readonly string[]).includes(qualification.toLowerCase())
+}
+
+/**
+ * Check if a user (by qualification code) is a regular client/consumer.
+ * Returns true for: cliente, passageiro, passageiro_60, passageiro_pcd.
+ */
+export function isClientQualification(qualification?: string | null): boolean {
+  if (!qualification) return false
+  return (CLIENT_QUALIFICATIONS as readonly string[]).includes(qualification.toLowerCase())
+}
+
+/**
+ * Resolve a user's qualification from multiple possible fields.
+ *
+ * Different parts of the system store the qualification in different places:
+ *   - `user.qualification` (string, set by admin or self-registration)
+ *   - `user.userType` (string, set when admin picks a UserType row)
+ *   - `user.isDriver` / `user.isDelivery` (legacy boolean flags)
+ *
+ * This helper centralises the resolution so the sidebar / page access
+ * control doesn't need to repeat the same fallback chain everywhere.
+ *
+ * Returns the lowercase qualification code (e.g. 'motorista') or '' if
+ * none can be determined.
+ */
+export function resolveUserQualification(user: {
+  qualification?: string | null
+  userType?: string | null
+  isDriver?: boolean | null
+  isDelivery?: boolean | null
+} | null | undefined): string {
+  if (!user) return ''
+  // Prefer the explicit qualification field
+  if (user.qualification) return user.qualification.toLowerCase()
+  // Fall back to userType (admin-assigned UserType.code)
+  if (user.userType) return user.userType.toLowerCase()
+  // Legacy boolean flags — derive the closest code
+  if (user.isDriver) return 'motorista'
+  if (user.isDelivery) return 'entregador'
+  return ''
+}

@@ -256,6 +256,11 @@ export function RegisterPage() {
           personalPoints: 0,
           stars: 0,
           isDriver: false,
+          isDelivery: false,
+          // Persist the qualification code so the sidebar "trava de
+          // visualização" (view lock) works immediately after register
+          // (without needing a re-login).
+          qualification: data.user.qualification || null,
           userType: data.user.userType || 'usuario',
           profileImage: data.user.profileImage || null,
           createdAt: data.user.createdAt || new Date().toISOString(),

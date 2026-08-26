@@ -43,6 +43,13 @@ import {
 import { useStore, type PageKey } from '@/lib/store'
 import { cn, getPlanName, formatCurrency } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
+import {
+  isDriverQualification,
+  isDeliveryQualification,
+  isConductorQualification,
+  isLojistaQualification,
+  resolveUserQualification,
+} from '@/lib/qualifications'
 import { SidebarSearch } from './search/search-dialog'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -79,28 +86,36 @@ interface MetasConfig {
 // motorista/entregador users on first run before the admin sets anything.
 //
 // "Motorista" identity is inferred from any of:
-//   - userType === 'motorista'
-//   - qualification === 'motorista' (UserType.code set by admin)
-//   - isDriver === true (legacy boolean flag — treated as motorista)
+//   - userType === 'motorista' (UserType.code set by admin)
+//   - qualification === 'motorista'
+//   - isDriver === true (legacy boolean flag)
+// Plus the new conductor categories that are motorista-equivalent:
+//   - mototaxista, motorista_app, taxista (also transport passengers)
+//
 // "Entregador" identity is inferred from:
 //   - userType === 'entregador'
 //   - qualification === 'entregador'
-//   - isDelivery === true (legacy boolean flag — treated as entregador)
+//   - isDelivery === true (legacy boolean flag)
+// Plus the new conductor categories that are entregador-equivalent:
+//   - motofretista, caminhoneiro (also transport cargo)
+//
+// The helpers `isDriverQualification` / `isDeliveryQualification` /
+// `resolveUserQualification` (from @/lib/qualifications) centralise the
+// resolution so we don't repeat the fallback chain in every component.
 function userCanSeeMetas(
   user: { userType?: string; qualification?: string | null; isDriver?: boolean; isDelivery?: boolean } | null,
   config: MetasConfig | null
 ): boolean {
   const u = user as any
-  const userType = String(u?.userType || '').toLowerCase()
-  const qualification = String(u?.qualification || '').toLowerCase()
-  const isMotorista =
-    userType === 'motorista' ||
-    qualification === 'motorista' ||
-    u?.isDriver === true
-  const isEntregador =
-    userType === 'entregador' ||
-    qualification === 'entregador' ||
-    u?.isDelivery === true
+  // Resolve the qualification code from any of the possible fields
+  const qual = resolveUserQualification({
+    qualification: u?.qualification,
+    userType: u?.userType,
+    isDriver: u?.isDriver,
+    isDelivery: u?.isDelivery,
+  })
+  const isMotorista = isDriverQualification(qual) || u?.isDriver === true
+  const isEntregador = isDeliveryQualification(qual) || u?.isDelivery === true
 
   // Preferred path: array-based `allowedQualifications` from SystemConfig
   // (key `metas.allowedQualifications`). An empty array hides the module
@@ -218,10 +233,20 @@ export function Sidebar() {
 
   // Filter menu items based on user role (admin-only items hidden for normal users)
   const isAdmin = user?.role === 'admin'
-  const isLojista = user?.userType === 'lojista'
+  // A user is a "Lojista" if their qualification (or userType) matches the
+  // lojista category. We use the centralised `isLojistaQualification` helper
+  // so both 'lojista' and the legacy 'comercio' code are recognised, and we
+  // also check `userType === 'lojista'` for backward compat with users
+  // created via the admin "Tipos de Usuário" flow.
+  const isLojista =
+    user?.userType === 'lojista' ||
+    isLojistaQualification(user?.qualification) ||
+    isLojistaQualification(user?.userType)
   // Task 2-c / Item 7 — Metas (gratifications) menu item is gated by the
   // admin-configured targetQualification. Only motorista/entregador users
-  // matching the config see it. Admins always see it so they can preview.
+  // (and the new conductor categories: mototaxista, motofretista,
+  // motorista_app, taxista, caminhoneiro) matching the config see it.
+  // Admins always see it so they can preview.
   const canSeeMetas = isAdmin || userCanSeeMetas(user, metasConfig)
   const menuItems = allMenuItems.filter(item => {
     if (item.adminOnly && !isAdmin) return false

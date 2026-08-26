@@ -30,9 +30,9 @@ const DEFAULT_USER_TYPES = [
     icon: '🚗',
   },
   {
-    code: 'passageiro',
-    label: 'Passageiro',
-    description: 'Usuário comum que solicita corridas',
+    code: 'cliente',
+    label: 'Cliente',
+    description: 'Usuário comum que utiliza os serviços da plataforma',
     sortOrder: 2,
     defaultEntradaLevel: 0,
     defaultResidualLevel: 0,
@@ -43,36 +43,10 @@ const DEFAULT_USER_TYPES = [
     icon: '👤',
   },
   {
-    code: 'passageiro_60',
-    label: 'Passageiro 60+',
-    description: 'Passageiro com 60 anos ou mais (benefícios especiais)',
+    code: 'lojista',
+    label: 'Lojista',
+    description: 'Lojista / comerciante parceiro (gerencia loja, produtos e pedidos no Portal do Lojista)',
     sortOrder: 3,
-    defaultEntradaLevel: 0,
-    defaultResidualLevel: 0,
-    defaultVendasLevel: 0,
-    showDriverGoals: false,
-    mobilePermissions: '["dashboard","wallet","ride_request","cashback","career","indicacoes"]',
-    color: '#f59e0b',
-    icon: '🧓',
-  },
-  {
-    code: 'passageiro_pcd',
-    label: 'Passageiro com Mobilidade Reduzida',
-    description: 'Passageiro PCD com necessidades especiais de acessibilidade',
-    sortOrder: 4,
-    defaultEntradaLevel: 0,
-    defaultResidualLevel: 0,
-    defaultVendasLevel: 0,
-    showDriverGoals: false,
-    mobilePermissions: '["dashboard","wallet","ride_request","cashback","career","indicacoes"]',
-    color: '#8b5cf6',
-    icon: '♿',
-  },
-  {
-    code: 'comercio',
-    label: 'Comércio',
-    description: 'Lojista / comerciante parceiro (recebe cashback de vendas)',
-    sortOrder: 5,
     defaultEntradaLevel: 0,
     defaultResidualLevel: 0,
     defaultVendasLevel: 0,
@@ -85,7 +59,7 @@ const DEFAULT_USER_TYPES = [
     code: 'entregador',
     label: 'Entregador',
     description: 'Entregador de encomendas / food delivery',
-    sortOrder: 6,
+    sortOrder: 4,
     defaultEntradaLevel: 0,
     defaultResidualLevel: 0,
     defaultVendasLevel: 0,
@@ -94,14 +68,159 @@ const DEFAULT_USER_TYPES = [
     color: '#f97316',
     icon: '🛵',
   },
+  {
+    code: 'mototaxista',
+    label: 'Mototaxista',
+    description: 'Condutor de moto que realiza transporte de passageiros (moto-táxi)',
+    sortOrder: 5,
+    defaultEntradaLevel: 0,
+    defaultResidualLevel: 0,
+    defaultVendasLevel: 0,
+    showDriverGoals: true,
+    mobilePermissions: '["dashboard","wallet","ride_request","cashback","career","metas","indicacoes"]',
+    color: '#06b6d4',
+    icon: '🏍️',
+  },
+  {
+    code: 'motofretista',
+    label: 'Motofretista',
+    description: 'Condutor de moto que realiza entrega de encomendas (moto-frete)',
+    sortOrder: 6,
+    defaultEntradaLevel: 0,
+    defaultResidualLevel: 0,
+    defaultVendasLevel: 0,
+    showDriverGoals: true,
+    mobilePermissions: '["dashboard","wallet","delivery","cashback","career","metas","indicacoes"]',
+    color: '#0ea5e9',
+    icon: '📦',
+  },
+  {
+    code: 'motorista_app',
+    label: 'Motorista de App',
+    description: 'Condutor de veículo cadastrado em aplicativos de transporte (Uber, 99, etc.)',
+    sortOrder: 7,
+    defaultEntradaLevel: 0,
+    defaultResidualLevel: 0,
+    defaultVendasLevel: 0,
+    showDriverGoals: true,
+    mobilePermissions: '["dashboard","wallet","ride_request","cashback","career","metas","indicacoes"]',
+    color: '#6366f1',
+    icon: '📱',
+  },
+  {
+    code: 'taxista',
+    label: 'Taxista',
+    description: 'Condutor de táxi licenciado (ponto fixo ou via aplicativo)',
+    sortOrder: 8,
+    defaultEntradaLevel: 0,
+    defaultResidualLevel: 0,
+    defaultVendasLevel: 0,
+    showDriverGoals: true,
+    mobilePermissions: '["dashboard","wallet","ride_request","cashback","career","metas","indicacoes"]',
+    color: '#eab308',
+    icon: '🚕',
+  },
+  {
+    code: 'caminhoneiro',
+    label: 'Caminhoneiro',
+    description: 'Condutor de caminhão para transporte de cargas (curta, média e longa distância)',
+    sortOrder: 9,
+    defaultEntradaLevel: 0,
+    defaultResidualLevel: 0,
+    defaultVendasLevel: 0,
+    showDriverGoals: true,
+    mobilePermissions: '["dashboard","wallet","delivery","cashback","career","metas","indicacoes"]',
+    color: '#84cc16',
+    icon: '🚚',
+  },
+  {
+    code: 'outros',
+    label: 'Outros',
+    description: 'Outro tipo de atuação não listado (campo livre para personalização futura)',
+    sortOrder: 99,
+    defaultEntradaLevel: 0,
+    defaultResidualLevel: 0,
+    defaultVendasLevel: 0,
+    showDriverGoals: false,
+    mobilePermissions: '["dashboard","wallet","cashback","career","indicacoes"]',
+    color: '#6b7280',
+    icon: '⚙️',
+  },
+  // ---- Legacy codes (kept for backward compatibility) ----
+  // These map to the new codes via qualificationLabel() so old users
+  // still see a friendly label. We keep the UserType row so existing
+  // deployments don't lose data, but new registrations use the new codes.
+  {
+    code: 'passageiro',
+    label: 'Passageiro (legado)',
+    description: 'Código legado — use "cliente" para novos cadastros',
+    sortOrder: 90,
+    defaultEntradaLevel: 0,
+    defaultResidualLevel: 0,
+    defaultVendasLevel: 0,
+    showDriverGoals: false,
+    mobilePermissions: '["dashboard","wallet","ride_request","cashback","career","indicacoes"]',
+    color: '#10b981',
+    icon: '👤',
+  },
+  {
+    code: 'passageiro_60',
+    label: 'Passageiro 60+ (legado)',
+    description: 'Código legado — use "cliente" para novos cadastros',
+    sortOrder: 91,
+    defaultEntradaLevel: 0,
+    defaultResidualLevel: 0,
+    defaultVendasLevel: 0,
+    showDriverGoals: false,
+    mobilePermissions: '["dashboard","wallet","ride_request","cashback","career","indicacoes"]',
+    color: '#f59e0b',
+    icon: '🧓',
+  },
+  {
+    code: 'passageiro_pcd',
+    label: 'Passageiro PCD (legado)',
+    description: 'Código legado — use "cliente" para novos cadastros',
+    sortOrder: 92,
+    defaultEntradaLevel: 0,
+    defaultResidualLevel: 0,
+    defaultVendasLevel: 0,
+    showDriverGoals: false,
+    mobilePermissions: '["dashboard","wallet","ride_request","cashback","career","indicacoes"]',
+    color: '#8b5cf6',
+    icon: '♿',
+  },
+  {
+    code: 'comercio',
+    label: 'Comércio (legado)',
+    description: 'Código legado — use "lojista" para novos cadastros',
+    sortOrder: 93,
+    defaultEntradaLevel: 0,
+    defaultResidualLevel: 0,
+    defaultVendasLevel: 0,
+    showDriverGoals: false,
+    mobilePermissions: '["dashboard","wallet","store","cashback","career","indicacoes"]',
+    color: '#ec4899',
+    icon: '🏪',
+  },
 ]
 
-async function seedDefaultUserTypesIfEmpty() {
-  const count = await prisma.userType.count()
-  if (count > 0) return
+// Idempotent seed: inserts any missing default UserType rows without
+// touching existing ones. This is safe to run on every GET — it only
+// creates rows that don't exist yet (so deployments that already have
+// custom user types are not affected).
+async function seedDefaultUserTypesIfMissing() {
   for (const t of DEFAULT_USER_TYPES) {
-    await prisma.userType.create({ data: t })
+    const existing = await prisma.userType.findUnique({ where: { code: t.code } })
+    if (!existing) {
+      await prisma.userType.create({ data: t })
+    }
   }
+}
+
+// Backward-compat alias — old name preserved for any caller that still
+// references it. Just delegates to the new idempotent version.
+async function seedDefaultUserTypesIfEmpty() {
+  await seedDefaultUserTypesIfMissing()
 }
 
 async function requireAdmin(userId: string | null) {

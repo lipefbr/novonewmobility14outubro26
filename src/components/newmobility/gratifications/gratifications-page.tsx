@@ -13,6 +13,12 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '@/lib/store'
 import { gratificationsApi, apiFetch } from '@/lib/api'
+import {
+  isDriverQualification,
+  isDeliveryQualification,
+  isConductorQualification,
+  resolveUserQualification,
+} from '@/lib/qualifications'
 import { toast } from 'sonner'
 import {
   Dialog,
@@ -293,16 +299,17 @@ export function GratificationsPage() {
   const benefitVisibleToUser = useCallback(
     (benefitType: string): boolean => {
       const u = user as any
-      const userType = String(u?.userType || '').toLowerCase()
-      const qualification = String(u?.qualification || '').toLowerCase()
-      const isMotorista =
-        userType === 'motorista' ||
-        qualification === 'motorista' ||
-        u?.isDriver === true
-      const isEntregador =
-        userType === 'entregador' ||
-        qualification === 'entregador' ||
-        u?.isDelivery === true
+      // Resolve the qualification code from any of the possible fields
+      // (qualification / userType / legacy isDriver/isDelivery flags) and
+      // check if the user is a "driver" or "delivery" conductor.
+      const qual = resolveUserQualification({
+        qualification: u?.qualification,
+        userType: u?.userType,
+        isDriver: u?.isDriver,
+        isDelivery: u?.isDelivery,
+      })
+      const isMotorista = isDriverQualification(qual) || u?.isDriver === true
+      const isEntregador = isDeliveryQualification(qual) || u?.isDelivery === true
 
       const allowed = metasConfig?.allowedQualifications
       if (Array.isArray(allowed) && allowed.length > 0) {
@@ -587,20 +594,24 @@ export function GratificationsPage() {
   const totalAvailable = allItems.filter((i) => !i.isClaimed).reduce((acc, i) => acc + i.amount, 0)
 
   // BACK-7 + Item 9 — the "Metas Motorista / Entregador" card is gated to
-  // users who are actually motorista/entregador. The check covers every
-  // signal the platform records:
-  //   - user.userType (set during onboarding/register)
-  //   - user.qualification (UserType.code assigned by the admin)
+  // users who are actually motorista/entregador (or the new conductor
+  // categories: mototaxista, motofretista, motorista_app, taxista,
+  // caminhoneiro). The check covers every signal the platform records:
+  //   - user.qualification (set during onboarding/register)
+  //   - user.userType (UserType.code assigned by the admin)
   //   - user.isDriver / user.isDelivery (boolean flags toggled by the admin
   //     or by the DriverApplication approval flow)
-  // Any other profile (passageiro, comercio, etc.) gets the card hidden —
-  // they should not see driver-only goal tracking.
+  // Any non-conductor profile (cliente, lojista, outros, etc.) gets the
+  // card hidden — they should not see driver-only goal tracking.
   const u = user as any
+  const userQual = resolveUserQualification({
+    qualification: u?.qualification,
+    userType: u?.userType,
+    isDriver: u?.isDriver,
+    isDelivery: u?.isDelivery,
+  })
   const showDriverGoals =
-    u?.userType === 'motorista' ||
-    u?.userType === 'entregador' ||
-    u?.qualification === 'motorista' ||
-    u?.qualification === 'entregador' ||
+    isConductorQualification(userQual) ||
     u?.isDriver === true ||
     u?.isDelivery === true
 

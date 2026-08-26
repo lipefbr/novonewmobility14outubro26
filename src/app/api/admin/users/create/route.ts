@@ -78,9 +78,31 @@ export async function POST(req: NextRequest) {
     if (Number.isNaN(resolvedVendasLevel)) resolvedVendasLevel = 0
 
     // Derive isDriver/isDelivery from qualification for backoffice "Metas"
-    // visibility (item 7 — Metas card only for motorista/entregador).
-    const isDriver = qualification === 'motorista'
-    const isDelivery = qualification === 'entregador'
+    // visibility (item 7 — Metas card only for motorista/entregador and
+    // equivalent conductor categories). The conductor categories that
+    // should see the driver-goals/metas module are:
+    //   - motorista (car/moto passenger transport)
+    //   - entregador (package/food delivery)
+    //   - mototaxista (moto passenger transport)
+    //   - motofretista (moto package delivery)
+    //   - motorista_app (ride-hailing app driver)
+    //   - taxista (licensed taxi driver)
+    //   - caminhoneiro (truck driver — cargo transport)
+    // These are the "driver-like" profiles. Non-conductor categories
+    // (cliente, lojista, outros) have isDriver=false / isDelivery=false.
+    const DRIVER_QUALIFICATIONS = [
+      'motorista',
+      'mototaxista',
+      'motorista_app',
+      'taxista',
+    ]
+    const DELIVERY_QUALIFICATIONS = [
+      'entregador',
+      'motofretista',
+      'caminhoneiro',
+    ]
+    const isDriver = DRIVER_QUALIFICATIONS.includes(qualification)
+    const isDelivery = DELIVERY_QUALIFICATIONS.includes(qualification)
 
     const newUser = await prisma.user.create({
       data: {
