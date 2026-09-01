@@ -40,6 +40,7 @@ import {
   ClipboardCheck,
   UserCog,
   Wrench,
+  Type,
 } from 'lucide-react'
 import { useStore, type AdminPageKey } from '@/lib/store'
 import { useAdminPermissions } from '@/lib/admin-permissions'
@@ -93,6 +94,7 @@ const adminNavItems: AdminNavItem[] = [
   { key: 'events', label: 'Eventos', icon: Calendar, description: 'Eventos, webinars e promoções', group: 'system' },
   { key: 'faq', label: 'Perguntas Frequentes', icon: HelpCircle, description: 'FAQ da plataforma', group: 'system' },
   { key: 'cashback-config', label: 'Config Cashback', icon: Percent, description: 'Configurar porcentagens e pontos', group: 'system' },
+  { key: 'content-texts', label: 'Conteúdo e Textos', icon: Type, description: 'Editar todos os textos e rótulos do sistema', group: 'system' },
   { key: 'asaas', label: 'Asaas', icon: Landmark, description: 'Configuração do gateway de pagamentos', group: 'system' },
   { key: 'settings', label: 'Configurações', icon: Settings, description: 'Configurações do sistema', group: 'system' },
 ]

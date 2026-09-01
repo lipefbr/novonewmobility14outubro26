@@ -67,6 +67,7 @@ export type AdminPageKey =
   | 'talkmobi-subscriptions'
   | 'telemedicina'
   | 'service-types'
+  | 'content-texts'
 
 export interface UserData {
   id: string

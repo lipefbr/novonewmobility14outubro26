@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
@@ -28,7 +29,7 @@ import {
   ArrowUpDown, Receipt, PieChart, Filter, Download, Calendar,
   MessageSquare, Send, Gift, Ticket, Gamepad2, Network, Percent,
   TreePine, Coins, Trophy, AlertCircle, Heart, UsersRound, Layers,
-  LogIn, Loader2, UserPlus, KeyRound, Wrench, Target,
+  LogIn, Loader2, UserPlus, KeyRound, Wrench, Target, Type,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -542,6 +543,7 @@ const adminPageToTab: Record<string, string> = {
   'talkmobi-subscriptions': 'talkmobi-subscriptions',
   telemedicina: 'telemedicina',
   'service-types': 'service-types',
+  'content-texts': 'content-texts',
 }
 
 export function AdminPage() {
@@ -724,6 +726,20 @@ export function AdminPage() {
   const [referralExpanded, setReferralExpanded] = useState<Set<string>>(new Set())
   const [matrixLoading, setMatrixLoading] = useState(false)
   const [matrixSearchLoading, setMatrixSearchLoading] = useState(false)
+
+  // Item 2 — Sales limit for the sales matrix (admin-configurable)
+  const [salesLimit, setSalesLimit] = useState<number>(1000)
+  const [salesLimitInput, setSalesLimitInput] = useState<string>('1000')
+  const [salesLimitLoading, setSalesLimitLoading] = useState(false)
+  const [salesLimitSaving, setSalesLimitSaving] = useState(false)
+  const [salesLimitHistory, setSalesLimitHistory] = useState<Array<{
+    id: string
+    adminName: string
+    adminEmail: string
+    previousValue: number | null
+    newValue: number
+    timestamp: string
+  }>>([])
 
   // Cashback config tab
   const [cashbackConfig, setCashbackConfig] = useState<CashbackConfigData | null>(null)
@@ -980,6 +996,152 @@ export function AdminPage() {
     }
   }
 
+  // ---------- Content Texts (admin CRUD — "Conteúdo e Textos") ----------
+  // Item 1 — Admin control over ALL system texts/labels. Backed by the
+  // SystemConfig table (filtered by category). Lets the admin edit labels
+  // like platform_name, menu_dashboard, plan_free_name, etc. without
+  // code changes or deploys. The frontend consumes them via the public
+  // /api/content-texts endpoint and the src/lib/content-texts.ts helper.
+  interface ContentTextItem {
+    id: string
+    key: string
+    value: string
+    description: string | null
+    category: string
+    updatedAt: string
+  }
+  const CONTENT_TEXT_CATEGORY_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+    { value: 'geral', label: 'Geral' },
+    { value: 'dashboard', label: 'Dashboard' },
+    { value: 'menu', label: 'Menu / Sidebar' },
+    { value: 'planos', label: 'Planos' },
+    { value: 'motorista', label: 'Motorista' },
+    { value: 'lojista', label: 'Lojista' },
+    { value: 'matrizes', label: 'Matrizes' },
+    { value: 'mobile', label: 'App Mobile' },
+  ]
+  const [contentTexts, setContentTexts] = useState<ContentTextItem[]>([])
+  const [contentTextsLoading, setContentTextsLoading] = useState(false)
+  const [contentTextSearch, setContentTextSearch] = useState('')
+  const [contentTextCategoryFilter, setContentTextCategoryFilter] = useState('all')
+  const [editingContentText, setEditingContentText] = useState<ContentTextItem | null>(null)
+  const [contentTextDialogOpen, setContentTextDialogOpen] = useState(false)
+  const [contentTextForm, setContentTextForm] = useState({
+    key: '', value: '', description: '', category: 'geral',
+  })
+  const [contentTextSaving, setContentTextSaving] = useState(false)
+
+  const loadContentTexts = useCallback(async () => {
+    if (!user?.id) return
+    setContentTextsLoading(true)
+    try {
+      const data = await apiFetch<{ items: ContentTextItem[] }>(
+        `/admin/content-texts?userId=${user.id}`
+      )
+      if (data?.items) setContentTexts(data.items)
+    } catch (err) {
+      console.error('Failed to load content texts:', err)
+    } finally {
+      setContentTextsLoading(false)
+    }
+  }, [user?.id])
+
+  const openCreateContentText = () => {
+    setEditingContentText(null)
+    setContentTextForm({ key: '', value: '', description: '', category: 'geral' })
+    setContentTextDialogOpen(true)
+  }
+
+  const openEditContentText = (item: ContentTextItem) => {
+    setEditingContentText(item)
+    setContentTextForm({
+      key: item.key,
+      value: item.value,
+      description: item.description || '',
+      category: item.category || 'geral',
+    })
+    setContentTextDialogOpen(true)
+  }
+
+  const saveContentText = async () => {
+    if (!user?.id) return
+    if (!contentTextForm.key.trim()) {
+      toast.error('Informe a chave (key)')
+      return
+    }
+    if (!/^[a-z0-9_]+$/i.test(contentTextForm.key.trim())) {
+      toast.error('Chave deve conter apenas letras, números e underline')
+      return
+    }
+    if (!contentTextForm.value.trim()) {
+      toast.error('Informe o valor do texto')
+      return
+    }
+    setContentTextSaving(true)
+    try {
+      const payload = {
+        userId: user.id,
+        key: contentTextForm.key.trim(),
+        value: contentTextForm.value,
+        description: contentTextForm.description.trim() || null,
+        category: contentTextForm.category || 'geral',
+      }
+      if (editingContentText) {
+        await apiFetch(`/admin/content-texts/${editingContentText.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            userId: user.id,
+            value: payload.value,
+            description: payload.description,
+            category: payload.category,
+          }),
+        })
+        toast.success('Texto atualizado com sucesso!')
+      } else {
+        await apiFetch('/admin/content-texts', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        })
+        toast.success('Texto criado com sucesso!')
+      }
+      setContentTextDialogOpen(false)
+      await loadContentTexts()
+    } catch (err) {
+      console.error('Failed to save content text:', err)
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar texto')
+    } finally {
+      setContentTextSaving(false)
+    }
+  }
+
+  const deleteContentText = async (item: ContentTextItem) => {
+    if (!user?.id) return
+    if (!confirm(`Excluir o texto "${item.key}"?`)) return
+    try {
+      await apiFetch(`/admin/content-texts/${item.id}?userId=${user.id}`, { method: 'DELETE' })
+      toast.success('Texto excluído com sucesso!')
+      await loadContentTexts()
+    } catch (err) {
+      console.error('Failed to delete content text:', err)
+      toast.error('Erro ao excluir texto')
+    }
+  }
+
+  // Client-side filter for the content-texts table. Combines search (key/value)
+  // with category filter. Avoids an extra round-trip for small datasets.
+  const filteredContentTexts = useMemo(() => {
+    const q = contentTextSearch.trim().toLowerCase()
+    return contentTexts.filter((t) => {
+      if (contentTextCategoryFilter !== 'all' && t.category !== contentTextCategoryFilter) return false
+      if (!q) return true
+      return (
+        t.key.toLowerCase().includes(q) ||
+        t.value.toLowerCase().includes(q) ||
+        (t.description || '').toLowerCase().includes(q)
+      )
+    })
+  }, [contentTexts, contentTextSearch, contentTextCategoryFilter])
+
   // ---------- Service Types (Item 8 — admin CRUD) ----------
   const [serviceTypes, setServiceTypes] = useState<AdminServiceType[]>([])
   const [serviceTypesLoading, setServiceTypesLoading] = useState(false)
@@ -1118,7 +1280,9 @@ export function AdminPage() {
     if (activeTab === 'events') loadEvents()
     if (activeTab === 'faq') loadFAQs()
     if (activeTab === 'service-types') loadServiceTypes()
-  }, [activeTab, searchQuery, planFilter, statusFilter, noSponsorFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter, ticketPriorityFilter, voucherStatusFilter, voucherPage, betStatusFilter, betPage, matrixSelectedUser, matrixType])
+    if (activeTab === 'content-texts') loadContentTexts()
+    if (activeTab === 'matrices') loadSalesLimit()
+  }, [activeTab, searchQuery, planFilter, statusFilter, noSponsorFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter, ticketPriorityFilter, voucherStatusFilter, voucherPage, betStatusFilter, betPage, matrixSelectedUser, matrixType, loadContentTexts, loadSalesLimit])
 
   const loadStats = async () => {
     try {
@@ -1195,6 +1359,62 @@ export function AdminPage() {
       const data = await apiFetch<FinancialData>(`/admin/financial?userId=${user?.id}`)
       setFinancialData(data)
     } catch { /* ignore */ }
+  }
+
+  // Item 2 — Load sales limit config for the matrices tab
+  const loadSalesLimit = useCallback(async () => {
+    if (!user?.id) return
+    setSalesLimitLoading(true)
+    try {
+      const data = await apiFetch<{
+        salesLimit: number
+        description?: string
+        history?: Array<{
+          id: string
+          adminName: string
+          adminEmail: string
+          previousValue: number | null
+          newValue: number
+          timestamp: string
+        }>
+      }>(`/admin/matrix-config?userId=${user.id}`)
+      if (data) {
+        setSalesLimit(data.salesLimit)
+        setSalesLimitInput(String(data.salesLimit))
+        if (data.history) setSalesLimitHistory(data.history)
+      }
+    } catch {
+      // Silent fail — keep defaults
+    } finally {
+      setSalesLimitLoading(false)
+    }
+  }, [user?.id])
+
+  // Item 2 — Save the sales limit
+  const saveSalesLimit = async () => {
+    if (!user?.id) return
+    const parsed = parseInt(salesLimitInput, 10)
+    if (!Number.isFinite(parsed) || parsed < 1 || !Number.isInteger(parsed)) {
+      toast.error('O limite de vendas deve ser um número inteiro positivo')
+      return
+    }
+    setSalesLimitSaving(true)
+    try {
+      const data = await apiFetch<{ message: string; salesLimit: number }>('/admin/matrix-config', {
+        method: 'PUT',
+        body: JSON.stringify({ userId: user.id, salesLimit: parsed }),
+      })
+      if (data) {
+        setSalesLimit(data.salesLimit)
+        toast.success(data.message || 'Limite de vendas atualizado com sucesso')
+        await loadSalesLimit() // refresh history
+      }
+    } catch (err) {
+      toast.error('Erro ao salvar limite de vendas')
+      console.error('saveSalesLimit error:', err)
+    } finally {
+      setSalesLimitSaving(false)
+    }
   }
 
   // BACK-7 + Task 2-c / Item 7 — load the driver-goals benefit target config
@@ -6096,6 +6316,80 @@ export function AdminPage() {
 
         {/* ===== MATRICES TAB ===== */}
         <TabsContent value="matrices" className="mt-4 space-y-4">
+          {/* Item 2 — Sales Limit Config Card */}
+          <Card className="border-amber-200 dark:border-amber-800 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/20">
+            <CardContent className="p-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400 shrink-0">
+                    <Target className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="text-sm font-semibold text-foreground">Limite de Vendas — Matriz de Vendas</h4>
+                      <Badge className="bg-amber-100 text-amber-700 text-[10px]">CONFIGURÁVEL</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Define o teto de vendas usado nos cálculos de comissões/cashback da Matriz de Vendas.
+                      Quando o usuário atinge esse limite, o sistema pode abrir nova posição (spillover) conforme a regra de negócio.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2">
+                <div className="space-y-1.5 flex-1">
+                  <Label className="text-xs font-medium text-muted-foreground">Limite de Vendas (número de vendas)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={1}
+                      step={1}
+                      placeholder="1000"
+                      value={salesLimitInput}
+                      onChange={(e) => setSalesLimitInput(e.target.value)}
+                      disabled={salesLimitLoading || salesLimitSaving}
+                      className="w-full sm:w-48"
+                    />
+                    <Button
+                      className="bg-amber-600 hover:bg-amber-700 text-white gap-2 shrink-0"
+                      onClick={saveSalesLimit}
+                      disabled={salesLimitLoading || salesLimitSaving}
+                    >
+                      {salesLimitSaving ? (
+                        <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <Save className="h-4 w-4" />
+                      )}
+                      Salvar
+                    </Button>
+                  </div>
+                  {!salesLimitLoading && (
+                    <p className="text-[10px] text-muted-foreground">
+                      Valor atual: <span className="font-bold text-foreground">{salesLimit.toLocaleString('pt-BR')}</span> vendas
+                    </p>
+                  )}
+                </div>
+              </div>
+              {salesLimitHistory.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-amber-200/50 dark:border-amber-800/50">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Histórico de alterações</p>
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto custom-scrollbar">
+                    {salesLimitHistory.map((h, i) => (
+                      <div key={h.id} className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <span className="font-medium text-foreground">{h.adminName}</span>
+                        <span>alterou de</span>
+                        <span className="font-mono text-red-500">{h.previousValue ?? '—'}</span>
+                        <span>para</span>
+                        <span className="font-mono text-emerald-600 font-bold">{h.newValue}</span>
+                        <span className="ml-auto text-[10px]">{new Date(h.timestamp).toLocaleString('pt-BR')}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-1">
@@ -6858,6 +7152,254 @@ export function AdminPage() {
         {/* Telemedicina Tab — admin approval panel for activation requests */}
         <TabsContent value="telemedicina" className="mt-4 space-y-4">
           <AdminTelemedicinaPanel />
+        </TabsContent>
+
+        {/* ===== CONTENT TEXTS TAB (Item 1) =====
+            Admin control over ALL system texts/labels. Backed by the
+            SystemConfig table (filtered by category). */}
+        <TabsContent value="content-texts" className="mt-4 space-y-4">
+          {/* Header card */}
+          <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
+            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Type className="h-4 w-4 text-emerald-600" />
+                  <h3 className="text-sm font-semibold text-foreground">Conteúdo e Textos</h3>
+                  <Badge variant="secondary" className="text-[10px]">{contentTexts.length}</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Edite todos os textos e rótulos do sistema (Cliente, Motorista, Lojista, App Mobile, etc.)
+                  sem precisar de deploy. Use categorias para agrupar textos por módulo.
+                </p>
+              </div>
+              <Button
+                className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shrink-0"
+                onClick={openCreateContentText}
+              >
+                <Plus className="h-4 w-4" /> Novo Texto
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Search + category filter */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por chave, valor ou descrição..."
+                    value={contentTextSearch}
+                    onChange={(e) => setContentTextSearch(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <select
+                  value={contentTextCategoryFilter}
+                  onChange={(e) => setContentTextCategoryFilter(e.target.value)}
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm min-w-[180px]"
+                >
+                  <option value="all">Todas as categorias</option>
+                  {CONTENT_TEXT_CATEGORY_OPTIONS.map((c) => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Table */}
+          {contentTextsLoading ? (
+            <Card>
+              <CardContent className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
+                <span className="ml-3 text-sm text-muted-foreground">Carregando textos...</span>
+              </CardContent>
+            </Card>
+          ) : filteredContentTexts.length === 0 ? (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <Type className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-lg font-medium text-foreground">Nenhum texto encontrado</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {contentTexts.length === 0
+                    ? 'Nenhum texto cadastrado ainda. Clique em "Novo Texto" para criar o primeiro.'
+                    : 'Nenhum texto corresponde aos filtros aplicados.'}
+                </p>
+                {contentTexts.length === 0 && (
+                  <Button
+                    className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
+                    onClick={openCreateContentText}
+                  >
+                    <Plus className="h-4 w-4" /> Criar Texto
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs sm:text-sm">
+                    <thead className="bg-muted/50">
+                      <tr className="text-left">
+                        <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Chave</th>
+                        <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Valor</th>
+                        <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Categoria</th>
+                        <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide hidden md:table-cell">Atualizado em</th>
+                        <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide text-right">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredContentTexts.map((t) => (
+                        <tr key={t.id} className="border-t border-border hover:bg-muted/30">
+                          <td className="p-3">
+                            <code className="text-xs font-mono text-emerald-700 dark:text-emerald-400 break-all">
+                              {t.key}
+                            </code>
+                            {t.description && (
+                              <div className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">
+                                {t.description}
+                              </div>
+                            )}
+                          </td>
+                          <td className="p-3 max-w-md">
+                            <span className="text-foreground line-clamp-2">{t.value}</span>
+                          </td>
+                          <td className="p-3">
+                            <Badge variant="outline" className="text-[10px]">
+                              {t.category || 'geral'}
+                            </Badge>
+                          </td>
+                          <td className="p-3 hidden md:table-cell text-xs text-muted-foreground">
+                            {new Date(t.updatedAt).toLocaleString('pt-BR', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              year: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </td>
+                          <td className="p-3">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => openEditContentText(t)}
+                                title="Editar"
+                              >
+                                <Edit className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                onClick={() => deleteContentText(t)}
+                                title="Excluir"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Create / Edit Dialog */}
+          <Dialog open={contentTextDialogOpen} onOpenChange={setContentTextDialogOpen}>
+            <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Type className="h-4 w-4 text-emerald-600" />
+                  {editingContentText ? 'Editar Texto' : 'Novo Texto'}
+                </DialogTitle>
+                <DialogDescription>
+                  {editingContentText
+                    ? 'Edite o valor, a descrição ou a categoria deste texto. A chave não pode ser alterada.'
+                    : 'Crie um novo texto editável. A chave é o identificador único usado no código (ex: menu_dashboard).'}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 py-2">
+                {/* Key */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Chave (key) *</Label>
+                  <Input
+                    placeholder="ex: menu_dashboard"
+                    value={contentTextForm.key}
+                    onChange={(e) => setContentTextForm((f) => ({ ...f, key: e.target.value }))}
+                    disabled={!!editingContentText}
+                    className="font-mono text-xs"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Apenas letras minúsculas, números e underline. Ex: <code>menu_cashback</code>.
+                  </p>
+                </div>
+
+                {/* Value */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Valor *</Label>
+                  <Textarea
+                    placeholder="Texto que será exibido no sistema"
+                    value={contentTextForm.value}
+                    onChange={(e) => setContentTextForm((f) => ({ ...f, value: e.target.value }))}
+                    rows={3}
+                    className="text-sm"
+                  />
+                </div>
+
+                {/* Description */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Descrição (opcional)</Label>
+                  <Input
+                    placeholder="Ex: Saudação exibida pela manhã no dashboard"
+                    value={contentTextForm.description}
+                    onChange={(e) => setContentTextForm((f) => ({ ...f, description: e.target.value }))}
+                  />
+                </div>
+
+                {/* Category */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Categoria *</Label>
+                  <Select
+                    value={contentTextForm.category}
+                    onValueChange={(v) => setContentTextForm((f) => ({ ...f, category: v }))}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {CONTENT_TEXT_CATEGORY_OPTIONS.map((c) => (
+                        <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setContentTextDialogOpen(false)}
+                  disabled={contentTextSaving}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                  onClick={saveContentText}
+                  disabled={contentTextSaving}
+                >
+                  {contentTextSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {editingContentText ? 'Salvar Alterações' : 'Criar Texto'}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
       </Tabs>
 

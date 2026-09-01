@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -369,6 +369,7 @@ model SystemConfig {
   key         String   @unique
   value       String
   description String?
+  category    String   @default("geral")
   updatedAt   DateTime @updatedAt
 }
 

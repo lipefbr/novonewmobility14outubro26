@@ -10229,3 +10229,112 @@ Stage Summary:
 - Lint: apenas 13 erros require() preexistentes em .js root (nenhum novo).
 - Schema: postgresql (para LipeHost). Local dev usado sqlite temporariamente.
 - ATENÇÃO: rodar `bun run db:push` na LipeHost antes do redeploy se houver mudanças de schema (não houve mudanças de schema neste session — apenas código).
+
+---
+Task ID: 3-a
+Agent: Item 1 — Admin control over system texts/labels ("Conteúdo e Textos" tab)
+
+Task:
+Implement an admin-managed dynamic content/texts system so the admin can edit ALL
+texts/labels (Cliente, Motorista, Lojista, App Mobile, etc.) without code changes
+or deploys. Backed by the existing SystemConfig table, extended with a `category`
+field for grouping by module.
+
+Work Log:
+- prisma/schema.prisma — added `category String @default("geral")` to SystemConfig
+  (sqlite provider left untouched). Ran `bun run db:push` — schema synced.
+- src/app/api/admin/content-texts/route.ts (NEW) — GET + POST for admin CRUD:
+  - GET: admin-only, idempotently seeds the default content texts (geral/dashboard/
+    menu/planos) on first call, returns array of items (optionally filtered by
+    ?category=X). Ordered by [category asc, key asc].
+  - POST: admin-only, validates key (required, unique, /^[a-z0-9_]+$/i), value
+    (required), description (optional), category (defaults to "geral"). Returns
+    409 on duplicate key. Returns the created item with 201.
+  - Seed is idempotent — only inserts keys that don't already exist (uses
+    createMany + skipDuplicates after a findMany to compute the missing set).
+  - Seed covers 35+ default texts across categories: platform_name, tagline,
+    description, dashboard greetings (morning/afternoon/evening), dashboard
+    referral title/subtitle, 20 menu_* items (sidebar), 3 plan_*_name items.
+- src/app/api/admin/content-texts/[id]/route.ts (NEW) — PUT + DELETE for one item:
+  - PUT: admin-only, updates value/description/category (key is immutable). 404
+    if not found. 400 if no fields provided.
+  - DELETE: admin-only, 404 if not found. Returns success message.
+- src/app/api/content-texts/route.ts (NEW) — PUBLIC read-only GET:
+  - Returns a flat `{ [key]: value }` object for easy frontend lookup. Optionally
+    filtered by ?category=X. Used by src/lib/content-texts.ts.
+- src/lib/content-texts.ts (NEW) — client-side cache helper:
+  - getContentTexts() — fetches once, dedupes concurrent callers via in-flight
+    promise, caches in module-level variable. Returns {} on any error.
+  - getText(key, fallback) — synchronous lookup with fallback (no await needed).
+  - invalidateContentTexts() — clears the cache so next call refetches.
+  - preloadContentTexts() — convenience wrapper to preload at app start.
+- src/lib/store.ts — added `'content-texts'` to the AdminPageKey union type so
+  the admin sidebar can route to it.
+- src/components/newmobility/admin/admin-layout.tsx:
+  - Imported `Type` icon from lucide-react.
+  - Added `{ key: 'content-texts', label: 'Conteúdo e Textos', icon: Type,
+    description: 'Editar todos os textos e rótulos do sistema', group: 'system' }`
+    to adminNavItems (placed between "Config Cashback" and "Asaas" in the system
+    group, near "Configurações" as the task requested).
+- src/components/newmobility/admin/admin-page.tsx:
+  - Added `'content-texts': 'content-texts'` to the adminPageToTab map.
+  - Imported `Type` icon and `Textarea` component.
+  - Added `ContentTextItem` interface + `CONTENT_TEXT_CATEGORY_OPTIONS` constant
+    (8 categories: geral, dashboard, menu, planos, motorista, lojista, matrizes,
+    mobile).
+  - Added state: contentTexts, contentTextsLoading, contentTextSearch,
+    contentTextCategoryFilter, editingContentText, contentTextDialogOpen,
+    contentTextForm, contentTextSaving.
+  - Added handlers: loadContentTexts (useCallback), openCreateContentText,
+    openEditContentText, saveContentText (POST or PUT based on edit mode,
+    validates key format and value presence, toasts on success/error),
+    deleteContentText (with confirm prompt).
+  - Added filteredContentTexts useMemo (combines search + category filter).
+  - Added `if (activeTab === 'content-texts') loadContentTexts()` to the tab
+    useEffect.
+  - Added `<TabsContent value="content-texts">` block (right before `</Tabs>`):
+    - Header card with title + count badge + "Novo Texto" button.
+    - Search input + category filter dropdown.
+    - Loading / empty / table states. Table columns: Chave (with description
+      subtitle), Valor (line-clamp-2), Categoria (badge), Atualizado em
+      (formatted pt-BR), Ações (edit + delete buttons).
+    - Create/Edit Dialog: key input (disabled on edit, font-mono), value
+      Textarea (3 rows), description Input, category Select with the 8 options.
+      Save button with Loader2 spinner.
+
+Files changed:
+- prisma/schema.prisma (modified — added category field to SystemConfig)
+- src/app/api/admin/content-texts/route.ts (NEW)
+- src/app/api/admin/content-texts/[id]/route.ts (NEW)
+- src/app/api/content-texts/route.ts (NEW)
+- src/lib/content-texts.ts (NEW)
+- src/lib/store.ts (modified — added 'content-texts' to AdminPageKey)
+- src/components/newmobility/admin/admin-layout.tsx (modified — added nav item)
+- src/components/newmobility/admin/admin-page.tsx (modified — added tab + UI)
+
+Verification:
+- `bun run db:push` — schema synced successfully, no errors.
+- `bunx eslint <changed files>` — 0 errors in any of the new/modified files
+  (only pre-existing helper scripts like keep-alive.js / supervisor.js had
+  require() warnings, unrelated to this task).
+- API routes follow the existing goal-configs pattern (admin auth check,
+  success/error helpers, NextRequest params Promise unwrapping for [id]).
+- Admin UI follows the existing goal-configs/service-types pattern (state +
+  handlers + TabsContent + Dialog, with `Type` icon and a clean table view).
+- The seed is idempotent and safe — wrapped in try/catch so a seed failure
+  (e.g. race condition between two simultaneous admin GETs) doesn't break the
+  list response.
+
+Stage Summary:
+- Item 1 complete. The admin now has a "Conteúdo e Textos" tab in the admin
+  sidebar (system group) that lets them create/edit/delete any system text/label
+  grouped by category. The public /api/content-texts endpoint exposes a flat
+  `{ [key]: value }` map, and src/lib/content-texts.ts provides a cached
+  client-side getText(key, fallback) helper that any component can call to
+  consume admin-edited labels without a re-render or refetch.
+
+No issues. The schema change is backward-compatible (default "geral" for any
+existing SystemConfig rows). The seed only inserts missing keys, so existing
+admin-configured SystemConfig rows (cashback percentages, withdrawal limits,
+etc.) are untouched.
+
