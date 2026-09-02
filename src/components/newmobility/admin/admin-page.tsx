@@ -741,6 +741,39 @@ export function AdminPage() {
     timestamp: string
   }>>([])
 
+  // Item 2 — Load sales limit config for the matrices tab.
+  // Declared here (before the useEffect at line ~1280) to avoid the
+  // "Cannot access 'loadSalesLimit' before initialization" TDZ error.
+  // useCallback is a const — it must be initialized before any code
+  // that references it runs.
+  const loadSalesLimit = useCallback(async () => {
+    if (!user?.id) return
+    setSalesLimitLoading(true)
+    try {
+      const data = await apiFetch<{
+        salesLimit: number
+        description?: string
+        history?: Array<{
+          id: string
+          adminName: string
+          adminEmail: string
+          previousValue: number | null
+          newValue: number
+          timestamp: string
+        }>
+      }>(`/admin/matrix-config?userId=${user.id}`)
+      if (data) {
+        setSalesLimit(data.salesLimit)
+        setSalesLimitInput(String(data.salesLimit))
+        if (data.history) setSalesLimitHistory(data.history)
+      }
+    } catch {
+      // Silent fail — keep defaults
+    } finally {
+      setSalesLimitLoading(false)
+    }
+  }, [user?.id])
+
   // Cashback config tab
   const [cashbackConfig, setCashbackConfig] = useState<CashbackConfigData | null>(null)
   const [pointsConfig, setPointsConfig] = useState<PointsConfigData | null>(null)
@@ -1360,35 +1393,6 @@ export function AdminPage() {
       setFinancialData(data)
     } catch { /* ignore */ }
   }
-
-  // Item 2 — Load sales limit config for the matrices tab
-  const loadSalesLimit = useCallback(async () => {
-    if (!user?.id) return
-    setSalesLimitLoading(true)
-    try {
-      const data = await apiFetch<{
-        salesLimit: number
-        description?: string
-        history?: Array<{
-          id: string
-          adminName: string
-          adminEmail: string
-          previousValue: number | null
-          newValue: number
-          timestamp: string
-        }>
-      }>(`/admin/matrix-config?userId=${user.id}`)
-      if (data) {
-        setSalesLimit(data.salesLimit)
-        setSalesLimitInput(String(data.salesLimit))
-        if (data.history) setSalesLimitHistory(data.history)
-      }
-    } catch {
-      // Silent fail — keep defaults
-    } finally {
-      setSalesLimitLoading(false)
-    }
-  }, [user?.id])
 
   // Item 2 — Save the sales limit
   const saveSalesLimit = async () => {
