@@ -42,15 +42,15 @@ const whatsNew = [
 // ─────────────────────────────────────────────────────────────────────────────
 const WEB_APPS = [
   {
-    href: '/mobile/login',
-    title: 'App Cliente',
+    href: '/',
+    title: 'Backoffice',
     subtitle: 'Passageiro / Usuário',
-    desc: 'Solicite corridas, peça comida, faça compras e gerencie seu CashBack.',
+    desc: 'Acesse o painel web completo: dashboard, CashBack, indicações, marketplace e muito mais.',
     icon: User,
     gradient: 'from-sky-500 to-blue-600',
     accent: 'bg-sky-100 text-sky-600',
     border: 'border-sky-200 hover:border-sky-400',
-    badge: 'v3.2.0',
+    badge: 'Web',
   },
   {
     href: '/motorista/login',
