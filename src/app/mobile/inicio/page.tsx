@@ -170,16 +170,14 @@ export default function MobileInicioPage() {
     <MobileAppShell>
       {/* ════════════════ 1. HEADER AZUL ════════════════ */}
       <header
-        className="sticky top-0 z-30 pb-14"
+        className="sticky top-0 z-30 pb-12 pt-3"
         style={{
           background: `linear-gradient(160deg, ${PRIMARY} 0%, #0B4FE0 100%)`,
+          paddingTop: 'max(env(safe-area-inset-top), 12px)',
         }}
       >
-        {/* status bar safe-area */}
-        <div style={{ height: 'env(safe-area-inset-top)' }} />
-
         {/* Row 1: location + bell + avatar */}
-        <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-3">
+        <div className="px-4 pt-2 pb-2 flex items-center justify-between gap-3">
           {/* Location */}
           <button
             onClick={() => toast.info('Seleção de endereço em breve')}
@@ -242,7 +240,7 @@ export default function MobileInicioPage() {
       </header>
 
       {/* ════════════════ 2. CARD DE CARTEIRA (flutuante) ════════════════ */}
-      <div className="px-4 -mt-10 relative z-20">
+      <div className="px-4 -mt-6 relative z-20">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
