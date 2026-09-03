@@ -382,8 +382,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
   const pageTitle = activeItem?.label || 'Dashboard'
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-950">
-      <div className="flex flex-1 min-h-0">
+    <div className="h-screen flex flex-col bg-gray-50 dark:bg-gray-950 overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Desktop Sidebar */}
         <aside
           className={cn(
@@ -430,13 +430,13 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           {/* Header */}
           <header className="sticky top-0 z-20 bg-gray-900 border-b border-gray-800 shrink-0">
             <div className="h-0.5 bg-gradient-to-r from-emerald-500 via-emerald-400 to-emerald-500" />
-            <div className="px-4 py-2.5 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-3 min-w-0">
+            <div className="px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                 <motion.div whileTap={{ scale: 0.9 }}>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="lg:hidden h-9 w-9 text-gray-400 hover:text-white hover:bg-gray-800"
+                    className="lg:hidden h-9 w-9 text-gray-400 hover:text-white hover:bg-gray-800 shrink-0"
                     onClick={() => setAdminMobileSidebarOpen(true)}
                     aria-label="Abrir menu"
                   >
@@ -444,11 +444,11 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                   </Button>
                 </motion.div>
 
-                <div className="flex items-center gap-2 lg:hidden">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shadow-md shadow-emerald-500/20">
-                    <Shield className="h-4 w-4" />
+                <div className="flex items-center gap-2 lg:hidden min-w-0">
+                  <div className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shadow-md shadow-emerald-500/20 shrink-0">
+                    <Shield className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   </div>
-                  <span className="font-bold text-white text-sm">NewMobility Admin</span>
+                  <span className="font-bold text-white text-xs sm:text-sm sm:text-base truncate">NewMobility Admin</span>
                 </div>
 
                 <div className="hidden lg:flex items-center gap-2 min-w-0">
@@ -461,8 +461,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                <Badge className="hidden sm:inline-flex bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] gap-1 uppercase tracking-wider font-bold">
+              <div className="flex items-center gap-1 sm:gap-1.5 sm:gap-2 shrink-0">
+                <Badge className="hidden md:inline-flex bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] gap-1 uppercase tracking-wider font-bold">
                   <Shield className="h-3 w-3" />
                   Painel Administrativo
                 </Badge>
@@ -470,17 +470,17 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 text-gray-400 hover:text-white hover:bg-gray-800 relative"
+                  className="h-8 w-8 sm:h-9 sm:w-9 text-gray-400 hover:text-white hover:bg-gray-800 relative shrink-0"
                   aria-label="Notificações"
                 >
-                  <Bell className="h-4.5 w-4.5" />
+                  <Bell className="h-4 w-4 sm:h-4.5 sm:w-4.5" />
                   <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
                 </Button>
 
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 text-gray-400 hover:text-white hover:bg-gray-800"
+                  className="h-8 w-8 sm:h-9 sm:w-9 text-gray-400 hover:text-white hover:bg-gray-800 shrink-0"
                   onClick={toggleDarkMode}
                   aria-label="Alternar tema"
                 >
@@ -490,14 +490,14 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                     animate={{ rotate: 0, opacity: 1 }}
                     transition={{ duration: 0.2 }}
                   >
-                    {darkMode ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
+                    {darkMode ? <Sun className="h-4 w-4 sm:h-4.5 sm:w-4.5" /> : <Moon className="h-4 w-4 sm:h-4.5 sm:w-4.5" />}
                   </motion.div>
                 </Button>
 
                 <Button
                   variant="outline"
                   size="sm"
-                  className="hidden sm:inline-flex gap-1.5 text-xs h-8 bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700 hover:text-white"
+                  className="hidden sm:inline-flex gap-1.5 text-xs h-8 bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700 hover:text-white shrink-0"
                   onClick={handleSwitchToUser}
                 >
                   <ArrowLeftRight className="h-3.5 w-3.5" />
@@ -506,8 +506,8 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 </Button>
 
                 {user && (
-                  <div className="flex items-center gap-2 ml-1 pl-2 border-l border-gray-800">
-                    <Avatar className="h-8 w-8 border-2 border-emerald-500">
+                  <div className="flex items-center gap-2 ml-1 pl-2 border-l border-gray-800 shrink-0">
+                    <Avatar className="h-8 w-8 border-2 border-emerald-500 shrink-0">
                       <AvatarFallback className="bg-emerald-700 text-white text-xs">
                         {user.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
                       </AvatarFallback>
@@ -535,7 +535,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
                 transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
-                className="p-4 md:p-6 pb-20 md:pb-6"
+                className="p-3 sm:p-4 md:p-6 pb-36 md:pb-6"
               >
                 {children}
               </motion.div>

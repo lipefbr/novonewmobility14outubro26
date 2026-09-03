@@ -103,25 +103,25 @@ export function AppLayout({ children }: AppLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="h-screen flex flex-col bg-background overflow-hidden">
       <WelcomeModal />
       {/* Impersonation banner — sticky at the very top, above the navbar.
           Renders null when isImpersonating is false. */}
       <ImpersonationBanner />
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
         <Sidebar />
 
         <div className="flex flex-col flex-1 min-w-0">
           {/* Header */}
           <header className="sticky top-0 z-30 bg-card/95 backdrop-blur-md border-b border-border shrink-0">
             <div className="h-0.5 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 animate-gradient-shift" />
-            <div className="px-4 py-2.5 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-3 min-w-0">
+            <div className="px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                 <motion.div whileTap={{ scale: 0.9 }}>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="lg:hidden h-11 w-11 text-muted-foreground hover:text-foreground"
+                    className="lg:hidden h-9 w-9 sm:h-11 sm:w-11 text-muted-foreground hover:text-foreground shrink-0"
                     onClick={() => setMobileSidebarOpen(true)}
                     aria-label="Abrir menu"
                   >
@@ -153,11 +153,11 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="gap-1.5 text-xs h-8 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
+                    className="gap-1.5 text-xs h-8 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 shrink-0"
                     onClick={handleBackToAdmin}
                     title="Voltar para o painel administrativo"
                   >
-                    <Shield className="h-3.5 w-3.5" />
+                    <Shield className="h-3.5 w-3.5 shrink-0" />
                     <span className="hidden md:inline">Voltar para Admin</span>
                     <span className="md:hidden">Admin</span>
                   </Button>
@@ -168,7 +168,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 text-muted-foreground hover:text-foreground relative"
+                  className="h-9 w-9 sm:h-9 sm:w-9 text-muted-foreground hover:text-foreground relative shrink-0"
                   onClick={toggleDarkMode}
                 >
                   <motion.div
@@ -177,13 +177,13 @@ export function AppLayout({ children }: AppLayoutProps) {
                     animate={{ rotate: 0, opacity: 1 }}
                     transition={{ duration: 0.2 }}
                   >
-                    {darkMode ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
+                    {darkMode ? <Sun className="h-4 w-4 sm:h-4.5 sm:w-4.5" /> : <Moon className="h-4 w-4 sm:h-4.5 sm:w-4.5" />}
                   </motion.div>
                 </Button>
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8">
+                    <Button variant="outline" size="sm" className="gap-1.5 text-xs h-8 shrink-0 hidden xs:inline-flex sm:inline-flex">
                       <Globe className="h-3.5 w-3.5" />
                       <span className="uppercase font-semibold">{user?.language || 'pt'}</span>
                     </Button>
@@ -206,8 +206,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </DropdownMenu>
 
                 {user && (
-                  <div className="flex items-center gap-2">
-                    <Avatar className="h-8 w-8 border-2 border-emerald-200 dark:border-emerald-800">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Avatar className="h-8 w-8 border-2 border-emerald-200 dark:border-emerald-800 shrink-0">
                       <AvatarFallback className="bg-emerald-600 text-white text-xs">
                         {user.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
                       </AvatarFallback>
@@ -230,7 +230,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
                 transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
-                className="p-4 md:p-6 pb-20 md:pb-6"
+                className="p-3 sm:p-4 md:p-6 pb-36 md:pb-6"
               >
                 {/* Subscription blocker banner (shown for free users) */}
                 <SubscriptionBlocker />
@@ -239,7 +239,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             </AnimatePresence>
 
             {/* Last Updated timestamp */}
-            <div className="px-4 md:px-6 pb-2">
+            <div className="px-4 md:px-6 pb-24 md:pb-2">
               <LastUpdated />
             </div>
           </main>

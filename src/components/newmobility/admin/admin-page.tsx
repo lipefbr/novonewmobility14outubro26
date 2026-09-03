@@ -3408,7 +3408,7 @@ export function AdminPage() {
           )}
           {stats && (
             <>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
                 {[
                   { label: 'Total de Usuários', value: stats.totalUsers, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/30' },
                   { label: 'Usuários Ativos', value: stats.activeUsers, icon: Check, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
@@ -3416,14 +3416,14 @@ export function AdminPage() {
                   { label: 'CashBack Total', value: formatCurrency(stats.totalCashback), icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/30' },
                 ].map((card, i) => (
                   <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
-                    <Card className={`${card.bg} border-0`}>
-                      <CardContent className="p-4">
+                    <Card className={`${card.bg} border-0 overflow-hidden`}>
+                      <CardContent className="p-2 sm:p-3 sm:p-4">
                         <div className="flex items-center justify-between mb-2">
-                          <card.icon className={`h-5 w-5 ${card.color}`} />
-                          <Badge variant="secondary" className="text-[10px]">+{stats.growthRate}%</Badge>
+                          <card.icon className={`h-4 w-4 sm:h-5 sm:w-5 ${card.color} shrink-0`} />
+                          <Badge variant="secondary" className="text-[8px] xs:text-[9px] sm:text-[10px]">+{stats.growthRate}%</Badge>
                         </div>
-                        <p className="text-lg font-bold text-foreground">{card.value}</p>
-                        <p className="text-xs text-muted-foreground">{card.label}</p>
+                        <p className="text-xs xs:text-sm sm:text-lg font-bold text-foreground break-all leading-tight">{card.value}</p>
+                        <p className="text-[9px] xs:text-[10px] sm:text-xs text-muted-foreground leading-tight mt-0.5">{card.label}</p>
                       </CardContent>
                     </Card>
                   </motion.div>
@@ -3436,15 +3436,15 @@ export function AdminPage() {
                   <CardContent>
                     <div className="space-y-3">
                       {stats.planDistribution.map(p => (
-                        <div key={p.plan} className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
+                        <div key={p.plan} className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0 shrink-0">
                             <Badge className={getPlanBadge(p.plan)}>{getPlanName(p.plan)}</Badge>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <div className="w-32 h-2 bg-muted rounded-full overflow-hidden">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden min-w-[40px]">
                               <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${(p.count / stats.totalUsers) * 100}%` }} />
                             </div>
-                            <span className="text-sm font-medium text-foreground w-8 text-right">{p.count}</span>
+                            <span className="text-sm font-medium text-foreground w-8 text-right shrink-0">{p.count}</span>
                           </div>
                         </div>
                       ))}
@@ -3457,15 +3457,15 @@ export function AdminPage() {
                   <CardContent>
                     <div className="space-y-2">
                       {stats.recentUsers.map(u => (
-                        <div key={u.id} className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
-                          <div className="flex items-center gap-2">
-                            <div className={`h-2 w-2 rounded-full ${u.isActive ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                            <div>
-                              <p className="text-sm font-medium text-foreground">{u.name}</p>
-                              <p className="text-[10px] text-muted-foreground">{u.email}</p>
+                        <div key={u.id} className="flex items-center justify-between gap-2 p-2 bg-muted/50 rounded-lg">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <div className={`h-2 w-2 rounded-full ${u.isActive ? 'bg-emerald-500' : 'bg-red-500'} shrink-0`} />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-foreground truncate">{u.name}</p>
+                              <p className="text-[10px] text-muted-foreground truncate">{u.email}</p>
                             </div>
                           </div>
-                          <Badge className={getPlanBadge(u.plan)}>{getPlanName(u.plan)}</Badge>
+                          <Badge className={`${getPlanBadge(u.plan)} shrink-0 text-[10px]`}>{getPlanName(u.plan)}</Badge>
                         </div>
                       ))}
                     </div>
@@ -3476,22 +3476,22 @@ export function AdminPage() {
               <Card>
                 <CardHeader><CardTitle className="text-sm flex items-center gap-2"><Activity className="h-4 w-4 text-emerald-600" /> Resumo de Atividade</CardTitle></CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="text-center p-3 bg-muted/50 rounded-lg">
-                      <p className="text-lg font-bold text-foreground">{stats.totalTransactions}</p>
-                      <p className="text-xs text-muted-foreground">Total de Transações</p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 xs:gap-2 sm:gap-4">
+                    <div className="text-center p-1.5 xs:p-2 sm:p-3 bg-muted/50 rounded-lg overflow-hidden">
+                      <p className="text-xs xs:text-sm sm:text-lg font-bold text-foreground">{stats.totalTransactions}</p>
+                      <p className="text-[9px] xs:text-[10px] sm:text-xs text-muted-foreground leading-tight">Total de Transações</p>
                     </div>
-                    <div className="text-center p-3 bg-muted/50 rounded-lg">
-                      <p className="text-lg font-bold text-foreground">{formatCurrency(stats.totalWithdrawals)}</p>
-                      <p className="text-xs text-muted-foreground">Total de Saques</p>
+                    <div className="text-center p-1.5 xs:p-2 sm:p-3 bg-muted/50 rounded-lg overflow-hidden">
+                      <p className="text-xs xs:text-sm sm:text-lg font-bold text-foreground break-all">{formatCurrency(stats.totalWithdrawals)}</p>
+                      <p className="text-[9px] xs:text-[10px] sm:text-xs text-muted-foreground leading-tight">Total de Saques</p>
                     </div>
-                    <div className="text-center p-3 bg-muted/50 rounded-lg">
-                      <p className="text-lg font-bold text-foreground">{stats.inactiveUsers}</p>
-                      <p className="text-xs text-muted-foreground">Usuários Inativos</p>
+                    <div className="text-center p-1.5 xs:p-2 sm:p-3 bg-muted/50 rounded-lg overflow-hidden">
+                      <p className="text-xs xs:text-sm sm:text-lg font-bold text-foreground">{stats.inactiveUsers}</p>
+                      <p className="text-[9px] xs:text-[10px] sm:text-xs text-muted-foreground leading-tight">Usuários Inativos</p>
                     </div>
-                    <div className="text-center p-3 bg-muted/50 rounded-lg">
-                      <p className="text-lg font-bold text-foreground">{formatCurrency(stats.monthlyRevenue)}</p>
-                      <p className="text-xs text-muted-foreground">Receita Mensal</p>
+                    <div className="text-center p-1.5 xs:p-2 sm:p-3 bg-muted/50 rounded-lg overflow-hidden">
+                      <p className="text-xs xs:text-sm sm:text-lg font-bold text-foreground break-all">{formatCurrency(stats.monthlyRevenue)}</p>
+                      <p className="text-[9px] xs:text-[10px] sm:text-xs text-muted-foreground leading-tight">Receita Mensal</p>
                     </div>
                   </div>
                 </CardContent>
