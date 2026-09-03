@@ -248,7 +248,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           <footer className="bg-card border-t border-border px-4 py-3 shrink-0 hidden md:block">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
               <p className="text-xs text-muted-foreground text-center">
-                {t('footer.copyright')}
+                {t('footer.copyright').replace('2025', String(new Date().getFullYear()))}
               </p>
               <div className="flex items-center gap-4">
                 <a href="#" className="text-xs text-muted-foreground/70 hover:text-emerald-600 transition-colors">{t('footer.terms')}</a>

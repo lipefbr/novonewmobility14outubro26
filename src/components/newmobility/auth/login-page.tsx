@@ -526,7 +526,7 @@ export function LoginPage() {
         )}
 
           <p className="text-center text-xs text-gray-400 mt-6">
-            {t('footer.copyright')}
+            {t('footer.copyright').replace('2025', String(new Date().getFullYear()))}
           </p>
         </motion.div>
       </div>
