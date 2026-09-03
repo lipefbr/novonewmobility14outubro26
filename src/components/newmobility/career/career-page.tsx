@@ -615,7 +615,7 @@ export function CareerPage() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 pb-8">
       {/* Header */}
       <div>
         <h2 className="text-xl font-bold text-foreground">{t('career.title')}</h2>
@@ -640,7 +640,7 @@ export function CareerPage() {
                   Cada PIN é uma graduação com <span className="font-semibold">bônus mensal pago todos os meses</span>{' '}
                   ao manter a categoria conquistada. PAGOS TODOS OS MESES AO ATINGIR CADA PINO E A CATEGORIA QUE ELE SE ENCONTRA.
                 </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
+                <div className="grid grid-cols-2 xs:grid-cols-3 gap-1.5 xs:gap-2 mt-3">
                   {levels.filter(l => l.code !== 'associado').slice(0, 6).map((lvl) => (
                     <div key={lvl.id} className="bg-white/60 dark:bg-emerald-950/40 rounded-md p-2 text-center border border-emerald-100 dark:border-emerald-900/50">
                       <p className="text-[10px] text-muted-foreground">{lvl.name}</p>
