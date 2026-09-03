@@ -87,17 +87,12 @@ export function LoginPage() {
       clearTimeout(safetyTimer)
       if (data.user) {
         const userData = mapApiUserToUserData(data.user, data.balances)
-        // Save to localStorage + redirect (avoids TDZ error)
-        localStorage.setItem('newmobility-auth', JSON.stringify({
-          state: { isAuthenticated: true, user: userData, activePage: 'dashboard', darkMode: false, adminActivePage: 'dashboard', adminViewAsUser: false, adminMobileSidebarOpen: false, mobileSidebarOpen: false, sidebarCollapsed: false, authView: 'login', notifications: [] },
-          version: 0
-        }))
-        if (userData.role === 'admin' || isAdmin) {
-          window.location.href = '/admingeral/inicio'
-        } else {
-          window.location.href = '/mobile/inicio'
-        }
-        return
+        // Login na pagina principal (/) SEMPRE fica no backoffice web.
+        // Nao redireciona para /mobile/inicio (isso so acontece quando
+        // o login e feito pelo /mobile/login). Nao redireciona para
+        // /admingeral/inicio (o admin usa o painel admin integrado em /).
+        // Apos o login, o componente page.tsx detecta user.role === 'admin'
+        // e renderiza o AdminLayout automaticamente.
         login(userData)
         if (isAdmin) {
           setTimeout(() => {
