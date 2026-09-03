@@ -250,10 +250,17 @@ export default function MobileInicioPage() {
           className="bg-white rounded-2xl shadow-xl border border-gray-50 p-4"
         >
           <div className="flex items-center justify-between gap-3">
-            {/* Left: balance (clickable → /mobile/carteira) */}
-            <button
+            {/* Left: balance (clickable → /mobile/carteira).
+                Using a <div role="button"> instead of <button> to avoid
+                the invalid HTML "<button> inside <button>" (the eye toggle
+                below is also a <button>). Nested buttons cause hydration
+                errors in production (next build/next start). */}
+            <div
+              role="button"
+              tabIndex={0}
               onClick={() => router.push('/mobile/carteira')}
-              className="text-left min-w-0 flex-1 min-h-[44px] flex flex-col justify-center"
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); router.push('/mobile/carteira') } }}
+              className="text-left min-w-0 flex-1 min-h-[44px] flex flex-col justify-center cursor-pointer"
             >
               <div className="flex items-center gap-1.5">
                 <p className="text-[11px] text-gray-500 font-medium">Saldo total</p>
@@ -283,7 +290,7 @@ export default function MobileInicioPage() {
                 Toque para ver histórico
                 <ChevronRight className="h-3 w-3" style={{ color: GREEN }} />
               </span>
-            </button>
+            </div>
 
             {/* Right: 3 action buttons */}
             <div className="flex gap-2 flex-shrink-0">
