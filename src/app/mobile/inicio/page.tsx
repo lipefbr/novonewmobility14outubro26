@@ -170,7 +170,7 @@ export default function MobileInicioPage() {
     <MobileAppShell>
       {/* ════════════════ 1. HEADER AZUL ════════════════ */}
       <header
-        className="sticky top-0 z-30 pb-12 pt-3"
+        className="sticky top-0 z-10 pb-12 pt-3"
         style={{
           background: `linear-gradient(160deg, ${PRIMARY} 0%, #0B4FE0 100%)`,
           paddingTop: 'max(env(safe-area-inset-top), 12px)',
@@ -240,7 +240,7 @@ export default function MobileInicioPage() {
       </header>
 
       {/* ════════════════ 2. CARD DE CARTEIRA (flutuante) ════════════════ */}
-      <div className="px-4 -mt-6 relative z-20">
+      <div className="px-4 -mt-6 relative z-30">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
