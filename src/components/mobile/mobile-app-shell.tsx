@@ -18,7 +18,7 @@ import { MobileBottomNav } from './mobile-bottom-nav'
 export function MobileAppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      <main className="flex-1 pb-20">{children}</main>
+      <main className="flex-1 pb-28">{children}</main>
       <MobileBottomNav />
     </div>
   )

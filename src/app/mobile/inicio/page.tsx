@@ -170,7 +170,7 @@ export default function MobileInicioPage() {
     <MobileAppShell>
       {/* ════════════════ 1. HEADER AZUL ════════════════ */}
       <header
-        className="sticky top-0 z-30 pb-16"
+        className="sticky top-0 z-30 pb-14"
         style={{
           background: `linear-gradient(160deg, ${PRIMARY} 0%, #0B4FE0 100%)`,
         }}
@@ -242,7 +242,7 @@ export default function MobileInicioPage() {
       </header>
 
       {/* ════════════════ 2. CARD DE CARTEIRA (flutuante) ════════════════ */}
-      <div className="px-4 -mt-12 relative z-20">
+      <div className="px-4 -mt-10 relative z-20">
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
@@ -425,7 +425,7 @@ export default function MobileInicioPage() {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: idx * 0.05 }}
-              className="flex-shrink-0 w-36 rounded-xl bg-white border border-gray-100 shadow-sm overflow-hidden"
+              className="flex-shrink-0 w-40 rounded-xl bg-white border border-gray-100 shadow-sm overflow-hidden"
             >
               {/* Product image */}
               <div className="relative h-28 bg-gray-100">
@@ -460,17 +460,17 @@ export default function MobileInicioPage() {
                 )}
               </div>
               {/* Product info */}
-              <div className="p-2.5">
+              <div className="p-3">
                 {product.storeName && (
                   <p className="text-[10px] text-gray-400 mb-0.5 truncate">{product.storeName}</p>
                 )}
-                <p className="text-xs font-semibold text-gray-900 leading-tight line-clamp-2">
+                <p className="text-xs font-semibold text-gray-900 leading-snug line-clamp-2 min-h-[2rem]">
                   {product.name}
                 </p>
                 {product.description && (
                   <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{product.description}</p>
                 )}
-                <p className="text-sm font-bold text-gray-900 mt-1">
+                <p className="text-sm font-bold text-gray-900 mt-1.5">
                   R$ {formatBRL(product.priceCents)}
                 </p>
               </div>
@@ -522,8 +522,8 @@ export default function MobileInicioPage() {
         </div>
       )}
 
-      {/* ════════════════ Footer spacer (bottom nav) ════════════════ */}
-      <div className="h-4" />
+      {/* ════════════════ Footer spacer (bottom nav + FAB) ════════════════ */}
+      <div className="h-24" />
     </MobileAppShell>
   )
 }
