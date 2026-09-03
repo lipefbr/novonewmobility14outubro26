@@ -1,21 +1,14 @@
-'use client'
-
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { MobileDesktopRedirect } from '@/components/mobile/mobile-desktop-redirect'
 
 // ============================================================================
-// /mobile/layout.tsx — Wrapper for all /mobile/* pages
+// /mobile/layout.tsx — Wrapper for all /mobile/* pages (SERVER COMPONENT)
 // ----------------------------------------------------------------------------
 // Two responsibilities:
-//   1. DESKTOP REDIRECT: if a user opens any /mobile/* page on a desktop/
-//      notebook (screen >= 768px), they are automatically redirected to
-//      the main web backoffice at /. The mobile app is designed for phones
-//      only — on desktop the full web backoffice provides a much better
-//      experience. This catches direct URL access, bookmarks, and links.
-//
-//      EXCEPTION: /mobile/login is allowed on desktop briefly so it can
-//      redirect logged-in users to / (the redirect logic in /mobile/login
-//      handles this). All other /mobile/* pages redirect immediately.
+//   1. DESKTOP REDIRECT: renders <MobileDesktopRedirect /> (a client
+//      component) which redirects /mobile/* to / on screens >= 768px.
+//      The redirect logic is in a separate client component because
+//      making the layout itself a client component causes "Application
+//      error: a client-side exception" in production builds.
 //
 //   2. Prevents horizontal scroll on mobile pages by clamping overflow-x.
 //      This is a "belt and suspenders" fix — individual pages should still
@@ -28,15 +21,10 @@ export default function MobileLayout({
 }: {
   children: React.ReactNode
 }) {
-  const router = useRouter()
-
-  useEffect(() => {
-    // Only redirect if on a desktop/notebook (screen >= 768px).
-    // On mobile/tablet (< 768px), keep the user in the mobile app.
-    if (typeof window !== 'undefined' && window.innerWidth >= 768) {
-      router.replace('/')
-    }
-  }, [router])
-
-  return <div className="overflow-x-hidden">{children}</div>
+  return (
+    <div className="overflow-x-hidden">
+      <MobileDesktopRedirect />
+      {children}
+    </div>
+  )
 }
