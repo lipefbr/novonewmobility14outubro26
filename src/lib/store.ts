@@ -68,6 +68,7 @@ export type AdminPageKey =
   | 'telemedicina'
   | 'service-types'
   | 'content-texts'
+  | 'system-settings'
 
 export interface UserData {
   id: string

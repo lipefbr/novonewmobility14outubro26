@@ -10338,3 +10338,152 @@ existing SystemConfig rows). The seed only inserts missing keys, so existing
 admin-configured SystemConfig rows (cashback percentages, withdrawal limits,
 etc.) are untouched.
 
+
+---
+Task ID: SETTINGS-1
+Agent: System Settings Agent
+Task: Create a comprehensive "System Settings" admin page where the admin can edit EVERYTHING in the system — all names, values, percentages, matrix values, plan prices, etc.
+
+Work Log:
+- Read /home/z/my-project/worklog.md to confirm previous work on the SystemConfig
+  model + the "Conteúdo e Textos" tab (Task 3-a). The content-texts route
+  seeds ~35 snake_case text labels (platform_name, menu_dashboard,
+  plan_blue3_name, etc.). The system-settings route adds the DOT-style
+  numeric/percentage keys (matrix.entrada.pct_level_1, cashback.entrada_pct,
+  plan.blue3.price_cents, saque.min_cents, etc.) so the two routes don't
+  collide on SystemConfig.key (which is unique). prisma/schema.prisma left
+  untouched (provider = sqlite).
+
+- src/lib/store.ts — added `'system-settings'` to the AdminPageKey union
+  so the admin sidebar can route to the new tab.
+
+- src/app/api/admin/system-settings/route.ts (NEW) — GET + POST:
+  - GET: admin-only, idempotently seeds ALL system-configurable values
+    on the first call (matrizes / cashback / planos / saques / pontos /
+    vouchers / metas / geral). Returns array of items (optionally
+    filtered by ?category=X). Ordered by [category asc, key asc].
+  - POST: admin-only, validates key (required, unique, /^[a-z0-9_.]+$/i
+    — allows dots AND underscores so both snake_case and dotted keys
+    work), value (required), description (optional), category (defaults
+    to "geral"). Returns 409 on duplicate key. Returns the created item
+    with 201.
+  - Seed is idempotent — only inserts missing keys. Uses a per-row
+    create() loop wrapped in try/catch (same pattern as content-texts
+    route) so a unique-key race between two concurrent admin GETs doesn't
+    break the listing.
+  - 52 default entries across 8 categories:
+      matrizes (22)  — Entrada 4x5 (5 levels, 5 pcts, base R$999,00),
+                       Residual 4x7 (7 levels, 7 pcts, base R$1.399,00),
+                       Vendas 4x9 (9 levels, 0.10%/level, base R$199,90,
+                       salesLimit 1000)
+      cashback  (4)  — entrada 35%, residual 45%, vendas 0.9%, direct 10%
+      planos   (11)  — free/blue3/blue5 names + prices (cents) + cashback
+                       level counts + mensalidade R$999,90
+      saques    (3)  — min R$50, max R$5.000, fee 2%
+      pontos    (5)  — per_referral 100, per_purchase 1, per_cashback_claim
+                       50, daily_login 1, per_star 2
+      vouchers  (2)  — welcome R$10, signup R$10
+      metas     (4)  — daily 18 rides, monthly 384, daily bonus R$5,
+                       monthly bonus R$30
+      geral     (1)  — platform.support_email (the platform_name/tagline/
+                       description already exist via content-texts seed)
+- src/app/api/admin/system-settings/[id]/route.ts (NEW) — PUT + DELETE:
+  - PUT: admin-only, updates value/description/category (key is immutable).
+    404 if not found. 400 if no fields provided.
+  - DELETE: admin-only, 404 if not found. Returns success message.
+
+- src/components/newmobility/admin/admin-layout.tsx — added nav item
+  `{ key: 'system-settings', label: 'Configurações do Sistema',
+    icon: Settings, description: 'Editar valores, porcentagens, matrizes,
+    planos, saques e demais configurações', group: 'system' }`
+  placed right after the existing "Conteúdo e Textos" item in the system
+  group. The Settings icon is reused (already imported).
+
+- src/components/newmobility/admin/admin-page.tsx:
+  - Added `'system-settings': 'system-settings'` to the adminPageToTab map
+    so the sidebar selection maps to the new TabsContent.
+  - Added `SystemSettingItem` interface + `SYSTEM_SETTING_CATEGORY_OPTIONS`
+    constant (10 categories: geral, matrizes, cashback, planos, saques,
+    pontos, vouchers, metas, menu, dashboard — plus the special "all" for
+    the dropdown's first option).
+  - Added `SYSTEM_SETTING_CATEGORY_LABEL` map (PT-BR labels for the
+    inline category badge).
+  - Added state: systemSettings, systemSettingsLoading,
+    systemSettingSearch, systemSettingCategoryFilter, editingSystemSetting,
+    systemSettingDialogOpen, systemSettingForm, systemSettingSaving.
+  - Added handlers: loadSystemSettings (useCallback), openCreateSystemSetting,
+    openEditSystemSetting, saveSystemSetting (POST or PUT based on edit
+    mode, validates key format and value presence, toasts on success/error),
+    deleteSystemSetting (with confirm prompt).
+  - Added `isNumericSetting(key)` helper — regex that detects numeric
+    keys (cents, pct, levels, width, points, goal_rides, bonus, etc.) so
+    the edit dialog shows a numeric input (step="any") for them and a
+    Textarea for free-text labels.
+  - Added `filteredSystemSettings` useMemo (combines search + category
+    filter) and `groupedSystemSettings` useMemo (groups by category with
+    a human-friendly sort order: matrizes → cashback → planos → saques →
+    pontos → vouchers → metas → geral → menu → dashboard).
+  - Added `if (activeTab === 'system-settings') loadSystemSettings()` to
+    the tab useEffect (and loadSystemSettings to the deps array).
+  - Added `<TabsContent value="system-settings">` block right before
+    `</Tabs>`:
+    - Header card with Settings icon + title "Configurações do Sistema"
+      + count badge + "Nova Configuração" button.
+    - Search input + category filter dropdown (10 options).
+    - Loading / empty / grouped-list states. The grouped list renders one
+      Card per category with a header badge (PT-BR label + count) and a
+      table of settings (Chave + description, Valor — Badge for numeric,
+      Text for strings — Atualizado em, Ações: edit + delete buttons).
+    - Create/Edit Dialog: key input (disabled on edit, font-mono, allows
+      dots+underscores), value field (numeric Input when editing a known
+      numeric key, Textarea otherwise), description Input, category Select
+      (10 options minus "all"). Save button with Loader2 spinner.
+
+Verification:
+- `bun run db:push` — schema already in sync (provider = sqlite, untouched).
+- `bunx prisma generate` — client regenerated cleanly.
+- Manual seed via bun -e (mirroring the route's seedDefaults()): inserted
+  all 52 default entries into SystemConfig. Verified counts by category:
+    cashback=4, geral=13 (12 existing content-text + 1 new), matrizes=23
+    (22 new + 1 pre-existing matrix.vendas.salesLimit from the matrix-config
+    route), metas=4, planos=11, pontos=5, saques=3, vouchers=2.
+  Total system-configurable entries across all categories: ~65 (52 new +
+  pre-existing content-text + matrix.vendas.salesLimit).
+- `bunx eslint <changed files>` — 0 errors in any of the new/modified
+  files. The only pre-existing errors are the 13 `require()` warnings in
+  root .js helper scripts (keep-alive.js, persistent-server.js,
+  process-manager.js, run-forever.js, supervisor.js) — unrelated to this
+  task and not touched.
+- API routes follow the existing goal-configs / content-texts pattern
+  (admin auth check, success/error helpers, NextRequest params Promise
+  unwrapping for [id]).
+- Admin UI follows the existing content-texts / goal-configs pattern
+  (state + handlers + TabsContent + Dialog, with `Settings` icon and a
+  clean grouped table view).
+- The seed is idempotent and safe — wrapped in try/catch so a seed
+  failure (e.g. race condition between two simultaneous admin GETs)
+  doesn't break the list response. Existing admin-configured SystemConfig
+  rows (cashback_entrada_level_1, matrix.vendas.salesLimit, etc.) are
+  untouched because the seed only inserts missing keys.
+
+Files changed:
+- src/lib/store.ts (modified — added 'system-settings' to AdminPageKey)
+- src/app/api/admin/system-settings/route.ts (NEW — GET + POST + seed)
+- src/app/api/admin/system-settings/[id]/route.ts (NEW — PUT + DELETE)
+- src/components/newmobility/admin/admin-layout.tsx (modified — added nav item)
+- src/components/newmobility/admin/admin-page.tsx (modified — added tab + UI)
+
+Stage Summary:
+- SETTINGS-1 complete. The admin now has a "Configurações do Sistema" tab
+  in the admin sidebar (system group, right after "Conteúdo e Textos")
+  that lets them create/edit/delete ANY system-configurable value
+  (matrix percentages per level, cashback %, plan prices, withdrawal
+  limits, points, vouchers, metas, support email, and anything else
+  they want to add). Numeric settings are detected automatically and
+  rendered as a numeric input in the edit dialog; everything else stays
+  free text. The /api/admin/system-settings endpoint seeds ALL 52 default
+  entries idempotently on first GET, and the schema is unchanged (sqlite
+  provider preserved). The admin can now edit EVERYTHING without a
+  deploy.
+
+No issues.

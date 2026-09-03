@@ -544,6 +544,7 @@ const adminPageToTab: Record<string, string> = {
   telemedicina: 'telemedicina',
   'service-types': 'service-types',
   'content-texts': 'content-texts',
+  'system-settings': 'system-settings',
 }
 
 export function AdminPage() {
@@ -1175,6 +1176,213 @@ export function AdminPage() {
     })
   }, [contentTexts, contentTextSearch, contentTextCategoryFilter])
 
+  // ---------- System Settings (SETTINGS-1 — comprehensive admin editor) ----------
+  // Admin can edit EVERYTHING in the system: matrix values, cashback %, plan
+  // prices, withdrawal limits, points config, vouchers, metas, platform
+  // name/tagline, etc. Backed by the SystemConfig table; seeded on first
+  // GET /api/admin/system-settings with the full default catalog.
+  interface SystemSettingItem {
+    id: string
+    key: string
+    value: string
+    description: string | null
+    category: string
+    updatedAt: string
+  }
+  const SYSTEM_SETTING_CATEGORY_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+    { value: 'all', label: 'Todas as categorias' },
+    { value: 'geral', label: 'Geral' },
+    { value: 'matrizes', label: 'Matrizes' },
+    { value: 'cashback', label: 'CashBack' },
+    { value: 'planos', label: 'Planos' },
+    { value: 'saques', label: 'Saques' },
+    { value: 'pontos', label: 'Pontos' },
+    { value: 'vouchers', label: 'Vouchers' },
+    { value: 'metas', label: 'Metas' },
+    { value: 'menu', label: 'Menu / Sidebar' },
+    { value: 'dashboard', label: 'Dashboard' },
+  ]
+  // Human-readable labels for the inline category badge (PT-BR).
+  const SYSTEM_SETTING_CATEGORY_LABEL: Record<string, string> = {
+    geral: 'Geral',
+    matrizes: 'Matrizes',
+    cashback: 'CashBack',
+    planos: 'Planos',
+    saques: 'Saques',
+    pontos: 'Pontos',
+    vouchers: 'Vouchers',
+    metas: 'Metas',
+    menu: 'Menu',
+    dashboard: 'Dashboard',
+  }
+  const [systemSettings, setSystemSettings] = useState<SystemSettingItem[]>([])
+  const [systemSettingsLoading, setSystemSettingsLoading] = useState(false)
+  const [systemSettingSearch, setSystemSettingSearch] = useState('')
+  const [systemSettingCategoryFilter, setSystemSettingCategoryFilter] = useState('all')
+  const [editingSystemSetting, setEditingSystemSetting] = useState<SystemSettingItem | null>(null)
+  const [systemSettingDialogOpen, setSystemSettingDialogOpen] = useState(false)
+  const [systemSettingForm, setSystemSettingForm] = useState({
+    key: '', value: '', description: '', category: 'geral',
+  })
+  const [systemSettingSaving, setSystemSettingSaving] = useState(false)
+
+  const loadSystemSettings = useCallback(async () => {
+    if (!user?.id) return
+    setSystemSettingsLoading(true)
+    try {
+      const data = await apiFetch<{ items: SystemSettingItem[] }>(
+        `/admin/system-settings?userId=${user.id}`
+      )
+      if (data?.items) setSystemSettings(data.items)
+    } catch (err) {
+      console.error('Failed to load system settings:', err)
+      toast.error('Erro ao carregar configurações do sistema')
+    } finally {
+      setSystemSettingsLoading(false)
+    }
+  }, [user?.id])
+
+  const openCreateSystemSetting = () => {
+    setEditingSystemSetting(null)
+    setSystemSettingForm({ key: '', value: '', description: '', category: 'geral' })
+    setSystemSettingDialogOpen(true)
+  }
+
+  const openEditSystemSetting = (item: SystemSettingItem) => {
+    setEditingSystemSetting(item)
+    setSystemSettingForm({
+      key: item.key,
+      value: item.value,
+      description: item.description || '',
+      category: item.category || 'geral',
+    })
+    setSystemSettingDialogOpen(true)
+  }
+
+  const saveSystemSetting = async () => {
+    if (!user?.id) return
+    if (!systemSettingForm.key.trim()) {
+      toast.error('Informe a chave (key)')
+      return
+    }
+    // Allow dots, underscores, letters and digits so both snake_case
+    // (menu_dashboard) and dotted (matrix.entrada.pct_level_1) keys work.
+    if (!/^[a-z0-9_.]+$/i.test(systemSettingForm.key.trim())) {
+      toast.error('Chave deve conter apenas letras, números, ponto e underline')
+      return
+    }
+    if (!systemSettingForm.value.trim()) {
+      toast.error('Informe o valor da configuração')
+      return
+    }
+    setSystemSettingSaving(true)
+    try {
+      const payload = {
+        userId: user.id,
+        key: systemSettingForm.key.trim(),
+        value: systemSettingForm.value,
+        description: systemSettingForm.description.trim() || null,
+        category: systemSettingForm.category || 'geral',
+      }
+      if (editingSystemSetting) {
+        await apiFetch(`/admin/system-settings/${editingSystemSetting.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            userId: user.id,
+            value: payload.value,
+            description: payload.description,
+            category: payload.category,
+          }),
+        })
+        toast.success('Configuração atualizada com sucesso!')
+      } else {
+        await apiFetch('/admin/system-settings', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        })
+        toast.success('Configuração criada com sucesso!')
+      }
+      setSystemSettingDialogOpen(false)
+      await loadSystemSettings()
+    } catch (err) {
+      console.error('Failed to save system setting:', err)
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar configuração')
+    } finally {
+      setSystemSettingSaving(false)
+    }
+  }
+
+  const deleteSystemSetting = async (item: SystemSettingItem) => {
+    if (!user?.id) return
+    if (!confirm(`Excluir a configuração "${item.key}"?`)) return
+    try {
+      await apiFetch(`/admin/system-settings/${item.id}?userId=${user.id}`, { method: 'DELETE' })
+      toast.success('Configuração excluída com sucesso!')
+      await loadSystemSettings()
+    } catch (err) {
+      console.error('Failed to delete system setting:', err)
+      toast.error('Erro ao excluir configuração')
+    }
+  }
+
+  // Detect if a setting is numeric (percentages, cents, levels, points, etc.)
+  // so the edit dialog shows a numeric input. Anything else stays free text.
+  const isNumericSetting = (key: string): boolean =>
+    /(_cents|_pct|_pct_level_|levels|width|salesLimit|per_referral|per_purchase|per_cashback_claim|daily_login|per_star|_goal_rides|_bonus_cents|_levels_entrada|_levels_residual|_levels_vendas)$/i.test(key) ||
+    /^matrix\..*\.(pct_level_|pct_per_level|levels|width|base_cents|salesLimit)/i.test(key) ||
+    /^cashback\..*_pct$/i.test(key) ||
+    /^saque\.(min_cents|max_cents|fee_pct)$/i.test(key) ||
+    /^pontos\.(per_referral|per_purchase|per_cashback_claim|daily_login|per_star)$/i.test(key) ||
+    /^metas\.(daily_goal_rides|monthly_goal_rides|daily_bonus_cents|monthly_bonus_cents)$/i.test(key) ||
+    /^plan\..*\.(price_cents|cashback_levels_entrada|cashback_levels_residual|cashback_levels_vendas)$/i.test(key) ||
+    /^plan\.mensalidade_cents$/i.test(key) ||
+    /^voucher\..*_cents$/i.test(key)
+
+  // Client-side filter for the system-settings table. Combines search
+  // (key/value/description) with category filter.
+  const filteredSystemSettings = useMemo(() => {
+    const q = systemSettingSearch.trim().toLowerCase()
+    return systemSettings.filter((t) => {
+      if (
+        systemSettingCategoryFilter !== 'all' &&
+        t.category !== systemSettingCategoryFilter
+      )
+        return false
+      if (!q) return true
+      return (
+        t.key.toLowerCase().includes(q) ||
+        t.value.toLowerCase().includes(q) ||
+        (t.description || '').toLowerCase().includes(q)
+      )
+    })
+  }, [systemSettings, systemSettingSearch, systemSettingCategoryFilter])
+
+  // Group filtered settings by category for nicer display (each category
+  // becomes a section with its own header). Preserves the search/filter
+  // behavior — only filtered settings are grouped.
+  const groupedSystemSettings = useMemo(() => {
+    const groups: Record<string, SystemSettingItem[]> = {}
+    for (const s of filteredSystemSettings) {
+      const cat = s.category || 'geral'
+      if (!groups[cat]) groups[cat] = []
+      groups[cat].push(s)
+    }
+    // Sort categories in a fixed, human-friendly order (matrizes first,
+    // since it's the most-used) then alphabetical for any custom ones.
+    const order = [
+      'matrizes', 'cashback', 'planos', 'saques', 'pontos',
+      'vouchers', 'metas', 'geral', 'menu', 'dashboard',
+    ]
+    return Object.entries(groups).sort((a, b) => {
+      const ia = order.indexOf(a[0])
+      const ib = order.indexOf(b[0])
+      if (ia === -1 && ib === -1) return a[0].localeCompare(b[0])
+      if (ia === -1) return 1
+      if (ib === -1) return -1
+      return ia - ib
+    })
+  }, [filteredSystemSettings])
+
   // ---------- Service Types (Item 8 — admin CRUD) ----------
   const [serviceTypes, setServiceTypes] = useState<AdminServiceType[]>([])
   const [serviceTypesLoading, setServiceTypesLoading] = useState(false)
@@ -1314,8 +1522,9 @@ export function AdminPage() {
     if (activeTab === 'faq') loadFAQs()
     if (activeTab === 'service-types') loadServiceTypes()
     if (activeTab === 'content-texts') loadContentTexts()
+    if (activeTab === 'system-settings') loadSystemSettings()
     if (activeTab === 'matrices') loadSalesLimit()
-  }, [activeTab, searchQuery, planFilter, statusFilter, noSponsorFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter, ticketPriorityFilter, voucherStatusFilter, voucherPage, betStatusFilter, betPage, matrixSelectedUser, matrixType, loadContentTexts, loadSalesLimit])
+  }, [activeTab, searchQuery, planFilter, statusFilter, noSponsorFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter, ticketPriorityFilter, voucherStatusFilter, voucherPage, betStatusFilter, betPage, matrixSelectedUser, matrixType, loadContentTexts, loadSystemSettings, loadSalesLimit])
 
   const loadStats = async () => {
     try {
@@ -7400,6 +7609,283 @@ export function AdminPage() {
                 >
                   {contentTextSaving && <Loader2 className="h-4 w-4 animate-spin" />}
                   {editingContentText ? 'Salvar Alterações' : 'Criar Texto'}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </TabsContent>
+
+        {/* ===== SYSTEM SETTINGS TAB (SETTINGS-1) =====
+            Comprehensive admin editor for EVERYTHING in the system:
+            matrix values, cashback %, plan prices, withdrawal limits,
+            points config, vouchers, metas, platform name, etc. */}
+        <TabsContent value="system-settings" className="mt-4 space-y-4">
+          {/* Header card */}
+          <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
+            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Settings className="h-4 w-4 text-emerald-600" />
+                  <h3 className="text-sm font-semibold text-foreground">Configurações do Sistema</h3>
+                  <Badge variant="secondary" className="text-[10px]">{systemSettings.length}</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Edite todos os valores, nomes, porcentagens e configurações do sistema —
+                  matrizes (4x5, 4x7, 4x9), cashback, planos, saques, pontos, vouchers, metas e mais.
+                </p>
+              </div>
+              <Button
+                className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shrink-0"
+                onClick={openCreateSystemSetting}
+              >
+                <Plus className="h-4 w-4" /> Nova Configuração
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Search + category filter */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por chave, valor ou descrição..."
+                    value={systemSettingSearch}
+                    onChange={(e) => setSystemSettingSearch(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+                <select
+                  value={systemSettingCategoryFilter}
+                  onChange={(e) => setSystemSettingCategoryFilter(e.target.value)}
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm min-w-[180px]"
+                >
+                  {SYSTEM_SETTING_CATEGORY_OPTIONS.map((c) => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Grouped list */}
+          {systemSettingsLoading ? (
+            <Card>
+              <CardContent className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
+                <span className="ml-3 text-sm text-muted-foreground">Carregando configurações...</span>
+              </CardContent>
+            </Card>
+          ) : groupedSystemSettings.length === 0 ? (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <Settings className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-lg font-medium text-foreground">Nenhuma configuração encontrada</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {systemSettings.length === 0
+                    ? 'Nenhuma configuração cadastrada ainda. Clique em "Nova Configuração" para criar a primeira.'
+                    : 'Nenhuma configuração corresponde aos filtros aplicados.'}
+                </p>
+                {systemSettings.length === 0 && (
+                  <Button
+                    className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
+                    onClick={openCreateSystemSetting}
+                  >
+                    <Plus className="h-4 w-4" /> Criar Configuração
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {groupedSystemSettings.map(([cat, items]) => (
+                <Card key={cat}>
+                  <CardHeader className="pb-2 px-4 pt-3">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-[10px] uppercase tracking-wide border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400">
+                        {SYSTEM_SETTING_CATEGORY_LABEL[cat] || cat}
+                      </Badge>
+                      <span className="text-[11px] text-muted-foreground">{items.length} configuraç{items.length === 1 ? 'ão' : 'ões'}</span>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs sm:text-sm">
+                        <thead className="bg-muted/50">
+                          <tr className="text-left">
+                            <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Chave</th>
+                            <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Valor</th>
+                            <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide hidden md:table-cell">Atualizado em</th>
+                            <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide text-right">Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {items.map((s) => {
+                            const numeric = isNumericSetting(s.key)
+                            return (
+                              <tr key={s.id} className="border-t border-border hover:bg-muted/30">
+                                <td className="p-3 align-top">
+                                  <code className="text-xs font-mono text-emerald-700 dark:text-emerald-400 break-all">
+                                    {s.key}
+                                  </code>
+                                  {s.description && (
+                                    <div className="text-[10px] text-muted-foreground line-clamp-2 mt-0.5 max-w-xs">
+                                      {s.description}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="p-3 align-top max-w-md">
+                                  {numeric ? (
+                                    <Badge variant="secondary" className="font-mono text-xs">
+                                      {s.value}
+                                    </Badge>
+                                  ) : (
+                                    <span className="text-foreground line-clamp-2">{s.value}</span>
+                                  )}
+                                </td>
+                                <td className="p-3 hidden md:table-cell text-xs text-muted-foreground align-top">
+                                  {new Date(s.updatedAt).toLocaleString('pt-BR', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </td>
+                                <td className="p-3 align-top">
+                                  <div className="flex items-center justify-end gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 px-2 text-xs"
+                                      onClick={() => openEditSystemSetting(s)}
+                                      title="Editar"
+                                    >
+                                      <Edit className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                      onClick={() => deleteSystemSetting(s)}
+                                      title="Excluir"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Create / Edit Dialog */}
+          <Dialog open={systemSettingDialogOpen} onOpenChange={setSystemSettingDialogOpen}>
+            <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Settings className="h-4 w-4 text-emerald-600" />
+                  {editingSystemSetting ? 'Editar Configuração' : 'Nova Configuração'}
+                </DialogTitle>
+                <DialogDescription>
+                  {editingSystemSetting
+                    ? 'Edite o valor, a descrição ou a categoria desta configuração. A chave não pode ser alterada.'
+                    : 'Crie uma nova configuração editável. A chave é o identificador único (ex: matrix.entrada.base_cents, cashback.entrada_pct).'}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 py-2">
+                {/* Key */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Chave (key) *</Label>
+                  <Input
+                    placeholder="ex: matrix.entrada.base_cents"
+                    value={systemSettingForm.key}
+                    onChange={(e) => setSystemSettingForm((f) => ({ ...f, key: e.target.value }))}
+                    disabled={!!editingSystemSetting}
+                    className="font-mono text-xs"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Letras minúsculas, números, ponto e underline. Ex: <code>matrix.residual.pct_level_3</code>.
+                  </p>
+                </div>
+
+                {/* Value */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Valor *</Label>
+                  {editingSystemSetting && isNumericSetting(editingSystemSetting.key) ? (
+                    <Input
+                      type="number"
+                      step="any"
+                      placeholder="Valor numérico"
+                      value={systemSettingForm.value}
+                      onChange={(e) => setSystemSettingForm((f) => ({ ...f, value: e.target.value }))}
+                      className="font-mono text-sm"
+                    />
+                  ) : (
+                    <Textarea
+                      placeholder="Valor da configuração"
+                      value={systemSettingForm.value}
+                      onChange={(e) => setSystemSettingForm((f) => ({ ...f, value: e.target.value }))}
+                      rows={3}
+                      className="text-sm"
+                    />
+                  )}
+                  <p className="text-[10px] text-muted-foreground">
+                    Para valores em centavos use inteiros (R$ 999,90 = 99990). Para porcentagens use o número direto (35% = 35).
+                  </p>
+                </div>
+
+                {/* Description */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Descrição (opcional)</Label>
+                  <Input
+                    placeholder="Ex: % de comissão no nível 3 da Matriz Residual"
+                    value={systemSettingForm.description}
+                    onChange={(e) => setSystemSettingForm((f) => ({ ...f, description: e.target.value }))}
+                  />
+                </div>
+
+                {/* Category */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Categoria *</Label>
+                  <Select
+                    value={systemSettingForm.category}
+                    onValueChange={(v) => setSystemSettingForm((f) => ({ ...f, category: v }))}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {SYSTEM_SETTING_CATEGORY_OPTIONS.filter((c) => c.value !== 'all').map((c) => (
+                        <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setSystemSettingDialogOpen(false)}
+                  disabled={systemSettingSaving}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                  onClick={saveSystemSetting}
+                  disabled={systemSettingSaving}
+                >
+                  {systemSettingSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {editingSystemSetting ? 'Salvar Alterações' : 'Criar Configuração'}
                 </Button>
               </div>
             </DialogContent>
