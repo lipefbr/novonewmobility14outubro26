@@ -92,6 +92,15 @@ export default function MobileInicioPage() {
   const router = useRouter()
   const { user, logout } = useStore()
   const { wallet: authWallet } = useMobileAuth()
+
+  // DESKTOP REDIRECT: if a user opens /mobile/inicio on a desktop/notebook
+  // (screen >= 768px), redirect them to the web backoffice at /. The mobile
+  // app is designed for phones only.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth >= 768) {
+      router.replace('/')
+    }
+  }, [router])
   const [data, setData] = useState<HomeData | null>(null)
   const [loading, setLoading] = useState(true)
   const [showBalance, setShowBalance] = useState(true)

@@ -15,15 +15,27 @@ import { useStore } from '@/lib/store'
 //      Nenhuma base de usuários paralela.
 //   2. Após login bem-sucedido, valida tipo de conta via /api/mobile/me:
 //        - userType === 'usuario'/'cliente' E !isDriver E !isDelivery
-//          → libera redirect para /mobile/inicio
+//          → libera redirect para /mobile/inicio (SE mobile) ou / (SE desktop)
 //        - motorista / lojista / entregador → mostra TELA DE BLOQUEIO
 //          dentro do próprio /mobile/login (não redireciona para fora).
 //   3. "Criar conta" é a ÚNICA exceção permitida de navegação fora de /mobile
 //      — leva ao cadastro do site principal.
 //   4. Design: paleta azul #155EEF + branco, mobile-first, safe-area aware.
+//   5. DESKTOP DETECTION: se o usuário acessar /mobile/login em um desktop
+//      (tela >= 768px), ele é redirecionado para a versão web do backoffice
+//      em / em vez de ficar preso no app mobile. O app mobile só deve ser
+//      exibido em dispositivos móveis.
 // ============================================================================
 
 const PRIMARY = '#155EEF'
+
+// Check if the current device is mobile (screen width < 768px).
+// Used to decide whether to keep the user in /mobile/* or redirect to /
+// (the web backoffice). This runs client-side only.
+function isMobileDevice(): boolean {
+  if (typeof window === 'undefined') return true // SSR: assume mobile (safe default)
+  return window.innerWidth < 768
+}
 
 export default function MobileLoginPage() {
   const router = useRouter()
@@ -37,8 +49,16 @@ export default function MobileLoginPage() {
     name: string
   } | null>(null)
 
-  // If already logged in as a client, skip straight to home
+  // DESKTOP REDIRECT: if a user opens /mobile/login on a desktop/notebook,
+  // redirect them to the main web backoffice login at /. The mobile app
+  // is designed for phones only — on desktop the full web backoffice
+  // provides a much better experience.
   useEffect(() => {
+    if (!isMobileDevice()) {
+      router.replace('/')
+      return
+    }
+    // If already logged in as a client and on mobile, go to home
     if (user?.id) {
       router.replace('/mobile/inicio')
     }
@@ -83,9 +103,15 @@ export default function MobileLoginPage() {
       }
 
       // 3. Client account → store session + go to home
+      // On mobile → /mobile/inicio (the mobile app home)
+      // On desktop → / (the web backoffice dashboard)
       login(data.user as unknown as import('@/lib/store').UserData)
       toast.success(`Bem-vindo, ${(data.user.name as string)?.split(' ')[0] || 'usuário'}!`)
-      router.push('/mobile/inicio')
+      if (isMobileDevice()) {
+        router.push('/mobile/inicio')
+      } else {
+        router.push('/')
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao entrar')
     } finally {
