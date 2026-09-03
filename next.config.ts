@@ -55,6 +55,7 @@ try {
 projectRoot = path.resolve(projectRoot);
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   // NOTE: `output: "standalone"` was removed because it causes
   // "next start does not work with output: standalone" warning and
   // runtime errors on LipeHost (Application error: a client-side
