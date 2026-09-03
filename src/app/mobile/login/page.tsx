@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, Eye, EyeOff, Mail, Lock, Bell, User, ShieldAlert, Car, Store, ChevronRight } from 'lucide-react'
+import { Loader2, Eye, EyeOff, Mail, Lock, Bell, User, ShieldAlert, Car, Store, ChevronRight, Smartphone } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiFetch } from '@/lib/api'
 import { useStore } from '@/lib/store'
@@ -29,14 +29,6 @@ import { useStore } from '@/lib/store'
 
 const PRIMARY = '#155EEF'
 
-// Check if the current device is mobile (screen width < 768px).
-// Used to decide whether to keep the user in /mobile/* or redirect to /
-// (the web backoffice). This runs client-side only.
-function isMobileDevice(): boolean {
-  if (typeof window === 'undefined') return true // SSR: assume mobile (safe default)
-  return window.innerWidth < 768
-}
-
 export default function MobileLoginPage() {
   const router = useRouter()
   const { login, user } = useStore()
@@ -49,16 +41,10 @@ export default function MobileLoginPage() {
     name: string
   } | null>(null)
 
-  // DESKTOP REDIRECT: if a user opens /mobile/login on a desktop/notebook,
-  // redirect them to the main web backoffice login at /. The mobile app
-  // is designed for phones only — on desktop the full web backoffice
-  // provides a much better experience.
+  // If already logged in, go to mobile home. No desktop redirect —
+  // the mobile app should work on any device size. The main site (/)
+  // is for the full web backoffice; /mobile/* is the lightweight app.
   useEffect(() => {
-    if (!isMobileDevice()) {
-      router.replace('/')
-      return
-    }
-    // If already logged in as a client and on mobile, go to home
     if (user?.id) {
       router.replace('/mobile/inicio')
     }
@@ -93,8 +79,7 @@ export default function MobileLoginPage() {
       }>(`/mobile/me?userId=${data.user.id}`)
 
       if (!meResp.isClient) {
-        // Non-client account → show in-app block screen (do NOT store session,
-        // do NOT redirect outside /mobile)
+        // Non-client account → show in-app block screen
         setBlockInfo({
           reason: meResp.blockReason || 'outro',
           name: (data.user.name as string) || 'Usuário',
@@ -102,16 +87,10 @@ export default function MobileLoginPage() {
         return
       }
 
-      // 3. Client account → store session + go to home
-      // On mobile → /mobile/inicio (the mobile app home)
-      // On desktop → / (the web backoffice dashboard)
+      // 3. Client account → store session + go to mobile home
       login(data.user as unknown as import('@/lib/store').UserData)
       toast.success(`Bem-vindo, ${(data.user.name as string)?.split(' ')[0] || 'usuário'}!`)
-      if (isMobileDevice()) {
-        router.push('/mobile/inicio')
-      } else {
-        router.push('/')
-      }
+      router.push('/mobile/inicio')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao entrar')
     } finally {
@@ -132,7 +111,7 @@ export default function MobileLoginPage() {
 
       {/* Blue header zone (top ~40% of screen) */}
       <div
-        className="px-6 pt-12 pb-20 relative"
+        className="px-6 pt-10 pb-20 relative"
         style={{
           background: `linear-gradient(160deg, ${PRIMARY} 0%, #0B4FE0 100%)`,
         }}
@@ -140,7 +119,7 @@ export default function MobileLoginPage() {
         {/* Brand */}
         <div className="flex flex-col items-center text-white">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm mb-4 shadow-lg">
-            <Car className="h-8 w-8 text-white" strokeWidth={2.5} />
+            <Smartphone className="h-8 w-8 text-white" strokeWidth={2.5} />
           </div>
           <h1 className="text-2xl font-bold tracking-tight">NewMobility</h1>
           <p className="text-sm text-white/75 mt-1">App do Cliente</p>

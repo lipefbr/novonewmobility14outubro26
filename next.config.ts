@@ -55,7 +55,11 @@ try {
 projectRoot = path.resolve(projectRoot);
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // NOTE: `output: "standalone"` was removed because it causes
+  // "next start does not work with output: standalone" warning and
+  // runtime errors on LipeHost (Application error: a client-side
+  // exception). The LipeHost deploy uses `next build && next start`
+  // (via PM2), which works without standalone mode.
 
   // ── Root detection overrides ──────────────────────────────────────────────
   // These prevent Next.js from picking the parent directory (where LipeHost's
