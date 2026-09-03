@@ -640,13 +640,13 @@ export function CareerPage() {
                   Cada PIN é uma graduação com <span className="font-semibold">bônus mensal pago todos os meses</span>{' '}
                   ao manter a categoria conquistada. PAGOS TODOS OS MESES AO ATINGIR CADA PINO E A CATEGORIA QUE ELE SE ENCONTRA.
                 </p>
-                <div className="grid grid-cols-2 xs:grid-cols-3 gap-1.5 xs:gap-2 mt-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xs:grid-cols-3 gap-2 mt-3">
                   {levels.filter(l => l.code !== 'associado').slice(0, 6).map((lvl) => (
-                    <div key={lvl.id} className="bg-white/60 dark:bg-emerald-950/40 rounded-md p-2 text-center border border-emerald-100 dark:border-emerald-900/50">
-                      <p className="text-[10px] text-muted-foreground">{lvl.name}</p>
-                      <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
+                    <div key={lvl.id} className="bg-white/60 dark:bg-emerald-950/40 rounded-lg p-2.5 text-center border border-emerald-100 dark:border-emerald-900/50 overflow-hidden">
+                      <p className="text-xs font-semibold text-muted-foreground mb-1">{lvl.name}</p>
+                      <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300 break-words leading-tight">
                         {formatReward(lvl)}
-                        {(lvl.rewardWithdrawalCents > 0 || lvl.rewardShoppingCents > 0) && <span className="text-[10px] text-muted-foreground">/mês</span>}
+                        {(lvl.rewardWithdrawalCents > 0 || lvl.rewardShoppingCents > 0) && <span className="text-[10px] text-muted-foreground block mt-0.5">/mês</span>}
                       </p>
                     </div>
                   ))}
