@@ -1226,6 +1226,36 @@ export function AdminPage() {
   })
   const [systemSettingSaving, setSystemSettingSaving] = useState(false)
 
+  // ===== Matrix Advanced Editor (TASK MATRIX-EDITOR) =====
+  // "Modo Avançado" inline-editable spreadsheet for MatrixType,
+  // MatrixLevelEarning, and MatrixPosition records.
+  const [matrixAdvancedMode, setMatrixAdvancedMode] = useState(false)
+  const [matrixAdvancedTab, setMatrixAdvancedTab] = useState<'types' | 'positions'>('types')
+  // matrixTypesData mirrors the existing matrixTypes state but typed as any[]
+  // so the Advanced Editor can freely access the levelEarnings array (which
+  // AdminMatrixType intentionally omits). Both are populated by the same
+  // loadMatrixTypes() call to avoid duplicate API round-trips.
+  const [matrixTypesData, setMatrixTypesData] = useState<any[]>([])
+  const [matrixTypesLoading, setMatrixTypesLoading] = useState(false)
+  const [matrixPositionsData, setMatrixPositionsData] = useState<any[]>([])
+  const [matrixPositionsLoading, setMatrixPositionsLoading] = useState(false)
+  const [matrixPositionsPage, setMatrixPositionsPage] = useState(1)
+  const [matrixPositionsTotal, setMatrixPositionsTotal] = useState(0)
+  const [editingMatrixType, setEditingMatrixType] = useState<any | null>(null)
+  const [matrixLevelDialogOpen, setMatrixLevelDialogOpen] = useState(false)
+  const [editingMatrixPosition, setEditingMatrixPosition] = useState<any | null>(null)
+  const [matrixPositionDialogOpen, setMatrixPositionDialogOpen] = useState(false)
+  const [matrixPosSearch, setMatrixPosSearch] = useState('')
+  const [matrixPosFilterType, setMatrixPosFilterType] = useState('all')
+  const [matrixPosFilterLevel, setMatrixPosFilterLevel] = useState('')
+  // Local working copy of the levelEarnings array while editing a MatrixType
+  // (add/remove rows, edit values in place; saved all at once on "Salvar").
+  const [matrixLevelDraft, setMatrixLevelDraft] = useState<any[]>([])
+  const [matrixLevelSaving, setMatrixLevelSaving] = useState(false)
+  // Position-edit dialog form state (level / position / status).
+  const [matrixPosForm, setMatrixPosForm] = useState({ level: 0, position: 0, status: 'filled' })
+  const [matrixPosSaving, setMatrixPosSaving] = useState(false)
+
   const loadSystemSettings = useCallback(async () => {
     if (!user?.id) return
     setSystemSettingsLoading(true)
@@ -1523,8 +1553,15 @@ export function AdminPage() {
     if (activeTab === 'service-types') loadServiceTypes()
     if (activeTab === 'content-texts') loadContentTexts()
     if (activeTab === 'system-settings') loadSystemSettings()
-    if (activeTab === 'matrices') loadSalesLimit()
-  }, [activeTab, searchQuery, planFilter, statusFilter, noSponsorFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter, ticketPriorityFilter, voucherStatusFilter, voucherPage, betStatusFilter, betPage, matrixSelectedUser, matrixType, loadContentTexts, loadSystemSettings, loadSalesLimit])
+    if (activeTab === 'matrices') {
+      loadSalesLimit()
+      // TASK MATRIX-EDITOR: load MatrixType + MatrixPosition data for the
+      // "Modo Avançado" inline editor. loadMatrixTypes also refreshes the
+      // existing matrixTypes state used by the Plans tab.
+      loadMatrixTypes()
+      loadMatrixPositions()
+    }
+  }, [activeTab, searchQuery, planFilter, statusFilter, noSponsorFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter, ticketPriorityFilter, voucherStatusFilter, voucherPage, betStatusFilter, betPage, matrixSelectedUser, matrixType, loadContentTexts, loadSystemSettings, loadSalesLimit, loadMatrixPositions])
 
   const loadStats = async () => {
     try {
@@ -3038,12 +3075,173 @@ export function AdminPage() {
   }
 
   // ---------- Matrix Types ----------
+  // NOTE (TASK MATRIX-EDITOR): This single function now populates BOTH the
+  // existing `matrixTypes` state (typed as AdminMatrixType[], used by the
+  // Plans tab) AND the new `matrixTypesData` state (typed as any[], used by
+  // the Advanced Editor — needs the levelEarnings array which
+  // AdminMatrixType intentionally omits). This avoids duplicate GET
+  // round-trips to /api/admin/matrix-types.
   const loadMatrixTypes = async () => {
+    setMatrixTypesLoading(true)
     try {
-      const data = await apiFetch<{ matrixTypes: AdminMatrixType[] }>(`/admin/matrix-types?userId=${user?.id}`)
-      setMatrixTypes(data.matrixTypes || [])
+      const data = await apiFetch<{ matrixTypes: any[] }>(`/admin/matrix-types?userId=${user?.id}`)
+      const types = data.matrixTypes || []
+      setMatrixTypes(types)
+      setMatrixTypesData(types)
     } catch {
       setMatrixTypes([])
+      setMatrixTypesData([])
+    } finally {
+      setMatrixTypesLoading(false)
+    }
+  }
+
+  // ---------- Matrix Positions (TASK MATRIX-EDITOR) ----------
+  // Loads MatrixPosition records for the Advanced Editor. All filter/page
+  // values are passed as opts (no closure deps on filter state) so the
+  // callback identity is stable and doesn't retrigger the matrices-tab
+  // useEffect on every keystroke. Callers (search/filter inputs, pagination
+  // buttons, tab activation) pass the latest values explicitly.
+  const loadMatrixPositions = useCallback(async (opts?: { page?: number; search?: string; type?: string; level?: string }) => {
+    if (!user?.id) return
+    const page = opts?.page ?? 1
+    const search = opts?.search ?? ''
+    const type = opts?.type ?? 'all'
+    const level = opts?.level ?? ''
+    setMatrixPositionsLoading(true)
+    try {
+      const params = new URLSearchParams({ userId: user.id, page: String(page), limit: '50' })
+      if (search) params.set('search', search)
+      if (type && type !== 'all') params.set('matrixType', type)
+      if (level) params.set('level', level)
+      const data = await apiFetch<{ positions: any[]; total: number; page: number; totalPages: number }>(
+        `/admin/matrix-positions?${params}`
+      )
+      setMatrixPositionsData(data.positions || [])
+      setMatrixPositionsTotal(data.total ?? 0)
+    } catch (err) {
+      console.error('Failed to load matrix positions:', err)
+      setMatrixPositionsData([])
+      setMatrixPositionsTotal(0)
+      toast.error('Erro ao carregar posições de matriz')
+    } finally {
+      setMatrixPositionsLoading(false)
+    }
+  }, [user?.id])
+
+  // Open the MatrixLevelEarning inline editor dialog for a given MatrixType.
+  // Seeds the local draft from the type's current levelEarnings array.
+  const openEditMatrixLevels = (mt: any) => {
+    setEditingMatrixType(mt)
+    const seed = (mt.levelEarnings || []).map((le: any) => ({
+      id: le.id,
+      level: le.level,
+      percentage: le.percentage,
+      fixedBonusCents: le.fixedBonusCents,
+    }))
+    setMatrixLevelDraft(seed)
+    setMatrixLevelDialogOpen(true)
+  }
+
+  // Persist the locally-edited MatrixLevelEarning draft back to the server.
+  // The PUT replaces the entire set of levels atomically (deleteMany +
+  // recreate inside the same Prisma update). Financial impact — always
+  // asks for confirmation first.
+  const saveMatrixLevels = async () => {
+    if (!editingMatrixType) return
+    const affected = await (async () => {
+      // Best-effort count of how many users hold a position in this matrix
+      // (used in the confirmation message). Failure is non-fatal — we just
+      // show a generic message.
+      try {
+        const count = await apiFetch<{ count?: number }>(
+          `/admin/users?userId=${user?.id}&search=&matrixType=${encodeURIComponent(editingMatrixType.matrixKind)}&countOnly=true`
+        ).catch(() => null)
+        return count?.count ?? null
+      } catch { return null }
+    })()
+
+    const msg = affected !== null && affected > 0
+      ? `Tem certeza? Esta ação afeta o cálculo de cashback de ${affected} usuários.`
+      : 'Tem certeza? Esta ação afeta o cálculo de cashback dos usuários vinculados a esta matriz.'
+    if (!confirm(msg)) return
+
+    setMatrixLevelSaving(true)
+    try {
+      // Normalize levels before sending: drop rows without a valid level
+      // number, clamp percentage to [0,100], floor fixedBonusCents.
+      const normalized = matrixLevelDraft
+        .filter((l) => Number.isInteger(Number(l.level)) && Number(l.level) >= 1 && Number(l.level) <= (editingMatrixType.depth || 20))
+        .map((l) => ({
+          level: Number(l.level),
+          percentage: Math.max(0, Math.min(100, Number(l.percentage) || 0)),
+          fixedBonusCents: Math.max(0, Math.floor(Number(l.fixedBonusCents) || 0)),
+        }))
+        .sort((a, b) => a.level - b.level)
+
+      await apiFetch(`/admin/matrix-types/${editingMatrixType.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          userId: user?.id,
+          levels: normalized,
+        }),
+      })
+      toast.success('Níveis atualizados com sucesso!')
+      setMatrixLevelDialogOpen(false)
+      await loadMatrixTypes()
+    } catch (err) {
+      console.error('Failed to save matrix levels:', err)
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar níveis')
+    } finally {
+      setMatrixLevelSaving(false)
+    }
+  }
+
+  // MatrixPosition edit dialog opener — seeds the form from the row.
+  const openEditMatrixPosition = (pos: any) => {
+    setEditingMatrixPosition(pos)
+    setMatrixPosForm({
+      level: pos.level ?? 0,
+      position: pos.position ?? 0,
+      status: pos.isFilled ? 'filled' : 'reserved',
+    })
+    setMatrixPositionDialogOpen(true)
+  }
+
+  const saveMatrixPosition = async () => {
+    if (!editingMatrixPosition) return
+    if (!confirm('Tem certeza? Esta alteração é auditada e pode afetar o cálculo de cashback.')) return
+    setMatrixPosSaving(true)
+    try {
+      await apiFetch(`/admin/matrix-positions/${editingMatrixPosition.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          userId: user?.id,
+          level: Number(matrixPosForm.level),
+          position: Number(matrixPosForm.position),
+          status: matrixPosForm.status,
+        }),
+      })
+      toast.success('Posição atualizada com sucesso!')
+      setMatrixPositionDialogOpen(false)
+      await loadMatrixPositions({ page: matrixPositionsPage, search: matrixPosSearch, type: matrixPosFilterType, level: matrixPosFilterLevel })
+    } catch (err) {
+      console.error('Failed to save matrix position:', err)
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar posição')
+    } finally {
+      setMatrixPosSaving(false)
+    }
+  }
+
+  const deleteMatrixPosition = async (pos: any) => {
+    if (!confirm(`Excluir a posição #${pos.id.slice(-6)} de ${pos.userName || pos.userId}? Esta ação é permanente e auditada.`)) return
+    try {
+      await apiFetch(`/admin/matrix-positions/${pos.id}?userId=${user?.id}`, { method: 'DELETE' })
+      toast.success('Posição excluída com sucesso!')
+      await loadMatrixPositions({ page: matrixPositionsPage, search: matrixPosSearch, type: matrixPosFilterType, level: matrixPosFilterLevel })
+    } catch (err) {
+      console.error('Failed to delete matrix position:', err)
+      toast.error(err instanceof Error ? err.message : 'Erro ao excluir posição')
     }
   }
 
@@ -6783,6 +6981,619 @@ export function AdminPage() {
                   )}
                 </CardContent>
               </Card>
+            </>
+          )}
+
+          {/* ===== TASK MATRIX-EDITOR: MODO AVANÇADO ===== */}
+          {/* Toggle button — collapses/expands the inline spreadsheet editor. */}
+          <Card className="border-dashed border-2 border-muted-foreground/30 dark:border-muted-foreground/40 bg-muted/20">
+            <CardContent className="p-4">
+              <button
+                onClick={() => setMatrixAdvancedMode((v) => !v)}
+                className="w-full flex items-center justify-between gap-3 text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400 shrink-0">
+                    <Edit className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="text-sm font-semibold text-foreground">Modo Avançado</h4>
+                      <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400">
+                        EDIÇÃO DIRETA
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Editor inline de Tipos de Matriz, Níveis de Comissão (MatrixLevelEarning) e Posições
+                      (MatrixPosition). Use com cautela — todas as alterações são auditadas e afetam o cálculo
+                      de cashback dos usuários vinculados.
+                    </p>
+                  </div>
+                </div>
+                <div className="shrink-0">
+                  {matrixAdvancedMode ? (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </div>
+              </button>
+            </CardContent>
+          </Card>
+
+          {matrixAdvancedMode && (
+            <>
+              {/* Sub-tabs (Tipos de Matriz / Posições de Matriz) */}
+              <div className="flex gap-2 flex-wrap">
+                {(['types', 'positions'] as const).map((t) => {
+                  const labels: Record<string, string> = { types: 'Tipos de Matriz', positions: 'Posições de Matriz' }
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => setMatrixAdvancedTab(t)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        matrixAdvancedTab === t
+                          ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
+                          : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                      }`}
+                    >
+                      {labels[t]}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* ===== TAB 1: TIPOS DE MATRIZ ===== */}
+              {matrixAdvancedTab === 'types' && (
+                <Card>
+                  <CardHeader className="pb-2 px-4 pt-3">
+                    <div className="flex items-center gap-2">
+                      <Layers className="h-4 w-4 text-emerald-600" />
+                      <h4 className="text-sm font-semibold text-foreground">Tipos de Matriz</h4>
+                      <Badge variant="secondary" className="text-[10px]">{matrixTypesData.length}</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Cada linha representa um tipo de matriz (Entrada, Residual, Vendas ou Mista). Edite os
+                      níveis de comissão clicando em <strong>Editar Níveis</strong>.
+                    </p>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {matrixTypesLoading ? (
+                      <div className="flex items-center justify-center py-12">
+                        <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
+                        <span className="ml-3 text-sm text-muted-foreground">Carregando tipos...</span>
+                      </div>
+                    ) : matrixTypesData.length === 0 ? (
+                      <div className="p-12 text-center">
+                        <Layers className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
+                        <p className="text-sm text-muted-foreground">Nenhum tipo de matriz cadastrado.</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs sm:text-sm">
+                          <thead className="bg-muted/50">
+                            <tr className="text-left">
+                              <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Nome</th>
+                              <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Código</th>
+                              <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Tipo</th>
+                              <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Largura</th>
+                              <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Profundidade</th>
+                              <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Ativo</th>
+                              <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Níveis</th>
+                              <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide text-right">Ações</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {matrixTypesData.map((mt: any) => {
+                              const kindLabels: Record<string, string> = { entrada: 'Entrada', residual: 'Residual', vendas: 'Vendas', mixed: 'Mista' }
+                              const kindColors: Record<string, string> = {
+                                entrada: 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+                                residual: 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
+                                vendas: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+                                mixed: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
+                              }
+                              const levelCount = (mt.levelEarnings || []).length
+                              return (
+                                <tr key={mt.id} className="border-t border-border hover:bg-muted/30">
+                                  <td className="p-3 align-top">
+                                    <p className="text-sm font-medium text-foreground">{mt.name}</p>
+                                    {mt.description && (
+                                      <p className="text-[10px] text-muted-foreground line-clamp-1 max-w-xs">{mt.description}</p>
+                                    )}
+                                  </td>
+                                  <td className="p-3 align-top">
+                                    <code className="text-xs font-mono text-emerald-700 dark:text-emerald-400">{mt.code}</code>
+                                  </td>
+                                  <td className="p-3 align-top">
+                                    <Badge className={`text-[10px] ${kindColors[mt.matrixKind] || 'bg-muted text-muted-foreground'}`}>
+                                      {kindLabels[mt.matrixKind] || mt.matrixKind}
+                                    </Badge>
+                                  </td>
+                                  <td className="p-3 align-top text-sm text-foreground font-mono">{mt.width}</td>
+                                  <td className="p-3 align-top text-sm text-foreground font-mono">{mt.depth}</td>
+                                  <td className="p-3 align-top">
+                                    {mt.isActive ? (
+                                      <Badge variant="outline" className="text-[10px] border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400">
+                                        <Check className="h-3 w-3 mr-1" /> Ativo
+                                      </Badge>
+                                    ) : (
+                                      <Badge variant="outline" className="text-[10px] border-muted-foreground/40 text-muted-foreground">
+                                        <X className="h-3 w-3 mr-1" /> Inativo
+                                      </Badge>
+                                    )}
+                                  </td>
+                                  <td className="p-3 align-top">
+                                    <Badge variant="secondary" className="text-[10px] font-mono">{levelCount}</Badge>
+                                  </td>
+                                  <td className="p-3 align-top">
+                                    <div className="flex items-center justify-end gap-1">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 px-2 text-xs gap-1.5"
+                                        onClick={() => openEditMatrixLevels(mt)}
+                                        title="Editar níveis de comissão"
+                                      >
+                                        <Edit className="h-3.5 w-3.5" /> Editar Níveis
+                                      </Button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* ===== TAB 2: POSIÇÕES DE MATRIZ ===== */}
+              {matrixAdvancedTab === 'positions' && (
+                <>
+                  {/* Filters */}
+                  <Card>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <div className="flex-1 relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input
+                            placeholder="Buscar por nome ou email do usuário..."
+                            value={matrixPosSearch}
+                            onChange={(e) => setMatrixPosSearch(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                setMatrixPositionsPage(1)
+                                loadMatrixPositions({ page: 1, search: e.currentTarget.value, type: matrixPosFilterType, level: matrixPosFilterLevel })
+                              }
+                            }}
+                            className="pl-9"
+                          />
+                        </div>
+                        <select
+                          value={matrixPosFilterType}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setMatrixPosFilterType(v)
+                            setMatrixPositionsPage(1)
+                            loadMatrixPositions({ page: 1, search: matrixPosSearch, type: v, level: matrixPosFilterLevel })
+                          }}
+                          className="h-9 rounded-md border border-input bg-background px-3 text-sm min-w-[160px]"
+                        >
+                          <option value="all">Todos os tipos</option>
+                          <option value="entrada">Entrada</option>
+                          <option value="residual">Residual</option>
+                          <option value="vendas">Vendas</option>
+                        </select>
+                        <Input
+                          type="number"
+                          min={0}
+                          placeholder="Nível"
+                          value={matrixPosFilterLevel}
+                          onChange={(e) => setMatrixPosFilterLevel(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              setMatrixPositionsPage(1)
+                              loadMatrixPositions({ page: 1, search: matrixPosSearch, type: matrixPosFilterType, level: e.currentTarget.value })
+                            }
+                          }}
+                          className="w-full sm:w-24"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-9 shrink-0 gap-1.5"
+                          onClick={() => {
+                            setMatrixPositionsPage(1)
+                            loadMatrixPositions({ page: 1, search: matrixPosSearch, type: matrixPosFilterType, level: matrixPosFilterLevel })
+                          }}
+                        >
+                          <Filter className="h-3.5 w-3.5" /> Aplicar
+                        </Button>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                        <span>
+                          {matrixPositionsLoading ? 'Carregando...' : `${matrixPositionsTotal} posiç${matrixPositionsTotal === 1 ? 'ão' : 'ões'} encontrada${matrixPositionsTotal === 1 ? '' : 's'}`}
+                        </span>
+                        {matrixPositionsTotal > 50 && (
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2 text-xs gap-1"
+                              disabled={matrixPositionsPage <= 1 || matrixPositionsLoading}
+                              onClick={() => {
+                                const newPage = Math.max(1, matrixPositionsPage - 1)
+                                setMatrixPositionsPage(newPage)
+                                loadMatrixPositions({ page: newPage, search: matrixPosSearch, type: matrixPosFilterType, level: matrixPosFilterLevel })
+                              }}
+                            >
+                              <ChevronLeft className="h-3.5 w-3.5" /> Anterior
+                            </Button>
+                            <span className="font-mono">Pág {matrixPositionsPage}</span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2 text-xs gap-1"
+                              disabled={matrixPositionsPage * 50 >= matrixPositionsTotal || matrixPositionsLoading}
+                              onClick={() => {
+                                const newPage = matrixPositionsPage + 1
+                                setMatrixPositionsPage(newPage)
+                                loadMatrixPositions({ page: newPage, search: matrixPosSearch, type: matrixPosFilterType, level: matrixPosFilterLevel })
+                              }}
+                            >
+                              Próxima <ChevronRight className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Positions table */}
+                  <Card>
+                    <CardHeader className="pb-2 px-4 pt-3">
+                      <div className="flex items-center gap-2">
+                        <Network className="h-4 w-4 text-emerald-600" />
+                        <h4 className="text-sm font-semibold text-foreground">Posições de Matriz</h4>
+                        <Badge variant="secondary" className="text-[10px]">{matrixPositionsData.length}</Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      {matrixPositionsLoading ? (
+                        <div className="flex items-center justify-center py-12">
+                          <Loader2 className="h-6 w-6 animate-spin text-emerald-600" />
+                          <span className="ml-3 text-sm text-muted-foreground">Carregando posições...</span>
+                        </div>
+                      ) : matrixPositionsData.length === 0 ? (
+                        <div className="p-12 text-center">
+                          <Network className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
+                          <p className="text-sm text-muted-foreground">Nenhuma posição encontrada com os filtros aplicados.</p>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto max-h-[560px] overflow-y-auto custom-scrollbar">
+                          <table className="w-full text-xs sm:text-sm">
+                            <thead className="bg-muted/50 sticky top-0 z-10">
+                              <tr className="text-left">
+                                <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Usuário</th>
+                                <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Tipo de Matriz</th>
+                                <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Nível</th>
+                                <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Posição</th>
+                                <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide">Status</th>
+                                <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide hidden md:table-cell">Data</th>
+                                <th className="p-3 font-medium text-xs text-muted-foreground uppercase tracking-wide text-right">Ações</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {matrixPositionsData.map((pos: any) => {
+                                const kindColors: Record<string, string> = {
+                                  entrada: 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+                                  residual: 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300',
+                                  vendas: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+                                }
+                                const kindLabels: Record<string, string> = { entrada: 'Entrada', residual: 'Residual', vendas: 'Vendas' }
+                                return (
+                                  <tr key={pos.id} className="border-t border-border hover:bg-muted/30">
+                                    <td className="p-3 align-top">
+                                      <p className="text-sm font-medium text-foreground">{pos.userName || '—'}</p>
+                                      <p className="text-[10px] text-muted-foreground">{pos.userEmail || pos.userId}</p>
+                                    </td>
+                                    <td className="p-3 align-top">
+                                      <Badge className={`text-[10px] ${kindColors[pos.matrixType] || 'bg-muted text-muted-foreground'}`}>
+                                        {kindLabels[pos.matrixType] || pos.matrixType}
+                                      </Badge>
+                                    </td>
+                                    <td className="p-3 align-top text-sm text-foreground font-mono">{pos.level}</td>
+                                    <td className="p-3 align-top text-sm text-foreground font-mono">{pos.position}</td>
+                                    <td className="p-3 align-top">
+                                      {pos.isFilled ? (
+                                        <Badge variant="outline" className="text-[10px] border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400">
+                                          <Check className="h-3 w-3 mr-1" /> Preenchida
+                                        </Badge>
+                                      ) : (
+                                        <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400">
+                                          <Clock className="h-3 w-3 mr-1" /> Reservada
+                                        </Badge>
+                                      )}
+                                    </td>
+                                    <td className="p-3 align-top hidden md:table-cell text-xs text-muted-foreground">
+                                      {new Date(pos.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                    </td>
+                                    <td className="p-3 align-top">
+                                      <div className="flex items-center justify-end gap-1">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-7 px-2 text-xs"
+                                          onClick={() => openEditMatrixPosition(pos)}
+                                          title="Editar"
+                                        >
+                                          <Edit className="h-3.5 w-3.5" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                          onClick={() => deleteMatrixPosition(pos)}
+                                          title="Excluir"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </>
+              )}
+
+              {/* ===== DIALOG: EDIT MATRIX LEVEL EARNINGS (inline table) ===== */}
+              <Dialog open={matrixLevelDialogOpen} onOpenChange={setMatrixLevelDialogOpen}>
+                <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <Layers className="h-4 w-4 text-emerald-600" />
+                      Editar Níveis — {editingMatrixType?.name}
+                    </DialogTitle>
+                    <DialogDescription>
+                      Edite inline os níveis de comissão. <strong>Salvar</strong> substitui todos os níveis
+                      de uma vez (operação atômica auditada). Porcentagens entre 0 e 100; bônus fixo em
+                      centavos (R$ 1,00 = 100).
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="space-y-3 py-2">
+                    {matrixLevelDraft.length === 0 ? (
+                      <div className="p-6 text-center border border-dashed border-border rounded-lg">
+                        <AlertCircle className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">Nenhum nível configurado. Clique em <strong>Adicionar Nível</strong>.</p>
+                      </div>
+                    ) : (
+                      <div className="border border-border rounded-lg overflow-hidden">
+                        <div className="overflow-x-auto max-h-[50vh] overflow-y-auto custom-scrollbar">
+                          <table className="w-full text-xs sm:text-sm">
+                            <thead className="bg-muted/50 sticky top-0 z-10">
+                              <tr className="text-left">
+                                <th className="p-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Level #</th>
+                                <th className="p-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Percentage (%)</th>
+                                <th className="p-2 font-medium text-xs text-muted-foreground uppercase tracking-wide">Fixed Bonus (cents)</th>
+                                <th className="p-2 font-medium text-xs text-muted-foreground uppercase tracking-wide text-right">Ações</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {matrixLevelDraft.map((le, idx) => (
+                                <tr key={idx} className="border-t border-border">
+                                  <td className="p-2 align-middle">
+                                    <Input
+                                      type="number"
+                                      min={1}
+                                      max={editingMatrixType?.depth || 20}
+                                      step={1}
+                                      value={le.level}
+                                      onChange={(e) => {
+                                        const v = e.target.value
+                                        setMatrixLevelDraft((prev) => prev.map((row, i) => i === idx ? { ...row, level: v === '' ? '' : Number(v) } : row))
+                                      }}
+                                      className="h-8 w-16 text-sm font-mono"
+                                    />
+                                  </td>
+                                  <td className="p-2 align-middle">
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      min={0}
+                                      max={100}
+                                      value={le.percentage}
+                                      onChange={(e) => {
+                                        const v = e.target.value
+                                        setMatrixLevelDraft((prev) => prev.map((row, i) => i === idx ? { ...row, percentage: v === '' ? 0 : Number(v) } : row))
+                                      }}
+                                      className="h-8 w-24 text-sm font-mono"
+                                    />
+                                  </td>
+                                  <td className="p-2 align-middle">
+                                    <Input
+                                      type="number"
+                                      step={1}
+                                      min={0}
+                                      value={le.fixedBonusCents}
+                                      onChange={(e) => {
+                                        const v = e.target.value
+                                        setMatrixLevelDraft((prev) => prev.map((row, i) => i === idx ? { ...row, fixedBonusCents: v === '' ? 0 : Number(v) } : row))
+                                      }}
+                                      className="h-8 w-32 text-sm font-mono"
+                                    />
+                                  </td>
+                                  <td className="p-2 align-middle text-right">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                      onClick={() => setMatrixLevelDraft((prev) => prev.filter((_, i) => i !== idx))}
+                                      title="Remover nível"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 h-8 text-xs"
+                        onClick={() => {
+                          const nextLevel = matrixLevelDraft.length + 1
+                          setMatrixLevelDraft((prev) => [...prev, { id: '', level: nextLevel, percentage: 0, fixedBonusCents: 0 }])
+                        }}
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Adicionar Nível
+                      </Button>
+                      <p className="text-[10px] text-muted-foreground ml-auto">
+                        Profundidade máxima: <span className="font-mono font-bold text-foreground">{editingMatrixType?.depth ?? '—'}</span> níveis
+                      </p>
+                    </div>
+
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                        Esta operação <strong>substitui completamente</strong> os níveis atuais. Salvar
+                        apaga e recria todos os registros MatrixLevelEarning vinculados a este tipo de
+                        matriz, com auditoria. As alterações afetam o cálculo de cashback dos usuários
+                        vinculados.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setMatrixLevelDialogOpen(false)}
+                      disabled={matrixLevelSaving}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                      onClick={saveMatrixLevels}
+                      disabled={matrixLevelSaving}
+                    >
+                      {matrixLevelSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+                      <Save className="h-4 w-4" /> Salvar Níveis
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* ===== DIALOG: EDIT MATRIX POSITION ===== */}
+              <Dialog open={matrixPositionDialogOpen} onOpenChange={setMatrixPositionDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <Network className="h-4 w-4 text-emerald-600" />
+                      Editar Posição
+                    </DialogTitle>
+                    <DialogDescription>
+                      Altere o nível, a posição ou o status da posição. A operação é auditada.
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="space-y-3 py-2">
+                    <div className="flex items-center gap-2 p-2 rounded-md bg-muted/50">
+                      <div className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-bold flex items-center justify-center text-xs">
+                        {(editingMatrixPosition?.userName || '?').charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground truncate">{editingMatrixPosition?.userName || '—'}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{editingMatrixPosition?.userEmail || editingMatrixPosition?.userId}</p>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] shrink-0">{editingMatrixPosition?.matrixType}</Badge>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Nível</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={matrixPosForm.level}
+                          onChange={(e) => setMatrixPosForm((f) => ({ ...f, level: Number(e.target.value) }))}
+                          className="text-sm font-mono"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium">Posição</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={matrixPosForm.position}
+                          onChange={(e) => setMatrixPosForm((f) => ({ ...f, position: Number(e.target.value) }))}
+                          className="text-sm font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Status</Label>
+                      <Select
+                        value={matrixPosForm.status}
+                        onValueChange={(v) => setMatrixPosForm((f) => ({ ...f, status: v }))}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="filled">Preenchida (isFilled = true)</SelectItem>
+                          <SelectItem value="reserved">Reservada (isFilled = false)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[10px] text-muted-foreground">
+                        <strong>Preenchida</strong> = posição ocupada por um usuário real.
+                        <strong> Reservada</strong> = posição alocada mas sem usuário vinculado.
+                      </p>
+                    </div>
+
+                    <div className="flex items-start gap-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                        Alterações em nível/posição podem afetar o cálculo de cashback e a estrutura da árvore.
+                        Auditada em <code className="font-mono">matrix_position.update</code>.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setMatrixPositionDialogOpen(false)}
+                      disabled={matrixPosSaving}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                      onClick={saveMatrixPosition}
+                      disabled={matrixPosSaving}
+                    >
+                      {matrixPosSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+                      <Save className="h-4 w-4" /> Salvar
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </>
           )}
         </TabsContent>

@@ -14,9 +14,16 @@ import { success, error } from '@/lib/api-utils'
 // wants to add at runtime.
 //
 // Backed by the existing SystemConfig table (key/value/category). On the
-// first GET, seeds the database with the full default catalog across 10
+// first GET, seeds the database with the full default catalog across 12
 // categories. The seed is idempotent — only missing keys are inserted, so
 // any value previously edited by the admin is preserved.
+//
+// CONFIG-EXPAND — added TalkMobi, Telemedicina, Marketplace, and Career
+// categories, plus extras for saques/metas/planos/geral. Total seeded
+// entries: 80 (52 original + 28 new). The POST endpoint now writes an
+// AuditLog entry (action: 'system_settings.create') for every new
+// config created via the admin UI. Validation + audit logging for
+// PUT/DELETE lives in the [id]/route.ts file.
 // ============================================================================
 
 export interface SystemSettingItem {
@@ -38,11 +45,15 @@ type SeedEntry = { key: string; value: string; description?: string; category: s
 //   - matrizes    : matrix structure (levels, width, base value, pct per level)
 //   - cashback    : top-level cashback percentages (entrada/residual/vendas/direct)
 //   - planos      : plan names, prices (in cents), cashback level counts
-//   - saques      : withdrawal limits + fee
+//   - saques      : withdrawal limits + fee + processing time
 //   - pontos      : points-per-action configuration
 //   - vouchers    : voucher welcome / signup bonus amounts
-//   - metas       : daily/monthly goals + bonuses
-//   - geral       : platform name, tagline, description, support email
+//   - metas       : daily/monthly goals + bonuses + notification/reset
+//   - talkmobi    : TalkMobi plan pricing + activation rules
+//   - telemedicina: Telemedicina service pricing + validity
+//   - marketplace : marketplace product limits + commission
+//   - career      : career pins claim limits + bonus frequency
+//   - geral       : platform name, tagline, description, support email + platform-wide flags
 //
 // NOTE: the existing /api/admin/content-texts route already seeds the
 // `geral`, `dashboard`, `menu`, and `planos` text labels (platform_name,
@@ -129,6 +140,55 @@ const DEFAULT_SYSTEM_SETTINGS: SeedEntry[] = [
   // variants here for the support email + a few extra platform-wide keys
   // so the admin has a single tab to edit everything platform-related.
   { key: 'platform.support_email', value: 'suporte@newmobility.com', description: 'E-mail de suporte da plataforma', category: 'geral' },
+  { key: 'platform.maintenance_mode', value: 'false', description: 'Modo de manutenção da plataforma (true/false) — quando true, exibe aviso de manutenção', category: 'geral' },
+  { key: 'platform.registration_enabled', value: 'true', description: 'Permitir novos cadastros de usuário (true/false)', category: 'geral' },
+  { key: 'platform.min_password_length', value: '6', description: 'Tamanho mínimo de senha para cadastro/troca de senha', category: 'geral' },
+  { key: 'platform.session_timeout_minutes', value: '60', description: 'Tempo de expiração da sessão em minutos (idle timeout)', category: 'geral' },
+  { key: 'platform.max_login_attempts', value: '5', description: 'Número máximo de tentativas de login antes de bloquear temporariamente', category: 'geral' },
+
+  // -------- talkmobi --------
+  // TalkMobi plan pricing + activation rules (CONFIG-EXPAND)
+  { key: 'talkmobi.min_price_cents', value: '2990', description: 'Preço mínimo do plano TalkMobi em centavos (R$ 29,90)', category: 'talkmobi' },
+  { key: 'talkmobi.max_plans_per_user', value: '1', description: 'Número máximo de planos TalkMobi por usuário', category: 'talkmobi' },
+  { key: 'talkmobi.auto_activate', value: 'false', description: 'Ativar plano automaticamente após pagamento (true/false)', category: 'talkmobi' },
+
+  // -------- telemedicina --------
+  // Telemedicina service pricing + validity (CONFIG-EXPAND)
+  { key: 'telemedicina.price_cents', value: '4990', description: 'Preço da ativação da Telemedicina em centavos (R$ 49,90)', category: 'telemedicina' },
+  { key: 'telemedicina.validity_days', value: '30', description: 'Validade (em dias) de cada ativação da Telemedicina', category: 'telemedicina' },
+  { key: 'telemedicina.auto_activate', value: 'false', description: 'Ativar Telemedicina automaticamente após pagamento (true/false)', category: 'telemedicina' },
+
+  // -------- marketplace --------
+  // Marketplace product limits + commission (CONFIG-EXPAND)
+  { key: 'marketplace.max_photos', value: '15', description: 'Número máximo de fotos por produto no marketplace', category: 'marketplace' },
+  { key: 'marketplace.commission_pct', value: '5', description: 'Percentual de comissão da plataforma sobre vendas no marketplace (5%)', category: 'marketplace' },
+  { key: 'marketplace.min_price_cents', value: '100', description: 'Preço mínimo permitido para um produto no marketplace (R$ 1,00)', category: 'marketplace' },
+  { key: 'marketplace.max_price_cents', value: '10000000', description: 'Preço máximo permitido para um produto no marketplace (R$ 100.000,00)', category: 'marketplace' },
+
+  // -------- career --------
+  // Career pin claim limits + bonus frequency (CONFIG-EXPAND)
+  { key: 'career.max_claims_per_month', value: '1', description: 'Número máximo de resgates de carreira (pin) por usuário por mês', category: 'career' },
+  { key: 'career.points_expiry_days', value: '0', description: 'Dias para expiração de pontos de carreira (0 = nunca expira)', category: 'career' },
+  { key: 'career.bonus_frequency', value: 'monthly', description: 'Frequência de pagamento do bônus de carreira (monthly/weekly/daily)', category: 'career' },
+
+  // -------- saques (extras) --------
+  // Withdrawal processing limits (CONFIG-EXPAND)
+  { key: 'saque.processing_time_hours', value: '48', description: 'Tempo máximo de processamento de saque em horas (48h)', category: 'saques' },
+  { key: 'saque.max_daily_withdrawals', value: '3', description: 'Número máximo de saques por usuário por dia', category: 'saques' },
+  { key: 'saque.auto_approve_below_cents', value: '0', description: 'Aprovar automaticamente saques abaixo deste valor em centavos (0 = sem auto-aprovação)', category: 'saques' },
+
+  // -------- metas (extras) --------
+  // Goal notification + reset behavior (CONFIG-EXPAND)
+  { key: 'metas.notification_on_daily_complete', value: 'true', description: 'Enviar notificação ao usuário quando atingir a meta diária (true/false)', category: 'metas' },
+  { key: 'metas.reset_period', value: 'daily', description: 'Período de reset das metas (daily/monthly)', category: 'metas' },
+
+  // -------- planos (extras) --------
+  // Plan upgrade rules + withdrawal limits per plan tier (CONFIG-EXPAND)
+  { key: 'plan.blue3.cashback_levels_residual', value: '0', description: 'Níveis de CashBack Residual liberados para o plano Blue 3 (0 = não libera residual)', category: 'planos' },
+  { key: 'plan.blue3.cashback_levels_vendas', value: '0', description: 'Níveis de CashBack de Vendas liberados para o plano Blue 3 (0 = não libera vendas)', category: 'planos' },
+  { key: 'plan.upgrade_grace_period_days', value: '30', description: 'Carência em dias para pagamento após upgrade de plano', category: 'planos' },
+  { key: 'plan.free.max_withdrawals', value: '0', description: 'Número máximo de saques por mês no plano gratuito (0 = não pode sacar)', category: 'planos' },
+  { key: 'plan.paid.max_withdrawals', value: '10', description: 'Número máximo de saques por mês em planos pagos', category: 'planos' },
 ]
 
 // Idempotent seed: inserts only the default system settings that don't
@@ -239,6 +299,28 @@ export async function POST(req: NextRequest) {
         category: typeof category === 'string' && category.trim() ? category.trim() : 'geral',
       },
     })
+
+    // CONFIG-EXPAND: Audit log the creation of a new SystemConfig entry so
+    // there's a trail of who added what custom config. Failures are swallowed
+    // so the user-facing response is never broken by an audit-log write error.
+    try {
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'system_settings.create',
+          entityType: 'SystemConfig',
+          entityId: created.id,
+          details: JSON.stringify({
+            key: created.key,
+            category: created.category,
+            value: created.value,
+            description: created.description,
+          }),
+        },
+      })
+    } catch (auditErr) {
+      console.error('Failed to write system-settings create audit log:', auditErr)
+    }
 
     return success(
       {

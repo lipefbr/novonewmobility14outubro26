@@ -10487,3 +10487,403 @@ Stage Summary:
   deploy.
 
 No issues.
+
+---
+Task ID: CONFIG-EXPAND
+Agent: System Settings Expansion Agent
+Task: Expand the system-settings seed to cover 100% of configurable parameters, and add audit logging + validation to the system-settings API.
+
+Work Log:
+- Read /home/z/my-project/worklog.md to confirm previous work on the
+  SystemConfig model + the "Configurações do Sistema" admin tab
+  (Task SETTINGS-1). The previous seed had 52 entries across 8 categories.
+  prisma/schema.prisma left untouched (provider = sqlite, AuditLog model
+  already exists with userId/action/entityType/entityId/details fields).
+
+- src/app/api/admin/system-settings/route.ts (MODIFIED):
+  - Expanded DEFAULT_SYSTEM_SETTINGS with 28 NEW entries across 8
+    categories (5 new + 3 additions to existing). Total seed: 80 entries
+    (52 original + 28 new). Updated the top-of-file comment from "10
+    categories" to "12 categories" (geral, matrizes, cashback, planos,
+    saques, pontos, vouchers, metas, talkmobi, telemedicina, marketplace,
+    career) and added a CONFIG-EXPAND note documenting the changes.
+  - NEW categories added (with their default values):
+      * talkmobi (3):
+          - talkmobi.min_price_cents = "2990"        (R$ 29,90)
+          - talkmobi.max_plans_per_user = "1"
+          - talkmobi.auto_activate = "false"
+      * telemedicina (3):
+          - telemedicina.price_cents = "4990"        (R$ 49,90)
+          - telemedicina.validity_days = "30"
+          - telemedicina.auto_activate = "false"
+      * marketplace (4):
+          - marketplace.max_photos = "15"
+          - marketplace.commission_pct = "5"         (5%)
+          - marketplace.min_price_cents = "100"     (R$ 1,00)
+          - marketplace.max_price_cents = "10000000" (R$ 100.000,00)
+      * career (3):
+          - career.max_claims_per_month = "1"
+          - career.points_expiry_days = "0"         (0 = never expires)
+          - career.bonus_frequency = "monthly"
+  - ADDITIONS to existing categories:
+      * saques (3 new):
+          - saque.processing_time_hours = "48"
+          - saque.max_daily_withdrawals = "3"
+          - saque.auto_approve_below_cents = "0"    (0 = no auto-approve)
+      * metas (2 new):
+          - metas.notification_on_daily_complete = "true"
+          - metas.reset_period = "daily"
+      * planos (5 new):
+          - plan.blue3.cashback_levels_residual = "0" (Blue3 doesn't unlock)
+          - plan.blue3.cashback_levels_vendas = "0"   (Blue3 doesn't unlock)
+          - plan.upgrade_grace_period_days = "30"
+          - plan.free.max_withdrawals = "0"          (free can't withdraw)
+          - plan.paid.max_withdrawals = "10"
+      * geral (5 new):
+          - platform.maintenance_mode = "false"
+          - platform.registration_enabled = "true"
+          - platform.min_password_length = "6"
+          - platform.session_timeout_minutes = "60"
+          - platform.max_login_attempts = "5"
+  - All 28 new keys verified unique against the existing 52 (no collisions
+    on SystemConfig.key, which is @unique).
+  - POST endpoint: added AuditLog write (action: 'system_settings.create')
+    after the SystemConfig.create(). Wrapped in try/catch so an audit-log
+    write failure (e.g. transient DB hiccup) doesn't break the user-facing
+    201 response. Captures the new row's id as entityId + a JSON details
+    payload with key/category/value/description.
+  - Seed remains idempotent — seedDefaults() still only inserts missing
+    keys, so existing admin-edited values are preserved. Pre-existing
+    SystemConfig rows from the SETTINGS-1 seed are untouched.
+
+- src/app/api/admin/system-settings/[id]/route.ts (REWRITTEN):
+  - Added a private `validateSettingValue(key, value)` helper that picks
+    the validation rule by inspecting the setting's KEY (not category) so
+    it works for any custom config the admin creates via POST too:
+        * key contains "pct"                → 0 <= float(value) <= 100
+          (decimals allowed, e.g. vendas 0.9%)
+        * key contains "cents"              → non-negative integer (regex /^\d+$/)
+        * key contains "_levels" or
+          "levels"                          → non-negative integer
+      Returns a PT-BR error message on failure, or null when valid / no
+      rule applies. The PUT endpoint calls this BEFORE the update — if it
+      returns a non-null message, the request is rejected with HTTP 400
+      and a descriptive error.
+  - DECISION: "positive integer" in the task spec was interpreted as
+    "non-negative integer" (>= 0) because multiple seed values use 0 as
+    a sentinel for "disabled" — saque.auto_approve_below_cents = "0"
+    means no auto-approve, plan.blue3.cashback_levels_residual = "0"
+    means Blue3 doesn't unlock residual, plan.free.max_withdrawals = "0"
+    means free plan can't withdraw. Strictly positive (>0) would have
+    rejected these legitimate sentinels. Allowing 0 keeps the seed
+    idempotent — the seed values pass their own validation rules.
+  - Added a private `writeAuditLog(params)` helper that writes a single
+    AuditLog row using the matrix-config precedent (prisma.auditLog.create
+    with userId/action/entityType/entityId/details — matches the AuditLog
+    schema exactly; the existing src/lib/audit.ts helper uses
+    adminId/adminName fields that don't exist in the schema, so it was
+    avoided). Failures are swallowed (logged to stderr) so the
+    user-facing response is never broken by an audit-log write error.
+  - PUT endpoint: now (1) validates the new value via validateSettingValue
+    BEFORE updating, returns 400 with a descriptive PT-BR message on
+    failure; (2) after the update, writes an AuditLog row with
+    action: 'system_settings.update' capturing the previous value, the
+    new value, the key, the category, and 3 booleans indicating which
+    fields actually changed (valueChanged / descriptionChanged /
+    categoryChanged) — so a future audit trail can reconstruct what was
+    edited without diffing the row.
+  - DELETE endpoint: now writes an AuditLog row with action:
+    'system_settings.delete' snapshotting the deleted row (key, category,
+    value, description) so the deleted config can be reconstructed if
+    needed.
+
+- The validation rules verified against the existing seed values — all
+  80 entries pass their respective rules:
+    * 12 pct entries (cashback.entrada_pct=35, cashback.vendas_pct=0.9,
+      matrix.*.pct_level_*, marketplace.commission_pct=5, saque.fee_pct=2,
+      etc.) → all 0–100.
+    * 22 cents entries (matrix.*.base_cents, plan.*.price_cents,
+      saque.min_cents, voucher.*_cents, metas.*_bonus_cents,
+      talkmobi.min_price_cents, telemedicina.price_cents,
+      marketplace.min/max_price_cents, saque.auto_approve_below_cents=0,
+      etc.) → all non-negative integers.
+    * 8 levels entries (matrix.{entrada,residual,vendas}.levels,
+      plan.blue3.cashback_levels_entrada=3, plan.blue5.cashback_levels_*=7/9,
+      plan.blue3.cashback_levels_residual=0, plan.blue3.cashback_levels_vendas=0)
+      → all non-negative integers.
+
+Files changed:
+- src/app/api/admin/system-settings/route.ts (modified — +28 seed entries,
+  +AuditLog on POST create)
+- src/app/api/admin/system-settings/[id]/route.ts (modified — +validation
+  helper, +writeAuditLog helper, +AuditLog on PUT update + DELETE)
+
+Verification:
+- `bunx eslint src/app/api/admin/system-settings/route.ts
+  src/app/api/admin/system-settings/[id]/route.ts` — 0 errors. (Only the
+  pre-existing project-wide `.eslintignore` deprecation warning shows.)
+- `bun run lint` — only the 13 pre-existing `require()` errors in root
+  helper scripts (keep-alive.js, persistent-server.js, process-manager.js,
+  run-forever.js, supervisor.js), all of which I did not touch. 0 new
+  errors introduced by this task.
+- prisma/schema.prisma left untouched (provider = sqlite).
+- Dev server running cleanly on :3000 (dev.log shows no errors after the
+  file changes were picked up by Turbopack HMR).
+- The seed is idempotent — only inserts missing keys, so admin-edited
+  values from the SETTINGS-1 task are preserved. A second GET after the
+  expanded seed is in place inserts only the 28 new entries and then
+  returns the full 80-row catalog.
+
+Stage Summary:
+- CONFIG-EXPAND complete. The system-settings seed now covers 100% of
+  the configurable parameters specified (TalkMobi plan pricing,
+  Telemedicina service pricing + validity, marketplace product limits +
+  commission, career claim limits + bonus frequency, withdrawal
+  processing limits, goal notification + reset behavior, plan upgrade
+  rules + per-tier withdrawal limits, and platform-wide security flags).
+  All PUT/POST/DELETE operations on SystemConfig now write an AuditLog
+  entry so there's a complete trail of who changed what, when, with both
+  the previous and new values captured for full traceability. The PUT
+  endpoint validates pct (0–100), cents (non-negative int), and levels
+  (non-negative int) values before saving, returning descriptive PT-BR
+  error messages on validation failure. No UI/layout changes; this is
+  backend-only.
+
+No issues. The only deviation from the strict spec wording is treating
+"positive integer" as "non-negative integer" (>= 0) for cents + levels
+validation, to accommodate the 0 sentinel used in 3 seed values
+(saque.auto_approve_below_cents, plan.blue3.cashback_levels_residual,
+plan.blue3.cashback_levels_vendas, plan.free.max_withdrawals).
+
+---
+Task ID: MATRIX-EDITOR
+Agent: Matrix Advanced Editor Agent
+Task: Add "Modo Avançado" inline-editable spreadsheet editor for MatrixType, MatrixLevelEarning, and MatrixPosition records in the Matrizes MMN admin tab.
+
+Work Log:
+- Read /home/z/my-project/worklog.md to confirm context: existing
+  /api/admin/matrix-types GET endpoint, existing "matrizes" admin tab
+  (admin-page.tsx) with sales-limit card + matrix visualization. Confirmed
+  prisma/schema.prisma provider = sqlite (untouched) and the AuditLog
+  model shape (userId, action, entityType, entityId, details, ipAddress,
+  userAgent). Confirmed the existing src/lib/audit.ts helper is BROKEN
+  (uses non-existent fields adminId/adminName), so all audit writes use
+  prisma.auditLog.create directly — matching the matrix-config precedent.
+
+- DISCOVERED BUG in existing /api/admin/matrix-types/[id]/route.ts: the
+  Prisma relation field on MatrixType is named `MatrixLevelEarning`
+  (capital M, per schema.prisma line 739) but the [id] route used the
+  lowercase alias `levels` for both `include` (line 21, 81) and nested
+  `create` (line 72). Calling PUT /api/admin/matrix-types/[id] would
+  throw "Unknown argument `levels`" at runtime. Since the new "Editar
+  Níveis" feature depends on this PUT working, the route was rewritten.
+
+- src/app/api/admin/matrix-types/[id]/route.ts (REWRITTEN):
+  - GET: changed `include: { levels }` → `include: { MatrixLevelEarning }`
+  - PUT: changed `data.levels = { create }` → `data.MatrixLevelEarning = { create }`
+  - PUT: changed `include: { levels }` (return shape) → `include: { MatrixLevelEarning }`
+  - PUT: now fetches the existing type WITH its current levels for the
+    audit snapshot (include MatrixLevelEarning on the findUnique).
+  - PUT: writes an AuditLog row (action: 'matrix_type.update',
+    entityType: 'MatrixType', entityId: id) capturing a JSON `before`
+    + `after` snapshot of (name, width, depth, isActive, description,
+    color, levels[]). Includes a `levelsReplaced` boolean.
+  - DELETE: now fetches the existing type + levels BEFORE deletion so
+    the audit log can reconstruct the deleted entity. Writes an
+    AuditLog row (action: 'matrix_type.delete') with a full snapshot
+    (id, code, name, matrixKind, width, depth, isActive, levels[]).
+  - PUT return shape normalized to mirror the GET list response
+    (id, code, name, matrixKind, width, depth, description, color,
+    isActive, levelEarnings[]) so the client can replace the row in-place.
+  - All audit writes wrapped in try/catch and logged to stderr on
+    failure — never breaks the user-facing response.
+
+- src/app/api/admin/matrix-positions/route.ts (NEW — GET only):
+  - Required query: userId (must be admin).
+  - Optional filters: matrixType (entrada/residual/vendas), level
+    (integer), search (case-insensitive contains on user.name OR
+    user.email).
+  - Pagination: page (default 1), limit (default 50, capped at 100).
+    Returns `{ positions, total, page, totalPages }`.
+  - Each position includes: id, userId, userName, userEmail, userPlan,
+    matrixType, level, position, isFilled, status ('filled' or
+    'reserved' — friendly alias for the isFilled boolean), parentId,
+    createdAt. Uses `prisma.matrixPosition.findMany` with `include: {
+    user: { select: { id, name, email, plan } } }`.
+  - Uses `Promise.all([count, findMany])` to compute total + rows in
+    parallel — single round trip latency for the user.
+
+- src/app/api/admin/matrix-positions/[id]/route.ts (NEW — PUT + DELETE):
+  - PUT: accepts `{ userId, level?, position?, status? }`. Validates:
+      * level: non-negative integer
+      * position: non-negative integer
+      * status: 'filled' → isFilled=true, 'reserved' → isFilled=false
+    Rejects with 400 if no fields provided. Refuses to operate on a
+    non-existent position (404). Writes AuditLog
+    ('matrix_position.update', entityType: 'MatrixPosition') capturing
+    the matrixType, the user (id/name/email), and a `before` + `after`
+    snapshot of (level, position, isFilled).
+  - DELETE: confirms the position exists, captures a full snapshot
+    (id, userId, matrixType, level, position, isFilled, parentId,
+    createdAt, user { id, name, email }, userExists boolean), deletes
+    the row, then writes AuditLog ('matrix_position.delete'). The
+    `userExists` flag is logged to satisfy the spec's "confirmation
+    that user exists" requirement — defensive in case a position is
+    orphaned from a deleted user.
+
+- src/components/newmobility/admin/admin-page.tsx (MODIFIED):
+
+  State additions (right after systemSettings state, ~line 1228):
+    - matrixAdvancedMode (bool, default false) — toggle visibility
+    - matrixAdvancedTab ('types' | 'positions', default 'types') — sub-tab
+    - matrixTypesData (any[]) — full MatrixType rows WITH levelEarnings
+    - matrixTypesLoading (bool)
+    - matrixPositionsData (any[]) — MatrixPosition rows
+    - matrixPositionsLoading (bool)
+    - matrixPositionsPage (number, default 1)
+    - matrixPositionsTotal (number, default 0)
+    - editingMatrixType (any | null) — currently-open level editor
+    - matrixLevelDialogOpen (bool)
+    - editingMatrixPosition (any | null)
+    - matrixPositionDialogOpen (bool)
+    - matrixPosSearch (string) — search box value
+    - matrixPosFilterType (string, default 'all')
+    - matrixPosFilterLevel (string) — level filter input value
+    - matrixLevelDraft (any[]) — local working copy of levelEarnings
+      while editing (add/remove/edit rows; saved atomically on Salvar)
+    - matrixLevelSaving (bool)
+    - matrixPosForm ({ level, position, status }) — edit dialog form
+    - matrixPosSaving (bool)
+
+  Load functions (added ~line 3070):
+    - Modified existing `loadMatrixTypes()` to ALSO populate the new
+      `matrixTypesData` state (typed as any[] so the Advanced Editor
+      can access levelEarnings freely). This avoids duplicate GET
+      round-trips to /api/admin/matrix-types — the same response
+      feeds both the existing Plans-tab state and the Advanced Editor.
+      Also added `setMatrixTypesLoading(true/false)` around the call.
+    - Added `loadMatrixPositions(opts?)` — useCallback with NO closure
+      deps on filter state (only [user?.id]) so the callback identity
+      is stable and doesn't retrigger the matrices-tab useEffect on
+      every keystroke. Callers (search/filter inputs, pagination
+      buttons, tab activation) pass the latest values explicitly via
+      opts: { page?, search?, type?, level? }. Defaults: page=1,
+      search='', type='all', level=''.
+
+  CRUD handlers (added ~line 3125):
+    - openEditMatrixLevels(mt) — seeds matrixLevelDraft from the type's
+      levelEarnings array, opens the dialog.
+    - saveMatrixLevels() — confirms via window.confirm() with a message
+      that mentions the affected user count when available; normalizes
+      the draft (drop rows with invalid level, clamp percentage to
+      [0,100], floor fixedBonusCents, sort by level); PUTs to
+      /api/admin/matrix-types/[id] with `{ userId, levels: normalized }`;
+      refreshes matrixTypesData on success.
+    - openEditMatrixPosition(pos) — seeds the form from the row.
+    - saveMatrixPosition() — confirms via window.confirm(); PUTs to
+      /api/admin/matrix-positions/[id]; refreshes positions on success.
+    - deleteMatrixPosition(pos) — confirms via window.confirm(); DELETEs
+      /api/admin/matrix-positions/[id]?userId=...; refreshes positions.
+
+  useEffect (line ~1556):
+    - Existing: `if (activeTab === 'matrices') loadSalesLimit()`
+    - Changed to: `if (activeTab === 'matrices') { loadSalesLimit();
+      loadMatrixTypes(); loadMatrixPositions() }` — loads the Advanced
+      Editor's data alongside the sales limit. Added `loadMatrixPositions`
+      to the deps array (it's a stable useCallback so identity changes
+      only when user?.id changes).
+
+  UI (added after the existing matrix visualization Card, before
+  </TabsContent> for the matrices tab — line ~6986):
+    - Toggle Card: dashed border, Edit icon, "Modo Avançado" title,
+      "EDIÇÃO DIRETA" warning badge. ChevronRight/ChevronDown icon
+      on the right. Clicking toggles `matrixAdvancedMode`.
+    - When ON: shows 2 sub-tab toggle buttons (Tipos de Matriz /
+      Posições de Matriz) using the same emerald-button pattern as the
+      existing matrixType selector.
+    - Tab 1 (Tipos de Matriz): Card with table — Nome, Código, Tipo
+      (colored badge: Entrada/Residual/Vendas/Mista), Largura,
+      Profundidade, Ativo (badge), Níveis (count badge), Ações
+      ("Editar Níveis" button). Loading + empty states.
+    - Tab 2 (Posições de Matriz):
+        * Filters Card: search input (Enter triggers search), matrix
+          type dropdown (all/entrada/residual/vendas), level number
+          input, "Aplicar" button. Total count + pagination buttons
+          (prev/next, 50 per page) shown when total > 50.
+        * Positions table Card: Usuário (name+email), Tipo de Matriz
+          (colored badge), Nível (mono), Posição (mono), Status
+          (Preenchida/Reservada badge), Data (hidden on mobile),
+          Ações (edit + delete buttons). Loading + empty states.
+          max-h-[560px] with custom-scrollbar for long lists; sticky
+          thead.
+    - Dialog 1 (Editar Níveis): inline-editable table with Level #,
+      Percentage (%), Fixed Bonus (cents) inputs per row; "Adicionar
+      Nível" button; "Remover" (trash) button per row; "Salvar Níveis"
+      button (with Loader2 spinner when saving). Amber warning box
+      explains the operation replaces all levels atomically.
+    - Dialog 2 (Editar Posição): user info header (avatar + name +
+      email + matrixType badge); Nível + Posição inputs side by side;
+      Status Select (Preenchida / Reservada); amber warning box
+      explaining the audit; "Salvar" button with Loader2 spinner.
+
+  Verification:
+  - `bunx eslint` on all 4 changed/new files (matrix-positions/route.ts,
+    matrix-positions/[id]/route.ts, matrix-types/[id]/route.ts,
+    admin-page.tsx) — 0 errors. (Only the project-wide .eslintignore
+    deprecation warning + the Babel note about admin-page.tsx exceeding
+    500KB — both pre-existing and unrelated.)
+  - `bun run lint` — only the 13 pre-existing `require()` errors in
+    root .js helper scripts (keep-alive.js, persistent-server.js,
+    process-manager.js, run-forever.js, supervisor.js) — NOT touched
+    by this task. 0 new errors introduced.
+  - prisma/schema.prisma left untouched (provider = sqlite).
+  - The Advanced Mode UI is collapsible (hidden by default), so the
+    existing matrices tab UX is preserved verbatim — only ADDED new
+    content below the existing visualization. The sales-limit card
+    and the matrix visualization are NOT touched.
+
+Files changed:
+- src/app/api/admin/matrix-positions/route.ts (NEW — GET with pagination
+  + filters: matrixType, level, search)
+- src/app/api/admin/matrix-positions/[id]/route.ts (NEW — PUT + DELETE
+  with AuditLog entries: matrix_position.update, matrix_position.delete)
+- src/app/api/admin/matrix-types/[id]/route.ts (REWRITTEN — fixed broken
+  `levels` relation alias → `MatrixLevelEarning`; added AuditLog entries
+  for PUT and DELETE: matrix_type.update, matrix_type.delete)
+- src/components/newmobility/admin/admin-page.tsx (MODIFIED — added
+  17 new state vars, modified loadMatrixTypes to also populate
+  matrixTypesData, added loadMatrixPositions useCallback + 5 handler
+  functions, added ~600 lines of JSX for the Modo Avançado section
+  inside the existing matrices TabsContent)
+
+Stage Summary:
+- MATRIX-EDITOR complete. The admin Matrizes MMN tab now has a
+  collapsible "Modo Avançado" section at the bottom that exposes:
+  (1) a spreadsheet-like table of all MatrixType records with one-click
+  access to an inline level-earnings editor (add/remove/edit rows,
+  atomic save with confirmation + audit), and (2) a paginated, filterable
+  MatrixPosition table (search by name/email, filter by matrix type +
+  level, prev/next pagination at 50/page) with per-row edit + delete
+  dialogs (each save/delete writes an AuditLog row). All financial-
+  impact operations require explicit confirmation via window.confirm()
+  with a PT-BR message. The existing sales-limit card and matrix
+  visualization in the matrices tab are untouched. The pre-existing
+  bug in /api/admin/matrix-types/[id] (using the wrong Prisma relation
+  alias `levels` instead of `MatrixLevelEarning`) was fixed en route.
+
+Deviations from the spec:
+- The spec said "Add `loadMatrixTypes` and `loadMatrixPositions`
+  functions" but a `loadMatrixTypes` function already existed (used by
+  the Plans tab). I modified the existing one to ALSO populate the new
+  `matrixTypesData` state (avoids duplicate GET round-trips). The new
+  `loadMatrixPositions` is a stable useCallback (no closure deps on
+  filter state) so the matrices-tab useEffect doesn't re-fire on every
+  keystroke — callers pass the latest filter values explicitly via opts.
+- The "confirmation dialog before saving" requirement was implemented
+  using the existing `window.confirm()` pattern (precedent: the system-
+  settings delete handler at line 1317 uses the same). The shadcn
+  AlertDialog component exists in /components/ui but isn't used anywhere
+  in admin-page.tsx, so I followed the established pattern instead of
+  introducing a new pattern.
+
+No issues.
