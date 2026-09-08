@@ -63,20 +63,43 @@ import {
   qualificationLabel,
 } from '@/lib/qualifications'
 
-// ----- User types (10 options) -----
+// ----- User types -----
+// Synchronized with QUALIFICATION_OPTIONS from @/lib/qualifications so the
+// "Tipo de Usuário" dropdown shows the same 10 categories as the
+// "Qualificação" dropdown. Also kept as a const for the badge color map.
+import { QUALIFICATION_OPTIONS as QUAL_TYPES } from '@/lib/qualifications'
 
 export const USER_TYPES = [
-  { value: 'gratuito', label: 'Gratuito', color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' },
-  { value: 'inativo', label: 'Inativo', color: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' },
   { value: 'usuario', label: 'Usuário', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
   { value: 'motorista', label: 'Motorista', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
   { value: 'entregador', label: 'Entregador', color: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300' },
-  { value: 'loja', label: 'Loja', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
+  { value: 'cliente', label: 'Cliente', color: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300' },
+  { value: 'lojista', label: 'Lojista', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
+  { value: 'mototaxista', label: 'Mototaxista', color: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300' },
+  { value: 'motofretista', label: 'Motofretista', color: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300' },
+  { value: 'motorista_app', label: 'Motorista de App', color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' },
+  { value: 'taxista', label: 'Taxista', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300' },
+  { value: 'caminhoneiro', label: 'Caminhoneiro', color: 'bg-lime-100 text-lime-700 dark:bg-lime-900/40 dark:text-lime-300' },
   { value: 'parceiro', label: 'Parceiro', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300' },
   { value: 'empresa', label: 'Empresa', color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' },
   { value: 'afiliado', label: 'Afiliado', color: 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300' },
   { value: 'administrador', label: 'Administrador', color: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300' },
+  { value: 'gratuito', label: 'Gratuito', color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' },
+  { value: 'inativo', label: 'Inativo', color: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' },
+  { value: 'outros', label: 'Outros', color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' },
 ] as const
+
+// Also export a merged list that includes qualification options for the
+// "Tipo de Usuário" dropdown — ensures all types from QUALIFICATION_OPTIONS
+// appear even if USER_TYPES doesn't have them.
+export const ALL_USER_TYPE_OPTIONS = [
+  ...USER_TYPES,
+  ...QUAL_TYPES.filter(q => !USER_TYPES.some(u => u.value === q.value)).map(q => ({
+    value: q.value,
+    label: q.label,
+    color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
+  })),
+]
 
 const PLAN_OPTIONS = [
   { value: 'free', label: 'Gratuito' },
@@ -760,7 +783,7 @@ export function AdminUsersPanel() {
               <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Todos os tipos" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os tipos</SelectItem>
-                {USER_TYPES.map((t) => (
+                {ALL_USER_TYPE_OPTIONS.map((t) => (
                   <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                 ))}
               </SelectContent>
@@ -1045,7 +1068,7 @@ export function AdminUsersPanel() {
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {USER_TYPES.map((t) => (
+                    {ALL_USER_TYPE_OPTIONS.map((t) => (
                       <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -1150,7 +1173,7 @@ export function AdminUsersPanel() {
                   <Select value={editForm.userType} onValueChange={(v) => setEditForm((d) => ({ ...d, userType: v }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {USER_TYPES.map((t) => (
+                      {ALL_USER_TYPE_OPTIONS.map((t) => (
                         <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                       ))}
                     </SelectContent>
