@@ -457,6 +457,93 @@ async function seedFaqs() {
   console.log(`  ✓ ${SEED_FAQS.length} FAQs ready`)
 }
 
+async function seedMatrixTypes() {
+  console.log('→ Seeding MatrixTypes...')
+  const types = [
+    { code: 'entrada_4x5', name: 'Matriz Entrada 4x5', matrixKind: 'entrada', width: 4, depth: 5, description: 'Matriz de Entrada — 4 indicados diretos por nível, 5 níveis de profundidade', color: '#10b981', isActive: true },
+    { code: 'residual_4x7', name: 'Matriz Residual 4x7', matrixKind: 'residual', width: 4, depth: 7, description: 'Matriz Residual — 4 indicados por nível, 7 níveis de profundidade', color: '#0d9488', isActive: true },
+    { code: 'vendas_4x9', name: 'Matriz Vendas 4x9', matrixKind: 'vendas', width: 4, depth: 9, description: 'Matriz de Vendas — 4 indicados por nível, 9 níveis de profundidade', color: '#f59e0b', isActive: true },
+  ]
+  for (const t of types) {
+    const existing = await prisma.matrixType.findUnique({ where: { code: t.code } }).catch(() => null)
+    if (existing) {
+      const existingLevels = await prisma.matrixLevelEarning.count({ where: { matrixTypeId: existing.id } }).catch(() => 0)
+      if (existingLevels === 0) {
+        const pcts = t.matrixKind === 'entrada' ? [5, 10, 10, 5, 5] : t.matrixKind === 'residual' ? [10, 9, 5, 5, 4, 3, 2] : [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+        for (let i = 0; i < pcts.length; i++) {
+          await prisma.matrixLevelEarning.create({ data: { id: `mle_${t.code}_${i+1}`, matrixTypeId: existing.id, level: i + 1, percentage: pcts[i], fixedBonusCents: 0, updatedAt: new Date() } }).catch(() => {})
+        }
+      }
+      continue
+    }
+    const created = await prisma.matrixType.create({ data: { id: `mt_${t.code}`, updatedAt: new Date(), ...t } })
+    const pcts = t.matrixKind === 'entrada' ? [5, 10, 10, 5, 5] : t.matrixKind === 'residual' ? [10, 9, 5, 5, 4, 3, 2] : [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+    for (let i = 0; i < pcts.length; i++) {
+      await prisma.matrixLevelEarning.create({ data: { id: `mle_${t.code}_${i+1}`, matrixTypeId: created.id, level: i + 1, percentage: pcts[i], fixedBonusCents: 0, updatedAt: new Date() } }).catch(() => {})
+    }
+  }
+  // Link plans to matrix types
+  const mtEntrada = await prisma.matrixType.findUnique({ where: { code: 'entrada_4x5' } }).catch(() => null)
+  const mtResidual = await prisma.matrixType.findUnique({ where: { code: 'residual_4x7' } }).catch(() => null)
+  const mtVendas = await prisma.matrixType.findUnique({ where: { code: 'vendas_4x9' } }).catch(() => null)
+  if (mtEntrada) await prisma.plan.updateMany({ where: { code: { in: ['free', 'blue3', 'blue5'] }, matrixEntradaId: null }, data: { matrixEntradaId: mtEntrada.id } }).catch(() => {})
+  if (mtResidual) await prisma.plan.updateMany({ where: { code: { in: ['blue5'] }, matrixResidualId: null }, data: { matrixResidualId: mtResidual.id } }).catch(() => {})
+  if (mtVendas) await prisma.plan.updateMany({ where: { code: { in: ['blue5'] }, matrixVendasId: null }, data: { matrixVendasId: mtVendas.id } }).catch(() => {})
+  console.log('  ✓ 3 MatrixTypes + level earnings ready')
+}
+
+async function seedCareerPlans() {
+  console.log('→ Seeding CareerPlans...')
+  const plans = [
+    { code: 'safira', name: 'Safira', description: 'PIN Safira - Categoria 3', minPoints: 100, rewardWithdrawalCents: 200000, rewardShoppingCents: 0, rewardPoints: 0, gratification: 'Bônus de Safira ao atingir 100 pontos', color: '#06b6d4', icon: '🔷', isActive: true, sortOrder: 1 },
+    { code: 'rubi', name: 'Rubi', description: 'PIN Rubi - Categoria 2', minPoints: 250, rewardWithdrawalCents: 300000, rewardShoppingCents: 0, rewardPoints: 0, gratification: 'Bônus de Rubi ao atingir 250 pontos', color: '#dc2626', icon: '❤️', isActive: true, sortOrder: 2 },
+    { code: 'esmeralda', name: 'Esmeralda', description: 'PIN Esmeralda - Categoria 1', minPoints: 500, rewardWithdrawalCents: 400000, rewardShoppingCents: 0, rewardPoints: 0, gratification: 'Bônus de Esmeralda ao atingir 500 pontos', color: '#10b981', icon: '💚', isActive: true, sortOrder: 3 },
+    { code: 'diamante', name: 'Diamante', description: 'PIN Diamante - Categoria 4', minPoints: 1000, rewardWithdrawalCents: 500000, rewardShoppingCents: 0, rewardPoints: 0, gratification: 'Bônus de Diamante ao atingir 1.000 pontos', color: '#3b82f6', icon: '💎', isActive: true, sortOrder: 4 },
+    { code: 'imperial', name: 'Imperial', description: 'PIN Imperial - Categoria 5 - Graduação máxima', minPoints: 2500, rewardWithdrawalCents: 600000, rewardShoppingCents: 0, rewardPoints: 0, gratification: 'Bônus de Imperial ao atingir 2.500 pontos', color: '#8b5cf6', icon: '👑', isActive: true, sortOrder: 5 },
+  ]
+  for (const p of plans) {
+    await prisma.careerPlan.upsert({
+      where: { code: p.code },
+      update: {},
+      create: p,
+    }).catch(() => {})
+  }
+  console.log(`  ✓ ${plans.length} CareerPlans ready (Safira → Imperial)`)
+}
+
+async function seedGoalConfigs() {
+  console.log('→ Seeding GoalConfigs...')
+  const goals = [
+    { name: 'Meta Diária Motorista', description: '20 viagens finalizadas por dia', targetQualification: 'motorista', metricCode: 'trips_daily', metricLabel: 'viagens finalizadas', targetValue: 20, rewardCents: 500, rewardWallet: 'gratification', frequency: 'daily', isActive: true, sortOrder: 1 },
+    { name: 'Meta Mensal Motorista', description: '384 viagens no mês', targetQualification: 'motorista', metricCode: 'trips_monthly', metricLabel: 'viagens no mês', targetValue: 384, rewardCents: 3000, rewardWallet: 'gratification', frequency: 'monthly', isActive: true, sortOrder: 2 },
+    { name: 'Meta Diária Entregador', description: '15 entregas por dia', targetQualification: 'entregador', metricCode: 'deliveries_daily', metricLabel: 'entregas realizadas', targetValue: 15, rewardCents: 400, rewardWallet: 'gratification', frequency: 'daily', isActive: true, sortOrder: 3 },
+    { name: 'Meta Mensal Entregador', description: '300 entregas no mês', targetQualification: 'entregador', metricCode: 'deliveries_monthly', metricLabel: 'entregas no mês', targetValue: 300, rewardCents: 2500, rewardWallet: 'gratification', frequency: 'monthly', isActive: true, sortOrder: 4 },
+  ]
+  for (const g of goals) {
+    const existing = await prisma.goalConfig.findFirst({ where: { name: g.name } }).catch(() => null)
+    if (!existing) {
+      await prisma.goalConfig.create({ data: g }).catch(() => {})
+    }
+  }
+  console.log(`  ✓ ${goals.length} GoalConfigs ready (Metas motorista/entregador)`)
+}
+
+async function seedStreakRewards() {
+  console.log('→ Seeding StreakRewards...')
+  const rewards = [
+    { streakDays: 7, rewardType: 'points', rewardAmount: 50, description: '7 dias consecutivos', isActive: true },
+    { streakDays: 14, rewardType: 'cashback', rewardAmount: 500, description: '14 dias consecutivos', isActive: true },
+    { streakDays: 30, rewardType: 'cashback', rewardAmount: 2000, description: '30 dias consecutivos', isActive: true },
+  ]
+  for (const r of rewards) {
+    const existing = await prisma.streakReward.findFirst({ where: { streakDays: r.streakDays } }).catch(() => null)
+    if (!existing) {
+      await prisma.streakReward.create({ data: r }).catch(() => {})
+    }
+  }
+  console.log(`  ✓ ${rewards.length} StreakRewards ready`)
+}
+
 async function main() {
   console.log('========================================')
   console.log(' NewMobility — Database Seed')
@@ -473,7 +560,11 @@ async function main() {
   await seedUsers()
   await seedSystemConfigs()
   await seedUserTypes()
+  await seedMatrixTypes()
   await seedPlans()
+  await seedCareerPlans()
+  await seedGoalConfigs()
+  await seedStreakRewards()
   await seedCategories()
   await seedFaqs()
 
