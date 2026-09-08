@@ -9689,8 +9689,15 @@ export function AdminPage() {
               <div className="flex items-center gap-1.5">
                 <Shield className="h-3.5 w-3.5 text-emerald-600" />
                 <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                  Qualificação & Níveis de Matriz
+                  Tipo de Usuário & Níveis de Cashback (Matriz)
                 </span>
+              </div>
+              <div className="rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/40 p-2 text-[10px] text-blue-800 dark:text-blue-200 leading-relaxed">
+                <strong>Como funciona:</strong> Ao selecionar um tipo, o sistema preenche automaticamente
+                quantos <strong>níveis de cashback</strong> esse usuário vai receber nas 3 matrizes do MMN.
+                Você pode ajustar manualmente abaixo. Ex.: Motorista ganha 3 níveis de Entrada, 0 Residual, 0 Vendas.
+                Lojista ganha 3 Entrada + 5 Vendas (porque participa de vendas). <strong>Blue 5</strong> desbloqueia
+                até 5 Entrada + 7 Residual + 9 Vendas (máximo).
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Tipo de Usuário</Label>
@@ -9699,44 +9706,47 @@ export function AdminPage() {
                   onChange={(e) => handleQualificationChange(e.target.value)}
                   className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
                 >
-                  <option value="">— Nenhuma —</option>
+                  <option value="">— Selecione o tipo —</option>
                   {availableUserTypes.map((t) => (
                     <option key={t.id} value={t.code}>
-                      {t.icon || '👤'} {t.label} ({t.code})
+                      {t.icon || '👤'} {t.label} ({t.code}) — Entrada:{t.defaultEntradaLevel} / Residual:{t.defaultResidualLevel} / Vendas:{t.defaultVendasLevel}
                     </option>
                   ))}
                 </select>
                 <p className="text-[10px] text-muted-foreground">
-                  Carrega dinamicamente da tabela UserType. Gerencie em "Tipos de Usuário" no menu lateral. Selecionar um tipo preenche os níveis padrão abaixo.
+                  Lista carregada da tabela UserType. Edite os tipos e níveis padrão em "Tipos de Usuário" no menu lateral.
                 </p>
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div className="space-y-1">
-                  <Label className="text-[10px] text-muted-foreground">Nível Entrada</Label>
+                  <Label className="text-[10px] text-muted-foreground">Níveis Entrada (até 5)</Label>
                   <Input
                     type="number" min={0} max={5}
                     value={newUserForm.entradaLevel}
                     onChange={(e) => setNewUserForm((d) => ({ ...d, entradaLevel: Number(e.target.value) }))}
                     className="h-9 text-sm"
                   />
+                  <p className="text-[9px] text-muted-foreground">Compras no app</p>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-[10px] text-muted-foreground">Nível Residual</Label>
+                  <Label className="text-[10px] text-muted-foreground">Níveis Residual (até 7)</Label>
                   <Input
                     type="number" min={0} max={7}
                     value={newUserForm.residualLevel}
                     onChange={(e) => setNewUserForm((d) => ({ ...d, residualLevel: Number(e.target.value) }))}
                     className="h-9 text-sm"
                   />
+                  <p className="text-[9px] text-muted-foreground">Pgto mensal do plano</p>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-[10px] text-muted-foreground">Nível Vendas</Label>
+                  <Label className="text-[10px] text-muted-foreground">Níveis Vendas (até 9)</Label>
                   <Input
                     type="number" min={0} max={9}
                     value={newUserForm.vendasLevel}
                     onChange={(e) => setNewUserForm((d) => ({ ...d, vendasLevel: Number(e.target.value) }))}
                     className="h-9 text-sm"
                   />
+                  <p className="text-[9px] text-muted-foreground">Vendas (comida/entrega/mob)</p>
                 </div>
               </div>
             </div>
