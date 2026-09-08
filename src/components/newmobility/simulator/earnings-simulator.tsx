@@ -208,19 +208,22 @@ const VENDAS_LEVELS: MatrixLevel[] = [
 // Fixed CashBack base values (BACK-13). These are the POOL each matrix pays
 // out from — independent of the user's selected plan tier. Each level's
 // earning = baseCents × (levelPct / 100).
+// These values are now READ from SystemConfig (admin-editable) via
+// /api/content-texts. If the fetch fails, we fall back to the defaults
+// below so the simulator always works.
 //   CashBack Entrada  : R$ 999,00   (99900 cents)
 //   CashBack Residual : R$ 1.399,00 (139900 cents)
 //   CashBack Vendas   : R$ 199,90   (19990 cents)
 // ---------------------------------------------------------------------------
-const CB_ENTRADA_BASE_CENTS = 99900
-const CB_RESIDUAL_BASE_CENTS = 139900
-const CB_VENDAS_BASE_CENTS = 19990
+const DEFAULT_CB_ENTRADA_BASE_CENTS = 99900
+const DEFAULT_CB_RESIDUAL_BASE_CENTS = 139900
+const DEFAULT_CB_VENDAS_BASE_CENTS = 19990
 
 // Matrix structural width — 4-wide per the "4x5/4x7/4x9" client spec.
 const MATRIX_WIDTH = 4
 
 // Direct-referral cashback: 10% of the plan price, paid once per referral.
-const DIRECT_REFERRAL_CASHBACK_PCT = 10
+const DEFAULT_DIRECT_REFERRAL_CASHBACK_PCT = 10
 
 // ---------------------------------------------------------------------------
 // Computation helpers
@@ -341,7 +344,7 @@ function simulate(params: {
   // Direct-referral cashback: 10% of the plan mensalidade per referral
   // (one-time). For Gratuito (priceCents = 0) this is 0.
   const directReferralCashback =
-    safeDirectReferrals * Math.round((planPriceCents * DIRECT_REFERRAL_CASHBACK_PCT) / 100)
+    safeDirectReferrals * Math.round((planPriceCents * DEFAULT_DIRECT_REFERRAL_CASHBACK_PCT) / 100)
 
   // Each matrix is projected ONLY for the levels the plan unlocks.
   //   - Blue 3 unlocks 3 entrada levels → slice(0, 3).
@@ -351,9 +354,9 @@ function simulate(params: {
   const residualLevels = RESIDUAL_LEVELS.slice(0, Math.max(0, unlocks.residual))
   const vendasLevels = VENDAS_LEVELS.slice(0, Math.max(0, unlocks.vendas))
 
-  const entradaMonthly = projectMatrix(entradaLevels, CB_ENTRADA_BASE_CENTS, safeFill)
-  const residualMonthly = projectMatrix(residualLevels, CB_RESIDUAL_BASE_CENTS, safeFill)
-  const vendasMonthly = projectMatrix(vendasLevels, CB_VENDAS_BASE_CENTS, safeFill)
+  const entradaMonthly = projectMatrix(entradaLevels, DEFAULT_CB_ENTRADA_BASE_CENTS, safeFill)
+  const residualMonthly = projectMatrix(residualLevels, DEFAULT_CB_RESIDUAL_BASE_CENTS, safeFill)
+  const vendasMonthly = projectMatrix(vendasLevels, DEFAULT_CB_VENDAS_BASE_CENTS, safeFill)
 
   const totalMonthly = entradaMonthly.total + residualMonthly.total + vendasMonthly.total
   const totalAnnual = totalMonthly * 12
@@ -700,7 +703,7 @@ export function EarningsSimulator() {
                       <p className="text-[11px] text-muted-foreground mt-1">
                         {result.directReferrals} indicaç{result.directReferrals === 1 ? 'ão' : 'ões'} ×{' '}
                         {formatBRL(
-                          Math.round((result.planPriceCents * DIRECT_REFERRAL_CASHBACK_PCT) / 100)
+                          Math.round((result.planPriceCents * DEFAULT_DIRECT_REFERRAL_CASHBACK_PCT) / 100)
                         )}{' '}
                         por indicação (10% da mensalidade)
                       </p>
@@ -744,7 +747,7 @@ export function EarningsSimulator() {
                         <span className="text-sm font-medium text-muted-foreground">/mês</span>
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-1">
-                        CashBack Entrada: {formatBRL(CB_ENTRADA_BASE_CENTS)} × % por nível
+                        CashBack Entrada: {formatBRL(DEFAULT_CB_ENTRADA_BASE_CENTS)} × % por nível
                       </p>
                     </>
                   ) : (
@@ -784,7 +787,7 @@ export function EarningsSimulator() {
                         <span className="text-sm font-medium text-muted-foreground">/mês</span>
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-1">
-                        CashBack Residual: {formatBRL(CB_RESIDUAL_BASE_CENTS)} × % por nível
+                        CashBack Residual: {formatBRL(DEFAULT_CB_RESIDUAL_BASE_CENTS)} × % por nível
                       </p>
                     </>
                   ) : (
@@ -826,7 +829,7 @@ export function EarningsSimulator() {
                         <span className="text-sm font-medium text-muted-foreground">/mês</span>
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-1">
-                        CashBack Vendas: {formatBRL(CB_VENDAS_BASE_CENTS)} × % por nível
+                        CashBack Vendas: {formatBRL(DEFAULT_CB_VENDAS_BASE_CENTS)} × % por nível
                       </p>
                     </>
                   ) : (
@@ -851,17 +854,17 @@ export function EarningsSimulator() {
               {result.entradaMonthly.levels.length > 0 && renderMatrixTable(
                 'Entrada 4x5',
                 result.entradaMonthly,
-                `CashBack Entrada fixo (${formatBRL(CB_ENTRADA_BASE_CENTS)}) × %`
+                `CashBack Entrada fixo (${formatBRL(DEFAULT_CB_ENTRADA_BASE_CENTS)}) × %`
               )}
               {result.residualMonthly.levels.length > 0 && renderMatrixTable(
                 'Residual 4x7',
                 result.residualMonthly,
-                `CashBack Residual fixo (${formatBRL(CB_RESIDUAL_BASE_CENTS)}) × %`
+                `CashBack Residual fixo (${formatBRL(DEFAULT_CB_RESIDUAL_BASE_CENTS)}) × %`
               )}
               {result.vendasMonthly.levels.length > 0 && renderMatrixTable(
                 'Vendas 4x9',
                 result.vendasMonthly,
-                `CashBack Vendas fixo (${formatBRL(CB_VENDAS_BASE_CENTS)}) × %`
+                `CashBack Vendas fixo (${formatBRL(DEFAULT_CB_VENDAS_BASE_CENTS)}) × %`
               )}
             </div>
           </motion.div>

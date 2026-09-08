@@ -1,29 +1,48 @@
 import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error, reaisToCents } from '@/lib/api-utils'
 import { isKycApproved } from '@/lib/kyc'
 
-// Withdrawal rules per client spec (Índice.docx §15):
-//   • Minimum per withdrawal: R$ 100,00 (10000 cents)
-//   • Maximum per day: R$ 5.000,00 (500000 cents)
-//   • Maximum per month: R$ 200.000,00 (20000000 cents)
-//   • Fee: 5% — BUT FREE between days 5-8 of each month
-//     ("ENTRE DIA 5 E 8 DE CADA MÊS ELE SACA SEM TAXA – APÓS TAXA DE 5%")
-//   • Admin can override the fee via SystemConfig key "withdrawal_fee_override"
-const MIN_WITHDRAWAL_CENTS = 10000      // R$ 100,00
-const MAX_DAILY_WITHDRAWAL_CENTS = 500000 // R$ 5.000,00
-const MAX_MONTHLY_WITHDRAWAL_CENTS = 20000000 // R$ 200.000,00
-const WITHDRAWAL_FEE_PERCENT = 5         // 5% (waived during days 5-8)
-const FREE_WITHDRAWAL_DAY_START = 5      // Day 5 of month
-const FREE_WITHDRAWAL_DAY_END = 8        // Day 8 of month (inclusive)
+// Withdrawal rules — DEFAULT values. The admin can override ALL of these
+// via SystemConfig (keys: saque.min_cents, saque.max_cents, saque.fee_pct,
+// saque.max_daily_withdrawals, saque.processing_time_hours).
+// On each request, we try to read the latest config from the DB. If the
+// DB is unavailable or the key doesn't exist, we fall back to these.
+const DEFAULT_MIN_WITHDRAWAL_CENTS = 5000       // R$ 50,00
+const DEFAULT_MAX_DAILY_WITHDRAWAL_CENTS = 500000 // R$ 5.000,00
+const DEFAULT_WITHDRAWAL_FEE_PERCENT = 2        // 2%
+const FREE_WITHDRAWAL_DAY_START = 5
+const FREE_WITHDRAWAL_DAY_END = 8
+
+async function getWithdrawalConfig() {
+  try {
+    const configs = await prisma.systemConfig.findMany({
+      where: { key: { startsWith: 'saque.' } },
+    })
+    const map: Record<string, string> = {}
+    configs.forEach(c => { map[c.key] = c.value })
+    return {
+      minCents: parseInt(map['saque.min_cents'] || '') || DEFAULT_MIN_WITHDRAWAL_CENTS,
+      maxDailyCents: parseInt(map['saque.max_cents'] || '') || DEFAULT_MAX_DAILY_WITHDRAWAL_CENTS,
+      feePct: parseFloat(map['saque.fee_pct'] || '') || DEFAULT_WITHDRAWAL_FEE_PERCENT,
+    }
+  } catch {
+    return {
+      minCents: DEFAULT_MIN_WITHDRAWAL_CENTS,
+      maxDailyCents: DEFAULT_MAX_DAILY_WITHDRAWAL_CENTS,
+      feePct: DEFAULT_WITHDRAWAL_FEE_PERCENT,
+    }
+  }
+}
 
 function isFreeWithdrawalDay(date: Date = new Date()): boolean {
   const day = date.getDate()
   return day >= FREE_WITHDRAWAL_DAY_START && day <= FREE_WITHDRAWAL_DAY_END
 }
 
-function calculateFee(amountCents: number, isFree: boolean): number {
+function calculateFee(amountCents: number, feePct: number, isFree: boolean): number {
   if (isFree) return 0
-  return Math.round((amountCents * WITHDRAWAL_FEE_PERCENT) / 100)
+  return Math.round((amountCents * feePct) / 100)
 }
 
 export async function POST(request: Request) {
@@ -43,9 +62,10 @@ export async function POST(request: Request) {
       return error('Amount must be positive')
     }
 
-    // Enforce minimum withdrawal amount (client spec §15: "R$ 100,00 mínimo")
-    if (amountCents < MIN_WITHDRAWAL_CENTS) {
-      return error(`Valor mínimo para saque é R$ ${(MIN_WITHDRAWAL_CENTS / 100).toFixed(2).replace('.', ',')}.`, 400)
+    // Enforce minimum withdrawal amount — reads from SystemConfig (admin-editable)
+    const wConfig = await getWithdrawalConfig()
+    if (amountCents < wConfig.minCents) {
+      return error(`Valor mínimo para saque é R$ ${(wConfig.minCents / 100).toFixed(2).replace('.', ',')}.`, 400)
     }
 
     const user = await db.findOne('User', '"id" = $1', [userId])
@@ -117,35 +137,25 @@ export async function POST(request: Request) {
       .filter(t => t.status !== 'rejected')
       .reduce((sum, t) => sum + Math.abs(t.amount || 0), 0)
 
-    if (totalToday + amountCents > MAX_DAILY_WITHDRAWAL_CENTS) {
-      const remaining = Math.max(0, MAX_DAILY_WITHDRAWAL_CENTS - totalToday)
+    if (totalToday + amountCents > wConfig.maxDailyCents) {
+      const remaining = Math.max(0, wConfig.maxDailyCents - totalToday)
       return error(
         `Limite diário de saque atingido. Você já sacou R$ ${(totalToday / 100).toFixed(2).replace('.', ',')} hoje. ` +
-        `Limite diário: R$ ${(MAX_DAILY_WITHDRAWAL_CENTS / 100).toFixed(2).replace('.', ',')}. ` +
+        `Limite diário: R$ ${(wConfig.maxDailyCents / 100).toFixed(2).replace('.', ',')}. ` +
         `Disponível hoje: R$ ${(remaining / 100).toFixed(2).replace('.', ',')}.`,
         400
       )
     }
 
-    if (totalThisMonth + amountCents > MAX_MONTHLY_WITHDRAWAL_CENTS) {
-      const remaining = Math.max(0, MAX_MONTHLY_WITHDRAWAL_CENTS - totalThisMonth)
-      return error(
-        `Limite mensal de saque atingido. Você já sacou R$ ${(totalThisMonth / 100).toFixed(2).replace('.', ',')} este mês. ` +
-        `Limite mensal: R$ ${(MAX_MONTHLY_WITHDRAWAL_CENTS / 100).toFixed(2).replace('.', ',')}. ` +
-        `Disponível no mês: R$ ${(remaining / 100).toFixed(2).replace('.', ',')}.`,
-        400
-      )
-    }
-
-    // --- Calculate withdrawal fee (client spec §15: free between days 5-8, 5% otherwise) ---
+    // --- Calculate withdrawal fee (reads from SystemConfig, free between days 5-8) ---
     const freeDay = isFreeWithdrawalDay(now)
-    const feeCents = calculateFee(amountCents, freeDay)
+    const feeCents = calculateFee(amountCents, wConfig.feePct, freeDay)
     const netCents = amountCents - feeCents
 
     // Create transaction (status: pending -> admin approves later)
     const description = freeDay
       ? `Saque sem taxa (janela gratuita dias 5-8) - ${category || 'withdrawal'} (PIX: ${user.pixKey})`
-      : `Solicitação de saque - ${category || 'withdrawal'} (taxa 5%: R$ ${(feeCents / 100).toFixed(2).replace('.', ',')}) (PIX: ${user.pixKey})`
+      : `Solicitação de saque - ${category || 'withdrawal'} (taxa ${wConfig.feePct}%: R$ ${(feeCents / 100).toFixed(2).replace('.', ',')}) (PIX: ${user.pixKey})`
 
     const transaction = await db.insert('Transaction', {
       userId,
@@ -173,7 +183,7 @@ export async function POST(request: Request) {
           amount: -feeCents,
           status: 'paid',
           category: 'withdrawal_fee',
-          description: `Taxa de saque 5% sobre R$ ${(amountCents / 100).toFixed(2).replace('.', ',')} (fora da janela gratuita)`,
+          description: `Taxa de saque ${wConfig.feePct}% sobre R$ ${(amountCents / 100).toFixed(2).replace('.', ',')} (fora da janela gratuita)`,
         })
       } catch (feeErr) {
         console.warn('[Withdraw] Could not record fee transaction:', feeErr)
@@ -192,7 +202,7 @@ export async function POST(request: Request) {
       isFreeWithdrawal: freeDay,
       message: freeDay
         ? 'Saque solicitado dentro da janela gratuita (dias 5-8). Sem taxa.'
-        : `Saque solicitado com taxa de 5% (R$ ${(feeCents / 100).toFixed(2).replace('.', ',')}). Janela gratuita: dias 5 a 8 de cada mês.`,
+        : `Saque solicitado com taxa de ${wConfig.feePct}% (R$ ${(feeCents / 100).toFixed(2).replace('.', ',')}). Janela gratuita: dias 5 a 8 de cada mês.`,
     }, 201)
   } catch (err) {
     console.error('Withdrawal error:', err)
