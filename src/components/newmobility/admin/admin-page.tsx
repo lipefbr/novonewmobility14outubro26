@@ -1256,6 +1256,37 @@ export function AdminPage() {
   const [matrixPosForm, setMatrixPosForm] = useState({ level: 0, position: 0, status: 'filled' })
   const [matrixPosSaving, setMatrixPosSaving] = useState(false)
 
+  // ---------- Matrix Positions (TASK MATRIX-EDITOR) ----------
+  // Moved here (before the useEffect at line ~1556) to avoid the
+  // "Cannot access 'loadMatrixPositions' before initialization" TDZ error.
+  // useCallback is a const — it must be initialized before any code that
+  // references it runs.
+  const loadMatrixPositions = useCallback(async (opts?: { page?: number; search?: string; type?: string; level?: string }) => {
+    if (!user?.id) return
+    const page = opts?.page ?? 1
+    const search = opts?.search ?? ''
+    const type = opts?.type ?? 'all'
+    const level = opts?.level ?? ''
+    setMatrixPositionsLoading(true)
+    try {
+      const params = new URLSearchParams({ userId: user.id, page: String(page), limit: '50' })
+      if (search) params.set('search', search)
+      if (type && type !== 'all') params.set('matrixType', type)
+      if (level) params.set('level', level)
+      const data = await apiFetch<{ positions: any[]; total: number; page: number; totalPages: number }>(
+        `/admin/matrix-positions?${params}`
+      )
+      setMatrixPositionsData(data.positions || [])
+      setMatrixPositionsTotal(data.total ?? 0)
+    } catch (err) {
+      console.error('Failed to load matrix positions:', err)
+      setMatrixPositionsData([])
+      setMatrixPositionsTotal(0)
+    } finally {
+      setMatrixPositionsLoading(false)
+    }
+  }, [user?.id])
+
   const loadSystemSettings = useCallback(async () => {
     if (!user?.id) return
     setSystemSettingsLoading(true)
@@ -3095,39 +3126,6 @@ export function AdminPage() {
       setMatrixTypesLoading(false)
     }
   }
-
-  // ---------- Matrix Positions (TASK MATRIX-EDITOR) ----------
-  // Loads MatrixPosition records for the Advanced Editor. All filter/page
-  // values are passed as opts (no closure deps on filter state) so the
-  // callback identity is stable and doesn't retrigger the matrices-tab
-  // useEffect on every keystroke. Callers (search/filter inputs, pagination
-  // buttons, tab activation) pass the latest values explicitly.
-  const loadMatrixPositions = useCallback(async (opts?: { page?: number; search?: string; type?: string; level?: string }) => {
-    if (!user?.id) return
-    const page = opts?.page ?? 1
-    const search = opts?.search ?? ''
-    const type = opts?.type ?? 'all'
-    const level = opts?.level ?? ''
-    setMatrixPositionsLoading(true)
-    try {
-      const params = new URLSearchParams({ userId: user.id, page: String(page), limit: '50' })
-      if (search) params.set('search', search)
-      if (type && type !== 'all') params.set('matrixType', type)
-      if (level) params.set('level', level)
-      const data = await apiFetch<{ positions: any[]; total: number; page: number; totalPages: number }>(
-        `/admin/matrix-positions?${params}`
-      )
-      setMatrixPositionsData(data.positions || [])
-      setMatrixPositionsTotal(data.total ?? 0)
-    } catch (err) {
-      console.error('Failed to load matrix positions:', err)
-      setMatrixPositionsData([])
-      setMatrixPositionsTotal(0)
-      toast.error('Erro ao carregar posições de matriz')
-    } finally {
-      setMatrixPositionsLoading(false)
-    }
-  }, [user?.id])
 
   // Open the MatrixLevelEarning inline editor dialog for a given MatrixType.
   // Seeds the local draft from the type's current levelEarnings array.
