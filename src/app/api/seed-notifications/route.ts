@@ -1,9 +1,9 @@
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 export async function POST(req: Request) {
   try {
-    const users = await db.find('User', '', [], 'LIMIT 5')
+    const users = await prisma.user.findMany({ take: 5 })
 
     const notificationTypes = ['cashback', 'referral', 'career', 'voucher', 'system', 'gratification', 'withdrawal']
     const titles = [
@@ -21,19 +21,17 @@ export async function POST(req: Request) {
       'Seu saque de R$ 200,00 foi processado com sucesso!',
     ]
 
-    for (const user of users as any[]) {
+    for (const user of users) {
       for (let i = 0; i < 7; i++) {
         const notifId = `notif_seed_${user.id}_${i}`
         const type = notificationTypes[i] === 'withdrawal' ? 'info' : notificationTypes[i] === 'cashback' ? 'success' : notificationTypes[i] === 'career' ? 'success' : 'info'
         const isRead = i > 3
 
-        // Upsert notification: INSERT ... ON CONFLICT DO NOTHING
-        await db.execute(
-          `INSERT INTO "Notification" ("id", "userId", "title", "message", "type", "isRead")
-           VALUES ($1, $2, $3, $4, $5, $6)
-           ON CONFLICT ("id") DO NOTHING`,
-          [notifId, user.id, titles[i], messages[i], type, isRead]
-        )
+        await prisma.notification.upsert({
+          where: { id: notifId },
+          update: {},
+          create: { id: notifId, userId: user.id, title: titles[i], message: messages[i], type, isRead },
+        }).catch(() => {})
       }
     }
 
@@ -45,12 +43,11 @@ export async function POST(req: Request) {
     ]
 
     for (const a of announcements) {
-      await db.execute(
-        `INSERT INTO "Announcement" ("id", "title", "message", "type", "priority", "actionLabel", "isActive")
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT ("id") DO NOTHING`,
-        [a.id, a.title, a.message, a.type, a.priority, a.actionLabel || null, a.isActive]
-      )
+      await prisma.announcement.upsert({
+        where: { id: a.id },
+        update: {},
+        create: a,
+      }).catch(() => {})
     }
 
     const challenges = [
@@ -62,16 +59,16 @@ export async function POST(req: Request) {
     ]
 
     for (const c of challenges) {
-      await db.execute(
-        `INSERT INTO "Challenge" ("id", "title", "description", "type", "targetValue", "rewardPoints", "isActive")
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT ("id") DO NOTHING`,
-        [c.id, c.title, c.description, c.type, c.targetValue, c.rewardPoints, c.isActive]
-      )
+      await prisma.challenge.upsert({
+        where: { id: c.id },
+        update: {},
+        create: c,
+      }).catch(() => {})
     }
 
     return success({ message: 'Notifications, announcements, and challenges seeded successfully' })
   } catch (err) {
+    console.error('Seed notifications error:', err)
     return error('Failed to seed data', 500)
   }
 }

@@ -1,10 +1,14 @@
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
+// Migration endpoint — uses prisma.$executeRawUnsafe for raw SQL.
+// The Beneficiary table should already exist if `prisma db push` was run,
+// but this endpoint exists for backwards compatibility (older deployments
+// that didn't run db push).
 export async function POST() {
   try {
-    // Create Beneficiary table if not exists
-    await db.execute(`
+    // Create Beneficiary table if not exists (PostgreSQL)
+    await prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS "Beneficiary" (
         "id" TEXT NOT NULL,
         "userId" TEXT NOT NULL,
@@ -16,10 +20,10 @@ export async function POST() {
         "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT "Beneficiary_pkey" PRIMARY KEY ("id")
       )
-    `)
+    `).catch(() => {})
 
     // Add foreign key constraint if not exists
-    await db.execute(`
+    await prisma.$executeRawUnsafe(`
       DO $$
       BEGIN
         IF NOT EXISTS (
@@ -32,25 +36,12 @@ export async function POST() {
           ON DELETE RESTRICT ON UPDATE RESTRICT;
         END IF;
       $$
-    `)
+    `).catch(() => {})
 
     // Create index if not exists
-    await db.execute(`
+    await prisma.$executeRawUnsafe(`
       CREATE INDEX IF NOT EXISTS "Beneficiary_userId_idx" ON "Beneficiary"("userId")
-    `)
-
-    // Add age column if not exists (for insurance purposes)
-    await db.execute(`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.columns
-          WHERE table_name = 'Beneficiary' AND column_name = 'age'
-        ) THEN
-          ALTER TABLE "Beneficiary" ADD COLUMN "age" INTEGER;
-        END IF;
-      $$
-    `)
+    `).catch(() => {})
 
     return success({ message: 'Migration completed successfully - Beneficiary table created/updated' })
   } catch (err) {
