@@ -10887,3 +10887,22 @@ Deviations from the spec:
   introducing a new pattern.
 
 No issues.
+
+---
+Task ID: HOTFIX-BUILD-VPS-1
+Agent: Main Agent (Z.ai Code)
+Task: Corrigir erro de build na VPS LipeHost: "await isn't allowed in non-async function" em src/app/api/simulator/calculate/route.ts
+
+Work Log:
+- Usuário reportou falha de deploy na VPS LipeHost (deploy ID cmsv5tbq70001kpd9i733ha1p, 2026-09-08 21:49 UTC)
+- Erro raiz: Turbopack build falhou com 6 erros de parsing em route.ts:111-115
+- Causa: commit 8339d65 (feat: motor de cashback + simulador dinamico) introduziu `await` dentro de `.map((p) => {...})` sem marcar o callback como `async`. Em modo dev (Turbopack) rodava, mas no build de produção estrito quebra.
+- Refatorado o bloco `comparisons` de `.map()` para `for...of` loop, que permite `await` naturalmente e mantém a mesma semântica
+- Busca por padrão similar em todo `src/` confirmou que nenhum outro arquivo tem o mesmo bug (4 arquivos usam `.map(async ...)` corretamente)
+- Lint: 13 erros em arquivos .js auxiliares antigos (keep-alive.js, supervisor.js, etc.) — não afetam o build Next.js
+- Commitado d1c6ea9 e feito push para `origin` (lipefbr/newmobility) e `backup` (lipefbr/newmobilitybackup)
+
+Stage Summary:
+- Build blocker removido. VPS LipeHost agora deve conseguir fazer `npm install` (com --legacy-peer-deps, como já vinha fazendo) e `npx next build` sem o erro de parsing.
+- IMPORTANTE: o commit pendente local c3bdc1a (que troca `postgresql` → `sqlite` em schema.prisma) NÃO foi pushado — é config local do sandbox. A VPS continua com `postgresql` corretamente.
+- Próximos passos pendentes do prompt original: Prioridade 5 (Mapa de Conexões admin) e Prioridade 6 (system settings mortas + job mensal carreira).
