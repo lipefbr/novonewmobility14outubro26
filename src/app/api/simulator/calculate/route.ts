@@ -107,8 +107,12 @@ export async function POST(req: Request) {
     const totalAnnual = totalMonthly * 12
     const roi = planPrice > 0 ? (totalMonthly * 100) / planPrice : 0
 
-    const comparisons = (['blue3', 'blue5'] as const).map((p) => {
-      const pPrice = parseInt((p === 'blue3' ? await getConfig('plan.blue3.price_cents', '99990') : await getConfig('plan.blue5.price_cents', '99990')))
+    // Refatorado: usar for...of em vez de .map() para permitir await
+    // (anteriormente usava await dentro de .map sem callback async — quebrava build Turbopack)
+    const comparisons: Array<{ plan: string; planName: string; monthlyTotal: number; annualTotal: number; roi: number }> = []
+    for (const p of ['blue3', 'blue5'] as const) {
+      const pPriceStr = await getConfig(`plan.${p}.price_cents`, '99990')
+      const pPrice = parseInt(pPriceStr) || 99990
       const pName = await getConfig(`plan.${p}.name`, DEFAULT_PLAN_NAMES[p])
       const eUnlock = parseInt(await getConfig(`plan.${p}.cashback_levels_entrada`, String(DEFAULT_PLAN_UNLOCKS[p].entrada))) || DEFAULT_PLAN_UNLOCKS[p].entrada
       const rUnlock = parseInt(await getConfig(`plan.${p}.cashback_levels_residual`, String(DEFAULT_PLAN_UNLOCKS[p].residual))) || DEFAULT_PLAN_UNLOCKS[p].residual
@@ -117,8 +121,11 @@ export async function POST(req: Request) {
       const r = projectMatrix(residualPcts, rUnlock, cbResidualBase, safeFill)
       const v = projectMatrix(vendasPcts, vUnlock, cbVendasBase, safeFill)
       const monthly = e.total + r.total + v.total
-      return { plan: p, planName: pName, monthlyTotal: monthly, annualTotal: monthly * 12, roi: pPrice > 0 ? (monthly * 100) / pPrice : 0 }
-    })
+      comparisons.push({
+        plan: p, planName: pName, monthlyTotal: monthly, annualTotal: monthly * 12,
+        roi: pPrice > 0 ? (monthly * 100) / pPrice : 0,
+      })
+    }
 
     return success({
       plan, planName: planNameStr, directReferrals: safeDirectReferrals, matrixFillPercent: safeFill,
