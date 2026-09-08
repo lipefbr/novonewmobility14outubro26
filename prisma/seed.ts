@@ -31,6 +31,14 @@ const prisma = new PrismaClient({
 // -----------------------------------------------------------------------------
 // Password hashing — MUST match src/lib/api-utils.ts hashPassword()
 // -----------------------------------------------------------------------------
+
+// Convert "CashbackEntry" → "cashbackEntry" for accessing prisma client
+// via (prisma as any)[lowerFirst(modelName)].
+function lowerFirst(s: string): string {
+  if (!s) return s
+  return s.charAt(0).toLowerCase() + s.slice(1)
+}
+
 function hashPassword(password: string): string {
   return createHash('sha256').update(password).digest('hex')
 }
@@ -50,6 +58,7 @@ function generateReferralCode(name: string): string {
 // -----------------------------------------------------------------------------
 
 const SEED_USERS = [
+  // ========== ADMIN ==========
   {
     id: 'admin-root',
     email: 'admin@newmobility.com',
@@ -65,6 +74,7 @@ const SEED_USERS = [
     qualification: 'admin',
     referralCode: 'ADMIN001',
   },
+  // ========== DEMO PRINCIPAIS (login fácil) ==========
   {
     id: 'demo-cliente',
     email: 'cliente@newmobility.com',
@@ -79,6 +89,7 @@ const SEED_USERS = [
     plan: 'blue3',
     qualification: 'passageiro',
     referralCode: 'CLIENTE001',
+    referredById: 'admin-root',
   },
   {
     id: 'demo-motorista',
@@ -94,6 +105,10 @@ const SEED_USERS = [
     plan: 'blue3',
     qualification: 'motorista',
     referralCode: 'MOTO001',
+    referredById: 'admin-root',
+    entradaLevel: 3,
+    residualLevel: 0,
+    vendasLevel: 0,
   },
   {
     id: 'demo-lojista',
@@ -109,6 +124,532 @@ const SEED_USERS = [
     plan: 'blue3',
     qualification: 'comercio',
     referralCode: 'LOJA001',
+    referredById: 'admin-root',
+    entradaLevel: 3,
+    residualLevel: 0,
+    vendasLevel: 5,
+  },
+  {
+    id: 'demo-entregador',
+    email: 'entregador@newmobility.com',
+    name: 'Pedro Entregador',
+    username: 'pedro.entregador',
+    password: '123456',
+    role: 'user',
+    userType: 'entregador',
+    isActive: true,
+    isDriver: false,
+    isDelivery: true,
+    plan: 'blue3',
+    qualification: 'entregador',
+    referralCode: 'ENTR001',
+    referredById: 'admin-root',
+    entradaLevel: 3,
+    residualLevel: 0,
+    vendasLevel: 3,
+  },
+  // ========== REDE DO ADMIN (downlines diretos) ==========
+  {
+    id: 'user-anderson',
+    email: 'anderson.silva@email.com',
+    name: 'Anderson Silva',
+    username: 'anderson.silva',
+    password: '123456',
+    role: 'user',
+    userType: 'motorista',
+    isActive: true,
+    isDriver: true,
+    isDelivery: false,
+    plan: 'blue5',
+    qualification: 'motorista',
+    referralCode: 'AND001',
+    referredById: 'admin-root',
+    entradaLevel: 5,
+    residualLevel: 7,
+    vendasLevel: 0,
+  },
+  {
+    id: 'user-beatriz',
+    email: 'beatriz.costa@email.com',
+    name: 'Beatriz Costa',
+    username: 'beatriz.costa',
+    password: '123456',
+    role: 'user',
+    userType: 'usuario',
+    isActive: true,
+    isDriver: false,
+    isDelivery: false,
+    plan: 'blue5',
+    qualification: 'passageiro',
+    referralCode: 'BEA001',
+    referredById: 'admin-root',
+    entradaLevel: 5,
+    residualLevel: 7,
+    vendasLevel: 0,
+  },
+  {
+    id: 'user-carlos-eduardo',
+    email: 'carlos.silva@email.com',
+    name: 'Carlos Eduardo Silva',
+    username: 'carlos.eduardo',
+    password: '123456',
+    role: 'user',
+    userType: 'usuario',
+    isActive: true,
+    isDriver: false,
+    isDelivery: false,
+    plan: 'blue5',
+    qualification: 'cliente',
+    referralCode: 'CARLED001',
+    referredById: 'admin-root',
+    entradaLevel: 5,
+    residualLevel: 7,
+    vendasLevel: 0,
+  },
+  {
+    id: 'user-ana-paula',
+    email: 'ana.paula.santos@email.com',
+    name: 'Ana Paula Santos',
+    username: 'ana.paula',
+    password: '123456',
+    role: 'user',
+    userType: 'usuario',
+    isActive: true,
+    isDriver: false,
+    isDelivery: false,
+    plan: 'blue5',
+    qualification: 'passageiro',
+    referralCode: 'ANAPA001',
+    referredById: 'admin-root',
+    entradaLevel: 5,
+    residualLevel: 7,
+    vendasLevel: 0,
+  },
+  {
+    id: 'user-roberto',
+    email: 'roberto.lima.costa@email.com',
+    name: 'Roberto Lima Costa',
+    username: 'roberto.lima',
+    password: '123456',
+    role: 'user',
+    userType: 'motorista',
+    isActive: true,
+    isDriver: true,
+    isDelivery: false,
+    plan: 'blue5',
+    qualification: 'motorista',
+    referralCode: 'ROB001',
+    referredById: 'admin-root',
+    entradaLevel: 5,
+    residualLevel: 7,
+    vendasLevel: 0,
+  },
+  {
+    id: 'user-fernanda',
+    email: 'fernanda.oliveira@email.com',
+    name: 'Fernanda Oliveira',
+    username: 'fernanda.oliveira',
+    password: '123456',
+    role: 'user',
+    userType: 'lojista',
+    isActive: true,
+    isDriver: false,
+    isDelivery: true,
+    plan: 'blue3',
+    qualification: 'lojista',
+    referralCode: 'FER001',
+    referredById: 'admin-root',
+    entradaLevel: 3,
+    residualLevel: 0,
+    vendasLevel: 5,
+  },
+  // ========== REDE DO DEMO-MOTORISTA (downline) ==========
+  {
+    id: 'user-joao',
+    email: 'joao.pedro.almeida@email.com',
+    name: 'João Pedro Almeida',
+    username: 'joao.pedro',
+    password: '123456',
+    role: 'user',
+    userType: 'usuario',
+    isActive: true,
+    isDriver: false,
+    isDelivery: false,
+    plan: 'blue3',
+    qualification: 'cliente',
+    referralCode: 'JP001',
+    referredById: 'demo-motorista',
+    entradaLevel: 3,
+    residualLevel: 0,
+    vendasLevel: 0,
+  },
+  {
+    id: 'user-maria',
+    email: 'maria.souza@email.com',
+    name: 'Maria Souza',
+    username: 'maria.souza',
+    password: '123456',
+    role: 'user',
+    userType: 'usuario',
+    isActive: true,
+    isDriver: false,
+    isDelivery: false,
+    plan: 'blue5',
+    qualification: 'passageiro',
+    referralCode: 'MS001',
+    referredById: 'demo-motorista',
+    entradaLevel: 5,
+    residualLevel: 7,
+    vendasLevel: 0,
+  },
+  {
+    id: 'user-pedro-h',
+    email: 'pedro.henrique@email.com',
+    name: 'Pedro Henrique',
+    username: 'pedro.henrique',
+    password: '123456',
+    role: 'user',
+    userType: 'motorista',
+    isActive: true,
+    isDriver: true,
+    isDelivery: false,
+    plan: 'blue3',
+    qualification: 'motorista',
+    referralCode: 'PH001',
+    referredById: 'demo-motorista',
+    entradaLevel: 3,
+    residualLevel: 0,
+    vendasLevel: 0,
+  },
+  // ========== REDE DO DEMO-LOJISTA ==========
+  {
+    id: 'user-lucas-m',
+    email: 'lucas.martins@email.com',
+    name: 'Lucas Martins',
+    username: 'lucas.martins',
+    password: '123456',
+    role: 'user',
+    userType: 'entregador',
+    isActive: true,
+    isDriver: false,
+    isDelivery: true,
+    plan: 'blue3',
+    qualification: 'entregador',
+    referralCode: 'LM001',
+    referredById: 'demo-lojista',
+    entradaLevel: 3,
+    residualLevel: 0,
+    vendasLevel: 3,
+  },
+  {
+    id: 'user-camila',
+    email: 'camila.dias@email.com',
+    name: 'Camila Dias',
+    username: 'camila.dias',
+    password: '123456',
+    role: 'user',
+    userType: 'usuario',
+    isActive: false,
+    isDriver: false,
+    isDelivery: false,
+    plan: 'free',
+    qualification: 'passageiro',
+    referralCode: 'CD001',
+    referredById: 'demo-lojista',
+  },
+  // ========== REDE DO DEMO-ENTREGADOR ==========
+  {
+    id: 'user-rafael',
+    email: 'rafael.gomes@email.com',
+    name: 'Rafael Gomes',
+    username: 'rafael.gomes',
+    password: '123456',
+    role: 'user',
+    userType: 'motofretista',
+    isActive: true,
+    isDriver: false,
+    isDelivery: true,
+    plan: 'blue5',
+    qualification: 'motofretista',
+    referralCode: 'RG001',
+    referredById: 'demo-entregador',
+    entradaLevel: 5,
+    residualLevel: 7,
+    vendasLevel: 9,
+  },
+  {
+    id: 'user-patricia',
+    email: 'patricia.alves@email.com',
+    name: 'Patricia Alves',
+    username: 'patricia.alves',
+    password: '123456',
+    role: 'user',
+    userType: 'usuario',
+    isActive: true,
+    isDriver: false,
+    isDelivery: false,
+    plan: 'blue3',
+    qualification: 'cliente',
+    referralCode: 'PA001',
+    referredById: 'demo-entregador',
+    entradaLevel: 3,
+    residualLevel: 0,
+    vendasLevel: 0,
+  },
+  // ========== DEMAIS USUÁRIOS (2º nível) ==========
+  {
+    id: 'user-bruno',
+    email: 'bruno.costa@email.com',
+    name: 'Bruno Costa',
+    username: 'bruno.costa',
+    password: '123456',
+    role: 'user',
+    userType: 'motorista',
+    isActive: false,
+    isDriver: true,
+    isDelivery: false,
+    plan: 'free',
+    qualification: 'motorista',
+    referralCode: 'BC001',
+    referredById: 'user-anderson',
+  },
+  {
+    id: 'user-larissa',
+    email: 'larissa.nascimento@email.com',
+    name: 'Larissa Nascimento',
+    username: 'larissa.nascimento',
+    password: '123456',
+    role: 'user',
+    userType: 'usuario',
+    isActive: true,
+    isDriver: false,
+    isDelivery: false,
+    plan: 'blue5',
+    qualification: 'passageiro',
+    referralCode: 'LN001',
+    referredById: 'user-anderson',
+    entradaLevel: 5,
+    residualLevel: 7,
+    vendasLevel: 0,
+  },
+  {
+    id: 'user-diego',
+    email: 'diego.rocha@email.com',
+    name: 'Diego Rocha',
+    username: 'diego.rocha',
+    password: '123456',
+    role: 'user',
+    userType: 'entregador',
+    isActive: true,
+    isDriver: false,
+    isDelivery: true,
+    plan: 'blue3',
+    qualification: 'entregador',
+    referralCode: 'DR001',
+    referredById: 'user-beatriz',
+    entradaLevel: 3,
+    residualLevel: 0,
+    vendasLevel: 3,
+  },
+  {
+    id: 'user-thiago',
+    email: 'thiago.moreira@email.com',
+    name: 'Thiago Moreira',
+    username: 'thiago.moreira',
+    password: '123456',
+    role: 'user',
+    userType: 'motorista',
+    isActive: true,
+    isDriver: true,
+    isDelivery: false,
+    plan: 'blue5',
+    qualification: 'motorista_app',
+    referralCode: 'TM001',
+    referredById: 'user-beatriz',
+    entradaLevel: 5,
+    residualLevel: 7,
+    vendasLevel: 0,
+  },
+  {
+    id: 'user-amanda',
+    email: 'amanda.lopes@email.com',
+    name: 'Amanda Lopes',
+    username: 'amanda.lopes',
+    password: '123456',
+    role: 'user',
+    userType: 'lojista',
+    isActive: true,
+    isDriver: false,
+    isDelivery: true,
+    plan: 'blue3',
+    qualification: 'lojista',
+    referralCode: 'AL001',
+    referredById: 'user-carlos-eduardo',
+    entradaLevel: 3,
+    residualLevel: 0,
+    vendasLevel: 5,
+  },
+  {
+    id: 'user-gabriel',
+    email: 'gabriel.freitas@email.com',
+    name: 'Gabriel Freitas',
+    username: 'gabriel.freitas',
+    password: '123456',
+    role: 'user',
+    userType: 'mototaxista',
+    isActive: false,
+    isDriver: true,
+    isDelivery: false,
+    plan: 'free',
+    qualification: 'mototaxista',
+    referralCode: 'GF001',
+    referredById: 'user-carlos-eduardo',
+  },
+  {
+    id: 'user-isabela',
+    email: 'isabela.rodrigues@email.com',
+    name: 'Isabela Rodrigues',
+    username: 'isabela.rodrigues',
+    password: '123456',
+    role: 'user',
+    userType: 'usuario',
+    isActive: true,
+    isDriver: false,
+    isDelivery: false,
+    plan: 'blue5',
+    qualification: 'passageiro_60',
+    referralCode: 'IR001',
+    referredById: 'user-ana-paula',
+    entradaLevel: 5,
+    residualLevel: 7,
+    vendasLevel: 0,
+  },
+  {
+    id: 'user-felipe',
+    email: 'felipe.andrade@email.com',
+    name: 'Felipe Andrade',
+    username: 'felipe.andrade',
+    password: '123456',
+    role: 'user',
+    userType: 'caminhoneiro',
+    isActive: false,
+    isDriver: true,
+    isDelivery: true,
+    plan: 'free',
+    qualification: 'caminhoneiro',
+    referralCode: 'FA001',
+    referredById: 'user-ana-paula',
+  },
+  {
+    id: 'user-carolina',
+    email: 'carolina.mendes@email.com',
+    name: 'Carolina Mendes',
+    username: 'carolina.mendes',
+    password: '123456',
+    role: 'user',
+    userType: 'usuario',
+    isActive: false,
+    isDriver: false,
+    isDelivery: false,
+    plan: 'free',
+    qualification: 'passageiro_pcd',
+    referralCode: 'CM001',
+    referredById: 'user-roberto',
+  },
+  {
+    id: 'user-vinicius',
+    email: 'vinicius.santos@email.com',
+    name: 'Vinicius Santos',
+    username: 'vinicius.santos',
+    password: '123456',
+    role: 'user',
+    userType: 'taxista',
+    isActive: true,
+    isDriver: true,
+    isDelivery: false,
+    plan: 'blue3',
+    qualification: 'taxista',
+    referralCode: 'VS001',
+    referredById: 'user-roberto',
+    entradaLevel: 3,
+    residualLevel: 0,
+    vendasLevel: 0,
+  },
+  {
+    id: 'user-priscila',
+    email: 'priscila.teixeira@email.com',
+    name: 'Priscila Teixeira',
+    username: 'priscila.teixeira',
+    password: '123456',
+    role: 'user',
+    userType: 'usuario',
+    isActive: true,
+    isDriver: false,
+    isDelivery: false,
+    plan: 'blue3',
+    qualification: 'cliente',
+    referralCode: 'PT001',
+    referredById: 'user-fernanda',
+    entradaLevel: 3,
+    residualLevel: 0,
+    vendasLevel: 0,
+  },
+  {
+    id: 'user-rodrigo',
+    email: 'rodrigo.pinto@email.com',
+    name: 'Rodrigo Pinto',
+    username: 'rodrigo.pinto',
+    password: '123456',
+    role: 'user',
+    userType: 'motofretista',
+    isActive: true,
+    isDriver: false,
+    isDelivery: true,
+    plan: 'blue3',
+    qualification: 'motofretista',
+    referralCode: 'RP001',
+    referredById: 'user-fernanda',
+    entradaLevel: 3,
+    residualLevel: 0,
+    vendasLevel: 3,
+  },
+  {
+    id: 'user-daniela',
+    email: 'daniela.farias@email.com',
+    name: 'Daniela Farias',
+    username: 'daniela.farias',
+    password: '123456',
+    role: 'user',
+    userType: 'usuario',
+    isActive: true,
+    isDriver: false,
+    isDelivery: false,
+    plan: 'blue5',
+    qualification: 'passageiro',
+    referralCode: 'DF001',
+    referredById: 'user-fernanda',
+    entradaLevel: 5,
+    residualLevel: 7,
+    vendasLevel: 0,
+  },
+  {
+    id: 'user-eduardo',
+    email: 'eduardo.nogueira@email.com',
+    name: 'Eduardo Nogueira',
+    username: 'eduardo.nogueira',
+    password: '123456',
+    role: 'user',
+    userType: 'motorista',
+    isActive: true,
+    isDriver: true,
+    isDelivery: false,
+    plan: 'blue5',
+    qualification: 'motorista_app',
+    referralCode: 'EN001',
+    referredById: 'user-fernanda',
+    entradaLevel: 5,
+    residualLevel: 7,
+    vendasLevel: 0,
   },
 ]
 
@@ -430,40 +971,183 @@ const SEED_FAQS = [
 
 async function seedUsers() {
   console.log('→ Seeding users...')
+
+  // Cleanup pass: delete old test users from previous manual testing
+  // that are no longer in our seed list. We do this by email since it's
+  // the unique business key. Skip any user whose email is in our seed.
+  // Also skip admins created manually (role === 'admin') to avoid
+  // locking out the production admin.
+  const seedEmails = new Set(SEED_USERS.map((u) => u.email.toLowerCase()))
+  const allUsers = await prisma.user.findMany({
+    select: { id: true, email: true, role: true },
+  })
+  const orphanIds: string[] = []
+  for (const u of allUsers) {
+    if (u.role === 'admin' && u.email !== 'admin@newmobility.com') continue
+    if (!seedEmails.has(u.email.toLowerCase())) orphanIds.push(u.id)
+  }
+  if (orphanIds.length > 0) {
+    console.log(`  → Removing ${orphanIds.length} orphan test users (not in seed list)`)
+    // Disable FK checks during delete so we can remove users that have
+    // leftover rows in dependent tables (cashback entries, tickets, etc).
+    // On SQLite this is `PRAGMA foreign_keys=OFF`, on Postgres we use
+    // `SET session_replication_role='replica'`. We try both — one will
+    // work depending on the provider.
+    try { await prisma.$executeRawUnsafe('PRAGMA foreign_keys=OFF') } catch {}
+    try { await prisma.$executeRawUnsafe("SET session_replication_role = 'replica'") } catch {}
+
+    // First null out any FK references in User.referredById to these users
+    await prisma.user.updateMany({
+      where: { referredById: { in: orphanIds } },
+      data: { referredById: null },
+    }).catch(() => {})
+
+    // Delete dependent rows in known tables that reference userId.
+    // We use raw SQL (TRUNCATE-style DELETE) because the Prisma client
+    // doesn't always have accessors for every model dynamically, and
+    // because raw SQL works on both SQLite and Postgres.
+    const dependentTablesAndCols: Array<[string, string]> = [
+      ['CashbackEntry', 'userId'],
+      ['CashbackResidual', 'userId'],
+      ['CashbackSales', 'userId'],
+      ['MatrixPosition', 'userId'],
+      ['Transaction', 'userId'],
+      ['Invoice', 'userId'],
+      ['Voucher', 'userId'],
+      ['Ticket', 'userId'],
+      ['TicketMessage', 'userId'],
+      ['Notification', 'userId'],
+      ['CareerMilestone', 'userId'],
+      ['Gratification', 'userId'],
+      ['PointTransaction', 'userId'],
+      ['WithdrawalRequest', 'userId'],
+      ['GamificationStreak', 'userId'],
+      ['UserChallenge', 'userId'],
+      ['EventRegistration', 'userId'],
+      ['Beneficiary', 'userId'],
+      ['MarketplaceOrder', 'userId'],
+      ['MarketplaceOrderItem', 'userId'],
+      ['MarketplaceFavorite', 'userId'],
+      ['KycDocument', 'userId'],
+      ['AuditLog', 'userId'],
+      ['TelemedicinaRequest', 'userId'],
+      ['TalkMobiSubscription', 'userId'],
+      ['AppStore', 'ownerId'],
+      ['AppOrder', 'customerId'],
+      ['DriverApplication', 'userId'],
+      ['Bet', 'userId'],
+    ]
+    for (const [table, col] of dependentTablesAndCols) {
+      for (const id of orphanIds) {
+        try {
+          // Quote table name for Postgres compatibility (camelCase → quoted),
+          // but SQLite is case-insensitive so it works on both.
+          await prisma.$executeRawUnsafe(
+            `DELETE FROM "${table}" WHERE "${col}" = ?`,
+            id,
+          )
+        } catch {
+          // Table may not exist on this schema version — skip silently
+        }
+      }
+    }
+
+    // Now delete the users themselves
+    let deleted = 0
+    for (const id of orphanIds) {
+      try {
+        await prisma.user.delete({ where: { id } })
+        deleted++
+      } catch (e) {
+        // Still referenced somewhere — try raw DELETE bypassing FK
+        try {
+          await prisma.$executeRawUnsafe('DELETE FROM "User" WHERE id = ?', id)
+          deleted++
+        } catch {}
+      }
+    }
+    console.log(`  ✓ Removed ${deleted}/${orphanIds.length} orphan users`)
+
+    // Re-enable FK checks
+    try { await prisma.$executeRawUnsafe('PRAGMA foreign_keys=ON') } catch {}
+    try { await prisma.$executeRawUnsafe("SET session_replication_role = 'origin'") } catch {}
+  }
+
+  // First pass: create/update all users (without referredById — the sponsor
+  // may not exist yet on the first run, and the user might already exist
+  // in the DB with a different cuid id than the one we passed).
+  // We resolve sponsorship by EMAIL in a second pass below.
+  const emailToId = new Map<string, string>()
   for (const u of SEED_USERS) {
     const passwordHash = hashPassword(u.password)
-    await prisma.user.upsert({
-      where: { email: u.email },
-      update: {
-        // Only update auth-critical fields if the user already exists
-        role: u.role,
-        userType: u.userType,
-        isDriver: u.isDriver,
-        isDelivery: u.isDelivery,
-        isActive: u.isActive,
-        plan: u.plan,
-        qualification: u.qualification,
-      },
-      create: {
-        id: u.id,
-        email: u.email,
-        name: u.name,
-        username: u.username,
-        password: passwordHash,
-        role: u.role,
-        userType: u.userType,
-        isActive: u.isActive,
-        isDriver: u.isDriver,
-        isDelivery: u.isDelivery,
-        plan: u.plan,
-        qualification: u.qualification,
-        referralCode: u.referralCode,
-        country: 'BR',
-        pixEnabled: true,
-      },
+    const existing = await prisma.user.findUnique({ where: { email: u.email } })
+    if (existing) {
+      // Update in place — keep the existing cuid id (don't try to change it).
+      await prisma.user.update({
+        where: { email: u.email },
+        data: {
+          name: u.name,
+          username: u.username,
+          password: passwordHash,
+          role: u.role,
+          userType: u.userType,
+          isActive: u.isActive,
+          isDriver: u.isDriver,
+          isDelivery: u.isDelivery,
+          plan: u.plan,
+          qualification: u.qualification,
+          entradaLevel: u.entradaLevel ?? 0,
+          residualLevel: u.residualLevel ?? 0,
+          vendasLevel: u.vendasLevel ?? 0,
+          referralCode: u.referralCode,
+        },
+      })
+      emailToId.set(u.email, existing.id)
+    } else {
+      const created = await prisma.user.create({
+        data: {
+          id: u.id, // use stable id on fresh DB
+          email: u.email,
+          name: u.name,
+          username: u.username,
+          password: passwordHash,
+          role: u.role,
+          userType: u.userType,
+          isActive: u.isActive,
+          isDriver: u.isDriver,
+          isDelivery: u.isDelivery,
+          plan: u.plan,
+          qualification: u.qualification,
+          referralCode: u.referralCode,
+          entradaLevel: u.entradaLevel ?? 0,
+          residualLevel: u.residualLevel ?? 0,
+          vendasLevel: u.vendasLevel ?? 0,
+          country: 'BR',
+          pixEnabled: true,
+        },
+      })
+      emailToId.set(u.email, created.id)
+    }
+  }
+
+  // Second pass: resolve referredById by looking up the sponsor's email
+  // in our seed list, then fetching its actual DB id from emailToId.
+  // This handles both fresh DBs (where ids match) and existing DBs
+  // (where users were created with random cuids).
+  for (const u of SEED_USERS) {
+    if (!u.referredById) continue // admin / no sponsor
+    const sponsor = SEED_USERS.find((s) => s.id === u.referredById)
+    if (!sponsor) continue
+    const sponsorDbId = emailToId.get(sponsor.email)
+    const userId = emailToId.get(u.email)
+    if (!sponsorDbId || !userId || sponsorDbId === userId) continue
+    await prisma.user.update({
+      where: { id: userId },
+      data: { referredById: sponsorDbId },
     })
   }
-  console.log(`  ✓ ${SEED_USERS.length} users ready (admin + 3 demo)`)
+
+  console.log(`  ✓ ${SEED_USERS.length} users ready (admin + ${SEED_USERS.length - 1} demo)`)
 }
 
 async function seedSystemConfigs() {
@@ -704,6 +1388,120 @@ async function seedStreakRewards() {
   console.log(`  ✓ ${rewards.length} StreakRewards ready`)
 }
 
+// -----------------------------------------------------------------------------
+// Cashback demo seed — populate a few CashbackEntry/Residual/Sales rows so
+// the admin dashboard and user wallet show realistic data. Idempotent:
+// only inserts if no rows exist for that user+fromUser+level combo.
+// -----------------------------------------------------------------------------
+
+async function seedCashbackDemo() {
+  console.log('→ Seeding cashback demo entries...')
+  const existingCount = await prisma.cashbackEntry.count().catch(() => 0)
+  if (existingCount > 0) {
+    console.log(`  ✓ Cashback entries already exist (${existingCount}) — skipping demo seed`)
+    return
+  }
+
+  // Map seed user ids → real DB ids by email (because existing DBs may have
+  // users created with random cuids instead of the stable seed ids).
+  const emailToId = new Map<string, string>()
+  for (const u of SEED_USERS) {
+    const db = await prisma.user.findUnique({ where: { email: u.email }, select: { id: true } })
+    if (db) emailToId.set(u.id, db.id)
+  }
+  const idFor = (seedId: string) => emailToId.get(seedId) || null
+
+  // Helper to upsert a cashback row (idempotent on user+fromUser+level+amount)
+  const addCashback = async (
+    model: 'cashbackEntry' | 'cashbackResidual' | 'cashbackSales',
+    userId: string,
+    fromUserId: string,
+    amount: number,
+    level: number,
+    percentage: number,
+    description: string,
+    category?: string,
+  ) => {
+    const dbUserId = idFor(userId)
+    const dbFromId = idFor(fromUserId)
+    if (!dbUserId || !dbFromId) return
+    try {
+      await (prisma as any)[model].create({
+        data: {
+          userId: dbUserId,
+          fromUserId: dbFromId,
+          amount,
+          level,
+          percentage,
+          description,
+          ...(category ? { category } : {}),
+        },
+      })
+    } catch {
+      // row already exists or FK mismatch — skip
+    }
+  }
+
+  // Demo: Carlos Eduardo (admin downline, blue5) receives cashback from
+  // his downline Anderson Silva's purchase (matriz entrada level 1-3).
+  await addCashback('cashbackEntry', 'admin-root', 'user-anderson', 3500, 1, 35, 'Cashback Entrada L1 — compra de Anderson Silva')
+  await addCashback('cashbackEntry', 'admin-root', 'user-anderson', 1400, 2, 14, 'Cashback Entrada L2 — compra de Anderson Silva')
+  await addCashback('cashbackEntry', 'admin-root', 'user-anderson', 525, 3, 5.25, 'Cashback Entrada L3 — compra de Anderson Silva')
+
+  // Demo: Anderson (motorista blue5) receives residual from his downline
+  // Larissa's monthly plan payment (matriz residual).
+  await addCashback('cashbackResidual', 'user-anderson', 'user-larissa', 7000, 1, 45, 'Residual L1 — pgto plano mensal Larissa')
+  await addCashback('cashbackResidual', 'user-anderson', 'user-larissa', 2800, 2, 18, 'Residual L2 — pgto plano mensal Larissa')
+
+  // Demo: Luciana Lojista receives sales cashback from her downline Lucas
+  // Martins' delivery sales (matriz vendas level 1-3).
+  await addCashback('cashbackSales', 'demo-lojista', 'user-lucas-m', 1800, 1, 0.9, 'Vendas L1 — entrega Lucas Martins', 'food')
+  await addCashback('cashbackSales', 'demo-lojista', 'user-lucas-m', 720, 2, 0.36, 'Vendas L2 — entrega Lucas Martins', 'food')
+  await addCashback('cashbackSales', 'demo-lojista', 'user-lucas-m', 288, 3, 0.144, 'Vendas L3 — entrega Lucas Martins', 'food')
+
+  // Demo: Marcos Motorista receives entrada cashback from Maria Souza's
+  // in-app ride purchase (matriz entrada).
+  await addCashback('cashbackEntry', 'demo-motorista', 'user-maria', 1500, 1, 35, 'Cashback Entrada L1 — corrida Maria Souza')
+
+  // Update user balanceWithdrawal to reflect these entries (so the admin
+  // dashboard shows realistic numbers).
+  const entriesByUser = await prisma.cashbackEntry.groupBy({
+    by: ['userId'],
+    _sum: { amount: true },
+  })
+  for (const e of entriesByUser) {
+    await prisma.user.update({
+      where: { id: e.userId },
+      data: { balanceWithdrawal: { increment: e._sum.amount || 0 } },
+    }).catch(() => {})
+  }
+
+  const residualByUser = await prisma.cashbackResidual.groupBy({
+    by: ['userId'],
+    _sum: { amount: true },
+  })
+  for (const r of residualByUser) {
+    await prisma.user.update({
+      where: { id: r.userId },
+      data: { balanceWithdrawal: { increment: r._sum.amount || 0 } },
+    }).catch(() => {})
+  }
+
+  const salesByUser = await prisma.cashbackSales.groupBy({
+    by: ['userId'],
+    _sum: { amount: true },
+  })
+  for (const s of salesByUser) {
+    await prisma.user.update({
+      where: { id: s.userId },
+      data: { balanceShopping: { increment: s._sum.amount || 0 } },
+    }).catch(() => {})
+  }
+
+  const total = await prisma.cashbackEntry.count() + await prisma.cashbackResidual.count() + await prisma.cashbackSales.count()
+  console.log(`  ✓ ${total} cashback demo entries created (entrada + residual + vendas)`)
+}
+
 async function main() {
   console.log('========================================')
   console.log(' NewMobility — Database Seed')
@@ -729,6 +1527,7 @@ async function main() {
   await seedEvents()
   await seedCategories()
   await seedFaqs()
+  await seedCashbackDemo()
 
   console.log('')
   console.log('========================================')
