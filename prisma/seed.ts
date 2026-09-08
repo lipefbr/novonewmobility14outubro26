@@ -206,6 +206,111 @@ const SEED_USER_TYPES = [
     color: '#f97316',
     icon: '🛵',
   },
+  // ---- Novos tipos (Task 2-e) ----
+  {
+    code: 'cliente',
+    label: 'Cliente',
+    description: 'Usuário comum que utiliza os serviços da plataforma',
+    sortOrder: 7,
+    defaultEntradaLevel: 0,
+    defaultResidualLevel: 0,
+    defaultVendasLevel: 0,
+    showDriverGoals: false,
+    mobilePermissions: '["dashboard","wallet","ride_request","cashback","career","indicacoes"]',
+    color: '#10b981',
+    icon: '👤',
+  },
+  {
+    code: 'lojista',
+    label: 'Lojista',
+    description: 'Lojista / comerciante parceiro (gerencia loja, produtos e pedidos no Portal do Lojista)',
+    sortOrder: 8,
+    defaultEntradaLevel: 0,
+    defaultResidualLevel: 0,
+    defaultVendasLevel: 0,
+    showDriverGoals: false,
+    mobilePermissions: '["dashboard","wallet","store","cashback","career","indicacoes"]',
+    color: '#ec4899',
+    icon: '🏪',
+  },
+  {
+    code: 'mototaxista',
+    label: 'Mototaxista',
+    description: 'Condutor de moto que realiza transporte de passageiros (moto-táxi)',
+    sortOrder: 9,
+    defaultEntradaLevel: 0,
+    defaultResidualLevel: 0,
+    defaultVendasLevel: 0,
+    showDriverGoals: true,
+    mobilePermissions: '["dashboard","wallet","ride_request","cashback","career","metas","indicacoes"]',
+    color: '#06b6d4',
+    icon: '🏍️',
+  },
+  {
+    code: 'motofretista',
+    label: 'Motofretista',
+    description: 'Condutor de moto que realiza entrega de encomendas (moto-frete)',
+    sortOrder: 10,
+    defaultEntradaLevel: 0,
+    defaultResidualLevel: 0,
+    defaultVendasLevel: 0,
+    showDriverGoals: true,
+    mobilePermissions: '["dashboard","wallet","delivery","cashback","career","metas","indicacoes"]',
+    color: '#0ea5e9',
+    icon: '📦',
+  },
+  {
+    code: 'motorista_app',
+    label: 'Motorista de App',
+    description: 'Condutor de veículo cadastrado em aplicativos de transporte (Uber, 99, etc.)',
+    sortOrder: 11,
+    defaultEntradaLevel: 0,
+    defaultResidualLevel: 0,
+    defaultVendasLevel: 0,
+    showDriverGoals: true,
+    mobilePermissions: '["dashboard","wallet","ride_request","cashback","career","metas","indicacoes"]',
+    color: '#6366f1',
+    icon: '📱',
+  },
+  {
+    code: 'taxista',
+    label: 'Taxista',
+    description: 'Condutor de táxi licenciado (ponto fixo ou via aplicativo)',
+    sortOrder: 12,
+    defaultEntradaLevel: 0,
+    defaultResidualLevel: 0,
+    defaultVendasLevel: 0,
+    showDriverGoals: true,
+    mobilePermissions: '["dashboard","wallet","ride_request","cashback","career","metas","indicacoes"]',
+    color: '#eab308',
+    icon: '🚕',
+  },
+  {
+    code: 'caminhoneiro',
+    label: 'Caminhoneiro',
+    description: 'Condutor de caminhão para transporte de cargas (curta, média e longa distância)',
+    sortOrder: 13,
+    defaultEntradaLevel: 0,
+    defaultResidualLevel: 0,
+    defaultVendasLevel: 0,
+    showDriverGoals: true,
+    mobilePermissions: '["dashboard","wallet","delivery","cashback","career","metas","indicacoes"]',
+    color: '#84cc16',
+    icon: '🚚',
+  },
+  {
+    code: 'outros',
+    label: 'Outros',
+    description: 'Outro tipo de atuação não listado (campo livre para personalização futura)',
+    sortOrder: 99,
+    defaultEntradaLevel: 0,
+    defaultResidualLevel: 0,
+    defaultVendasLevel: 0,
+    showDriverGoals: false,
+    mobilePermissions: '["dashboard","wallet","cashback","career","indicacoes"]',
+    color: '#6b7280',
+    icon: '⚙️',
+  },
 ]
 
 const SEED_PLANS = [
@@ -224,7 +329,7 @@ const SEED_PLANS = [
     id: 'blue3',
     code: 'blue3',
     name: 'Blue 3',
-    priceCents: 9700,
+    priceCents: 99990,
     description: 'Plano Blue 3 com acesso completo às matrizes e apps.',
     features: [
       'Cashback Entrada (matriz 4x5)',
@@ -245,7 +350,7 @@ const SEED_PLANS = [
     id: 'blue5',
     code: 'blue5',
     name: 'Blue 5',
-    priceCents: 14700,
+    priceCents: 99990,
     description: 'Plano Blue 5 premium com benefícios exclusivos.',
     features: [
       'Tudo do plano Blue 3',
@@ -401,7 +506,7 @@ async function seedPlans() {
     const m = matrixCodeMap[p.code] || {}
     await prisma.plan.upsert({
       where: { code: p.code },
-      update: {}, // do not overwrite admin-edited prices
+      update: { priceCents: p.priceCents }, // FIX: always sync price
       create: {
         id: p.id,
         code: p.code,
@@ -455,6 +560,50 @@ async function seedFaqs() {
     })
   }
   console.log(`  ✓ ${SEED_FAQS.length} FAQs ready`)
+}
+
+async function seedServiceTypes() {
+  console.log('→ Seeding ServiceTypes...')
+  const types = [
+    { name: 'Eletricista', icon: 'Zap', isActive: true, sortOrder: 1 },
+    { name: 'Encanador', icon: 'Wrench', isActive: true, sortOrder: 2 },
+    { name: 'Pedreiro', icon: 'Hammer', isActive: true, sortOrder: 3 },
+    { name: 'Pintor', icon: 'PaintRoller', isActive: true, sortOrder: 4 },
+    { name: 'Jardinagem', icon: 'Trees', isActive: true, sortOrder: 5 },
+    { name: 'Limpeza', icon: 'Sparkles', isActive: true, sortOrder: 6 },
+    { name: 'Refrigeração / Ar Condicionado', icon: 'Wind', isActive: true, sortOrder: 7 },
+    { name: 'Marcenaria', icon: 'Hammer', isActive: true, sortOrder: 8 },
+    { name: 'Dedetização', icon: 'Bug', isActive: true, sortOrder: 9 },
+    { name: 'Fretes e Mudanças', icon: 'Truck', isActive: true, sortOrder: 10 },
+    { name: 'Borracheiro', icon: 'Circle', isActive: true, sortOrder: 11 },
+    { name: 'Mecânico', icon: 'Cog', isActive: true, sortOrder: 12 },
+    { name: 'Vidraceiro', icon: 'Square', isActive: true, sortOrder: 13 },
+    { name: 'Telhadista', icon: 'Home', isActive: true, sortOrder: 14 },
+    { name: 'Outros', icon: 'Settings', isActive: true, sortOrder: 99 },
+  ]
+  for (const t of types) {
+    const existing = await prisma.serviceType.findFirst({ where: { name: t.name } }).catch(() => null)
+    if (!existing) {
+      await prisma.serviceType.create({ data: t }).catch(() => {})
+    }
+  }
+  console.log(`  ✓ ${types.length} ServiceTypes ready`)
+}
+
+async function seedEvents() {
+  console.log('→ Seeding Events...')
+  const events = [
+    { title: 'Webinar: Maximizar Ganhos com CashBack', description: 'Aprenda estratégias para maximizar seus ganhos no CashBack Multi-Nível.', type: 'webinar', status: 'upcoming', eventDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(), endDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000 + 2 * 60 * 60 * 1000).toISOString(), location: 'Online (YouTube)', meetingUrl: '', maxAttendees: 500, isActive: true },
+    { title: 'Manutenção do Sistema', description: 'Manutenção programada do sistema. Serviço indisponível das 02h às 04h.', type: 'maintenance', status: 'upcoming', eventDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(), endDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000 + 2 * 60 * 60 * 1000).toISOString(), location: 'Servidor', meetingUrl: '', maxAttendees: 0, isActive: true },
+    { title: 'Promo: CashBack Dobrado', description: 'Por 7 dias, todo CashBack de indicação será dobrado! Aproveite para expandir sua rede.', type: 'promo', status: 'upcoming', eventDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(), location: 'Plataforma', meetingUrl: '', maxAttendees: 0, isActive: true },
+  ]
+  for (const e of events) {
+    const existing = await prisma.event.findFirst({ where: { title: e.title } }).catch(() => null)
+    if (!existing) {
+      await prisma.event.create({ data: e }).catch(() => {})
+    }
+  }
+  console.log(`  ✓ ${events.length} Events ready`)
 }
 
 async function seedMatrixTypes() {
@@ -565,6 +714,8 @@ async function main() {
   await seedCareerPlans()
   await seedGoalConfigs()
   await seedStreakRewards()
+  await seedServiceTypes()
+  await seedEvents()
   await seedCategories()
   await seedFaqs()
 
