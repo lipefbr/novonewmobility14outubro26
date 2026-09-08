@@ -72,6 +72,7 @@ interface AdminUser {
   bankCode: string; bankAgency: string; bankAccount: string; bankType: string;
   pixKey: string; pixEnabled: boolean;
   isDriver: boolean; isDelivery: boolean; role: string;
+  qualification?: string | null;
   createdAt: string; _count: { referrals: number }
 }
 
@@ -498,6 +499,7 @@ interface EditFormData {
   bankCode: string; bankAgency: string; bankAccount: string; bankType: string;
   pixKey: string; pixEnabled: boolean;
   isDriver: boolean; isDelivery: boolean; role: string;
+  qualification: string;
 }
 
 const emptyEditForm: EditFormData = {
@@ -510,6 +512,7 @@ const emptyEditForm: EditFormData = {
   bankCode: '', bankAgency: '', bankAccount: '', bankType: '',
   pixKey: '', pixEnabled: false,
   isDriver: false, isDelivery: false, role: 'user',
+  qualification: '',
 }
 
 // Map admin sidebar pages to internal tab values
@@ -2934,8 +2937,18 @@ export function AdminPage() {
       isDriver: u.isDriver || false,
       isDelivery: u.isDelivery || false,
       role: u.role || 'user',
+      qualification: (u as AdminUser).qualification || '',
     })
     setEditUserDialogOpen(true)
+    // Lazy-load user types so the Qualificação dropdown in the Edit dialog
+    // is populated (same fetch as the Create dialog).
+    if (availableUserTypes.length === 0 && user?.id) {
+      apiFetch<{ types: Array<{ id: string; code: string; label: string; icon: string | null; defaultEntradaLevel: number; defaultResidualLevel: number; defaultVendasLevel: number }> }>(
+        `/admin/user-types?userId=${user.id}`,
+      )
+        .then((data) => setAvailableUserTypes(data?.types || []))
+        .catch(() => { /* silent — admin can still type without the dropdown */ })
+    }
   }
 
   const handleSaveUser = async () => {
@@ -9627,25 +9640,6 @@ export function AdminPage() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Tipo de Usuário</Label>
-                <select
-                  value={newUserForm.userType}
-                  onChange={(e) => setNewUserForm((d) => ({ ...d, userType: e.target.value }))}
-                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
-                >
-                  <option value="gratuito">Gratuito</option>
-                  <option value="inativo">Inativo</option>
-                  <option value="usuario">Usuário</option>
-                  <option value="motorista">Motorista</option>
-                  <option value="entregador">Entregador</option>
-                  <option value="loja">Loja</option>
-                  <option value="parceiro">Parceiro</option>
-                  <option value="empresa">Empresa</option>
-                  <option value="afiliado">Afiliado</option>
-                  <option value="administrador">Administrador</option>
-                </select>
-              </div>
-              <div className="space-y-1.5">
                 <Label className="text-xs flex items-center gap-1.5">
                   <Shield className="h-3 w-3 text-emerald-600" />
                   Role
@@ -9699,7 +9693,7 @@ export function AdminPage() {
                 </span>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Qualificação (Tipo de conta)</Label>
+                <Label className="text-xs">Tipo de Usuário</Label>
                 <select
                   value={newUserForm.qualification}
                   onChange={(e) => handleQualificationChange(e.target.value)}
@@ -9713,7 +9707,7 @@ export function AdminPage() {
                   ))}
                 </select>
                 <p className="text-[10px] text-muted-foreground">
-                  Gerencie os tipos em "Tipos de Usuário" no menu lateral. Selecionar um tipo preenche os níveis padrão abaixo.
+                  Carrega dinamicamente da tabela UserType. Gerencie em "Tipos de Usuário" no menu lateral. Selecionar um tipo preenche os níveis padrão abaixo.
                 </p>
               </div>
               <div className="grid grid-cols-3 gap-2">
@@ -9844,6 +9838,30 @@ export function AdminPage() {
                     <input type="checkbox" checked={editUserData.isDelivery} onChange={(e) => updateEditField('isDelivery', e.target.checked)} className="rounded border-input" />
                     <Bike className="h-3.5 w-3.5 text-amber-600" /> Entregador
                   </label>
+                </div>
+                {/* Qualificação (UserType code) — dinâmico, carregado da tabela
+                    UserType. Antes o admin só conseguia definir o tipo na criação;
+                    agora pode mudar depois também (backend PUT já aceitava). */}
+                <div className="space-y-1.5 mt-3">
+                  <Label className="text-xs flex items-center gap-1.5">
+                    <Shield className="h-3 w-3 text-emerald-600" />
+                    Tipo de Usuário
+                  </Label>
+                  <select
+                    value={editUserData.qualification}
+                    onChange={(e) => updateEditField('qualification', e.target.value)}
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">— Nenhuma —</option>
+                    {availableUserTypes.map((t) => (
+                      <option key={t.id} value={t.code}>
+                        {t.icon || '👤'} {t.label} ({t.code})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-muted-foreground">
+                    Carrega dinamicamente da tabela UserType. Gerencie em "Tipos de Usuário" no menu lateral. Mudar a qualificação não altera os níveis de matriz já definidos — edite-os manualmente abaixo se necessário.
+                  </p>
                 </div>
               </div>
 
