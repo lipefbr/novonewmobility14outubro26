@@ -213,6 +213,21 @@ export async function POST(
           renewErr
         )
       }
+
+      // ========================================================================
+      // PRIORIDADE 2 — MOTOR DE CASHBACK (MATRIZ RESIDUAL)
+      // Pagamento manual de fatura do plano também dispara Residual.
+      // ========================================================================
+      try {
+        const { triggerResidualCashback } = await import('@/lib/cashback-engine')
+        await triggerResidualCashback({
+          payerId: invoice.userId,
+          invoiceAmountCents: invoice.amount,
+          invoiceId: invoice.id,
+        })
+      } catch (cbErr) {
+        console.warn('[Cashback Motor] Residual distribution (manual pay) failed:', cbErr)
+      }
     }
 
     return success({ invoice: updated })

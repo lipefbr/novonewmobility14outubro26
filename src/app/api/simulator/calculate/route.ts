@@ -1,108 +1,46 @@
 import { success, error } from '@/lib/api-utils'
+import { getEntradaLevels, getResidualLevels, getVendasLevels } from '@/lib/api-utils'
+import { prisma } from '@/lib/db'
 
 // ============================================================================
-// POST /api/simulator/calculate — Task 2-b (Item 13) rewrite
-// ============================================================================
-//
-// Why this rewrite exists:
-//   The previous version of this route used a per-plan "multiplier" that
-//   didn't match the actual cashback matrix spec, and used placeholder
-//   plan prices (R$ 99 / R$ 199) that did not correspond to any real
-//   NewMobility plan tier. The client-side simulator
-//   (`src/components/newmobility/simulator/earnings-simulator.tsx`) was
-//   already rewritten to use the ACTUAL NewMobility plan tiers and the
-//   FIXED CashBack base values; this route now mirrors that logic so any
-//   client that still hits the API gets consistent numbers.
-//
-// Plans (per Task 2-b / Item 13):
-//   - gratuito : R$ 0/mês      — no cashback matrices unlocked.
-//   - blue3    : R$ 999,90/mês — unlocks 3 níveis of Cashback Entrada
-//                                 (Residual and Vendas NOT unlocked).
-//   - blue5    : R$ 999,90/mês — unlocks 5 níveis Entrada + 7 níveis
-//                                 Residual + 9 níveis Vendas.
-//
-// CashBack base values (BACK-13):
-//   - Entrada  base = R$ 999,00   (99900 cents)
-//   - Residual base = R$ 1.399,00 (139900 cents)
-//   - Vendas   base = R$ 199,90   (19990 cents)
-//
-// Direct-referral cashback = 10% of the plan mensalidade (R$ 99,99 per
-// referral for both Blue 3 and Blue 5). For Gratuito, 0.
-//
-// ROI = (totalMonthlyEarnings / mensalidade) × 100. For Gratuito, 0
-// (no mensalidade to divide by).
+// /api/simulator/calculate — PRIORIDADE 3: agora lê configs do admin
+// ----------------------------------------------------------------------------
+// ANTES: todos os valores (plan prices, percentages, bases) eram hardcoded.
+// DEPOIS: lê de SystemConfig (admin-editável). Fallback para defaults.
 // ============================================================================
 
-// Plan prices in BRL cents.
-const PLAN_PRICES: Record<string, number> = {
-  free: 0,
-  blue3: 99990, // R$ 999,90
-  blue5: 99990, // R$ 999,90
+const DEFAULT_PLAN_PRICES: Record<string, number> = {
+  free: 0, blue3: 99990, blue5: 99990,
 }
-
-// Plan display names.
-const PLAN_NAMES: Record<string, string> = {
-  free: 'Gratuito',
-  blue3: 'Blue 3',
-  blue5: 'Blue 5 Premium',
+const DEFAULT_PLAN_NAMES: Record<string, string> = {
+  free: 'Gratuito', blue3: 'Blue 3', blue5: 'Blue 5 Premium',
 }
-
-// Per-plan matrix unlock configuration: how many levels of each matrix
-// the plan liberates. Drives the projection loop so Blue 3 only computes
-// 3 levels of Entrada (Residual and Vendas are 0) while Blue 5 computes
-// all three matrices in full.
-const PLAN_UNLOCKS: Record<string, { entrada: number; residual: number; vendas: number }> = {
+const DEFAULT_PLAN_UNLOCKS: Record<string, { entrada: number; residual: number; vendas: number }> = {
   free: { entrada: 0, residual: 0, vendas: 0 },
   blue3: { entrada: 3, residual: 0, vendas: 0 },
   blue5: { entrada: 5, residual: 7, vendas: 9 },
 }
-
-// Fixed CashBack base values per matrix (in BRL cents). Each level's
-// earning = baseCents × (levelPct / 100). These are POOL sizes — they do
-// NOT depend on the user's plan tier or average spend.
-const CB_ENTRADA_BASE_CENTS = 99900 // R$ 999,00
-const CB_RESIDUAL_BASE_CENTS = 139900 // R$ 1.399,00
-const CB_VENDAS_BASE_CENTS = 19990 // R$ 199,90
-
-// Matrix structural width — 4-wide per the "4x5/4x7/4x9" client spec.
+const DEFAULT_CB_ENTRADA_BASE = 99900
+const DEFAULT_CB_RESIDUAL_BASE = 139900
+const DEFAULT_CB_VENDAS_BASE = 19990
+const DEFAULT_DIRECT_REFERRAL_PCT = 10
 const MATRIX_WIDTH = 4
 
-// Direct-referral cashback: 10% of the plan mensalidade, paid once per
-// referral.
-const DIRECT_REFERRAL_CASHBACK_PCT = 10
-
-// Matrix level percentages per the client spec (mirrors DEFAULT_*_LEVELS
-// in src/lib/api-utils.ts):
-//   Entrada 4x5 : 5 / 10 / 10 / 5 / 5                       (total 35%)
-//   Residual 4x7: 10 / 9 / 5 / 5 / 4 / 3 / 2                (total 38%)
-//   Vendas 4x9  : 0.10 × 9 levels                          (total 0.90%)
-const ENTRADA_LEVEL_PCTS: number[] = [5, 10, 10, 5, 5]
-const RESIDUAL_LEVEL_PCTS: number[] = [10, 9, 5, 5, 4, 3, 2]
-const VENDAS_LEVEL_PCTS: number[] = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
-
-// Project a single matrix: for each unlocked level, compute the number
-// of available positions (MATRIX_WIDTH^level), the filled positions
-// (maxPositions × fillRatio, floored), the per-position earning
-// (baseCents × pct / 100), and the total per level.
-interface MatrixLevelProjection {
-  level: number
-  percentage: number
-  maxUsers: number
-  projectedUsers: number
-  earningPerUser: number
-  totalEarning: number
+async function getConfig(key: string, fallback: string): Promise<string> {
+  try {
+    const row = await prisma.systemConfig.findUnique({ where: { key } })
+    return row?.value || fallback
+  } catch { return fallback }
 }
 
-function projectMatrix(
-  levelPcts: number[],
-  unlockedLevels: number,
-  baseCents: number,
-  fillPercent: number
-): { levels: MatrixLevelProjection[]; total: number } {
+interface MatrixLevelProjection {
+  level: number; percentage: number; maxUsers: number; projectedUsers: number; earningPerUser: number; totalEarning: number
+}
+
+function projectMatrix(levelPcts: number[], unlockedLevels: number, baseCents: number, fillPercent: number) {
   const safeFill = Math.max(0, Math.min(100, fillPercent))
   const fillRatio = safeFill / 100
   const levelsToCompute = Math.max(0, Math.min(levelPcts.length, unlockedLevels))
-
   const levels: MatrixLevelProjection[] = []
   for (let i = 0; i < levelsToCompute; i++) {
     const level = i + 1
@@ -111,18 +49,9 @@ function projectMatrix(
     const filledPositions = Math.floor(maxPositions * fillRatio)
     const earningPerPosition = Math.round((baseCents * pct) / 100)
     const totalEarning = earningPerPosition * filledPositions
-    levels.push({
-      level,
-      percentage: pct,
-      maxUsers: maxPositions,
-      projectedUsers: filledPositions,
-      earningPerUser: earningPerPosition,
-      totalEarning,
-    })
+    levels.push({ level, percentage: pct, maxUsers: maxPositions, projectedUsers: filledPositions, earningPerUser: earningPerPosition, totalEarning })
   }
-
-  const total = levels.reduce((sum, l) => sum + l.totalEarning, 0)
-  return { levels, total }
+  return { levels, total: levels.reduce((s, l) => s + l.totalEarning, 0) }
 }
 
 export async function POST(req: Request) {
@@ -130,93 +59,79 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { plan, directReferrals, matrixFillPercent = 50 } = body
 
-    if (!plan || !(plan in PLAN_PRICES)) {
-      return error('Invalid plan. Use: free, blue3, or blue5', 400)
-    }
-    if (directReferrals === undefined || directReferrals < 0) {
-      return error('directReferrals must be a non-negative number', 400)
+    if (!plan || !(plan in DEFAULT_PLAN_PRICES)) return error('Invalid plan. Use: free, blue3, or blue5', 400)
+    if (directReferrals === undefined || directReferrals < 0) return error('directReferrals must be non-negative', 400)
+
+    // Ler configs do admin (com fallback para defaults)
+    const planPriceStr = await getConfig(`plan.${plan}.price_cents`, String(DEFAULT_PLAN_PRICES[plan]))
+    const planPrice = parseInt(planPriceStr) || DEFAULT_PLAN_PRICES[plan]
+
+    const planNameStr = await getConfig(`plan.${plan}.name`, DEFAULT_PLAN_NAMES[plan])
+
+    const entradaBaseStr = await getConfig('matrix.entrada.base_cents', String(DEFAULT_CB_ENTRADA_BASE))
+    const residualBaseStr = await getConfig('matrix.residual.base_cents', String(DEFAULT_CB_RESIDUAL_BASE))
+    const vendasBaseStr = await getConfig('matrix.vendas.base_cents', String(DEFAULT_CB_VENDAS_BASE))
+    const cbEntradaBase = parseInt(entradaBaseStr) || DEFAULT_CB_ENTRADA_BASE
+    const cbResidualBase = parseInt(residualBaseStr) || DEFAULT_CB_RESIDUAL_BASE
+    const cbVendasBase = parseInt(vendasBaseStr) || DEFAULT_CB_VENDAS_BASE
+
+    const directPctStr = await getConfig('cashback.direct_referral_pct', String(DEFAULT_DIRECT_REFERRAL_PCT))
+    const directReferralPct = parseFloat(directPctStr) || DEFAULT_DIRECT_REFERRAL_PCT
+
+    // Ler percentuais por nível do admin (via getEntradaLevels etc.)
+    const entradaPcts = await getEntradaLevels()
+    const residualPcts = await getResidualLevels()
+    const vendasPcts = await getVendasLevels()
+
+    // Ler unlocks por plano do admin
+    const entradaUnlockStr = await getConfig(`plan.${plan}.cashback_levels_entrada`, String(DEFAULT_PLAN_UNLOCKS[plan].entrada))
+    const residualUnlockStr = await getConfig(`plan.${plan}.cashback_levels_residual`, String(DEFAULT_PLAN_UNLOCKS[plan].residual))
+    const vendasUnlockStr = await getConfig(`plan.${plan}.cashback_levels_vendas`, String(DEFAULT_PLAN_UNLOCKS[plan].vendas))
+    const unlocks = {
+      entrada: parseInt(entradaUnlockStr) || DEFAULT_PLAN_UNLOCKS[plan].entrada,
+      residual: parseInt(residualUnlockStr) || DEFAULT_PLAN_UNLOCKS[plan].residual,
+      vendas: parseInt(vendasUnlockStr) || DEFAULT_PLAN_UNLOCKS[plan].vendas,
     }
 
-    const planPrice = PLAN_PRICES[plan]
-    const unlocks = PLAN_UNLOCKS[plan]
     const safeDirectReferrals = Math.max(0, Math.floor(Number(directReferrals)))
     const safeFill = Math.max(0, Math.min(100, Number(matrixFillPercent)))
 
-    // Direct-referral cashback: 10% of plan mensalidade per referral
-    // (one-time). For Gratuito (price=0) this is 0.
-    const perReferralCashback = Math.round((planPrice * DIRECT_REFERRAL_CASHBACK_PCT) / 100)
+    const perReferralCashback = Math.round((planPrice * directReferralPct) / 100)
     const directReferralCashback = safeDirectReferrals * perReferralCashback
 
-    // Project each matrix only for the levels the plan unlocks.
-    const entrada = projectMatrix(
-      ENTRADA_LEVEL_PCTS,
-      unlocks.entrada,
-      CB_ENTRADA_BASE_CENTS,
-      safeFill
-    )
-    const residual = projectMatrix(
-      RESIDUAL_LEVEL_PCTS,
-      unlocks.residual,
-      CB_RESIDUAL_BASE_CENTS,
-      safeFill
-    )
-    const vendas = projectMatrix(
-      VENDAS_LEVEL_PCTS,
-      unlocks.vendas,
-      CB_VENDAS_BASE_CENTS,
-      safeFill
-    )
+    const entrada = projectMatrix(entradaPcts, unlocks.entrada, cbEntradaBase, safeFill)
+    const residual = projectMatrix(residualPcts, unlocks.residual, cbResidualBase, safeFill)
+    const vendas = projectMatrix(vendasPcts, unlocks.vendas, cbVendasBase, safeFill)
 
-    const totalEntrada = entrada.total
-    const totalResidual = residual.total
-    const totalVendas = vendas.total
-    const totalMonthly = totalEntrada + totalResidual + totalVendas
+    const totalMonthly = entrada.total + residual.total + vendas.total
     const totalAnnual = totalMonthly * 12
     const roi = planPrice > 0 ? (totalMonthly * 100) / planPrice : 0
 
-    // Per-plan comparison summary so the client can render a "compare
-    // plans" section without re-fetching. We project each plan with the
-    // same (directReferrals, fillPercent) inputs.
     const comparisons = (['blue3', 'blue5'] as const).map((p) => {
-      const u = PLAN_UNLOCKS[p]
-      const pm = PLAN_PRICES[p]
-      const e = projectMatrix(ENTRADA_LEVEL_PCTS, u.entrada, CB_ENTRADA_BASE_CENTS, safeFill)
-      const r = projectMatrix(RESIDUAL_LEVEL_PCTS, u.residual, CB_RESIDUAL_BASE_CENTS, safeFill)
-      const v = projectMatrix(VENDAS_LEVEL_PCTS, u.vendas, CB_VENDAS_BASE_CENTS, safeFill)
+      const pPrice = parseInt((p === 'blue3' ? await getConfig('plan.blue3.price_cents', '99990') : await getConfig('plan.blue5.price_cents', '99990')))
+      const pName = await getConfig(`plan.${p}.name`, DEFAULT_PLAN_NAMES[p])
+      const eUnlock = parseInt(await getConfig(`plan.${p}.cashback_levels_entrada`, String(DEFAULT_PLAN_UNLOCKS[p].entrada))) || DEFAULT_PLAN_UNLOCKS[p].entrada
+      const rUnlock = parseInt(await getConfig(`plan.${p}.cashback_levels_residual`, String(DEFAULT_PLAN_UNLOCKS[p].residual))) || DEFAULT_PLAN_UNLOCKS[p].residual
+      const vUnlock = parseInt(await getConfig(`plan.${p}.cashback_levels_vendas`, String(DEFAULT_PLAN_UNLOCKS[p].vendas))) || DEFAULT_PLAN_UNLOCKS[p].vendas
+      const e = projectMatrix(entradaPcts, eUnlock, cbEntradaBase, safeFill)
+      const r = projectMatrix(residualPcts, rUnlock, cbResidualBase, safeFill)
+      const v = projectMatrix(vendasPcts, vUnlock, cbVendasBase, safeFill)
       const monthly = e.total + r.total + v.total
-      return {
-        plan: p,
-        planName: PLAN_NAMES[p],
-        monthlyTotal: monthly,
-        annualTotal: monthly * 12,
-        roi: pm > 0 ? (monthly * 100) / pm : 0,
-      }
+      return { plan: p, planName: pName, monthlyTotal: monthly, annualTotal: monthly * 12, roi: pPrice > 0 ? (monthly * 100) / pPrice : 0 }
     })
 
     return success({
-      plan,
-      planName: PLAN_NAMES[plan],
-      directReferrals: safeDirectReferrals,
-      matrixFillPercent: safeFill,
-      planPrice,
-      perReferralCashback,
-      directReferralCashback,
-      entrada: { levels: entrada.levels, total: totalEntrada },
-      residual: { levels: residual.levels, total: totalResidual },
-      vendas: { levels: vendas.levels, total: totalVendas },
-      totalMonthly,
-      totalAnnual,
-      roi,
-      // CashBack base values surfaced for client display.
-      cashbackBases: {
-        entrada: CB_ENTRADA_BASE_CENTS,
-        residual: CB_RESIDUAL_BASE_CENTS,
-        vendas: CB_VENDAS_BASE_CENTS,
-      },
+      plan, planName: planNameStr, directReferrals: safeDirectReferrals, matrixFillPercent: safeFill,
+      planPrice, perReferralCashback, directReferralCashback,
+      entrada: { levels: entrada.levels, total: entrada.total },
+      residual: { levels: residual.levels, total: residual.total },
+      vendas: { levels: vendas.levels, total: vendas.total },
+      totalMonthly, totalAnnual, roi,
+      cashbackBases: { entrada: cbEntradaBase, residual: cbResidualBase, vendas: cbVendasBase },
       comparisons,
     })
   } catch (err) {
     console.error('Simulator calculate error:', err)
-    return error('Failed to calculate projections', 500)
+    return error('Internal server error', 500)
   }
 }

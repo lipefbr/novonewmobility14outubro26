@@ -246,6 +246,21 @@ export async function POST(request: NextRequest) {
       include: { items: true },
     })
 
+    // ========================================================================
+    // PRIORIDADE 2 — MOTOR DE CASHBACK (MATRIZ ENTRADA)
+    // Compra no marketplace dispara distribuição na matriz Entrada.
+    // ========================================================================
+    try {
+      const { triggerEntradaCashback } = await import('@/lib/cashback-engine')
+      await triggerEntradaCashback({
+        buyerId: userId,
+        orderAmountCents: totalAmount,
+        orderReferenceId: order.id,
+      })
+    } catch (cbErr) {
+      console.warn('[Cashback Motor] Entrada distribution failed:', cbErr)
+    }
+
     return success({ order: orderWithItems }, 201)
   } catch (err) {
     console.error('Create order error:', err)

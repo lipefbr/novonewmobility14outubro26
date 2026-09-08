@@ -356,15 +356,53 @@ async function applyPlanAndBalanceForInvoice(invoice: {
     }
   }
 
-  // Balance credit per spec (e.g. plan_upgrade → balanceWithdrawal += amount)
-  // The exact wallet is inferred from invoice.type. We credit balanceWithdrawal
-  // for plan payments (the user now has withdrawable balance equal to what
-  // they paid — this matches the spec's literal example).
-  if (t.includes('plan')) {
-    await prisma.user.update({
-      where: { id: invoice.userId },
-      data: { balanceWithdrawal: { increment: invoice.amount } },
+  // ========================================================================
+  // PRIORIDADE 1 — BUG CRÍTICO CORRIGIDO
+  // ANTES: balanceWithdrawal += invoice.amount (devolvia o dinheiro ao usuário)
+  // DEPOIS: NÃO credita nada. O valor pago pelo plano é receita da plataforma,
+  // não deve voltar para quem pagou.
+  // ========================================================================
+  // O crédito indevido foi REMOVIDO. O pagamento do plano apenas ativa o
+  // plano e marca a fatura como paga. O motor de cashback (Prioridade 2)
+  // pode ser disparado aqui se necessário.
+
+  // Audit log — registra cada webhook de pagamento confirmado
+  try {
+    await prisma.auditLog.create({
+      data: {
+        userId: invoice.userId,
+        action: 'asaas.payment.confirmed',
+        entityType: 'Invoice',
+        entityId: invoice.id,
+        details: JSON.stringify({
+          amount: invoice.amount,
+          type: invoice.type,
+          status: 'confirmed',
+          planCode: planCode || null,
+          asaasPaymentId: paymentId,
+        }),
+      },
     })
+  } catch (auditErr) {
+    console.warn('[Asaas Webhook] Failed to create audit log:', auditErr)
+  }
+
+  // ========================================================================
+  // PRIORIDADE 2 — MOTOR DE CASHBACK (MATRIZ RESIDUAL)
+  // Pagamento de fatura do plano dispara distribuição na matriz Residual.
+  // ========================================================================
+  if (!wasPaid && t.includes('plan')) {
+    try {
+      const { triggerResidualCashback } = await import('@/lib/cashback-engine')
+      const result = await triggerResidualCashback({
+        payerId: invoice.userId,
+        invoiceAmountCents: invoice.amount,
+        invoiceId: invoice.id,
+      })
+      console.log(`[Cashback Motor] Residual distribuído: ${result.entriesCreated} entradas, R$ ${(result.totalDistributed / 100).toFixed(2)} total`)
+    } catch (cbErr) {
+      console.warn('[Cashback Motor] Residual distribution failed:', cbErr)
+    }
   }
 }
 

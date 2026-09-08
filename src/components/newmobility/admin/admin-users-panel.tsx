@@ -378,6 +378,41 @@ export function AdminUsersPanel() {
     return [...ROLE_OPTIONS_BASE, ...extras]
   }, [customRoles])
 
+  // PRIORIDADE 4 — Dynamic user types and plans loaded from the DB
+  const [dbUserTypes, setDbUserTypes] = useState<Array<{ value: string; label: string }>>([])
+  const [dbPlans, setDbPlans] = useState<Array<{ value: string; label: string }>>([])
+
+  const allUserTypes = useMemo(() => {
+    const merged = [...ALL_USER_TYPE_OPTIONS]
+    for (const t of dbUserTypes) {
+      if (!merged.some(m => m.value === t.value)) {
+        merged.push({ value: t.value, label: t.label, color: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' })
+      }
+    }
+    return merged
+  }, [dbUserTypes])
+
+  const allPlans = useMemo(() => {
+    const merged = [...PLAN_OPTIONS]
+    for (const p of dbPlans) {
+      if (!merged.some(m => m.value === p.value)) {
+        merged.push(p)
+      }
+    }
+    return merged
+  }, [dbPlans])
+
+  useEffect(() => {
+    apiFetch<{ types?: Array<{ code: string; label: string }> }>(`/admin/user-types?userId=${user?.id || ''}`)
+      .then(data => {
+        if (data?.types) setDbUserTypes(data.types.map(t => ({ value: t.code, label: t.label })))
+      }).catch(() => {})
+    apiFetch<{ plans?: Array<{ code: string; name: string }> }>(`/plans`)
+      .then(data => {
+        if (data?.plans) setDbPlans(data.plans.map(p => ({ value: p.code, label: p.name })))
+      }).catch(() => {})
+  }, [user?.id])
+
   const loadUsers = useCallback(async () => {
     if (!user?.id) return
     setLoading(true)
@@ -783,7 +818,7 @@ export function AdminUsersPanel() {
               <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Todos os tipos" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os tipos</SelectItem>
-                {ALL_USER_TYPE_OPTIONS.map((t) => (
+                {allUserTypes.map((t) => (
                   <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                 ))}
               </SelectContent>
@@ -1068,7 +1103,7 @@ export function AdminUsersPanel() {
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {ALL_USER_TYPE_OPTIONS.map((t) => (
+                    {allUserTypes.map((t) => (
                       <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -1101,7 +1136,7 @@ export function AdminUsersPanel() {
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {PLAN_OPTIONS.map((p) => (
+                    {allPlans.map((p) => (
                       <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -1173,7 +1208,7 @@ export function AdminUsersPanel() {
                   <Select value={editForm.userType} onValueChange={(v) => setEditForm((d) => ({ ...d, userType: v }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {ALL_USER_TYPE_OPTIONS.map((t) => (
+                      {allUserTypes.map((t) => (
                         <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                       ))}
                     </SelectContent>
@@ -1184,7 +1219,7 @@ export function AdminUsersPanel() {
                   <Select value={editForm.plan} onValueChange={(v) => setEditForm((d) => ({ ...d, plan: v }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {PLAN_OPTIONS.map((p) => (
+                      {allPlans.map((p) => (
                         <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
                       ))}
                     </SelectContent>
