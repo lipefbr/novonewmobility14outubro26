@@ -1239,14 +1239,18 @@ export function AdminUsersPanel() {
                   <Switch checked={editForm.isActive} onCheckedChange={(v) => setEditForm((d) => ({ ...d, isActive: v }))} />
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg border">
-                  <Label className="text-xs">Motorista</Label>
+                  <Label className="text-xs">Motorista (isDriver)</Label>
                   <Switch checked={editForm.isDriver} onCheckedChange={(v) => setEditForm((d) => ({ ...d, isDriver: v }))} />
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg border">
-                  <Label className="text-xs">Entregador</Label>
+                  <Label className="text-xs">Entregador (isDelivery)</Label>
                   <Switch checked={editForm.isDelivery} onCheckedChange={(v) => setEditForm((d) => ({ ...d, isDelivery: v }))} />
                 </div>
               </div>
+              <p className="text-[10px] text-muted-foreground pt-1">
+                Os switches Motorista/Entregador ativam flags booleanas no perfil do usuario (liberam metas e acesso a funcoes de condutor).
+                Para definir o tipo principal do usuario, use o campo <strong>Qualificacao</strong> acima (10 opcoes) e/ou o campo <strong>Tipo de Usuario</strong> (17 opcoes).
+              </p>
               <div className="grid grid-cols-3 gap-3 pt-2">
                 <div className="space-y-1.5">
                   <Label className="text-xs">Nível Entrada</Label>
