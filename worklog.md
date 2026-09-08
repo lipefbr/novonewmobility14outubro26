@@ -10906,3 +10906,28 @@ Stage Summary:
 - Build blocker removido. VPS LipeHost agora deve conseguir fazer `npm install` (com --legacy-peer-deps, como já vinha fazendo) e `npx next build` sem o erro de parsing.
 - IMPORTANTE: o commit pendente local c3bdc1a (que troca `postgresql` → `sqlite` em schema.prisma) NÃO foi pushado — é config local do sandbox. A VPS continua com `postgresql` corretamente.
 - Próximos passos pendentes do prompt original: Prioridade 5 (Mapa de Conexões admin) e Prioridade 6 (system settings mortas + job mensal carreira).
+
+---
+Task ID: HOTFIX-TIPO-USUARIO-1
+Agent: Main Agent (Z.ai Code)
+Task: Corrigir erro do "tipo de usuário" no painel admin — select hardcoded e ausência no Editar
+
+Work Log:
+- Usuário enviou screenshot do modal "Editar Usuário" no painel admin mostrando Fabiano (entregador) com Role="Usuário comum" e sem campo "Tipo de Usuário" visível.
+- Diagnóstico via leitura do código (src/components/newmobility/admin/admin-page.tsx):
+  - **Modal Criar**: tinha select "Tipo de Usuário" hardcoded com 10 opções (gratuito, inativo, usuario, motorista, entregador, loja, parceiro, empresa, afiliado, administrador). Esse select era **dado morto** — o valor populava `newUserForm.userType` mas o backend `/api/admin/users/create` nunca persistia esse campo. Já existia abaixo um select "Qualificação (Tipo de conta)" dinâmico (carrega da API `/admin/user-types` da tabela UserType) que É o correto.
+  - **Modal Editar**: **não tinha** nenhum campo de Qualificação/Tipo. O admin não conseguia mudar o tipo de usuário depois de criado.
+- Correções aplicadas:
+  1. Adicionado campo `qualification` no `AdminUser` interface (opcional, string|null)
+  2. Adicionado campo `qualification: string` no `EditFormData` interface + `emptyEditForm`
+  3. `handleOpenEditUser` agora popula `qualification` do usuário e dispara lazy-load de `availableUserTypes` (se ainda não carregados) — mesma lógica que `handleOpenCreateUser` já fazia
+  4. Adicionado select "Tipo de Usuário" no modal Editar (entre os checkboxes Motorista/Entregador e a seção Saldos), carregando dinamicamente de `availableUserTypes`
+  5. Removido select hardcoded "Tipo de Usuário" do modal Criar (era dado morto)
+  6. Renomeado label do select dinâmico no modal Criar de "Qualificação (Tipo de conta)" → "Tipo de Usuário" para ficar consistente entre Criar e Editar
+- Backend: o PUT `/api/admin/users/[id]` já aceitava `qualification` (linha 57, 128) — só faltava o frontend enviar
+- Commit 16e35a1 + push para origin e backup
+
+Stage Summary:
+- Admin agora pode mudar o tipo de usuário (Cliente, Motorista, Entregador, Lojista, etc.) tanto na criação quanto na edição, sempre carregando dinamicamente da tabela UserType (14 tipos seedeados).
+- Select hardcoded removido — toda a configuração de tipos agora vive na tabela UserType, gerenciável via aba "Tipos de Usuário" no painel admin.
+- Próximo deploy na VPS LipeHost deve disparar automaticamente após o push.
