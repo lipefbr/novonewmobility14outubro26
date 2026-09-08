@@ -10931,3 +10931,45 @@ Stage Summary:
 - Admin agora pode mudar o tipo de usuário (Cliente, Motorista, Entregador, Lojista, etc.) tanto na criação quanto na edição, sempre carregando dinamicamente da tabela UserType (14 tipos seedeados).
 - Select hardcoded removido — toda a configuração de tipos agora vive na tabela UserType, gerenciável via aba "Tipos de Usuário" no painel admin.
 - Próximo deploy na VPS LipeHost deve disparar automaticamente após o push.
+
+---
+Task ID: FIX-SEED-USERTYPES-1
+Agent: Main Agent (Z.ai Code)
+Task: Corrigir "falta seed de usuários" e explicar card "Qualificação & Níveis de Matriz" com campos 0 0 0
+
+Work Log:
+- Investigação via script bun direto no DB local (sqlite):
+  - Total de UserType: 6 (não 14) — versão antiga do seed.ts só tinha 6
+  - Total de Usuários: 46 (42 com qualification=null)
+  - Todos os 6 tipos tinham defaultEntradaLevel=0, defaultResidualLevel=0, defaultVendasLevel=0 — isso explica os "0 0 0" no formulário
+- Causa raiz identificada:
+  1. seed.ts original tinha 14 tipos, MAS todos com defaultLevels 0/0/0
+  2. seedUserTypes() usava `update: {}` — não sobrescrevia defaultLevels em bancos já populados
+  3. Endpoint /api/admin/user-types/route.ts DEFAULT_USER_TYPES também tinha 0/0/0
+  4. UX: card "Qualificação & Níveis de Matriz" não explicava o que os 3 campos significavam
+
+- Correções aplicadas:
+  1. SEED_USER_TYPES no prisma/seed.ts: definidos defaultLevels sensatos por tipo:
+     - Cliente/Passageiro: 2/0/0 (consome serviços, ganha pouco)
+     - Motorista/Mototaxista/Taxista/MotoristaApp: 3/0/0 (faz corridas, ganha cashback entrada)
+     - Entregador/Motofretista/Caminhoneiro: 3/0/3 (faz entregas = matriz de vendas)
+     - Lojista/Comercio: 3/0/5 (vende produtos = matriz de vendas)
+     - Outros: 1/0/0
+  2. seedUserTypes(): trocado `update: {}` por `update: { defaultEntradaLevel, defaultResidualLevel, defaultVendasLevel, label, description }` — agora sincroniza defaultLevels em bancos já populados (VPS vai pegar no próximo deploy)
+  3. DEFAULT_USER_TYPES no route.ts: mesmos defaultLevels que o seed.ts
+  4. UX no admin-page.tsx (modal Criar Usuário):
+     - Card renomeado: "Qualificação & Níveis de Matriz" → "Tipo de Usuário & Níveis de Cashback (Matriz)"
+     - Caixa azul explicativa: "Como funciona: Ao selecionar um tipo, o sistema preenche automaticamente quantos níveis de cashback esse usuário vai receber nas 3 matrizes do MMN. Ex.: Motorista ganha 3 níveis de Entrada, 0 Residual, 0 Vendas. Lojista ganha 3 Entrada + 5 Vendas (porque participa de vendas). Blue 5 desbloqueia até 5 Entrada + 7 Residual + 9 Vendas (máximo)."
+     - Inputs agora mostram limite (até 5, até 7, até 9)
+     - Cada input tem legenda do gatilho: "Compras no app" / "Pgto mensal do plano" / "Vendas (comida/entrega/mob)"
+     - Dropdown mostra os 3 níveis ao lado de cada tipo: "Motorista (motorista) — Entrada:3 / Residual:0 / Vendas:0"
+
+- Backfill local executado (db/custom.db): rodado `bun run db:seed` que criou os 8 tipos novos (cliente, lojista, mototaxista, motofretista, motorista_app, taxista, caminhoneiro, outros) + script TS ad-hoc que atualizou defaultLevels dos 6 tipos legados.
+
+- Commit 05fe481 + push para origin e backup.
+
+Stage Summary:
+- Local: 14 tipos disponíveis, todos com defaultLevels corretos por regra de negócio.
+- VPS LipeHost: no próximo deploy automático após o push, o seedUserTypes() vai rodar (caso executem `bun run db:seed` pós-deploy) e sincronizar os defaultLevels dos 14 tipos.
+- UX agora explica claramente o que são os 3 campos e como funcionam.
+- OBS: 42 usuários do DB local continuam com qualification=null — são usuários seed de versão antiga. Não corrigi automaticamente porque o admin pode querer definir manualmente. Recomendado: o admin entra em cada um e seta o tipo na nova UI de Editar Usuário.
