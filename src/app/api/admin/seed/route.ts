@@ -23,6 +23,9 @@ import { success, error } from '@/lib/api-utils'
 //   - service-types   → seedServiceTypes() (15 service types)
 //   - events          → seedEvents() (3 events)
 //   - categories      → seedCategories() (8 app categories)
+//   - announcements   → seedAnnouncements() (5 announcements)
+//   - audit-logs      → seedAuditLogs() (10 sample audit logs)
+//   - challenges      → seedChallenges() (7 gamification challenges)
 // ============================================================================
 
 // Dynamic import of seed functions — the seed file uses `bun run seed` /
@@ -108,9 +111,18 @@ export async function POST(req: NextRequest) {
         case 'cashback':
           await seedModule.seedCashbackDemo()
           break
+        case 'announcements':
+          await seedModule.seedAnnouncements()
+          break
+        case 'audit-logs':
+          await seedModule.seedAuditLogs()
+          break
+        case 'challenges':
+          await seedModule.seedChallenges()
+          break
         default:
           return error(
-            `Unknown step: ${step}. Valid: all, users, user-types, configs, plans, career-plans, goal-configs, streak-rewards, service-types, events, categories, faqs, cashback`,
+            `Unknown step: ${step}. Valid: all, users, user-types, configs, plans, career-plans, goal-configs, streak-rewards, service-types, events, categories, faqs, cashback, announcements, audit-logs, challenges`,
             400,
           )
       }
@@ -132,15 +144,13 @@ export async function POST(req: NextRequest) {
       events: await prisma.event.count(),
       faqs: await prisma.fAQ.count(),
       systemConfigs: await prisma.systemConfig.count(),
+      announcements: await prisma.announcement.count(),
+      auditLogs: await prisma.auditLog.count(),
+      challenges: await prisma.challenge.count(),
     }
 
     const elapsedMs = Date.now() - startedAt
-    return success({
-      step,
-      elapsedMs,
-      counts,
-      logTail: logs.slice(-50), // last 50 log lines (avoid huge response)
-    })
+    return success({ step, elapsedMs, counts, logTail: logs.slice(-50) })
   } catch (err) {
     console.error('Admin seed endpoint error:', err)
     const message = err instanceof Error ? err.message : 'Unknown error'
@@ -168,12 +178,15 @@ export async function GET(req: NextRequest) {
       events: await prisma.event.count(),
       faqs: await prisma.fAQ.count(),
       systemConfigs: await prisma.systemConfig.count(),
+      announcements: await prisma.announcement.count(),
+      auditLogs: await prisma.auditLog.count(),
+      challenges: await prisma.challenge.count(),
     }
 
     return success({ counts, steps: [
       'all', 'users', 'user-types', 'configs', 'plans', 'career-plans',
       'goal-configs', 'streak-rewards', 'service-types', 'events',
-      'categories', 'faqs', 'cashback',
+      'categories', 'faqs', 'cashback', 'announcements', 'audit-logs', 'challenges',
     ] })
   } catch (err) {
     console.error('Admin seed GET error:', err)

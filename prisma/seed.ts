@@ -1502,6 +1502,210 @@ async function seedCashbackDemo() {
   console.log(`  ✓ ${total} cashback demo entries created (entrada + residual + vendas)`)
 }
 
+// -----------------------------------------------------------------------------
+// Announcements seed — populate the "Anúncios" tab so it's not empty
+// -----------------------------------------------------------------------------
+
+async function seedAnnouncements() {
+  console.log('→ Seeding Announcements...')
+  const existing = await prisma.announcement.count()
+  if (existing > 0) {
+    console.log(`  ✓ ${existing} announcements already exist — skipping`)
+    return
+  }
+
+  const announcements = [
+    {
+      title: 'Bem-vindo à NewMobility!',
+      message: 'Aproveite nosso sistema de CashBack Multi-Nível. Indique amigos e ganhe em até 9 níveis de profundidade!',
+      type: 'info',
+      priority: 'high',
+      isActive: true,
+      actionLabel: 'Começar agora',
+      actionUrl: '/indicacoes',
+    },
+    {
+      title: 'Promo: CashBack Dobrado',
+      message: 'Por 7 dias, todo CashBack de indicação será dobrado! Aproveite para expandir sua rede.',
+      type: 'promo',
+      priority: 'high',
+      isActive: true,
+      startDate: new Date(),
+      endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      actionLabel: 'Ver promoção',
+      actionUrl: '/cashback',
+    },
+    {
+      title: 'Webinar: Maximizar Ganhos',
+      message: 'Participe do nosso webinar exclusivo sobre como maximizar seus ganhos com CashBack Multi-Nível.',
+      type: 'info',
+      priority: 'normal',
+      isActive: true,
+      actionLabel: 'Inscrever-se',
+      actionUrl: '/eventos',
+    },
+    {
+      title: 'Manutenção Programada',
+      message: 'Sistema indisponível das 02h às 04h. Pedimos desculpas pelo inconveniente.',
+      type: 'warning',
+      priority: 'normal',
+      isActive: false,
+    },
+    {
+      title: 'Novo Plano Blue 5 Premium',
+      message: 'Conheça o plano Blue 5 Premium com telemedicina, seguro de celular e benefícios exclusivos.',
+      type: 'info',
+      priority: 'normal',
+      isActive: true,
+      actionLabel: 'Fazer upgrade',
+      actionUrl: '/planos',
+    },
+  ]
+
+  for (const a of announcements) {
+    await prisma.announcement.create({ data: a }).catch(() => {})
+  }
+  console.log(`  ✓ ${announcements.length} announcements ready`)
+}
+
+// -----------------------------------------------------------------------------
+// Audit Logs seed — populate the "Logs de Auditoria" tab with sample entries
+// -----------------------------------------------------------------------------
+
+async function seedAuditLogs() {
+  console.log('→ Seeding Audit Logs...')
+  const existing = await prisma.auditLog.count()
+  if (existing > 0) {
+    console.log(`  ✓ ${existing} audit logs already exist — skipping`)
+    return
+  }
+
+  // Find admin id by email
+  const admin = await prisma.user.findUnique({
+    where: { email: 'admin@newmobility.com' },
+    select: { id: true },
+  })
+  if (!admin) {
+    console.log('  ⚠️  Admin not found — skipping audit logs')
+    return
+  }
+
+  const logs = [
+    { action: 'system.seed', entityType: 'System', entityId: null, details: JSON.stringify({ step: 'all', message: 'Seed inicial executado' }), ipAddress: '127.0.0.1' },
+    { action: 'user.create', entityType: 'User', entityId: 'demo-motorista', details: JSON.stringify({ name: 'Marcos Motorista', email: 'motorista@newmobility.com', role: 'user' }), ipAddress: '127.0.0.1' },
+    { action: 'user.edit', entityType: 'User', entityId: 'demo-lojista', details: JSON.stringify({ field: 'plan', before: 'free', after: 'blue3' }), ipAddress: '127.0.0.1' },
+    { action: 'user.activate', entityType: 'User', entityId: 'demo-entregador', details: JSON.stringify({ isActive: true }), ipAddress: '127.0.0.1' },
+    { action: 'cashback.config.update', entityType: 'SystemConfig', entityId: 'cashback_entrada_pct', details: JSON.stringify({ before: '30', after: '35' }), ipAddress: '127.0.0.1' },
+    { action: 'plan.price.update', entityType: 'Plan', entityId: 'blue3', details: JSON.stringify({ before: '8990', after: '9990' }), ipAddress: '127.0.0.1' },
+    { action: 'usertype.create', entityType: 'UserType', entityId: 'mototaxista', details: JSON.stringify({ label: 'Mototaxista' }), ipAddress: '127.0.0.1' },
+    { action: 'announcement.create', entityType: 'Announcement', entityId: null, details: JSON.stringify({ title: 'Bem-vindo à NewMobility!' }), ipAddress: '127.0.0.1' },
+    { action: 'system.config.edit', entityType: 'SystemConfig', entityId: 'min_withdrawal', details: JSON.stringify({ before: '10000', after: '5000' }), ipAddress: '127.0.0.1' },
+    { action: 'goal.config.create', entityType: 'GoalConfig', entityId: null, details: JSON.stringify({ name: 'Meta Diária Motorista', targetValue: 20 }), ipAddress: '127.0.0.1' },
+  ]
+
+  for (const log of logs) {
+    await prisma.auditLog.create({
+      data: {
+        userId: admin.id,
+        action: log.action,
+        entityType: log.entityType,
+        entityId: log.entityId,
+        details: log.details,
+        ipAddress: log.ipAddress,
+        userAgent: 'NewMobility Seed/1.0',
+      },
+    }).catch(() => {})
+  }
+  console.log(`  ✓ ${logs.length} audit logs ready`)
+}
+
+// -----------------------------------------------------------------------------
+// Challenges seed — populate the "Desafios" tab with sample gamification
+// -----------------------------------------------------------------------------
+
+async function seedChallenges() {
+  console.log('→ Seeding Challenges...')
+  const existing = await prisma.challenge.count()
+  if (existing > 0) {
+    console.log(`  ✓ ${existing} challenges already exist — skipping`)
+    return
+  }
+
+  const now = new Date()
+  const challenges = [
+    {
+      title: 'Indique 3 Amigos',
+      description: 'Indique 3 novos usuários para a plataforma e ganhe pontos extras no plano de carreira.',
+      type: 'referral',
+      targetValue: 3,
+      rewardPoints: 100,
+      isActive: true,
+      startDate: now,
+      endDate: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000), // 30 dias
+    },
+    {
+      title: 'Primeira Corrida',
+      description: 'Complete sua primeira corrida como motorista ou passageiro.',
+      type: 'action',
+      targetValue: 1,
+      rewardPoints: 50,
+      isActive: true,
+      startDate: now,
+    },
+    {
+      title: '7 Dias de Streak',
+      description: 'Acesse a plataforma por 7 dias consecutivos para desbloquear esta conquista.',
+      type: 'streak',
+      targetValue: 7,
+      rewardPoints: 70,
+      isActive: true,
+      startDate: now,
+    },
+    {
+      title: 'Compre no Marketplace',
+      description: 'Faça sua primeira compra no marketplace e ganhe cashback + pontos.',
+      type: 'action',
+      targetValue: 1,
+      rewardPoints: 30,
+      isActive: true,
+      startDate: now,
+    },
+    {
+      title: 'Faça um Saque',
+      description: 'Realize seu primeiro saque via PIX para desbloquear este desafio.',
+      type: 'action',
+      targetValue: 1,
+      rewardPoints: 25,
+      isActive: true,
+      startDate: now,
+    },
+    {
+      title: 'Desafio Semanal: 20 Indicações',
+      description: 'Desafio semanal — indique 20 novos usuários em 7 dias e ganhe 500 pontos.',
+      type: 'referral',
+      targetValue: 20,
+      rewardPoints: 500,
+      isActive: true,
+      startDate: now,
+      endDate: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000), // 7 dias
+    },
+    {
+      title: 'Upgrade para Blue 3',
+      description: 'Faça upgrade para o plano Blue 3 e desbloqueie a matriz de Entrada.',
+      type: 'plan',
+      targetValue: 1,
+      rewardPoints: 100,
+      isActive: true,
+      startDate: now,
+    },
+  ]
+
+  for (const c of challenges) {
+    await prisma.challenge.create({ data: c }).catch(() => {})
+  }
+  console.log(`  ✓ ${challenges.length} challenges ready`)
+}
+
 async function main() {
   console.log('========================================')
   console.log(' NewMobility — Database Seed')
@@ -1528,6 +1732,9 @@ async function main() {
   await seedCategories()
   await seedFaqs()
   await seedCashbackDemo()
+  await seedAnnouncements()
+  await seedAuditLogs()
+  await seedChallenges()
 
   console.log('')
   console.log('========================================')
@@ -1598,5 +1805,8 @@ export {
   seedCategories,
   seedFaqs,
   seedCashbackDemo,
+  seedAnnouncements,
+  seedAuditLogs,
+  seedChallenges,
   main,
 }

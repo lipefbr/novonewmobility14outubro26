@@ -8556,6 +8556,9 @@ export function AdminPage() {
                     <option value="categories">🛍️ Categorias (8)</option>
                     <option value="faqs">❓ FAQs (6)</option>
                     <option value="cashback">💰 Cashback Demo (9 entries)</option>
+                    <option value="announcements">📢 Anúncios (5)</option>
+                    <option value="audit-logs">📜 Logs de Auditoria (10)</option>
+                    <option value="challenges">🎯 Desafios (7)</option>
                   </select>
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
@@ -8583,6 +8586,9 @@ export function AdminPage() {
                       ['events', 'Eventos'],
                       ['faqs', 'FAQs'],
                       ['systemConfigs', 'Configs'],
+                      ['announcements', 'Anúncios'],
+                      ['auditLogs', 'Logs Audit'],
+                      ['challenges', 'Desafios'],
                     ].map(([key, label]) => (
                       <div key={key} className="rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 p-1.5 text-center">
                         <div className="text-[9px] text-muted-foreground uppercase tracking-wider">{label}</div>
