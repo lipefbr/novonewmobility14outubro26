@@ -10973,3 +10973,50 @@ Stage Summary:
 - VPS LipeHost: no próximo deploy automático após o push, o seedUserTypes() vai rodar (caso executem `bun run db:seed` pós-deploy) e sincronizar os defaultLevels dos 14 tipos.
 - UX agora explica claramente o que são os 3 campos e como funcionam.
 - OBS: 42 usuários do DB local continuam com qualification=null — são usuários seed de versão antiga. Não corrigi automaticamente porque o admin pode querer definir manualmente. Recomendado: o admin entra em cada um e seta o tipo na nova UI de Editar Usuário.
+
+---
+Task ID: SEED-VIA-UI-1
+Agent: Main Agent (Z.ai Code)
+Task: Permitir rodar o seed da VPS via UI admin (sem precisar SSH)
+
+Work Log:
+- Diagnóstico inicial: o `prisma/seed.ts` rodava apenas via CLI (`bun run db:seed`). Na VPS LipeHost, o admin precisaria SSHar para rodar o seed, o que é inconveniente.
+
+- Correções aplicadas:
+
+  1. **prisma/seed.ts refatorado**:
+     - Adicionado `isDirectRun` check no final do arquivo: `main()` só roda automaticamente quando executado via CLI (detecta via `process.argv[1]`). Quando importado pelo endpoint, `main()` NÃO rode automaticamente.
+     - Adicionados exports nomeados para todas as 13 funções de seed: `seedUsers`, `seedSystemConfigs`, `seedUserTypes`, `seedPlans`, `seedCareerPlans`, `seedGoalConfigs`, `seedStreakRewards`, `seedServiceTypes`, `seedEvents`, `seedMatrixTypes`, `seedCategories`, `seedFaqs`, `seedCashbackDemo`, `main`.
+
+  2. **src/app/api/admin/seed/route.ts** (NOVO endpoint):
+     - `POST /api/admin/seed` body `{ userId, step }` — roda uma etapa do seed
+     - `GET /api/admin/seed?userId=X` — retorna contagens atuais do banco
+     - Admin-only: valida `User.role === 'admin'` ou `userType === 'admin'`
+     - 13 steps disponíveis: `all`, `users`, `user-types`, `configs`, `plans`, `career-plans`, `goal-configs`, `streak-rewards`, `service-types`, `events`, `categories`, `faqs`, `cashback`
+     - Captura `console.log` durante a execução (override temporário) e retorna os últimos 50 linhas em `logTail`
+     - Retorna `{ step, elapsedMs, counts, logTail }`
+     - Dynamic import via `require('@/../../prisma/seed')` para evitar static import que quebraria o build
+
+  3. **UI no painel admin** (admin-page.tsx):
+     - Card "Sincronizar Dados Demo (Seed)" adicionado na aba "Configurações do Sistema"
+     - Dropdown com 13 opções de etapa (default: "Tudo" recomendado)
+     - Botão "Rodar Seed" com loading spinner (Loader2 animate-spin)
+     - Grid 6-colunas mostrando 11 contagens atuais do banco (Users, Tipos, Planos, Carreiras, CB Entrada, CB Residual, CB Vendas, Serviços, Eventos, FAQs, Configs)
+     - Botão "Atualizar" para recarregar contagens via GET
+     - Resultado com `<details>` expansível mostrando log do seed (até 50 linhas)
+     - Caixa de atenção amber sobre backup em produção
+
+- Testes locais (curl direto no endpoint):
+  - GET `/api/admin/seed?userId=admin` → 200 com counts (32 users, 14 tipos, 3 planos, 5 carreiras, etc.)
+  - POST `step=user-types` → 200 em 23ms, retornou log "→ Seeding UserType... ✓ 14 user types ready"
+  - POST `step=all` → 200 em 339ms, rodou tudo (users, configs, types, matrix, plans, carreiras, metas, streaks, services, events, categories, faqs, cashback)
+  - Sem userId → 403 Unauthorized
+  - Com userId não-admin → 403
+
+- Commit afd1378 + push para origin e backup.
+
+Stage Summary:
+- Agora o admin pode rodar o seed direto da UI na VPS LipeHost, sem SSH.
+- Após o deploy automático na VPS (que dispara a cada push na main), o admin entra no painel → Configurações do Sistema → clica em "Rodar Seed" → escolhe "Tudo" → em ~1 segundo os 32 usuários, 14 tipos, cashback demo, etc., estarão populados no banco de produção.
+- O seed é idempotente: safe pra rodar múltiplas vezes.
+- O cleanup pass remove usuários antigos de teste automaticamente.
