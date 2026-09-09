@@ -1549,14 +1549,54 @@ async function main() {
   console.log('')
 }
 
-main()
-  .catch((e) => {
-    console.error('')
-    console.error('Seed FAILED:')
-    console.error(e)
-    console.error('')
-    process.exit(1)
-  })
-  .finally(async () => {
-    await prisma.$disconnect()
-  })
+// Only run main() automatically when this file is executed directly via
+// `bun run seed` or `npm run seed`. When imported by the admin API
+// endpoint (which uses the named exports below), main() should NOT run
+// automatically — the endpoint calls individual seed functions instead.
+const isDirectRun = (() => {
+  const scriptPath = process.argv[1] || ''
+  return (
+    scriptPath.endsWith('seed.ts') ||
+    scriptPath.endsWith('seed.js') ||
+    scriptPath.endsWith('prisma/seed') ||
+    scriptPath.includes('seed')
+  )
+})()
+
+if (isDirectRun) {
+  main()
+    .catch((e) => {
+      console.error('')
+      console.error('Seed FAILED:')
+      console.error(e)
+      console.error('')
+      process.exit(1)
+    })
+    .finally(async () => {
+      await prisma.$disconnect()
+    })
+}
+
+// ============================================================================
+// EXPORTS — for use by the admin API endpoint (/api/admin/seed)
+// ----------------------------------------------------------------------------
+// These let the admin trigger individual seed steps from the web UI without
+// needing SSH access. Each function is idempotent and safe to call repeatedly.
+// ============================================================================
+
+export {
+  seedUsers,
+  seedSystemConfigs,
+  seedUserTypes,
+  seedPlans,
+  seedCareerPlans,
+  seedGoalConfigs,
+  seedStreakRewards,
+  seedServiceTypes,
+  seedEvents,
+  seedMatrixTypes,
+  seedCategories,
+  seedFaqs,
+  seedCashbackDemo,
+  main,
+}

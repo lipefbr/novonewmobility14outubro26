@@ -29,7 +29,7 @@ import {
   ArrowUpDown, Receipt, PieChart, Filter, Download, Calendar,
   MessageSquare, Send, Gift, Ticket, Gamepad2, Network, Percent,
   TreePine, Coins, Trophy, AlertCircle, Heart, UsersRound, Layers,
-  LogIn, Loader2, UserPlus, KeyRound, Wrench, Target, Type,
+  LogIn, Loader2, UserPlus, KeyRound, Wrench, Target, Type, Database,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -654,6 +654,49 @@ export function AdminPage() {
   const [planFormData, setPlanFormData] = useState({ name: '', price: 0, features: '', description: '', matrixEntradaId: '', matrixResidualId: '', matrixVendasId: '', isActive: true, sortOrder: 99 })
   const [savingPlan, setSavingPlan] = useState(false)
   const [matrixTypes, setMatrixTypes] = useState<AdminMatrixType[]>([])
+
+  // Seed / Sincronizar Dados Demo — admin can trigger the prisma seed
+  // directly from the UI without SSH. Calls /api/admin/seed.
+  const [seedLoading, setSeedLoading] = useState(false)
+  const [seedStep, setSeedStep] = useState<string>('all')
+  const [seedResult, setSeedResult] = useState<{
+    step: string; elapsedMs: number; counts: Record<string, number>; logTail: string[]
+  } | null>(null)
+  const [dbCounts, setDbCounts] = useState<Record<string, number> | null>(null)
+
+  const handleRunSeed = async () => {
+    if (!user?.id) return
+    setSeedLoading(true)
+    setSeedResult(null)
+    try {
+      const res = await fetch('/api/admin/seed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, step: seedStep }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data?.error || 'Falha ao rodar seed')
+        return
+      }
+      setSeedResult(data)
+      setDbCounts(data.counts)
+      toast.success(`Seed "${seedStep}" concluído em ${data.elapsedMs}ms`)
+    } catch (e) {
+      toast.error('Erro de rede ao rodar seed')
+    } finally {
+      setSeedLoading(false)
+    }
+  }
+
+  const handleLoadDbCounts = async () => {
+    if (!user?.id) return
+    try {
+      const res = await fetch(`/api/admin/seed?userId=${user.id}`)
+      const data = await res.json()
+      if (res.ok && data.counts) setDbCounts(data.counts)
+    } catch { /* silent */ }
+  }
 
   // Withdrawal action
   const [processingWithdrawal, setProcessingWithdrawal] = useState<string | null>(null)
@@ -8462,6 +8505,120 @@ export function AdminPage() {
               >
                 <Plus className="h-4 w-4" /> Nova Configuração
               </Button>
+            </CardContent>
+          </Card>
+
+          {/* Sincronizar Dados Demo (rodar seed via UI, sem SSH) */}
+          <Card className="border-blue-200 dark:border-blue-800/60 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/20">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-start sm:items-center justify-between gap-3 flex-col sm:flex-row">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Database className="h-4 w-4 text-blue-600" />
+                    <h3 className="text-sm font-semibold text-foreground">Sincronizar Dados Demo (Seed)</h3>
+                    <Badge variant="secondary" className="text-[10px]">sem SSH</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Roda o <code className="px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 text-[10px]">prisma/seed.ts</code> direto daqui
+                    — cria 32 usuários demo, 14 tipos, planos, matrizes, cashback demo, FAQs, etc. Idempotente (seguro pra rodar de novo).
+                  </p>
+                </div>
+                <Button
+                  className="bg-blue-600 hover:bg-blue-700 text-white gap-2 shrink-0"
+                  onClick={handleRunSeed}
+                  disabled={seedLoading || !user?.id}
+                >
+                  {seedLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+                  {seedLoading ? 'Rodando...' : 'Rodar Seed'}
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-blue-100 dark:border-blue-900/40">
+                <div className="space-y-1.5">
+                  <Label className="text-xs flex items-center gap-1.5">
+                    <Layers className="h-3 w-3 text-blue-600" /> Etapa do Seed
+                  </Label>
+                  <select
+                    value={seedStep}
+                    onChange={(e) => setSeedStep(e.target.value)}
+                    className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="all">⚡ Tudo (recomendado)</option>
+                    <option value="users">👥 Usuários (32 demo + cleanup)</option>
+                    <option value="user-types">👤 Tipos de Usuário (14)</option>
+                    <option value="configs">⚙️ Configs do Sistema (12)</option>
+                    <option value="plans">💼 Planos (free/blue3/blue5)</option>
+                    <option value="career-plans">🏆 Planos de Carreira (5)</option>
+                    <option value="goal-configs">🎯 Metas (driver/delivery)</option>
+                    <option value="streak-rewards">🔥 Recompensas de Streak</option>
+                    <option value="service-types">🔧 Tipos de Serviço (15)</option>
+                    <option value="events">📅 Eventos (3)</option>
+                    <option value="categories">🛍️ Categorias (8)</option>
+                    <option value="faqs">❓ FAQs (6)</option>
+                    <option value="cashback">💰 Cashback Demo (9 entries)</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs flex items-center gap-1.5">
+                    <Activity className="h-3 w-3 text-blue-600" /> Estado atual do banco
+                    <Button
+                      variant="ghost" size="sm"
+                      className="h-6 px-2 ml-1 text-[10px]"
+                      onClick={handleLoadDbCounts}
+                      disabled={!user?.id}
+                    >
+                      <RefreshCw className="h-3 w-3 mr-1" /> Atualizar
+                    </Button>
+                  </Label>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                    {[
+                      ['users', 'Usuários'],
+                      ['userTypes', 'Tipos'],
+                      ['plans', 'Planos'],
+                      ['careerPlans', 'Carreiras'],
+                      ['cashbackEntries', 'CB Entrada'],
+                      ['cashbackResidual', 'CB Residual'],
+                      ['cashbackSales', 'CB Vendas'],
+                      ['serviceTypes', 'Serviços'],
+                      ['events', 'Eventos'],
+                      ['faqs', 'FAQs'],
+                      ['systemConfigs', 'Configs'],
+                    ].map(([key, label]) => (
+                      <div key={key} className="rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 p-1.5 text-center">
+                        <div className="text-[9px] text-muted-foreground uppercase tracking-wider">{label}</div>
+                        <div className="text-sm font-bold text-blue-700 dark:text-blue-300">
+                          {dbCounts?.[key] ?? '—'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {seedResult && (
+                <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Check className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                      Seed "{seedResult.step}" concluído em {seedResult.elapsedMs}ms
+                    </span>
+                  </div>
+                  <details className="text-[10px]">
+                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                      Ver log do seed ({seedResult.logTail.length} linhas)
+                    </summary>
+                    <pre className="mt-2 p-2 bg-background rounded text-[9px] overflow-x-auto max-h-48 overflow-y-auto">
+{seedResult.logTail.join('\n')}
+                    </pre>
+                  </details>
+                </div>
+              )}
+
+              <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 p-2 text-[10px] text-amber-800 dark:text-amber-200">
+                <AlertTriangle className="h-3 w-3 inline mr-1" />
+                <strong>Atenção:</strong> "Tudo" remove usuários antigos de teste (not in seed list) e recria dados demo.
+                Em produção, faça backup do banco antes. O seed é idempotente mas pode resetar saldo de cashback demo.
+              </div>
             </CardContent>
           </Card>
 
