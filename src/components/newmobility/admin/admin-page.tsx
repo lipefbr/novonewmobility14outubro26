@@ -686,8 +686,20 @@ export function AdminPage() {
   } | null>(null)
   const [dbCounts, setDbCounts] = useState<Record<string, number> | null>(null)
 
+  // Lote 1, Item 2 — etapas que podem executar o cleanup destrutivo (apaga
+  // usuários reais fora da lista demo QUANDO ALLOW_DESTRUCTIVE_SEED=true no
+  // ambiente). Exigem confirmação dupla (clique + modal) antes de rodar.
+  const DESTRUCTIVE_SEED_STEPS = ['all', 'users']
+
   const handleRunSeed = async () => {
     if (!user?.id) return
+    if (DESTRUCTIVE_SEED_STEPS.includes(seedStep)) {
+      // Confirmação dupla (modal nativo — sem alteração de layout)
+      const ok = window.confirm(
+        `A etapa "${seedStep}" pode executar um cleanup destrutivo: com ALLOW_DESTRUCTIVE_SEED=true no ambiente, usuários reais fora da lista demo serão APAGADOS junto com seus dados (cashback, faturas, pedidos, KYC, saques). Um backup automático do banco será feito antes. Deseja continuar?`,
+      )
+      if (!ok) return
+    }
     setSeedLoading(true)
     setSeedResult(null)
     try {
@@ -8834,7 +8846,7 @@ export function AdminPage() {
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Roda o <code className="px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 text-[10px]">prisma/seed.ts</code> direto daqui
-                    — cria 32 usuários demo, 14 tipos, planos, matrizes, cashback demo, FAQs, etc. Idempotente (seguro pra rodar de novo).
+                    — cria 32 usuários demo, 14 tipos, planos, matrizes, cashback demo, FAQs, etc. Atenção: com ALLOW_DESTRUCTIVE_SEED ativo no ambiente, usuários reais fora da lista demo serão apagados junto com seus dados (cashback, faturas, pedidos, KYC, saques). Sem a flag, o cleanup é ignorado por segurança. Um backup automático do banco é feito antes de cada seed.
                   </p>
                 </div>
                 <Button

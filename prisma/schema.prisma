@@ -160,6 +160,10 @@ model CashbackEntry {
   level       Int
   percentage  Float
   description String?
+  // Lote 1 Item 1: chave de idempotência do motor de cashback
+  // (`<matriz>_<referenceId>` — ex.: `entrada_<orderId>`). Sem esta coluna o
+  // motor falha no create e não consegue detectar eventos duplicados.
+  referenceId String?
   createdAt   DateTime @default(now())
   user        User     @relation(fields: [userId], references: [id])
 }
@@ -172,6 +176,10 @@ model CashbackResidual {
   level       Int
   percentage  Float
   description String?
+  // Lote 1 Item 1: chave de idempotência do motor de cashback
+  // (`residual_<invoiceId>`). Garante que a mesma fatura paga nunca gere
+  // cashback duplicado, mesmo se o webhook chegar mais de uma vez.
+  referenceId String?
   createdAt   DateTime @default(now())
   user        User     @relation(fields: [userId], references: [id])
 }
@@ -185,6 +193,9 @@ model CashbackSales {
   percentage  Float
   category    String
   description String?
+  // Lote 1 Item 1: chave de idempotência do motor de cashback
+  // (`vendas_<saleReferenceId>`).
+  referenceId String?
   createdAt   DateTime @default(now())
   user        User     @relation(fields: [userId], references: [id])
 }

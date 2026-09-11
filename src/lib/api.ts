@@ -428,11 +428,8 @@ export const announcementApi = {
     apiFetch<any>(`/announcements${userId ? `?userId=${encodeURIComponent(userId)}` : ''}`),
 }
 
-// Seed
-export const seedApi = {
-  seed: () =>
-    apiFetch<any>('/seed', { method: 'POST' }),
-}
+// Lote 1, Item 3: export morto `seedApi` REMOVIDO — apontava para a rota
+// /api/seed que não existe mais. Nenhum arquivo importava este export.
 
 // Transfer
 export const transferApi = {

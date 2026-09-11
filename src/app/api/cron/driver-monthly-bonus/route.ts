@@ -17,17 +17,20 @@ import { success, error } from '@/lib/api-utils'
 //         - cria Transaction com type='driver_bonus'
 //   2. Retorna resumo: quantos motoristas receberam, valor total pago
 //
-// Auth: protegido por CRON_SECRET no header (ou query param ?secret=...)
+// Auth: protegido por CRON_SECRET EXCLUSIVAMENTE via header Authorization
+// (Lote 1, Item 3: query param ?secret=... REMOVIDO — vazava o secret em
+// logs de acesso/nginx. Padrão: `Authorization: Bearer <CRON_SECRET>`)
 // ============================================================================
 
 export async function POST(req: NextRequest) {
   try {
-    // Auth via header ou query param
+    // Auth SOMENTE via header Authorization (Bearer). Sem query param.
     const authHeader = req.headers.get('authorization')
-    const querySecret = req.nextUrl.searchParams.get('secret')
-    const secret = authHeader?.replace('Bearer ', '') || querySecret
+    const secret = authHeader?.startsWith('Bearer ')
+      ? authHeader.slice('Bearer '.length).trim()
+      : null
 
-    if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
+    if (!process.env.CRON_SECRET || !secret || secret !== process.env.CRON_SECRET) {
       return error('Unauthorized — invalid cron secret', 403)
     }
 

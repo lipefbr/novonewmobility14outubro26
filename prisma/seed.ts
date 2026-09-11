@@ -987,6 +987,18 @@ async function seedUsers() {
     if (!seedEmails.has(u.email.toLowerCase())) orphanIds.push(u.id)
   }
   if (orphanIds.length > 0) {
+    // Lote 1, Item 2 — BLINDAGEM DE DADOS: o cleanup abaixo apaga usuários
+    // reais fora da lista demo e os dados deles em ~29 tabelas (cashback,
+    // transações, faturas, pedidos, KYC, saques...). Em produção isso é
+    // DESTRUTIVO — o rótulo antigo "idempotente/seguro" era falso. Ele agora
+    // SÓ roda com a variável de ambiente ALLOW_DESTRUCTIVE_SEED=true
+    // explicitamente definida. Sem a flag, o cleanup é pulado e logado como
+    // "ignorado por segurança".
+    if (process.env.ALLOW_DESTRUCTIVE_SEED !== 'true') {
+      console.log(
+        `  → Cleanup destrutivo de ${orphanIds.length} usuário(s) fora da lista demo IGNORADO por segurança (defina ALLOW_DESTRUCTIVE_SEED=true no ambiente para habilitar)`,
+      )
+    } else {
     console.log(`  → Removing ${orphanIds.length} orphan test users (not in seed list)`)
     // Disable FK checks during delete so we can remove users that have
     // leftover rows in dependent tables (cashback entries, tickets, etc).
@@ -1071,6 +1083,7 @@ async function seedUsers() {
     // Re-enable FK checks
     try { await prisma.$executeRawUnsafe('PRAGMA foreign_keys=ON') } catch {}
     try { await prisma.$executeRawUnsafe("SET session_replication_role = 'origin'") } catch {}
+    } // fim do else — cleanup habilitado explicitamente via ALLOW_DESTRUCTIVE_SEED
   }
 
   // First pass: create/update all users (without referredById — the sponsor

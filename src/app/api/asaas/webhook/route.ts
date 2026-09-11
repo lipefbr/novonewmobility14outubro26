@@ -203,7 +203,12 @@ async function handlePaymentPaid(paymentId: string, _payment: any): Promise<void
     })
 
     // 3. Plan activation + balance credit
-    await applyPlanAndBalanceForInvoice(invoice)
+    // HOTFIX (Lote 1, Item 1): `wasPaid` agora é passado explicitamente.
+    // ANTES: a função usava a variável local `wasPaid` do handler sem recebê-la
+    // como parâmetro, gerando ReferenceError em toda fatura de plano paga via
+    // webhook — e por isso triggerResidualCashback nunca era chamado no fluxo
+    // automático.
+    await applyPlanAndBalanceForInvoice(invoice, wasPaid)
 
     // 4. Task 14-E: auto-generate a plan-bonus voucher sized to the user's
     //    userType when a plan-type invoice is paid. Mirrors the same flow
@@ -322,12 +327,19 @@ async function handlePaymentPaid(paymentId: string, _payment: any): Promise<void
  * invoice is paid. Looks up the Plan by code extracted from invoice.type
  * (e.g. `plan_blue3` → code `blue3`).
  */
-async function applyPlanAndBalanceForInvoice(invoice: {
-  id: string
-  userId: string
-  amount: number
-  type: string
-}): Promise<void> {
+async function applyPlanAndBalanceForInvoice(
+  invoice: {
+    id: string
+    userId: string
+    amount: number
+    type: string
+  },
+  // HOTFIX (Lote 1, Item 1): flag recebida do handler handlePaymentPaid.
+  // `false` => fatura acabou de transicionar para paid (primeira vez que o
+  // evento chega) => motor de cashback residual pode rodar. `true` => fatura
+  // já estava paga (evento duplicado) => nada é reprocessado/distribuído.
+  wasPaid: boolean
+): Promise<void> {
   const t = invoice.type || ''
   const isPlanInvoice =
     t.startsWith('plan_') &&
