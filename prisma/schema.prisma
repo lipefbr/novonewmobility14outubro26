@@ -36,6 +36,11 @@ model User {
   stars                 Int                    @default(0)
   isDriver              Boolean                @default(false)
   isDelivery            Boolean                @default(false)
+  // FK para a categoria do veículo do motorista (Safira, Rubi, Esmeralda,
+  // Diamante, Imperial). Null para não-motoristas. Migra o conceito de "pin"
+  // que antes vivia erradamente em CareerPlan.
+  driverCategoryId      String?
+  driverCategory        DriverCategory?        @relation(fields: [driverCategoryId], references: [id])
   totalRides            Int                    @default(0)
   profileImage          String?
   address               String?
@@ -1180,6 +1185,39 @@ model MobileBanner {
 }
 
 // ── DriverApplication ────────────────────────────────────────────────────────
+// ============================================================================
+// DriverCategory — Categorias de Veículo do Motorista (Safira → Imperial)
+// ----------------------------------------------------------------------------
+// Representa a categoria/qualidade do veículo do motorista, do mais básico
+// (Safira) até o topo (Imperial). Cada categoria tem:
+//   - monthlyTripsTarget: meta mensal de corridas (ex: 500)
+//   - bonusCents: bônus pago SE o motorista bater a meta no mês
+//   - maxCancellationPerMonth: limite de cancelamentos (0 = idoso/tolerância
+//     zero, 2 = demais categorias — editável por categoria)
+//
+// O bônus NÃO é fixo mensal — só é pago quando a meta de corridas é batida.
+// O motorista é associado via User.driverCategoryId.
+//
+// Separa do CareerPlan (que continua sendo graduação por careerPoints).
+// ============================================================================
+model DriverCategory {
+  id                      String   @id @default(cuid())
+  code                    String   @unique // safira | rubi | esmeralda | diamante | imperial
+  name                    String           // "Safira", "Rubi", ...
+  description             String?
+  sortOrder               Int      @default(0)
+  monthlyTripsTarget      Int      @default(0)  // meta mensal de corridas
+  bonusCents              Int      @default(0)  // bônus em centavos se bater a meta
+  maxCancellationPerMonth Int      @default(2)  // 0 = tolerância zero (idoso), 2 = demais
+  color                   String?
+  icon                    String?
+  isActive                Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  // Relação reversa — motoristas nesta categoria
+  users                   User[]
+}
+
 // A user's application to become a driver (motorista). Admin approves/rejects
 // in /admingeral. On approval, sets User.isDriver=true.
 model DriverApplication {

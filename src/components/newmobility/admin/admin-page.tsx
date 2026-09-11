@@ -444,6 +444,27 @@ interface CareerPlanItem {
   updatedAt: string;
 }
 
+// ---------- Driver Categories (Safira → Imperial) ----------
+// Categoria de VEÍCULO do motorista. Não confundir com CareerPlan
+// (que é graduação por careerPoints). DriverCategory é sobre a qualidade
+// do veículo + meta mensal de corridas + bônus + regra de cancelamento.
+interface AdminDriverCategory {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  sortOrder: number;
+  monthlyTripsTarget: number;
+  bonusCents: number;
+  maxCancellationPerMonth: number;
+  color?: string | null;
+  icon?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  userCount: number;
+}
+
 // ---------- Streak Rewards ----------
 interface StreakRewardItem {
   id: string;
@@ -535,6 +556,7 @@ const adminPageToTab: Record<string, string> = {
   'cashback-config': 'cashback-config',
   achievements: 'achievements',
   'career-plans': 'career-plans',
+  'driver-categories': 'driver-categories',
   'streak-rewards': 'streak-rewards',
   events: 'events',
   faq: 'faq',
@@ -1544,6 +1566,28 @@ export function AdminPage() {
   })
   const [careerPlanSaving, setCareerPlanSaving] = useState(false)
 
+  // ---------- Driver Categories (Safira → Imperial) ----------
+  // Categoria de VEÍCULO do motorista. NÃO é o CareerPlan (que é por
+  // careerPoints). Aqui é: meta mensal de corridas + bônus se bater +
+  // limite de cancelamentos (0 = tolerância zero / idoso).
+  const [driverCategories, setDriverCategories] = useState<AdminDriverCategory[]>([])
+  const [driverCategoriesLoading, setDriverCategoriesLoading] = useState(false)
+  const [editingDriverCategory, setEditingDriverCategory] = useState<AdminDriverCategory | null>(null)
+  const [driverCategoryDialogOpen, setDriverCategoryDialogOpen] = useState(false)
+  const [driverCategoryFormData, setDriverCategoryFormData] = useState({
+    code: '',
+    name: '',
+    description: '',
+    sortOrder: 0,
+    monthlyTripsTarget: 0,
+    bonusCents: 0,
+    maxCancellationPerMonth: 2,
+    color: '#06b6d4',
+    icon: '🔷',
+    isActive: true,
+  })
+  const [savingDriverCategory, setSavingDriverCategory] = useState(false)
+
   // ---------- Streak Rewards ----------
   const [streakRewards, setStreakRewards] = useState<StreakRewardItem[]>([])
   const [streakRewardLoading, setStreakRewardLoading] = useState(false)
@@ -1598,6 +1642,9 @@ export function AdminPage() {
         if (res?.permissions) setCustomRoles(Object.keys(res.permissions))
       })
       .catch(() => { /* no-op */ })
+    // Pré-carrega planos para os dropdowns de Criar/Editar Usuário e filtro
+    // da listagem — não depende mais da aba Plans estar aberta.
+    loadPlans()
   }, [user?.id])
 
   useEffect(() => {
@@ -1624,6 +1671,7 @@ export function AdminPage() {
     }
     if (activeTab === 'achievements') loadAchievements()
     if (activeTab === 'career-plans') loadCareerPlans()
+    if (activeTab === 'driver-categories') loadDriverCategories()
     if (activeTab === 'streak-rewards') loadStreakRewards()
     if (activeTab === 'events') loadEvents()
     if (activeTab === 'faq') loadFAQs()
@@ -2542,6 +2590,118 @@ export function AdminPage() {
       loadCareerPlans()
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao excluir')
+    }
+  }
+
+  // ---------- Driver Categories (Safira → Imperial) ----------
+  // Lista categorias de VEÍCULO do motorista. Cada uma tem meta mensal de
+  // corridas, bônus em centavos (só pago se bater a meta), e limite de
+  // cancelamentos por mês (0 = tolerância zero para categoria idoso).
+  const loadDriverCategories = async () => {
+    setDriverCategoriesLoading(true)
+    try {
+      const data = await apiFetch<{ categories: AdminDriverCategory[] }>(`/admin/driver-categories?userId=${user?.id}`)
+      setDriverCategories(data.categories || [])
+    } catch { /* ignore */ } finally { setDriverCategoriesLoading(false) }
+  }
+
+  const handleOpenCreateDriverCategory = () => {
+    setEditingDriverCategory(null)
+    setDriverCategoryFormData({
+      code: '',
+      name: '',
+      description: '',
+      sortOrder: 0,
+      monthlyTripsTarget: 0,
+      bonusCents: 0,
+      maxCancellationPerMonth: 2,
+      color: '#06b6d4',
+      icon: '🔷',
+      isActive: true,
+    })
+    setDriverCategoryDialogOpen(true)
+  }
+
+  const handleOpenEditDriverCategory = (c: AdminDriverCategory) => {
+    setEditingDriverCategory(c)
+    setDriverCategoryFormData({
+      code: c.code,
+      name: c.name,
+      description: c.description || '',
+      sortOrder: c.sortOrder,
+      monthlyTripsTarget: c.monthlyTripsTarget,
+      bonusCents: c.bonusCents,
+      maxCancellationPerMonth: c.maxCancellationPerMonth,
+      color: c.color || '#06b6d4',
+      icon: c.icon || '🔷',
+      isActive: c.isActive,
+    })
+    setDriverCategoryDialogOpen(true)
+  }
+
+  const handleSaveDriverCategory = async () => {
+    if (!driverCategoryFormData.code || !driverCategoryFormData.name) {
+      toast.error('Preencha código e nome')
+      return
+    }
+    setSavingDriverCategory(true)
+    try {
+      const payload: Record<string, unknown> = {
+        userId: user?.id,
+        code: driverCategoryFormData.code,
+        name: driverCategoryFormData.name,
+        description: driverCategoryFormData.description || undefined,
+        sortOrder: Number(driverCategoryFormData.sortOrder) || 0,
+        monthlyTripsTarget: Number(driverCategoryFormData.monthlyTripsTarget) || 0,
+        bonusCents: Number(driverCategoryFormData.bonusCents) || 0,
+        maxCancellationPerMonth: Number(driverCategoryFormData.maxCancellationPerMonth) || 0,
+        color: driverCategoryFormData.color || undefined,
+        icon: driverCategoryFormData.icon || undefined,
+        isActive: Boolean(driverCategoryFormData.isActive),
+      }
+      if (editingDriverCategory) {
+        // PUT não permite alterar o code (campo unique).
+        const { code: _omit, ...updatePayload } = payload
+        await apiFetch(`/admin/driver-categories/${editingDriverCategory.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(updatePayload),
+        })
+        toast.success('Categoria de motorista atualizada!')
+      } else {
+        await apiFetch('/admin/driver-categories', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        })
+        toast.success('Categoria de motorista criada!')
+      }
+      setDriverCategoryDialogOpen(false)
+      loadDriverCategories()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao salvar categoria de motorista')
+    } finally { setSavingDriverCategory(false) }
+  }
+
+  const handleDeleteDriverCategory = async (id: string) => {
+    if (!confirm('Excluir esta categoria de motorista? Se houver motoristas vinculados, será preciso reatribuí-los antes.')) return
+    try {
+      await apiFetch(`/admin/driver-categories/${id}?userId=${user?.id}`, { method: 'DELETE' })
+      toast.success('Categoria de motorista excluída')
+      loadDriverCategories()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao excluir categoria')
+    }
+  }
+
+  const handleToggleDriverCategoryActive = async (c: AdminDriverCategory) => {
+    try {
+      await apiFetch(`/admin/driver-categories/${c.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ userId: user?.id, isActive: !c.isActive }),
+      })
+      toast.success(`Categoria ${!c.isActive ? 'ativada' : 'desativada'}`)
+      loadDriverCategories()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao alternar status')
     }
   }
 
@@ -3977,9 +4137,17 @@ export function AdminPage() {
                 </div>
                 <select value={planFilter} onChange={(e) => { setPlanFilter(e.target.value); setUserPage(1) }} className="h-9 rounded-md border border-input bg-background px-3 text-sm">
                   <option value="all">Todos os planos</option>
-                  <option value="free">Gratuito</option>
-                  <option value="blue3">Blue 3</option>
-                  <option value="blue5">Blue 5</option>
+                  {plans.length > 0 ? (
+                    plans.map(p => (
+                      <option key={p.id} value={p.code || p.id}>{p.name}</option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="free">Gratuito</option>
+                      <option value="blue3">Blue 3</option>
+                      <option value="blue5">Blue 5</option>
+                    </>
+                  )}
                 </select>
                 <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setUserPage(1) }} className="h-9 rounded-md border border-input bg-background px-3 text-sm">
                   <option value="all">Todos</option>
@@ -7947,6 +8115,152 @@ export function AdminPage() {
           )}
         </TabsContent>
 
+        {/* ===== DRIVER CATEGORIES TAB ===== */}
+        <TabsContent value="driver-categories" className="mt-4 space-y-4">
+          {/* Caixa explicativa azul no topo — explica as regras das categorias
+              de veículo (NÃO é o mesmo que CareerPlan). */}
+          <div className="rounded-lg border border-blue-200 dark:border-blue-900/50 bg-blue-50/60 dark:bg-blue-950/20 p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <Info className="h-4 w-4 text-blue-600 shrink-0" />
+              <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                Como funcionam as Categorias de Motorista
+              </p>
+            </div>
+            <ul className="text-xs text-blue-800 dark:text-blue-200 space-y-1.5 pl-6 list-disc">
+              <li>
+                <strong>Categorias de veículo NÃO são plano de carreira.</strong>{' '}
+                Plano de Carreira (Safira→Imperial por <code className="px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900/50 text-[10px]">careerPoints</code>) é separado.
+              </li>
+              <li>
+                <strong>Bônus só é pago</strong> se o motorista bater a meta de corridas no mês.
+              </li>
+              <li>
+                <code className="px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900/50 text-[10px]">maxCancellationPerMonth = 0</code> significa{' '}
+                <strong>tolerância zero</strong> (categoria idoso/preferencial). Cancelar 1 corrida já desqualifica do bônus.
+              </li>
+              <li>
+                Demais categorias toleram até <strong>2 cancelamentos</strong> (configurável por categoria).
+              </li>
+            </ul>
+          </div>
+
+          {/* Header card com botão "Nova Categoria" — padrão visual igual aos outros TabsContent */}
+          <Card className="border-blue-200 dark:border-blue-800 bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-950/30 dark:to-cyan-950/20">
+            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Car className="h-4 w-4 text-blue-600" />
+                  <h3 className="text-sm font-semibold text-foreground">Categorias de Motorista</h3>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Configure as categorias de veículo (Safira → Imperial). Cada categoria tem meta mensal de corridas, bônus e regra de cancelamento.
+                </p>
+              </div>
+              <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2 shrink-0" onClick={handleOpenCreateDriverCategory}>
+                <Plus className="h-4 w-4" /> Nova Categoria
+              </Button>
+            </CardContent>
+          </Card>
+
+          {driverCategoriesLoading ? (
+            <Card><CardContent className="flex items-center justify-center py-12">
+              <span className="h-6 w-6 border-2 border-blue-600/30 border-t-blue-600 rounded-full animate-spin" />
+              <span className="ml-3 text-sm text-muted-foreground">Carregando categorias...</span>
+            </CardContent></Card>
+          ) : driverCategories.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {driverCategories.map(c => (
+                <Card key={c.id} className={!c.isActive ? 'opacity-60' : ''} style={{ borderTopColor: c.color || undefined, borderTopWidth: c.color ? 4 : undefined }}>
+                  <CardContent className="p-4">
+                    {/* Header: ícone + nome + código + status */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">{c.icon || '🚗'}</span>
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{c.name}</p>
+                          <p className="text-[10px] text-muted-foreground font-mono">{c.code}</p>
+                        </div>
+                      </div>
+                      <Badge className={c.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}>
+                        {c.isActive ? 'Ativo' : 'Inativo'}
+                      </Badge>
+                    </div>
+
+                    {/* Descrição */}
+                    <p className="text-xs text-muted-foreground mt-2 line-clamp-2">{c.description || '—'}</p>
+
+                    {/* Grid de métricas */}
+                    <div className="grid grid-cols-2 gap-2 mt-3">
+                      <div className="p-2 bg-muted/50 rounded-lg">
+                        <p className="text-[10px] text-muted-foreground">Meta mensal</p>
+                        <p className="text-sm font-bold text-foreground">
+                          {c.monthlyTripsTarget} <span className="text-[10px] font-normal text-muted-foreground">corridas/mês</span>
+                        </p>
+                      </div>
+                      <div className="p-2 bg-muted/50 rounded-lg">
+                        <p className="text-[10px] text-muted-foreground">Bônus (se bater)</p>
+                        <p className="text-sm font-bold text-emerald-600">
+                          {c.bonusCents > 0 ? formatCurrency(c.bonusCents) : '—'}
+                        </p>
+                      </div>
+                      <div className="p-2 bg-muted/50 rounded-lg">
+                        <p className="text-[10px] text-muted-foreground">Cancelamento/mês</p>
+                        {c.maxCancellationPerMonth === 0 ? (
+                          <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-[10px]">
+                            Tolerância ZERO
+                          </Badge>
+                        ) : (
+                          <p className="text-sm font-bold text-foreground">
+                            {c.maxCancellationPerMonth} <span className="text-[10px] font-normal text-muted-foreground">max</span>
+                          </p>
+                        )}
+                      </div>
+                      <div className="p-2 bg-muted/50 rounded-lg">
+                        <p className="text-[10px] text-muted-foreground">Motoristas</p>
+                        <p className="text-sm font-bold text-blue-600">
+                          {c.userCount}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Ações */}
+                    <div className="flex items-center justify-between gap-1 mt-3 border-t border-border pt-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => handleToggleDriverCategoryActive(c)}
+                        title={c.isActive ? 'Desativar' : 'Ativar'}
+                      >
+                        {c.isActive ? (
+                          <ToggleRight className="h-3.5 w-3.5 text-emerald-600" />
+                        ) : (
+                          <ToggleLeft className="h-3.5 w-3.5 text-muted-foreground" />
+                        )}
+                        <span className="ml-1 hidden sm:inline">{c.isActive ? 'Desativar' : 'Ativar'}</span>
+                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="sm" className="h-7 text-blue-600 hover:text-blue-700 text-xs" onClick={() => handleOpenEditDriverCategory(c)} title="Editar">
+                          <Edit className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 text-red-500 hover:text-red-600 text-xs" onClick={() => handleDeleteDriverCategory(c.id)} title="Excluir">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card><CardContent className="flex flex-col items-center justify-center py-12 gap-2">
+              <Car className="h-8 w-8 text-muted-foreground/40" />
+              <p className="text-sm text-muted-foreground">Nenhuma categoria de motorista cadastrada</p>
+              <p className="text-[10px] text-muted-foreground">Crie categorias como Safira, Rubi, Esmeralda, Diamante e Imperial.</p>
+            </CardContent></Card>
+          )}
+        </TabsContent>
+
         {/* ===== STREAK REWARDS TAB ===== */}
         <TabsContent value="streak-rewards" className="mt-4 space-y-4">
           <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
@@ -9314,6 +9628,161 @@ export function AdminPage() {
         </DialogContent>
       </Dialog>
 
+      {/* ===== DRIVER CATEGORY DIALOG ===== */}
+      <Dialog open={driverCategoryDialogOpen} onOpenChange={setDriverCategoryDialogOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Car className="h-4 w-4 text-blue-600" />
+              {editingDriverCategory ? 'Editar Categoria de Motorista' : 'Nova Categoria de Motorista'}
+            </DialogTitle>
+            <DialogDescription>
+              Categoria de veículo (Safira → Imperial). Bônus só é pago se o motorista bater a meta mensal de corridas.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Código *</Label>
+                <Input
+                  value={driverCategoryFormData.code}
+                  disabled={!!editingDriverCategory}
+                  onChange={(e) => setDriverCategoryFormData(f => ({ ...f, code: e.target.value }))}
+                  placeholder="ex: safira"
+                  className="h-9 text-sm"
+                />
+                {editingDriverCategory && (
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Código não pode ser alterado.</p>
+                )}
+              </div>
+              <div>
+                <Label className="text-xs">Nome *</Label>
+                <Input
+                  value={driverCategoryFormData.name}
+                  onChange={(e) => setDriverCategoryFormData(f => ({ ...f, name: e.target.value }))}
+                  placeholder="ex: Safira"
+                  className="h-9 text-sm"
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Descrição</Label>
+              <Textarea
+                value={driverCategoryFormData.description}
+                onChange={(e) => setDriverCategoryFormData(f => ({ ...f, description: e.target.value }))}
+                placeholder="Descrição da categoria (ex: veículo básico, aceita idoso)"
+                rows={2}
+                className="text-sm"
+              />
+            </div>
+            <div className="rounded-lg border border-blue-100 dark:border-blue-900/50 bg-blue-50/40 dark:bg-blue-950/20 p-3 space-y-3">
+              <p className="text-[11px] font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide">
+                Meta &amp; Bônus &amp; Cancelamento
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Ordem</Label>
+                  <Input
+                    type="number"
+                    value={driverCategoryFormData.sortOrder}
+                    onChange={(e) => setDriverCategoryFormData(f => ({ ...f, sortOrder: Number(e.target.value) }))}
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Meta mensal de corridas</Label>
+                  <Input
+                    type="number"
+                    value={driverCategoryFormData.monthlyTripsTarget}
+                    onChange={(e) => setDriverCategoryFormData(f => ({ ...f, monthlyTripsTarget: Number(e.target.value) }))}
+                    placeholder="ex: 500"
+                    className="h-9 text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Bônus mensal (centavos)</Label>
+                  <Input
+                    type="number"
+                    value={driverCategoryFormData.bonusCents}
+                    onChange={(e) => setDriverCategoryFormData(f => ({ ...f, bonusCents: Number(e.target.value) }))}
+                    placeholder="ex: 50000 = R$ 500,00"
+                    className="h-9 text-sm"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    {driverCategoryFormData.bonusCents > 0
+                      ? `Preview: ${formatCurrency(driverCategoryFormData.bonusCents)}`
+                      : 'Sem bônus'}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-xs">Limite de cancelamentos/mês</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={driverCategoryFormData.maxCancellationPerMonth}
+                    onChange={(e) => setDriverCategoryFormData(f => ({ ...f, maxCancellationPerMonth: Number(e.target.value) }))}
+                    placeholder="ex: 2"
+                    className="h-9 text-sm"
+                  />
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    0 = tolerância zero (idoso) · 2 = padrão
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Ícone (emoji)</Label>
+                <Input
+                  value={driverCategoryFormData.icon}
+                  onChange={(e) => setDriverCategoryFormData(f => ({ ...f, icon: e.target.value }))}
+                  placeholder="🔷"
+                  className="h-9 text-sm"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Cor (hex)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="color"
+                    value={driverCategoryFormData.color || '#06b6d4'}
+                    onChange={(e) => setDriverCategoryFormData(f => ({ ...f, color: e.target.value }))}
+                    className="h-9 w-12 p-1"
+                  />
+                  <Input
+                    value={driverCategoryFormData.color || ''}
+                    onChange={(e) => setDriverCategoryFormData(f => ({ ...f, color: e.target.value }))}
+                    placeholder="#06b6d4"
+                    className="h-9 text-sm flex-1"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2 pt-5 col-span-2">
+                <input
+                  type="checkbox"
+                  id="dc-active"
+                  checked={driverCategoryFormData.isActive}
+                  onChange={(e) => setDriverCategoryFormData(f => ({ ...f, isActive: e.target.checked }))}
+                  className="rounded border-input"
+                />
+                <Label htmlFor="dc-active" className="text-xs cursor-pointer">Ativo</Label>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDriverCategoryDialogOpen(false)}>Cancelar</Button>
+            <Button
+              className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+              onClick={handleSaveDriverCategory}
+              disabled={savingDriverCategory || !driverCategoryFormData.code || !driverCategoryFormData.name}
+            >
+              {savingDriverCategory ? <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              {editingDriverCategory ? 'Salvar' : 'Criar Categoria'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ===== STREAK REWARD DIALOG ===== */}
       <Dialog open={streakRewardDialogOpen} onOpenChange={setStreakRewardDialogOpen}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
@@ -9829,11 +10298,24 @@ export function AdminPage() {
                 >
                   <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="free">Gratuito</SelectItem>
-                    <SelectItem value="blue3">Blue 3</SelectItem>
-                    <SelectItem value="blue5">Blue 5</SelectItem>
+                    {plans.length > 0 ? (
+                      plans.filter(p => p.isActive).map(p => (
+                        <SelectItem key={p.id} value={p.code || p.id}>
+                          {p.name} {p.price ? `— R$ ${(p.price / 100).toFixed(2)}` : ''}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <>
+                        <SelectItem value="free">Gratuito</SelectItem>
+                        <SelectItem value="blue3">Blue 3</SelectItem>
+                        <SelectItem value="blue5">Blue 5</SelectItem>
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
+                <p className="text-[10px] text-muted-foreground">
+                  Lista carregada da tabela Plan (aba "Planos &amp; Preços").
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Código de indicante</Label>
@@ -9973,10 +10455,19 @@ export function AdminPage() {
                     <Select value={editUserData.plan} onValueChange={(v) => updateEditField('plan', v)}>
                       <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {plans.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                        <SelectItem value="free">Gratuito</SelectItem>
-                        <SelectItem value="blue3">Blue 3</SelectItem>
-                        <SelectItem value="blue5">Blue 5</SelectItem>
+                        {plans.length > 0 ? (
+                          plans.map(p => (
+                            <SelectItem key={p.id} value={p.code || p.id}>
+                              {p.name} {p.price ? `— R$ ${(p.price / 100).toFixed(2)}` : ''}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <>
+                            <SelectItem value="free">Gratuito</SelectItem>
+                            <SelectItem value="blue3">Blue 3</SelectItem>
+                            <SelectItem value="blue5">Blue 5</SelectItem>
+                          </>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>

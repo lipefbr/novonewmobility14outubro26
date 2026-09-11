@@ -5,35 +5,16 @@ import { success, error } from '@/lib/api-utils'
 // ============================================================================
 // /api/admin/service-types
 // ----------------------------------------------------------------------------
-// CRUD for the ServiceType table (Item 8). Admin-only.
+// CRUD for the ServiceType table. Admin-only.
 //
 // GET  ?userId=<adminId>            → list ALL service types (active + inactive)
 // POST { userId, name, icon?, isActive?, sortOrder? }  → create a new type
 //
-// On first GET, seeds the 8 default categories that were previously hardcoded
-// in services-page.tsx (Automotivo, Mobilidade, Construção, Manutenção,
-// Limpeza, Transporte, Tecnologia, Outros) so existing deployments keep their
-// UI intact when the admin first opens the new management screen.
+// IMPORTANTE: NÃO sedia mais categorias padrão automaticamente. Se a tabela
+// estiver vazia, retorna { types: [] } — o admin deve popular manualmente via
+// este endpoint. A tela "Escritório Virtual" passa a exibir EXCLUSIVAMENTE
+// os serviços cadastrados aqui (não há mais lista hardcoded no código).
 // ============================================================================
-
-const DEFAULT_SERVICE_TYPES: { name: string; icon: string; sortOrder: number }[] = [
-  { name: 'Automotivo', icon: '🚙', sortOrder: 1 },
-  { name: 'Mobilidade', icon: '📱', sortOrder: 2 },
-  { name: 'Construção', icon: '🏗️', sortOrder: 3 },
-  { name: 'Manutenção', icon: '🔧', sortOrder: 4 },
-  { name: 'Limpeza', icon: '🧹', sortOrder: 5 },
-  { name: 'Transporte', icon: '🚗', sortOrder: 6 },
-  { name: 'Tecnologia', icon: '💻', sortOrder: 7 },
-  { name: 'Outros', icon: '📦', sortOrder: 99 },
-]
-
-async function seedDefaultServiceTypesIfEmpty() {
-  const count = await prisma.serviceType.count()
-  if (count > 0) return
-  for (const t of DEFAULT_SERVICE_TYPES) {
-    await prisma.serviceType.create({ data: t })
-  }
-}
 
 async function requireAdmin(userId: string | null) {
   if (!userId) return null
@@ -53,8 +34,6 @@ export async function GET(req: NextRequest) {
     const userId = req.nextUrl.searchParams.get('userId')
     const admin = await requireAdmin(userId)
     if (!admin) return error('Unauthorized', 403)
-
-    await seedDefaultServiceTypesIfEmpty()
 
     const types = await prisma.serviceType.findMany({
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],

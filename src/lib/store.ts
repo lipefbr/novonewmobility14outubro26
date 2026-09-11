@@ -54,6 +54,7 @@ export type AdminPageKey =
   | 'cashback-config'
   | 'achievements'
   | 'career-plans'
+  | 'driver-categories'
   | 'streak-rewards'
   | 'events'
   | 'faq'

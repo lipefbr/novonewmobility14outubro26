@@ -1503,6 +1503,94 @@ async function seedCashbackDemo() {
 }
 
 // -----------------------------------------------------------------------------
+// DriverCategory seed — 5 categorias de veículo (Safira → Imperial)
+// ----------------------------------------------------------------------------
+// Separa o conceito de "categoria do veículo" do "plano de carreira".
+// Cada categoria tem meta mensal de corridas + bônus + regra de cancelamento.
+// O bônus só é pago se o motorista bater a meta no mês (não é fixo).
+// -----------------------------------------------------------------------------
+
+async function seedDriverCategories() {
+  console.log('→ Seeding DriverCategory...')
+  const categories = [
+    {
+      code: 'safira',
+      name: 'Safira',
+      description: 'Categoria 3 — veículo básico. Meta baixa, bônus menor.',
+      sortOrder: 1,
+      monthlyTripsTarget: 100,
+      bonusCents: 50000, // R$ 500
+      maxCancellationPerMonth: 2,
+      color: '#06b6d4',
+      icon: '🔷',
+    },
+    {
+      code: 'rubi',
+      name: 'Rubi',
+      description: 'Categoria 2 — veículo intermediário.',
+      sortOrder: 2,
+      monthlyTripsTarget: 200,
+      bonusCents: 150000, // R$ 1.500
+      maxCancellationPerMonth: 2,
+      color: '#dc2626',
+      icon: '❤️',
+    },
+    {
+      code: 'esmeralda',
+      name: 'Esmeralda',
+      description: 'Categoria 1 — veículo confort, meta alta.',
+      sortOrder: 3,
+      monthlyTripsTarget: 350,
+      bonusCents: 300000, // R$ 3.000
+      maxCancellationPerMonth: 2,
+      color: '#10b981',
+      icon: '💚',
+    },
+    {
+      code: 'diamante',
+      name: 'Diamante',
+      description: 'Categoria 4 — veículo premium.',
+      sortOrder: 4,
+      monthlyTripsTarget: 500,
+      bonusCents: 500000, // R$ 5.000
+      maxCancellationPerMonth: 1, // premium = só 1 cancelamento tolerado
+      color: '#3b82f6',
+      icon: '💎',
+    },
+    {
+      code: 'imperial',
+      name: 'Imperial',
+      description: 'Categoria 5 — veículo top de linha, meta máxima. Tolerância ZERO (categoria preferencial/idoso).',
+      sortOrder: 5,
+      monthlyTripsTarget: 700,
+      bonusCents: 800000, // R$ 8.000
+      maxCancellationPerMonth: 0, // 0 = tolerância zero (idoso/preferencial)
+      color: '#8b5cf6',
+      icon: '👑',
+    },
+  ]
+
+  for (const c of categories) {
+    await prisma.driverCategory.upsert({
+      where: { code: c.code },
+      // Update defaultLevels + label/description so existing rows seeded
+      // by older versions are synced to the new business-rule defaults.
+      update: {
+        name: c.name,
+        description: c.description,
+        monthlyTripsTarget: c.monthlyTripsTarget,
+        bonusCents: c.bonusCents,
+        maxCancellationPerMonth: c.maxCancellationPerMonth,
+        color: c.color,
+        icon: c.icon,
+      },
+      create: c,
+    })
+  }
+  console.log(`  ✓ ${categories.length} driver categories ready (Safira → Imperial)`)
+}
+
+// -----------------------------------------------------------------------------
 // Announcements seed — populate the "Anúncios" tab so it's not empty
 // -----------------------------------------------------------------------------
 
@@ -1725,6 +1813,7 @@ async function main() {
   await seedMatrixTypes()
   await seedPlans()
   await seedCareerPlans()
+  await seedDriverCategories()
   await seedGoalConfigs()
   await seedStreakRewards()
   await seedServiceTypes()
@@ -1797,6 +1886,7 @@ export {
   seedUserTypes,
   seedPlans,
   seedCareerPlans,
+  seedDriverCategories,
   seedGoalConfigs,
   seedStreakRewards,
   seedServiceTypes,

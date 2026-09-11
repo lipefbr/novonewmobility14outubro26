@@ -484,10 +484,11 @@ export function ServicesPage() {
           createdAt: s.createdAt || new Date().toISOString(),
           photos: Array.isArray(s.photos) ? s.photos : [],
         }))
-        setServices(prev => [...mapped, ...mockServices.filter(m => !mapped.find(r => r.id === m.id))])
+        setServices(mapped)
       }
     } catch {
-      // keep mock data on error
+      // API indisponível — não usar mock antigo, deixar vazio
+      setServices([])
     }
   }, [])
 
@@ -495,25 +496,15 @@ export function ServicesPage() {
     loadServices()
   }, [loadServices])
 
-  // Build the category chips: always include "all", then the DB-driven types.
-  // If the DB is empty/loading, show the legacy hardcoded list so the chips
-  // never disappear.
+  // Build the category chips: "all" + tipos do banco. Se o banco estiver
+  // vazio (admin ainda não cadastrou tipos), mostra apenas "Todos" — o
+  // admin deve popular a tabela ServiceType via painel "Tipos de Serviço".
   const categories: { id: string | 'all'; label: string; icon: React.ElementType }[] = useMemo(() => {
-    const fallback: { id: string; label: string; icon: React.ElementType }[] = [
-      { id: 'automotivo', label: 'Automotivo', icon: Wrench },
-      { id: 'mobilidade', label: 'Mobilidade', icon: Wrench },
-      { id: 'construção', label: 'Construção', icon: Wrench },
-      { id: 'manutenção', label: 'Manutenção', icon: Wrench },
-      { id: 'limpeza', label: 'Limpeza', icon: Wrench },
-      { id: 'transporte', label: 'Transporte', icon: Wrench },
-      { id: 'tecnologia', label: 'Tecnologia', icon: Wrench },
-      { id: 'outros', label: 'Outros', icon: Wrench },
-    ]
     const dynamic: { id: string; label: string; icon: React.ElementType }[] =
       serviceTypes.map(t => ({ id: t.name, label: t.name, icon: Wrench }))
     return [
       { id: 'all' as const, label: 'Todos', icon: Filter },
-      ...(dynamic.length > 0 ? dynamic : fallback),
+      ...dynamic,
     ]
   }, [serviceTypes])
 
@@ -1099,16 +1090,9 @@ export function ServicesPage() {
                       </SelectItem>
                     ))
                   ) : (
-                    <>
-                      <SelectItem value="automotivo">🚙 Automotivo</SelectItem>
-                      <SelectItem value="mobilidade">📱 Mobilidade</SelectItem>
-                      <SelectItem value="construção">🏗️ Construção</SelectItem>
-                      <SelectItem value="manutenção">🔧 Manutenção</SelectItem>
-                      <SelectItem value="limpeza">🧹 Limpeza</SelectItem>
-                      <SelectItem value="transporte">🚗 Transporte</SelectItem>
-                      <SelectItem value="tecnologia">💻 Tecnologia</SelectItem>
-                      <SelectItem value="outros">📦 Outros</SelectItem>
-                    </>
+                    <SelectItem value="_none" disabled>
+                      Cadastre tipos no painel admin (Tipos de Serviço)
+                    </SelectItem>
                   )}
                 </SelectContent>
               </Select>

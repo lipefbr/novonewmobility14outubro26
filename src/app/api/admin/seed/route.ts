@@ -90,6 +90,9 @@ export async function POST(req: NextRequest) {
         case 'career-plans':
           await seedModule.seedCareerPlans()
           break
+        case 'driver-categories':
+          await seedModule.seedDriverCategories()
+          break
         case 'goal-configs':
           await seedModule.seedGoalConfigs()
           break
@@ -137,6 +140,7 @@ export async function POST(req: NextRequest) {
       userTypes: await prisma.userType.count(),
       plans: await prisma.plan.count(),
       careerPlans: await prisma.careerPlan.count(),
+      driverCategories: await prisma.driverCategory.count(),
       cashbackEntries: await prisma.cashbackEntry.count(),
       cashbackResidual: await prisma.cashbackResidual.count(),
       cashbackSales: await prisma.cashbackSales.count(),
@@ -171,6 +175,7 @@ export async function GET(req: NextRequest) {
       userTypes: await prisma.userType.count(),
       plans: await prisma.plan.count(),
       careerPlans: await prisma.careerPlan.count(),
+      driverCategories: await prisma.driverCategory.count(),
       cashbackEntries: await prisma.cashbackEntry.count(),
       cashbackResidual: await prisma.cashbackResidual.count(),
       cashbackSales: await prisma.cashbackSales.count(),
@@ -185,8 +190,9 @@ export async function GET(req: NextRequest) {
 
     return success({ counts, steps: [
       'all', 'users', 'user-types', 'configs', 'plans', 'career-plans',
-      'goal-configs', 'streak-rewards', 'service-types', 'events',
-      'categories', 'faqs', 'cashback', 'announcements', 'audit-logs', 'challenges',
+      'driver-categories', 'goal-configs', 'streak-rewards', 'service-types',
+      'events', 'categories', 'faqs', 'cashback', 'announcements',
+      'audit-logs', 'challenges',
     ] })
   } catch (err) {
     console.error('Admin seed GET error:', err)

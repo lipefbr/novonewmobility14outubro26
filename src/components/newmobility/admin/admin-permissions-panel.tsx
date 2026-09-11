@@ -57,6 +57,7 @@ const ADMIN_PAGES: PageMeta[] = [
   { key: 'asaas', label: 'Asaas', description: 'Gateway de pagamento' },
   { key: 'achievements', label: 'Conquistas', description: 'Prêmios' },
   { key: 'career-plans', label: 'Plano de Carreira', description: 'Níveis e bônus' },
+  { key: 'driver-categories', label: 'Categorias de Motorista', description: 'Categorias de veículo + meta + bônus' },
   { key: 'streak-rewards', label: 'Recompensas de Sequência', description: 'Sequências' },
   { key: 'events', label: 'Eventos', description: 'Eventos e promoções' },
   { key: 'faq', label: 'FAQ', description: 'Perguntas frequentes' },

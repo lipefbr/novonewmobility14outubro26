@@ -11020,3 +11020,54 @@ Stage Summary:
 - Após o deploy automático na VPS (que dispara a cada push na main), o admin entra no painel → Configurações do Sistema → clica em "Rodar Seed" → escolhe "Tudo" → em ~1 segundo os 32 usuários, 14 tipos, cashback demo, etc., estarão populados no banco de produção.
 - O seed é idempotente: safe pra rodar múltiplas vezes.
 - O cleanup pass remove usuários antigos de teste automaticamente.
+
+---
+Task ID: 3-UI
+Agent: full-stack-developer
+Task: Adicionar aba 'Categorias de Motorista' no painel admin
+
+Work Log:
+- Li `/home/z/my-project/worklog.md` (últimas 50 linhas) para entender contexto — o model `DriverCategory` já existe no schema.prisma com `db:push` rodado, e os endpoints `/api/admin/driver-categories` (GET list / POST create) e `/api/admin/driver-categories/[id]` (PUT / DELETE) já estão criados.
+- Estudei a estrutura do admin-page.tsx (11k+ linhas): identifiquei o padrão usado pelo `CareerPlan` (interface, states, handlers `loadCareerPlans`/`handleSaveCareerPlan`/`handleDeleteCareerPlan`, useEffect case, `<TabsContent value="career-plans">` e o `<Dialog open={careerPlanDialogOpen}>`) para replicar o mesmo padrão visual e de código para as categorias de motorista.
+- Verifiquei que `Car`, `Info`, `AlertCircle`, `ToggleLeft`, `ToggleRight`, `Badge`, `formatCurrency`, `apiFetch`, `toast`, `Dialog*`, `Input`, `Label`, `Textarea`, `Button`, `Card*` já estão importados em admin-page.tsx — não precisei adicionar imports no arquivo principal.
+- Adicionei `'driver-categories'` ao union type `AdminPageKey` em `src/lib/store.ts` (linha 57) — necessário para o tipo do estado `adminActivePage` e para o sidebar.
+- Em `src/components/newmobility/admin/admin-page.tsx` apliquei 5 edições via MultiEdit:
+  1. Adicionei `'driver-categories': 'driver-categories'` no map `adminPageToTab` (linha 538).
+  2. Adicionei a interface `AdminDriverCategory` (id, code, name, description?, sortOrder, monthlyTripsTarget, bonusCents, maxCancellationPerMonth, color?, icon?, isActive, createdAt, updatedAt, userCount) logo após `CareerPlanItem` (linha 447-466).
+  3. Adicionei 6 novos states (`driverCategories`, `driverCategoriesLoading`, `editingDriverCategory`, `driverCategoryDialogOpen`, `driverCategoryFormData` com 10 campos, `savingDriverCategory`) entre `careerPlanSaving` e `streakRewards` (linhas 1569-1589).
+  4. Adicionei `if (activeTab === 'driver-categories') loadDriverCategories()` no useEffect principal (linha 1674).
+  5. Adicionei 6 funções handler entre `handleDeleteCareerPlan` e o bloco `loadStreakRewards` (linhas 2596-2706):
+     - `loadDriverCategories` — GET `/admin/driver-categories?userId=${user.id}`
+     - `handleOpenCreateDriverCategory` — abre dialog com form vazio (defaults: color #06b6d4, icon 🔷, maxCancellation 2)
+     - `handleOpenEditDriverCategory` — preenche form com dados da categoria (code fica disabled pois é unique)
+     - `handleSaveDriverCategory` — POST para criar ou PUT (sem `code`) para editar, com toast de feedback
+     - `handleDeleteDriverCategory` — DELETE com confirm(), trata bloqueio de motoristas vinculados via msg do backend
+     - `handleToggleDriverCategoryActive` — PUT com `{ isActive: !c.isActive }` para ativar/desativar inline
+- Adicionei o `<TabsContent value="driver-categories">` (linhas 8118-8262) logo após o `</TabsContent>` do career-plans, contendo:
+  - Caixa explicativa azul (`bg-blue-50/60`) no topo com 4 bullets explicando: diferença vs CareerPlan, regra do bônus (só se bater meta), significado de `maxCancellationPerMonth=0` (tolerância zero / idoso), e padrão de 2 cancelamentos.
+  - Card header emerald→blue com ícone `Car`, título "Categorias de Motorista" e subtítulo explicando Safira→Imperial.
+  - Botão "Nova Categoria" (bg-blue-600) chamando `handleOpenCreateDriverCategory`.
+  - Loading spinner azul enquanto `driverCategoriesLoading`.
+  - Grid 1/2/3 colunas de Cards por categoria com: ícone+nome+code, badge Ativo/Inativo, descrição, grid 2x2 de métricas (Meta mensal corridas/mês, Bônus R$ formatCurrency, Cancelamento/mês — com badge vermelho "Tolerância ZERO" se maxCancellationPerMonth === 0, Motoristas vinculados userCount), border-top com a cor da categoria, e actions: Toggle ativar/desativar + Editar + Excluir.
+  - Empty state com ícone `Car` e dica para criar categorias Safira/Rubi/Esmeralda/Diamante/Imperial.
+- Adicionei o `<Dialog open={driverCategoryDialogOpen}>` (linhas 9631-9784) logo após o dialog do CareerPlan, com:
+  - Header com ícone `Car` e título dinâmico (Editar/Nova Categoria de Motorista).
+  - Descrição explicando que bônus só é pago se bater a meta.
+  - Grid 2 colunas: Código* (disabled em edição pois é unique, com helper "Código não pode ser alterado") e Nome*.
+  - Textarea para descrição.
+  - Bloco azul "Meta & Bônus & Cancelamento" com grid 2x2: Ordem, Meta mensal de corridas, Bônus mensal (centavos com preview R$ formatCurrency), Limite de cancelamentos/mês (com helper "0 = tolerância zero (idoso) · 2 = padrão").
+  - Grid 2 colunas: Ícone (emoji) e Cor (hex com color picker + input text).
+  - Checkbox Ativo (id="dc-active").
+  - Footer com Cancelar + Salvar/Criar (bg-blue-600, disabled se savingDriverCategory OU code/name vazios).
+- Em `src/components/newmobility/admin/admin-layout.tsx`: adicionei `Car` ao import do lucide-react e adicionei a entrada do sidebar `{ key: 'driver-categories', label: 'Categorias de Motorista', icon: Car, description: '...', group: 'system' }` logo após `career-plans`.
+- Em `src/components/newmobility/admin/admin-permissions-panel.tsx`: adicionei `{ key: 'driver-categories', label: 'Categorias de Motorista', description: '...' }` na lista `ADMIN_PAGES` para que sub-admins possam ser autorizados a acessar a aba.
+
+Stage Summary:
+- A aba "Categorias de Motorista" está acessível no painel admin (sidebar → grupo "Sistema") com CRUD completo.
+- Endpoints integrados: GET `/admin/driver-categories`, POST `/admin/driver-categories`, PUT `/admin/driver-categories/[id]`, DELETE `/admin/driver-categories/[id]?userId=`.
+- UI segue o mesmo padrão visual do `career-plans`: cards em grid 1/2/3, header card com botão primário, loading spinner, empty state, badge Ativo/Inativo, ações Editar/Excluir/Toggle.
+- Caixa explicativa azul claríssima no topo da aba diferencia categorias de veículo de plano de carreira e explica as regras de bônus e tolerância zero.
+- Badge vermelho "Tolerância ZERO" aparece automaticamente quando `maxCancellationPerMonth === 0`.
+- Validação client-side: botão Salvar fica disabled quando `code` ou `name` vazios; `code` fica disabled em edição (campo unique no DB).
+- `bun run lint` nos 4 arquivos editados (`admin-page.tsx`, `admin-layout.tsx`, `admin-permissions-panel.tsx`, `store.ts`) — sem erros ou warnings novos. Os 13 errors do `bun run lint` global são todos pré-existentes em scripts JS de infraestrutura (`keep-alive.js`, `persistent-server.js`, `process-manager.js`, `run-forever.js`, `supervisor.js`) que usam `require()` — não relacionados a esta task.
+- `tsc --noEmit` confirmou: nenhum erro TS novo relacionado a `driverCategory*` / `AdminDriverCategory` / `handle*DriverCategory` (os erros pré-existentes em AdminPlan/AdminVoucher são de código legado não alterado por esta task).

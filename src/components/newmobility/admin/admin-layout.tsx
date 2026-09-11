@@ -41,6 +41,7 @@ import {
   UserCog,
   Wrench,
   Type,
+  Car,
 } from 'lucide-react'
 import { useStore, type AdminPageKey } from '@/lib/store'
 import { useAdminPermissions } from '@/lib/admin-permissions'
@@ -90,6 +91,7 @@ const adminNavItems: AdminNavItem[] = [
   { key: 'permissions', label: 'Permissões', icon: Lock, description: 'Matriz de permissões por papel', group: 'system' },
   { key: 'achievements', label: 'Conquistas', icon: Trophy, description: 'Gerenciar conquistas e prêmios', group: 'system' },
   { key: 'career-plans', label: 'Plano de Carreira', icon: Crown, description: 'Níveis e bônus de carreira', group: 'system' },
+  { key: 'driver-categories', label: 'Categorias de Motorista', icon: Car, description: 'Categorias de veículo (Safira→Imperial) + meta mensal + bônus + cancelamento', group: 'system' },
   { key: 'streak-rewards', label: 'Recompensas de Sequência', icon: Flame, description: 'Prêmios por dias consecutivos', group: 'system' },
   { key: 'events', label: 'Eventos', icon: Calendar, description: 'Eventos, webinars e promoções', group: 'system' },
   { key: 'faq', label: 'Perguntas Frequentes', icon: HelpCircle, description: 'FAQ da plataforma', group: 'system' },
