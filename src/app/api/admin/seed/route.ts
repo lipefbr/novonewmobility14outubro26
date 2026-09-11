@@ -38,7 +38,7 @@ async function loadSeedModule() {
   // The seed.ts file uses `createHash` from node:crypto and other node-only
   // APIs that would break the Next.js build if statically imported.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require('@/../../prisma/seed') as typeof import('@/../../prisma/seed')
+  return require('@/../prisma/seed') as typeof import('@/../prisma/seed')
 }
 
 async function requireAdmin(userId: string | null) {
