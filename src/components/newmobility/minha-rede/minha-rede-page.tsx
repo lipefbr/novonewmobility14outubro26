@@ -1041,7 +1041,7 @@ function MinhaRedeTreePanel({ type }: { type: MatrixType }) {
       <Card className="border-red-200 dark:border-red-800">
         <CardContent className="p-8 text-center">
           <AlertCircle className="h-10 w-10 text-red-500 mx-auto mb-3" />
-          <p className="text-sm font-medium text-foreground mb-1">Erro ao carregar sua rede</p>
+          <p className="text-sm font-medium text-foreground mb-1">Erro ao carregar seus membros</p>
           <p className="text-xs text-muted-foreground">{error}</p>
         </CardContent>
       </Card>
@@ -1077,7 +1077,7 @@ function MinhaRedeTreePanel({ type }: { type: MatrixType }) {
               <Badge variant="outline" className="text-[9px]">{data.label}</Badge>
             </div>
             <p className="text-xl sm:text-2xl font-bold text-foreground mt-2">{data.totalUsers}</p>
-            <p className="text-[10px] text-muted-foreground">Total na sua rede</p>
+            <p className="text-[10px] text-muted-foreground">Total de membros</p>
           </CardContent>
         </Card>
 
@@ -1205,7 +1205,7 @@ function MinhaRedeTreePanel({ type }: { type: MatrixType }) {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar pessoa na rede por nome ou email..."
+                placeholder="Buscar membro por nome ou email..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 h-11 sm:h-9 text-sm"
@@ -1245,7 +1245,7 @@ function MinhaRedeTreePanel({ type }: { type: MatrixType }) {
                 <div className="h-14 w-14 sm:h-16 sm:w-16 rounded-full bg-emerald-100 dark:bg-emerald-950/40 flex items-center justify-center mb-3">
                   <Network className="h-7 w-7 sm:h-8 sm:w-8 text-emerald-600" />
                 </div>
-                <p className="text-sm font-semibold text-foreground">Sua rede está vazia</p>
+                <p className="text-sm font-semibold text-foreground">Você ainda não tem membros</p>
                 <p className="text-xs text-muted-foreground mt-1 max-w-sm">
                   Comece a indicar pessoas usando seu código <Badge variant="secondary" className="font-mono ml-1">{data.rootUser.referralCode}</Badge> para preencher sua matriz {data.label.toLowerCase()}.
                 </p>

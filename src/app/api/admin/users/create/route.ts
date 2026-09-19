@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { success, error, hashPassword, generateReferralCode, sanitizeUser } from '@/lib/api-utils'
+import { placeUserInAllMatrices } from '@/lib/matrix-placement'
 
 export async function POST(req: NextRequest) {
   try {
@@ -126,6 +127,17 @@ export async function POST(req: NextRequest) {
         isDelivery,
       },
     })
+
+    // Tarefa 1 (19/09) — Posiciona o usuário nas matrizes (residual + vendas
+    // sempre; entrada só se for plano pago). Antes o admin-create não chamava
+    // essa lógica, deixando o usuário sem posição na matriz. Agora usa a mesma
+    // lógica de spillover FIFO do registro público.
+    if (referredById) {
+      const isPayingMember = (plan === 'blue3' || plan === 'blue5')
+      await placeUserInAllMatrices(newUser.id, referredById, isPayingMember).catch((e) => {
+        console.warn('[admin-create] Failed to place user in matrices:', e)
+      })
+    }
 
     return success(sanitizeUser(newUser), 201)
   } catch (err) {

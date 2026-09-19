@@ -1018,6 +1018,12 @@ export function GratificationsPage() {
               </span>
               {selectedGratification ? ` — ${selectedGratification.name}` : ''}?
             </DialogDescription>
+            {/* Tarefa 3 — mostrar descrição no popup (estava faltando) */}
+            {selectedGratification?.description && (
+              <p className="text-xs text-muted-foreground mt-2 leading-snug">
+                {selectedGratification.description}
+              </p>
+            )}
           </DialogHeader>
 
           <div className="grid gap-3 py-4">

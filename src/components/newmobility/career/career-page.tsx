@@ -646,7 +646,6 @@ export function CareerPage() {
                       <p className="text-xs font-semibold text-muted-foreground mb-1">{lvl.name}</p>
                       <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300 break-words leading-tight">
                         {formatReward(lvl)}
-                        {(lvl.rewardWithdrawalCents > 0 || lvl.rewardShoppingCents > 0) && <span className="text-[10px] text-muted-foreground block mt-0.5">/mês</span>}
                       </p>
                     </div>
                   ))}
@@ -1284,10 +1283,36 @@ export function CareerPage() {
                               {level.achieved ? 'Graduação conquistada' : `A partir de ${formatNumber(level.pointsRequired)} pontos`}
                             </p>
                           </div>
-                          <div className="text-right shrink-0 w-full sm:w-auto mt-1 sm:mt-0">
-                            <p className="text-[9px] sm:text-[10px] text-muted-foreground uppercase tracking-wide">Recompensa</p>
-                            <p className="text-[11px] sm:text-xs sm:text-sm font-bold text-emerald-600 whitespace-nowrap break-all sm:break-normal">{formatReward(level)}</p>
-                            <p className="text-[9px] text-muted-foreground">{(level.rewardWithdrawalCents > 0 || level.rewardShoppingCents > 0) ? '/mês' : ''}</p>
+                          {/* Tarefa 4 — bloco Recompensa EMPILHADO VERTICALMENTE:
+                              Saque → Compras → Pontos abaixo do título "Recompensa",
+                              e descrição (gratification) logo abaixo do bloco.
+                              Removido o rótulo "/mês" indevido. */}
+                          <div className="text-left shrink-0 w-full mt-1 sm:mt-0">
+                            <p className="text-[9px] sm:text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Recompensa</p>
+                            {(level.rewardWithdrawalCents ?? 0) > 0 && (
+                              <p className="text-[11px] sm:text-xs text-foreground">
+                                <span className="text-muted-foreground">Saque:</span>{' '}
+                                <span className="font-semibold text-emerald-600">{formatBRLFromCents(level.rewardWithdrawalCents)}</span>
+                              </p>
+                            )}
+                            {(level.rewardShoppingCents ?? 0) > 0 && (
+                              <p className="text-[11px] sm:text-xs text-foreground">
+                                <span className="text-muted-foreground">Compras:</span>{' '}
+                                <span className="font-semibold text-emerald-600">{formatBRLFromCents(level.rewardShoppingCents)}</span>
+                              </p>
+                            )}
+                            {(level.rewardPoints ?? 0) > 0 && (
+                              <p className="text-[11px] sm:text-xs text-foreground">
+                                <span className="text-muted-foreground">Pontos:</span>{' '}
+                                <span className="font-semibold text-emerald-600">{Number(level.rewardPoints).toLocaleString('pt-BR')}</span>
+                              </p>
+                            )}
+                            {/* Tarefa 3 — Descrição (gratification = texto do bônus) abaixo das recompensas */}
+                            {level.gratification && (
+                              <p className="text-[10px] sm:text-[11px] text-amber-700 dark:text-amber-400 mt-1 leading-snug line-clamp-2">
+                                {level.gratification}
+                              </p>
+                            )}
                           </div>
                         </div>
 

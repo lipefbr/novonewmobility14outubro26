@@ -132,7 +132,13 @@ export function FinancialCards({ data }: FinancialCardsProps) {
   const balanceGratification = data?.balances?.gratification ?? 0
   const balancePaymentInvoice = data?.balances?.paymentInvoice ?? 0
 
+  // TOTAL GERAL: soma de TODOS os saldos R$ exibidos na tela (centavos).
+  // Não inclui contagens de membros dos 3 cashbacks (essas não são valores monetários).
+  const totalGeral = balanceGratification + balanceMobility + balancePharmacy
+                   + balanceFood + balanceShopping + balancePaymentInvoice
+
   const cards = [
+    // ====== SEÇÃO CONSOLIDADA: 3 CASHBACKS (membros) ======
     {
       title: t('dashboard.financial.cbEntrada'),
       value: cashbackEntradaUsers,
@@ -149,6 +155,15 @@ export function FinancialCards({ data }: FinancialCardsProps) {
       gradient: 'from-teal-500 to-teal-600',
       change: 3,
     },
+    {
+      title: t('dashboard.financial.cbVendas'),
+      value: cashbackVendasUsers,
+      subtitle: 'Membros',
+      icon: ShoppingBag,
+      gradient: 'from-amber-500 to-amber-600',
+      change: 4,
+    },
+    // ====== SALDOS R$ DAS CARTEIRAS ======
     {
       title: t('dashboard.financial.gratifications'),
       value: balanceGratification,
@@ -195,14 +210,6 @@ export function FinancialCards({ data }: FinancialCardsProps) {
       displayMode: 'currency',
     },
     {
-      title: t('dashboard.financial.revenue'),
-      value: networkSize,
-      subtitle: 'Na Rede',
-      icon: BarChart3,
-      gradient: 'from-emerald-700 to-emerald-900',
-      change: 9,
-    },
-    {
       // Client spec §18 — 7th wallet: Saldo Pagamento Fatura (balancePaymentInvoice).
       title: t('dashboard.financial.paymentInvoice'),
       value: balancePaymentInvoice,
@@ -210,6 +217,17 @@ export function FinancialCards({ data }: FinancialCardsProps) {
       icon: FileText,
       gradient: 'from-cyan-500 to-cyan-600',
       change: 4,
+      displayMode: 'currency',
+    },
+    // ====== TOTAL GERAL: soma de TODOS os saldos R$ da tela ======
+    // (não inclui contagens de membros dos 3 cashbacks)
+    {
+      title: 'TOTAL GERAL',
+      value: totalGeral,
+      subtitle: 'Soma de todos os saldos',
+      icon: TrendingUp,
+      gradient: 'from-emerald-600 to-emerald-800',
+      change: 0,
       displayMode: 'currency',
     },
   ]

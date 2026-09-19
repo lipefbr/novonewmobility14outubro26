@@ -666,6 +666,12 @@ const SEED_CONFIGS = [
   { key: 'app_logo_url', value: '', description: 'Platform logo (base64 data URL)' },
   { key: 'admin_permissions', value: JSON.stringify({ admin: ['*'] }), description: 'Per-role admin page allow-list' },
   { key: 'points_dailyLoginPoints', value: '1', description: 'Points credited on first login of the day' },
+  // Tarefa 2 (19/09) — Limites financeiros das 3 matrizes em R$ (centavos).
+  // Editáveis pelo admin via /api/admin/matrix-config. Default mantido:
+  // Entrada R$ 96.500,00 / Residual R$ 750.000,00 / Vendas 0 ("a definir").
+  { key: 'matrix.entrada.limit_cents', value: '9650000', description: 'Limite da Matriz de Entrada em centavos (R$ 96.500,00)' },
+  { key: 'matrix.residual.limit_cents', value: '75000000', description: 'Limite da Matriz Residual em centavos (R$ 750.000,00)' },
+  { key: 'matrix.vendas.limit_cents', value: '0', description: 'Limite da Matriz de Vendas em centavos (0 = a definir pelo cliente)' },
 ]
 
 const SEED_USER_TYPES = [

@@ -808,52 +808,102 @@ export function AdminPage() {
   const [matrixLoading, setMatrixLoading] = useState(false)
   const [matrixSearchLoading, setMatrixSearchLoading] = useState(false)
 
-  // Item 2 — Sales limit for the sales matrix (admin-configurable)
-  const [salesLimit, setSalesLimit] = useState<number>(1000)
-  const [salesLimitInput, setSalesLimitInput] = useState<string>('1000')
-  const [salesLimitLoading, setSalesLimitLoading] = useState(false)
-  const [salesLimitSaving, setSalesLimitSaving] = useState(false)
-  const [salesLimitHistory, setSalesLimitHistory] = useState<Array<{
+  // Tarefa 2 (19/09) — Limites financeiros das 3 matrizes em R$ (centavos).
+  // Antes: só "salesLimit" em quantidade de vendas. Agora: 3 limites em R$.
+  type MatrixLimitHistory = Array<{
     id: string
     adminName: string
     adminEmail: string
     previousValue: number | null
     newValue: number
     timestamp: string
-  }>>([])
+  }>
+  const [entradaLimit, setEntradaLimit] = useState<number>(9650000) // R$ 96.500,00
+  const [entradaLimitInput, setEntradaLimitInput] = useState<string>('9650000')
+  const [residualLimit, setResidualLimit] = useState<number>(75000000) // R$ 750.000,00
+  const [residualLimitInput, setResidualLimitInput] = useState<string>('75000000')
+  const [vendasLimit, setVendasLimit] = useState<number>(0) // "a definir"
+  const [vendasLimitInput, setVendasLimitInput] = useState<string>('0')
+  const [matrixLimitsLoading, setMatrixLimitsLoading] = useState(false)
+  const [matrixLimitSaving, setMatrixLimitSaving] = useState<'entrada' | 'residual' | 'vendas' | null>(null)
+  const [entradaHistory, setEntradaHistory] = useState<MatrixLimitHistory>([])
+  const [residualHistory, setResidualHistory] = useState<MatrixLimitHistory>([])
+  const [vendasHistory, setVendasHistory] = useState<MatrixLimitHistory>([])
 
-  // Item 2 — Load sales limit config for the matrices tab.
-  // Declared here (before the useEffect at line ~1280) to avoid the
-  // "Cannot access 'loadSalesLimit' before initialization" TDZ error.
-  // useCallback is a const — it must be initialized before any code
-  // that references it runs.
-  const loadSalesLimit = useCallback(async () => {
+  // Tarefa 2 — Carrega os 3 limites (entrada, residual, vendas) em centavos.
+  const loadMatrixLimits = useCallback(async () => {
     if (!user?.id) return
-    setSalesLimitLoading(true)
+    setMatrixLimitsLoading(true)
     try {
       const data = await apiFetch<{
-        salesLimit: number
-        description?: string
-        history?: Array<{
-          id: string
-          adminName: string
-          adminEmail: string
-          previousValue: number | null
-          newValue: number
-          timestamp: string
-        }>
+        entradaLimitCents: number
+        residualLimitCents: number
+        vendasLimitCents: number
+        history?: {
+          entrada: MatrixLimitHistory
+          residual: MatrixLimitHistory
+          vendas: MatrixLimitHistory
+        }
       }>(`/admin/matrix-config?userId=${user.id}`)
       if (data) {
-        setSalesLimit(data.salesLimit)
-        setSalesLimitInput(String(data.salesLimit))
-        if (data.history) setSalesLimitHistory(data.history)
+        setEntradaLimit(data.entradaLimitCents)
+        setEntradaLimitInput(String(data.entradaLimitCents))
+        setResidualLimit(data.residualLimitCents)
+        setResidualLimitInput(String(data.residualLimitCents))
+        setVendasLimit(data.vendasLimitCents)
+        setVendasLimitInput(String(data.vendasLimitCents))
+        if (data.history) {
+          setEntradaHistory(data.history.entrada || [])
+          setResidualHistory(data.history.residual || [])
+          setVendasHistory(data.history.vendas || [])
+        }
       }
     } catch {
       // Silent fail — keep defaults
     } finally {
-      setSalesLimitLoading(false)
+      setMatrixLimitsLoading(false)
     }
   }, [user?.id])
+
+  // Salva um limite específico (entrada | residual | vendas)
+  const saveMatrixLimit = async (matrix: 'entrada' | 'residual' | 'vendas') => {
+    if (!user?.id) return
+    setMatrixLimitSaving(matrix)
+    try {
+      let valueStr = ''
+      if (matrix === 'entrada') valueStr = entradaLimitInput
+      if (matrix === 'residual') valueStr = residualLimitInput
+      if (matrix === 'vendas') valueStr = vendasLimitInput
+      // Converte input de R$ (com vírgula/ponto) para centavos
+      const brl = parseFloat(valueStr.replace(',', '.'))
+      if (!Number.isFinite(brl) || brl < 0) {
+        toast.error('Valor deve ser um número positivo em R$')
+        return
+      }
+      const cents = Math.round(brl * 100)
+      await apiFetch(`/admin/matrix-config`, {
+        method: 'PUT',
+        body: JSON.stringify({ userId: user.id, matrix, limitCents: cents }),
+      })
+      if (matrix === 'entrada') setEntradaLimit(cents)
+      if (matrix === 'residual') setResidualLimit(cents)
+      if (matrix === 'vendas') setVendasLimit(cents)
+      toast.success(`Limite da matriz ${matrix} atualizado`)
+      // Recarrega histórico
+      await loadMatrixLimits()
+    } catch (err) {
+      console.error(`Failed to save ${matrix} limit:`, err)
+      toast.error(`Erro ao salvar limite da matriz ${matrix}`)
+    } finally {
+      setMatrixLimitSaving(null)
+    }
+  }
+
+  // Item 2 — Load sales limit config for the matrices tab.
+  // Declared here (before the useEffect at line ~1280) to avoid the
+  // "Cannot access 'loadSalesLimit' before initialization" TDZ error.
+  // loadSalesLimit removido — substituído por loadMatrixLimits() que carrega
+  // os 3 limites (entrada, residual, vendas) em centavos de R$.
 
   // Cashback config tab
   const [cashbackConfig, setCashbackConfig] = useState<CashbackConfigData | null>(null)
@@ -1691,14 +1741,14 @@ export function AdminPage() {
     if (activeTab === 'content-texts') loadContentTexts()
     if (activeTab === 'system-settings') loadSystemSettings()
     if (activeTab === 'matrices') {
-      loadSalesLimit()
+      loadMatrixLimits()
       // TASK MATRIX-EDITOR: load MatrixType + MatrixPosition data for the
       // "Modo Avançado" inline editor. loadMatrixTypes also refreshes the
       // existing matrixTypes state used by the Plans tab.
       loadMatrixTypes()
       loadMatrixPositions()
     }
-  }, [activeTab, searchQuery, planFilter, statusFilter, noSponsorFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter, ticketPriorityFilter, voucherStatusFilter, voucherPage, betStatusFilter, betPage, matrixSelectedUser, matrixType, loadContentTexts, loadSystemSettings, loadSalesLimit, loadMatrixPositions])
+  }, [activeTab, searchQuery, planFilter, statusFilter, noSponsorFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter, ticketPriorityFilter, voucherStatusFilter, voucherPage, betStatusFilter, betPage, matrixSelectedUser, matrixType, loadContentTexts, loadSystemSettings, loadMatrixLimits, loadMatrixPositions])
 
   const loadStats = async () => {
     try {
@@ -1777,32 +1827,8 @@ export function AdminPage() {
     } catch { /* ignore */ }
   }
 
-  // Item 2 — Save the sales limit
-  const saveSalesLimit = async () => {
-    if (!user?.id) return
-    const parsed = parseInt(salesLimitInput, 10)
-    if (!Number.isFinite(parsed) || parsed < 1 || !Number.isInteger(parsed)) {
-      toast.error('O limite de vendas deve ser um número inteiro positivo')
-      return
-    }
-    setSalesLimitSaving(true)
-    try {
-      const data = await apiFetch<{ message: string; salesLimit: number }>('/admin/matrix-config', {
-        method: 'PUT',
-        body: JSON.stringify({ userId: user.id, salesLimit: parsed }),
-      })
-      if (data) {
-        setSalesLimit(data.salesLimit)
-        toast.success(data.message || 'Limite de vendas atualizado com sucesso')
-        await loadSalesLimit() // refresh history
-      }
-    } catch (err) {
-      toast.error('Erro ao salvar limite de vendas')
-      console.error('saveSalesLimit error:', err)
-    } finally {
-      setSalesLimitSaving(false)
-    }
-  }
+  // Item 2 — saveSalesLimit removido. Substituído por saveMatrixLimit(matrix)
+  // que aceita 'entrada' | 'residual' | 'vendas' e salva em R$ (centavos).
 
   // BACK-7 + Task 2-c / Item 7 — load the driver-goals benefit target config
   // (overall module visibility) AND the per-benefit targets from the API.
@@ -6961,79 +6987,176 @@ export function AdminPage() {
 
         {/* ===== MATRICES TAB ===== */}
         <TabsContent value="matrices" className="mt-4 space-y-4">
-          {/* Item 2 — Sales Limit Config Card */}
-          <Card className="border-amber-200 dark:border-amber-800 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/20">
-            <CardContent className="p-4">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
-                <div className="flex items-start gap-3">
-                  <div className="p-2.5 rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400 shrink-0">
-                    <Target className="h-4 w-4" />
+          {/* Tarefa 2 (19/09) — Limites financeiros das 3 matrizes em R$.
+              Antes: só "Limite de Vendas" em quantidade (1000 vendas).
+              Agora: 3 cards editáveis em R$ (centavos). */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* ENTRADA — R$ 96.500,00 (default mantido) */}
+            <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400">
+                    <Target className="h-3.5 w-3.5" />
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="text-sm font-semibold text-foreground">Limite de Vendas — Matriz de Vendas</h4>
-                      <Badge className="bg-amber-100 text-amber-700 text-[10px]">CONFIGURÁVEL</Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Define o teto de vendas usado nos cálculos de comissões/cashback da Matriz de Vendas.
-                      Quando o usuário atinge esse limite, o sistema pode abrir nova posição (spillover) conforme a regra de negócio.
-                    </p>
-                  </div>
+                  <h4 className="text-sm font-semibold text-foreground">Matriz Entrada</h4>
+                  <Badge className="bg-emerald-100 text-emerald-700 text-[9px] ml-auto">R$</Badge>
                 </div>
-              </div>
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2">
-                <div className="space-y-1.5 flex-1">
-                  <Label className="text-xs font-medium text-muted-foreground">Limite de Vendas (número de vendas)</Label>
-                  <div className="flex items-center gap-2">
+                <p className="text-[11px] text-muted-foreground">Teto financeiro da matriz de entrada (compras no app).</p>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-[10px] text-muted-foreground">Limite (R$)</Label>
                     <Input
-                      type="number"
-                      min={1}
-                      step={1}
-                      placeholder="1000"
-                      value={salesLimitInput}
-                      onChange={(e) => setSalesLimitInput(e.target.value)}
-                      disabled={salesLimitLoading || salesLimitSaving}
-                      className="w-full sm:w-48"
+                      type="number" min={0} step={0.01}
+                      placeholder="96500.00"
+                      value={entradaLimitInput}
+                      onChange={(e) => setEntradaLimitInput(e.target.value)}
+                      disabled={matrixLimitsLoading || matrixLimitSaving === 'entrada'}
+                      className="h-9 text-sm"
                     />
-                    <Button
-                      className="bg-amber-600 hover:bg-amber-700 text-white gap-2 shrink-0"
-                      onClick={saveSalesLimit}
-                      disabled={salesLimitLoading || salesLimitSaving}
-                    >
-                      {salesLimitSaving ? (
-                        <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      ) : (
-                        <Save className="h-4 w-4" />
-                      )}
-                      Salvar
-                    </Button>
                   </div>
-                  {!salesLimitLoading && (
-                    <p className="text-[10px] text-muted-foreground">
-                      Valor atual: <span className="font-bold text-foreground">{salesLimit.toLocaleString('pt-BR')}</span> vendas
-                    </p>
-                  )}
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shrink-0"
+                    onClick={() => saveMatrixLimit('entrada')}
+                    disabled={matrixLimitsLoading || matrixLimitSaving === 'entrada'}
+                  >
+                    {matrixLimitSaving === 'entrada' ? (
+                      <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <Save className="h-3.5 w-3.5" />
+                    )}
+                    Salvar
+                  </Button>
                 </div>
-              </div>
-              {salesLimitHistory.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-amber-200/50 dark:border-amber-800/50">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Histórico de alterações</p>
-                  <div className="space-y-1.5 max-h-32 overflow-y-auto custom-scrollbar">
-                    {salesLimitHistory.map((h, i) => (
-                      <div key={h.id} className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                {!matrixLimitsLoading && (
+                  <p className="text-[10px] text-muted-foreground">
+                    Atual: <span className="font-bold text-emerald-700">{(entradaLimit / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* RESIDUAL — R$ 750.000,00 (default mantido) */}
+            <Card className="border-teal-200 dark:border-teal-800 bg-gradient-to-br from-teal-50 to-cyan-50 dark:from-teal-950/30 dark:to-cyan-950/20">
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-teal-100 text-teal-600 dark:bg-teal-900/40 dark:text-teal-400">
+                    <Target className="h-3.5 w-3.5" />
+                  </div>
+                  <h4 className="text-sm font-semibold text-foreground">Matriz Residual</h4>
+                  <Badge className="bg-teal-100 text-teal-700 text-[9px] ml-auto">R$</Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground">Teto da matriz residual (pagamento mensal do plano).</p>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-[10px] text-muted-foreground">Limite (R$)</Label>
+                    <Input
+                      type="number" min={0} step={0.01}
+                      placeholder="750000.00"
+                      value={residualLimitInput}
+                      onChange={(e) => setResidualLimitInput(e.target.value)}
+                      disabled={matrixLimitsLoading || matrixLimitSaving === 'residual'}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    className="bg-teal-600 hover:bg-teal-700 text-white gap-1.5 shrink-0"
+                    onClick={() => saveMatrixLimit('residual')}
+                    disabled={matrixLimitsLoading || matrixLimitSaving === 'residual'}
+                  >
+                    {matrixLimitSaving === 'residual' ? (
+                      <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <Save className="h-3.5 w-3.5" />
+                    )}
+                    Salvar
+                  </Button>
+                </div>
+                {!matrixLimitsLoading && (
+                  <p className="text-[10px] text-muted-foreground">
+                    Atual: <span className="font-bold text-teal-700">{(residualLimit / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* VENDAS — "a definir" (default 0, editável quando cliente enviar) */}
+            <Card className="border-amber-200 dark:border-amber-800 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/20">
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400">
+                    <Target className="h-3.5 w-3.5" />
+                  </div>
+                  <h4 className="text-sm font-semibold text-foreground">Matriz Vendas</h4>
+                  <Badge className="bg-amber-100 text-amber-700 text-[9px] ml-auto">A definir</Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Teto da matriz de vendas. Cliente ainda vai definir o valor — campo travado em 0 enquanto não enviado.
+                </p>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1 space-y-1">
+                    <Label className="text-[10px] text-muted-foreground">Limite (R$)</Label>
+                    <Input
+                      type="number" min={0} step={0.01}
+                      placeholder="0.00"
+                      value={vendasLimitInput}
+                      onChange={(e) => setVendasLimitInput(e.target.value)}
+                      disabled={matrixLimitsLoading || matrixLimitSaving === 'vendas'}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5 shrink-0"
+                    onClick={() => saveMatrixLimit('vendas')}
+                    disabled={matrixLimitsLoading || matrixLimitSaving === 'vendas'}
+                  >
+                    {matrixLimitSaving === 'vendas' ? (
+                      <span className="h-3.5 w-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <Save className="h-3.5 w-3.5" />
+                    )}
+                    Salvar
+                  </Button>
+                </div>
+                {!matrixLimitsLoading && (
+                  <p className="text-[10px] text-muted-foreground">
+                    Atual: <span className="font-bold text-amber-700">{vendasLimit === 0 ? 'A definir' : (vendasLimit / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Histórico consolidado de alterações dos 3 limites */}
+          {(entradaHistory.length > 0 || residualHistory.length > 0 || vendasHistory.length > 0) && (
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Histórico de alterações</p>
+                <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+                  {[...entradaHistory.map(h => ({ ...h, matrix: 'Entrada' })),
+                    ...residualHistory.map(h => ({ ...h, matrix: 'Residual' })),
+                    ...vendasHistory.map(h => ({ ...h, matrix: 'Vendas' }))]
+                    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                    .slice(0, 20)
+                    .map((h, i) => (
+                      <div key={`${h.id}-${i}`} className="flex items-center gap-2 text-[11px] text-muted-foreground flex-wrap">
+                        <Badge variant="outline" className="text-[9px]">{h.matrix}</Badge>
                         <span className="font-medium text-foreground">{h.adminName}</span>
                         <span>alterou de</span>
-                        <span className="font-mono text-red-500">{h.previousValue ?? '—'}</span>
+                        <span className="font-mono text-red-500">{h.previousValue != null ? (h.previousValue / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}</span>
                         <span>para</span>
-                        <span className="font-mono text-emerald-600 font-bold">{h.newValue}</span>
+                        <span className="font-mono text-emerald-600 font-bold">{(h.newValue / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
                         <span className="ml-auto text-[10px]">{new Date(h.timestamp).toLocaleString('pt-BR')}</span>
                       </div>
                     ))}
-                  </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Card antigo "Limite de Vendas" removido — substituído pelos 3 cards acima */}
 
           <Card className="border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
             <CardContent className="p-4">

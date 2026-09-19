@@ -3,19 +3,41 @@ import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 // ============================================================================
-// /api/admin/matrix-config — Manage matrix configuration (sales limit, etc.)
+// /api/admin/matrix-config — Manage limites financeiros das 3 matrizes MMN
 // ----------------------------------------------------------------------------
-// Item 2: Admin can define the "Limite de Vendas" (sales limit) for the
-// sales matrix. Stored on SystemConfig under key 'matrix.vendas.salesLimit'.
-// Category: 'matrizes'.
+// Tarefa 2 (19/09): os 3 limites agora são editáveis em R$ (centavos):
+//   - matrix.entrada.limit_cents  → R$ 96.500,00 (default, mantido)
+//   - matrix.residual.limit_cents → R$ 750.000,00 (default, mantido)
+//   - matrix.vendas.limit_cents   → 0 ("a definir" — cliente vai definir)
 //
-// Also supports audit logging: every change to the sales limit creates an
-// AuditLog entry recording who changed it, when, the previous value, and
-// the new value.
+// Antes: existia só "matrix.vendas.salesLimit" em QUANTIDADE de vendas (1000).
+// Essa chave legada foi removida do seed e substituída por limit_cents em R$.
+//
+// Audit logging: cada alteração cria AuditLog com action específica por matriz.
 // ============================================================================
 
-const SALES_LIMIT_KEY = 'matrix.vendas.salesLimit'
-const SALES_LIMIT_CATEGORY = 'matrizes'
+type MatrixKind = 'entrada' | 'residual' | 'vendas'
+
+const LIMIT_CONFIG: Record<MatrixKind, { key: string; action: string; defaultCents: number; label: string }> = {
+  entrada: {
+    key: 'matrix.entrada.limit_cents',
+    action: 'matrix.entrada.limit.update',
+    defaultCents: 9650000, // R$ 96.500,00
+    label: 'Limite da Matriz de Entrada',
+  },
+  residual: {
+    key: 'matrix.residual.limit_cents',
+    action: 'matrix.residual.limit.update',
+    defaultCents: 75000000, // R$ 750.000,00
+    label: 'Limite da Matriz Residual',
+  },
+  vendas: {
+    key: 'matrix.vendas.limit_cents',
+    action: 'matrix.vendas.limit.update',
+    defaultCents: 0, // "a definir" — cliente ainda vai enviar o valor
+    label: 'Limite da Matriz de Vendas',
+  },
+}
 
 // GET /api/admin/matrix-config?userId=<adminId>
 export async function GET(req: NextRequest) {
@@ -26,22 +48,42 @@ export async function GET(req: NextRequest) {
     const admin = await prisma.user.findUnique({ where: { id: userId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
-    // Fetch the sales limit from SystemConfig
-    const config = await prisma.systemConfig.findUnique({
-      where: { key: SALES_LIMIT_KEY },
-    })
+    // Busca os 3 limites (entrada, residual, vendas) em paralelo
+    const [entradaCfg, residualCfg, vendasCfg] = await Promise.all([
+      prisma.systemConfig.findUnique({ where: { key: LIMIT_CONFIG.entrada.key } }),
+      prisma.systemConfig.findUnique({ where: { key: LIMIT_CONFIG.residual.key } }),
+      prisma.systemConfig.findUnique({ where: { key: LIMIT_CONFIG.vendas.key } }),
+    ])
 
-    const salesLimit = config ? parseInt(config.value, 10) : 1000 // default: 1000 sales
+    const parseCents = (cfg: { value: string } | null, def: number) => {
+      if (!cfg) return def
+      const n = parseInt(cfg.value, 10)
+      return Number.isFinite(n) && n >= 0 ? n : def
+    }
 
-    // Fetch audit history for sales limit changes (last 20)
-    const auditLogs = await prisma.auditLog.findMany({
-      where: { action: 'matrix.vendas.salesLimit.update' },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-      include: { user: { select: { name: true, email: true } } },
-    })
+    // Busca histórico de auditoria dos 3 (últimos 20 de cada)
+    const [histEntrada, histResidual, histVendas] = await Promise.all([
+      prisma.auditLog.findMany({
+        where: { action: LIMIT_CONFIG.entrada.action },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        include: { user: { select: { name: true, email: true } } },
+      }),
+      prisma.auditLog.findMany({
+        where: { action: LIMIT_CONFIG.residual.action },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        include: { user: { select: { name: true, email: true } } },
+      }),
+      prisma.auditLog.findMany({
+        where: { action: LIMIT_CONFIG.vendas.action },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        include: { user: { select: { name: true, email: true } } },
+      }),
+    ])
 
-    const history = auditLogs.map(log => {
+    const mapHistory = (logs: typeof histEntrada) => logs.map(log => {
       let details: { previousValue?: number; newValue?: number } = {}
       try { details = JSON.parse(log.details || '{}') } catch { /* ignore */ }
       return {
@@ -55,9 +97,22 @@ export async function GET(req: NextRequest) {
     })
 
     return success({
-      salesLimit,
-      description: config?.description || 'Limite de vendas da Matriz de Vendas (usado como teto para cálculo de comissões/cashback).',
-      history,
+      // Limites em centavos de R$ (0 = "a definir")
+      entradaLimitCents: parseCents(entradaCfg, LIMIT_CONFIG.entrada.defaultCents),
+      residualLimitCents: parseCents(residualCfg, LIMIT_CONFIG.residual.defaultCents),
+      vendasLimitCents: parseCents(vendasCfg, LIMIT_CONFIG.vendas.defaultCents),
+      // Defaults (para a UI mostrar "padrão: R$ X" como placeholder)
+      defaults: {
+        entrada: LIMIT_CONFIG.entrada.defaultCents,
+        residual: LIMIT_CONFIG.residual.defaultCents,
+        vendas: LIMIT_CONFIG.vendas.defaultCents,
+      },
+      // Histórico de auditoria por matriz
+      history: {
+        entrada: mapHistory(histEntrada),
+        residual: mapHistory(histResidual),
+        vendas: mapHistory(histVendas),
+      },
     })
   } catch (err) {
     console.error('matrix-config GET error:', err)
@@ -66,62 +121,69 @@ export async function GET(req: NextRequest) {
 }
 
 // PUT /api/admin/matrix-config
-// Body: { userId, salesLimit: number }
+// Body: { userId, matrix: 'entrada' | 'residual' | 'vendas', limitCents: number }
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json()
-    const { userId, salesLimit } = body
+    const { userId, matrix, limitCents } = body
 
     if (!userId) return error('userId is required', 400)
 
     const admin = await prisma.user.findUnique({ where: { id: userId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
-    // Validate: must be a positive integer
-    const parsed = Number(salesLimit)
-    if (!Number.isFinite(parsed) || parsed < 1 || !Number.isInteger(parsed)) {
-      return error('Limite de vendas deve ser um número inteiro positivo', 400)
+    // Valida matriz
+    if (!matrix || !['entrada', 'residual', 'vendas'].includes(matrix)) {
+      return error('matrix deve ser "entrada", "residual" ou "vendas"', 400)
     }
 
-    // Fetch the current value (for audit log)
-    const existing = await prisma.systemConfig.findUnique({
-      where: { key: SALES_LIMIT_KEY },
-    })
+    const cfg = LIMIT_CONFIG[matrix as MatrixKind]
+
+    // Valida valor: deve ser inteiro >= 0 (centavos). Permite 0 = "a definir".
+    const parsed = Number(limitCents)
+    if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
+      return error('limitCents deve ser um número inteiro >= 0 (em centavos de R$)', 400)
+    }
+
+    // Busca valor atual (para audit log)
+    const existing = await prisma.systemConfig.findUnique({ where: { key: cfg.key } })
     const previousValue = existing ? parseInt(existing.value, 10) : null
 
-    // Upsert the sales limit
+    // Upsert
     const updated = await prisma.systemConfig.upsert({
-      where: { key: SALES_LIMIT_KEY },
+      where: { key: cfg.key },
       update: {
         value: String(parsed),
-        description: 'Limite de vendas da Matriz de Vendas (usado como teto para cálculo de comissões/cashback).',
-        category: SALES_LIMIT_CATEGORY,
+        description: `${cfg.label} em centavos de R$ (teto para cálculo de cashback).`,
+        category: 'matrizes',
       },
       create: {
-        key: SALES_LIMIT_KEY,
+        key: cfg.key,
         value: String(parsed),
-        description: 'Limite de vendas da Matriz de Vendas (usado como teto para cálculo de comissões/cashback).',
-        category: SALES_LIMIT_CATEGORY,
+        description: `${cfg.label} em centavos de R$ (teto para cálculo de cashback).`,
+        category: 'matrizes',
       },
     })
 
-    // Create audit log entry
+    // Audit log
     await prisma.auditLog.create({
       data: {
         userId,
-        action: 'matrix.vendas.salesLimit.update',
+        action: cfg.action,
         entityType: 'SystemConfig',
         entityId: updated.id,
         details: JSON.stringify({
           previousValue,
           newValue: parsed,
+          matrix,
         }),
       },
     })
 
     return success({
-      message: 'Limite de vendas atualizado com sucesso',
-      salesLimit: parsed,
+      message: `${cfg.label} atualizado com sucesso`,
+      matrix,
+      limitCents: parsed,
       previousValue,
     })
   } catch (err) {

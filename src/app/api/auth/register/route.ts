@@ -15,7 +15,14 @@ function generateId(): string {
 // Matrix structural width — first 4 paying referrals go to level 1 (direct table).
 // When level 1 is full (4/4), overflow is placed via BFS in the downline.
 // Per client spec (Índice.docx §1.1): "Matriz 4x5 (4 diretos e 5 de profundidade)"
-// Spillover direction is RIGHT-TO-LEFT per client: "sendo da direita para esquerda"
+//
+// Tarefa 1 (19/09) — Spillover FIFO estrito:
+// - Cada posição trava em NO MÁXIMO 4 indicados diretos (cap = MATRIX_WIDTH).
+// - Excedentes fazem spillover BFS respeitando ordem de entrada (FIFO):
+//   o filho registrado PRIMEIRO é visitado primeiro na busca.
+// - "Indicação direta" (User.referredById) é diferente de "posição na matriz"
+//   (MatrixPosition.parentId) — uma pessoa pode ter 10 indicados diretos
+//   mas só 4 ficam no nível 1 dela na matriz; os outros 6 caem em spillover.
 const MATRIX_WIDTH = 4
 
 // Default depth per matrix type (matches MatrixType.depth in the DB).
@@ -26,15 +33,19 @@ const MATRIX_DEPTH: Record<string, number> = {
 }
 
 /**
- * Find the next available parent position in a matrix tree using BFS.
- * Walks the downline of `rootPositionId` and returns the first position
- * whose direct child count is < width. Returns null if the entire
- * downline (up to MATRIX_DEPTH) is full.
+ * Find the next available parent position in a matrix tree using BFS FIFO.
  *
- * Spillover direction is RIGHT-TO-LEFT per client spec
- * ("derramado para baixo procurando aonde não tem os 4 sendo da direita para esquerda"):
- * children are scanned from highest position (rightmost) to lowest (leftmost),
- * so the rightmost child with room is filled first.
+ * Algoritmo (Tarefa 1 — 19/09):
+ * 1. Inicia BFS pela posição raiz (referrer).
+ * 2. Para cada posição visitada, conta os filhos diretos (parentId = current).
+ * 3. Se childCount < MATRIX_WIDTH (4): há espaço — coloca o novo usuário aqui,
+ *    na posição = childCount (slot 0, 1, 2, 3 em ordem de chegada).
+ * 4. Se childCount >= 4: posição cheia — enfileira os filhos para continuar BFS.
+ * 5. Filhos são ordenados por createdAt ASC (FIFO — primeiro registrado é
+ *    visitado primeiro). Isso garante que o spillover respeita a ordem de entrada.
+ * 6. Se a sub-árvore inteira (até maxDepth) estiver cheia, retorna null.
+ *
+ * Retorna null se não houver espaço na sub-árvore.
  */
 async function findSpilloverPosition(
   rootPositionId: string,
@@ -63,12 +74,11 @@ async function findSpilloverPosition(
 
     if (childCount < width) {
       // This position has room — place the new user here.
-      // Position = the rightmost empty slot (width - 1 - childCount) for right-to-left fill.
-      // Per client spec: "sendo da direita para esquerda" — newest referral goes to rightmost empty slot.
+      // Tarefa 1: posição = childCount (slot 0, 1, 2, 3 em ordem FIFO).
       return {
         parentId: current.id,
         level: current.level + 1,
-        position: width - 1 - childCount,
+        position: childCount,
       }
     }
 
@@ -79,8 +89,12 @@ async function findSpilloverPosition(
       [current.id, matrixType]
     ) as any[]
 
-    // Sort children DESCENDING by position for right-to-left traversal.
-    children.sort((a, b) => (b.position ?? 0) - (a.position ?? 0))
+    // Tarefa 1 — ordenar por createdAt ASC (FIFO: primeiro registrado é visitado primeiro).
+    children.sort((a, b) => {
+      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0
+      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0
+      return ta - tb
+    })
     for (const child of children) {
       queue.push({ id: child.id, level: current.level + 1 })
     }
@@ -309,7 +323,7 @@ export async function POST(request: Request) {
             placement = {
               parentId: referrerPosition.id,
               level: referrerPosition.level + 1,
-              position: MATRIX_WIDTH - 1 - existingPositions,
+              position: existingPositions,
             }
           } else {
             // Referrer's level-1 row is full — spillover via BFS.
@@ -326,7 +340,7 @@ export async function POST(request: Request) {
               placement = {
                 parentId: referrerPosition.id,
                 level: referrerPosition.level + 1,
-                position: MATRIX_WIDTH - 1 - existingPositions,
+                position: existingPositions,
               }
               console.warn('[Register] Entrada matrix full — placing under referrer as fallback')
             }
@@ -405,7 +419,7 @@ export async function POST(request: Request) {
             residualPlacement = {
               parentId: referrerResidual.id,
               level: referrerResidual.level + 1,
-              position: MATRIX_WIDTH - 1 - existingResidualPositions,
+              position: existingResidualPositions,
             }
           } else {
             const spillover = await findSpilloverPosition(
@@ -420,7 +434,7 @@ export async function POST(request: Request) {
               residualPlacement = {
                 parentId: referrerResidual.id,
                 level: referrerResidual.level + 1,
-                position: MATRIX_WIDTH - 1 - existingResidualPositions,
+                position: existingResidualPositions,
               }
               console.warn('[Register] Residual matrix full — placing under referrer as fallback')
             }
@@ -494,7 +508,7 @@ export async function POST(request: Request) {
             vendasPlacement = {
               parentId: referrerVendas.id,
               level: referrerVendas.level + 1,
-              position: MATRIX_WIDTH - 1 - existingVendasPositions,
+              position: existingVendasPositions,
             }
           } else {
             const spillover = await findSpilloverPosition(
@@ -509,7 +523,7 @@ export async function POST(request: Request) {
               vendasPlacement = {
                 parentId: referrerVendas.id,
                 level: referrerVendas.level + 1,
-                position: MATRIX_WIDTH - 1 - existingVendasPositions,
+                position: existingVendasPositions,
               }
               console.warn('[Register] Vendas matrix full — placing under referrer as fallback')
             }
