@@ -159,9 +159,9 @@ function SummaryCard({
   return (
     <Card className="shadow-sm bg-card hover:shadow-md transition-all duration-200 card-hover-lift group">
       <CardContent className="p-4 flex items-center gap-3">
-        <div className="relative flex items-center justify-center">
+        <div className="relative flex items-center justify-center shrink-0">
           {progressPct !== undefined ? (
-            <svg width="40" height="40" className="-rotate-90">
+            <svg width="40" height="40" className="-rotate-90 shrink-0">
               <circle cx="20" cy="20" r={radius} fill="none" stroke="currentColor" strokeWidth="3" className="text-muted/30" />
               <motion.circle
                 cx="20" cy="20" r={radius} fill="none" strokeWidth="3" strokeLinecap="round"
@@ -174,15 +174,22 @@ function SummaryCard({
               />
             </svg>
           ) : null}
-          <div className={`p-2 rounded-xl ${color} group-hover:scale-105 transition-transform absolute`}>
-            <Icon className="h-4 w-4" />
-          </div>
+          {progressPct === undefined && (
+            <div className={`p-2 rounded-xl ${color} group-hover:scale-105 transition-transform`}>
+              <Icon className="h-4 w-4" />
+            </div>
+          )}
+          {progressPct !== undefined && (
+            <div className={`p-1.5 rounded-lg ${color} group-hover:scale-105 transition-transform absolute inset-0 flex items-center justify-center`}>
+              <Icon className="h-4 w-4" />
+            </div>
+          )}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="text-xs text-muted-foreground font-medium">{label}</p>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <p className="text-xs text-muted-foreground font-medium truncate">{label}</p>
             {levelBadge && (
-              <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold border ${levelBadge}`}>
+              <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold border shrink-0 ${levelBadge}`}>
                 {level === 'high' ? 'ALTO' : level === 'medium' ? 'MÉDIO' : 'BAIXO'}
               </span>
             )}
@@ -194,7 +201,7 @@ function SummaryCard({
           )}
         </div>
         {trend !== undefined && (
-          <div className={`flex items-center gap-0.5 text-xs font-semibold px-2 py-1 rounded-full ${trend >= 0 ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30' : 'text-red-500 bg-red-50 dark:bg-red-950/30'}`}>
+          <div className={`flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-1 rounded-full shrink-0 ${trend >= 0 ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30' : 'text-red-500 bg-red-50 dark:bg-red-950/30'}`}>
             {trend >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
             {trend >= 0 ? '+' : ''}{trend}%
           </div>
@@ -573,17 +580,17 @@ export function CashbackPage() {
       {/* Tabs with animated slide indicator */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid grid-cols-3 w-full sm:w-auto sm:inline-flex h-auto sm:h-9 gap-1 p-1">
-          <TabsTrigger value="entrada" className="flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0 py-2 sm:py-1 text-xs sm:text-sm data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-emerald-500/25 glow-tab-indicator">
-            <DollarSign className="h-3.5 w-3.5 shrink-0" />
-            <span>{t('cashback.entrada')}</span>
+          <TabsTrigger value="entrada" className="flex items-center justify-center gap-1 min-h-[44px] sm:min-h-0 py-2 sm:py-1 px-1 sm:px-2 min-w-0 text-[10px] sm:text-xs data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-emerald-500/25 glow-tab-indicator">
+            <DollarSign className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
+            <span className="truncate">Entrada</span>
           </TabsTrigger>
-          <TabsTrigger value="residual" className="flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0 py-2 sm:py-1 text-xs sm:text-sm data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-emerald-500/25 glow-tab-indicator">
-            <TrendingUp className="h-3.5 w-3.5 shrink-0" />
-            <span>{t('cashback.residual')}</span>
+          <TabsTrigger value="residual" className="flex items-center justify-center gap-1 min-h-[44px] sm:min-h-0 py-2 sm:py-1 px-1 sm:px-2 min-w-0 text-[10px] sm:text-xs data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-emerald-500/25 glow-tab-indicator">
+            <TrendingUp className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
+            <span className="truncate">Residual</span>
           </TabsTrigger>
-          <TabsTrigger value="vendas" className="flex items-center justify-center gap-1.5 min-h-[44px] sm:min-h-0 py-2 sm:py-1 text-xs sm:text-sm data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-emerald-500/25 glow-tab-indicator">
-            <ShoppingBag className="h-3.5 w-3.5 shrink-0" />
-            <span>{t('cashback.vendas')}</span>
+          <TabsTrigger value="vendas" className="flex items-center justify-center gap-1 min-h-[44px] sm:min-h-0 py-2 sm:py-1 px-1 sm:px-2 min-w-0 text-[10px] sm:text-xs data-[state=active]:bg-emerald-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-emerald-500/25 glow-tab-indicator">
+            <ShoppingBag className="h-3 w-3 sm:h-3.5 sm:w-3.5 shrink-0" />
+            <span className="truncate">Vendas</span>
           </TabsTrigger>
         </TabsList>
 
