@@ -1,54 +1,77 @@
-import { db } from '@/lib/db'
+import { db, prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 // Matrix type config: depth limits + level metadata
-const MATRIX_CONFIG: Record<string, {
-  levels: { level: number; percentage: number; capacity: number }[]
+// Tarefa (19/09): agora lê width/depth do MatrixType do banco em vez de
+// usar MATRIX_CONFIG hardcoded. As percentuais por nível continuam vindo
+// do MatrixLevelEarning do banco (admin-configurável).
+const MATRIX_TYPE_MAP: Record<string, string> = {
+  direta: 'entrada',   // "direta" na URL = matriz "entrada" no DB
+  residual: 'residual',
+  vendas: 'vendas',
+}
+
+interface MatrixLevelData {
+  level: number
+  percentage: number
+  capacity: number
+}
+
+async function getMatrixConfig(matrixType: string): Promise<{
+  levels: MatrixLevelData[]
   maxDepth: number
   label: string
-}> = {
-  // "Direta" = entry matrix (4x5, 5 levels)
-  direta: {
-    maxDepth: 5,
-    label: 'Matriz de Entrada',
-    levels: [
-      { level: 1, percentage: 5, capacity: 4 },
-      { level: 2, percentage: 10, capacity: 16 },
-      { level: 3, percentage: 10, capacity: 64 },
-      { level: 4, percentage: 5, capacity: 256 },
-      { level: 5, percentage: 5, capacity: 1024 },
-    ],
-  },
-  // Residual matrix (4x7, 7 levels)
-  residual: {
-    maxDepth: 7,
-    label: 'Matriz Residual',
-    levels: [
-      { level: 1, percentage: 5, capacity: 4 },
-      { level: 2, percentage: 5.5, capacity: 16 },
-      { level: 3, percentage: 6, capacity: 64 },
-      { level: 4, percentage: 6.5, capacity: 256 },
-      { level: 5, percentage: 7, capacity: 1024 },
-      { level: 6, percentage: 7.5, capacity: 4096 },
-      { level: 7, percentage: 8, capacity: 16384 },
-    ],
-  },
-  // Vendas matrix (4x9, 9 levels)
-  vendas: {
-    maxDepth: 9,
-    label: 'Matriz de Vendas',
-    levels: [
-      { level: 1, percentage: 0.1, capacity: 4 },
-      { level: 2, percentage: 0.1, capacity: 16 },
-      { level: 3, percentage: 0.1, capacity: 64 },
-      { level: 4, percentage: 0.1, capacity: 256 },
-      { level: 5, percentage: 0.1, capacity: 1024 },
-      { level: 6, percentage: 0.1, capacity: 4096 },
-      { level: 7, percentage: 0.1, capacity: 16384 },
-      { level: 8, percentage: 0.1, capacity: 65536 },
-      { level: 9, percentage: 0.2, capacity: 262144 },
-    ],
-  },
+} | null> {
+  // Mapeia "direta" → "entrada" para buscar no DB
+  const dbMatrixKind = MATRIX_TYPE_MAP[matrixType]
+  if (!dbMatrixKind) return null
+
+  // Busca o MatrixType do banco (admin pode editar width/depth)
+  const matrixTypeRow = await prisma.matrixType.findFirst({
+    where: { matrixKind: dbMatrixKind, isActive: true },
+    include: {
+      MatrixLevelEarning: {
+        orderBy: { level: 'asc' },
+      },
+    },
+  }).catch(() => null)
+
+  // Fallback para os defaults hardcoded se o DB não estiver disponível
+  if (!matrixTypeRow || !matrixTypeRow.MatrixLevelEarning || matrixTypeRow.MatrixLevelEarning.length === 0) {
+    const FALLBACK = {
+      direta: { maxDepth: 5, label: 'Matriz de Entrada', levels: [
+        { level: 1, percentage: 5, capacity: 4 }, { level: 2, percentage: 10, capacity: 16 },
+        { level: 3, percentage: 10, capacity: 64 }, { level: 4, percentage: 5, capacity: 256 },
+        { level: 5, percentage: 5, capacity: 1024 },
+      ]},
+      residual: { maxDepth: 7, label: 'Matriz Residual', levels: [
+        { level: 1, percentage: 5, capacity: 4 }, { level: 2, percentage: 5.5, capacity: 16 },
+        { level: 3, percentage: 6, capacity: 64 }, { level: 4, percentage: 6.5, capacity: 256 },
+        { level: 5, percentage: 7, capacity: 1024 }, { level: 6, percentage: 7.5, capacity: 4096 },
+        { level: 7, percentage: 8, capacity: 16384 },
+      ]},
+      vendas: { maxDepth: 9, label: 'Matriz de Vendas', levels: [
+        { level: 1, percentage: 0.1, capacity: 4 }, { level: 2, percentage: 0.1, capacity: 16 },
+        { level: 3, percentage: 0.1, capacity: 64 }, { level: 4, percentage: 0.1, capacity: 256 },
+        { level: 5, percentage: 0.1, capacity: 1024 }, { level: 6, percentage: 0.1, capacity: 4096 },
+        { level: 7, percentage: 0.1, capacity: 16384 }, { level: 8, percentage: 0.1, capacity: 65536 },
+        { level: 9, percentage: 0.2, capacity: 262144 },
+      ]},
+    }
+    return FALLBACK[matrixType] || null
+  }
+
+  // Constrói config a partir do banco: width e depth do MatrixType,
+  // percentuais do MatrixLevelEarning (admin-configurável).
+  const width = matrixTypeRow.width || 4
+  const maxDepth = matrixTypeRow.depth || 5
+  const levels: MatrixLevelData[] = matrixTypeRow.MatrixLevelEarning.map(le => ({
+    level: le.level,
+    percentage: le.percentage,
+    capacity: Math.pow(width, le.level), // capacity = width^level (ex: 4^1=4, 4^2=16, 4^3=64...)
+  }))
+
+  return { levels, maxDepth, label: matrixTypeRow.name || `Matriz ${matrixType}` }
 }
 
 interface TreeNode {
@@ -78,7 +101,7 @@ export async function GET(
       return error('userId is required')
     }
 
-    const config = MATRIX_CONFIG[matrixType]
+    const config = await getMatrixConfig(matrixType)
     if (!config) {
       return error('Invalid matrix type. Use: direta, residual, or vendas', 400)
     }

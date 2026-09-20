@@ -1277,7 +1277,7 @@ function MinhaRedeTreePanel({ type }: { type: MatrixType }) {
                   selectedId={selectedNode?.id || null}
                   onSelect={setSelectedNode}
                   searchQuery={searchQuery}
-                  levelLabel={data.tree.length > 0 ? `Nível 1 — ${data.directReferrals}/${levelStats[0]?.capacity || 4} vagas` : undefined}
+                  levelLabel={data.tree.length > 0 ? `Nível 1 — ${levelStats[0]?.currentUsers ?? 0}/${levelStats[0]?.capacity || 4} vagas` : undefined}
                 />
               </div>
             )}

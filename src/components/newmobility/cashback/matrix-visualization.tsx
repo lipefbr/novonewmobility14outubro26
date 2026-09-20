@@ -267,9 +267,13 @@ export function MatrixVisualization({ type, onUpgradeClick }: MatrixVisualizatio
       const byLevel: Record<string, number> = dashboardData?.[byLevelKey]?.byLevel ?? {}
 
       const meta = MATRIX_META[type] ?? { title: type, description: '' }
+      // Tarefa (19/09): ler width do MatrixType retornado pela API de cashback
+      // (admin-configurável). Antes era hardcoded Math.pow(4, levelNum).
+      // Se a API não retornar matrixWidth, usa 4 como fallback (padrão do cliente).
+      const matrixWidth: number = (cashbackData as any)?.matrixWidth ?? 4
       const levels: MatrixLevelData[] = cashbackData.levels.map((lvl: any, i: number) => {
         const levelNum = lvl.level ?? i + 1
-        const positions = Math.pow(4, levelNum) // structural matrix dim (4-wide, client spec)
+        const positions = Math.pow(matrixWidth, levelNum) // structural matrix dim (admin-configurable width)
         // Prefer the dashboard's byLevel count (real network size at
         // this level); fall back to the cashback API's currentUsers
         // (count of CashbackEntry transactions at this level) if the
