@@ -907,9 +907,11 @@ export function ProfilePage() {
     setProfileImageUploading(true)
     try {
       const formData = new FormData()
-      formData.append('userId', user.id)
       formData.append('file', file)
-      const res = await fetch('/api/user/profile/image', {
+      // userId enviado na query string para que getSession() consiga extrair
+      // mesmo quando o Content-Type é multipart/form-data (getSession não
+      // lê campos de FormData, só query string e JSON body).
+      const res = await fetch(`/api/user/profile/image?userId=${user.id}`, {
         method: 'POST',
         body: formData,
       })

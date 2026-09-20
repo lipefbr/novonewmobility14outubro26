@@ -63,6 +63,19 @@ export async function getSession(request: Request): Promise<Session | null> {
           userId = body.userId
         }
       }
+      // Tarefa (19/09): também extrai userId de multipart/form-data.
+      // Antes, uploads de imagem (que usam FormData) não conseguiam
+      // autenticar porque getSession não lia campos de FormData.
+      if (!userId && ct.includes('multipart/form-data')) {
+        const clone = request.clone()
+        const formData = await clone.formData().catch(() => null)
+        if (formData) {
+          const fdUserId = formData.get('userId')
+          if (typeof fdUserId === 'string') {
+            userId = fdUserId
+          }
+        }
+      }
     } catch {
       // Body already consumed or not JSON — ignore.
     }
