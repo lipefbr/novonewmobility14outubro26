@@ -111,8 +111,63 @@ export async function GET(
       return error('User not found', 404)
     }
 
-    // Recursively build tree from User.referredById, capping at maxDepth
-    async function buildTree(parentId: string, currentDepth: number, maxDepth: number): Promise<TreeNode[]> {
+    // Tarefa (19/09): construir a árvore usando MatrixPosition (que respeita
+    // o spillover com cap de 4 por posição), NÃO User.referredById (que mostra
+    // TODAS as indicações diretas no nível 1, ignorando o spillover).
+    //
+    // "Indicação direta" (User.referredById) é diferente de "posição na matriz"
+    // (MatrixPosition.parentId). Uma pessoa pode ter 10 indicações diretas mas
+    // só 4 ficam no nível 1 da matriz — as outras 6 caem em spillover (níveis 2+).
+    //
+    // Mapeia "direta" → "entrada" para o MatrixPosition.matrixType do banco.
+    const dbMatrixKind = MATRIX_TYPE_MAP[matrixType] || matrixType
+
+    // Busca a posição raiz do usuário nesta matriz
+    const rootPosition = await prisma.matrixPosition.findFirst({
+      where: { userId, matrixType: dbMatrixKind },
+    }).catch(() => null)
+
+    // Recursively build tree from MatrixPosition.parentId (respects spillover),
+    // capping at maxDepth. Falls back to User.referredById if no MatrixPosition
+    // exists (e.g., legacy users created before the matrix placement logic).
+    async function buildTreeFromMatrix(parentPositionId: string, currentDepth: number, maxDepth: number): Promise<TreeNode[]> {
+      if (currentDepth > maxDepth) return []
+
+      // Busca os MatrixPosition filhos desta posição (respeita spillover: max 4)
+      const childPositions = await prisma.matrixPosition.findMany({
+        where: { parentId: parentPositionId, matrixType: dbMatrixKind },
+        orderBy: { position: 'asc' },
+      }).catch(() => [])
+
+      const tree: TreeNode[] = []
+      for (const pos of childPositions) {
+        // Busca os dados do User correspondente a esta posição
+        const childUser = await prisma.user.findUnique({
+          where: { id: pos.userId },
+          select: { id: true, name: true, email: true, plan: true, isActive: true, referralCode: true, profileImage: true, stars: true, createdAt: true },
+        }).catch(() => null)
+        if (!childUser) continue
+
+        const subTree = await buildTreeFromMatrix(pos.id, currentDepth + 1, maxDepth)
+        tree.push({
+          id: childUser.id,
+          name: childUser.name,
+          email: childUser.email,
+          plan: childUser.plan,
+          isActive: childUser.isActive,
+          referralCode: childUser.referralCode,
+          profileImage: childUser.profileImage,
+          stars: childUser.stars || 0,
+          createdAt: childUser.createdAt?.toISOString?.() ?? new Date(childUser.createdAt as any).toISOString(),
+          level: currentDepth,
+          children: subTree,
+        })
+      }
+      return tree
+    }
+
+    // Fallback: build tree from User.referredById (legacy, sem spillover)
+    async function buildTreeFromReferrals(parentId: string, currentDepth: number, maxDepth: number): Promise<TreeNode[]> {
       if (currentDepth > maxDepth) return []
 
       const children = await db.find(
@@ -124,7 +179,7 @@ export async function GET(
 
       const tree: TreeNode[] = []
       for (const child of children) {
-        const subTree = await buildTree(child.id, currentDepth + 1, maxDepth)
+        const subTree = await buildTreeFromReferrals(child.id, currentDepth + 1, maxDepth)
         tree.push({
           id: child.id,
           name: child.name,
@@ -142,7 +197,11 @@ export async function GET(
       return tree
     }
 
-    const tree = await buildTree(userId, 1, config.maxDepth)
+    // Usa MatrixPosition se o usuário tem posição nesta matriz (respeita spillover).
+    // Senão, fallback para referredById (legacy).
+    const tree = rootPosition
+      ? await buildTreeFromMatrix(rootPosition.id, 1, config.maxDepth)
+      : await buildTreeFromReferrals(userId, 1, config.maxDepth)
 
     // Build per-level stats
     const levelMap: Record<number, { users: number }> = {}
