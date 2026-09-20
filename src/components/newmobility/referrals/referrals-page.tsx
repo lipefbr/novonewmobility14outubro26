@@ -133,8 +133,6 @@ export function ReferralsPage() {
           // Build a lookup of `userId -> directReferralsCount` from the
           // nested referralTree (each tree node has a `children` array
           // whose length is the number of people THAT user referred).
-          // This powers the per-referral "Indicações" column replacing
-          // the previous R$ cashback display (privacy: task 4b).
           const childrenCountMap: Record<string, number> = {}
           function collectCounts(nodes: any[]) {
             for (const node of nodes) {
@@ -146,20 +144,14 @@ export function ReferralsPage() {
           }
           if (data.referralTree) collectCounts(data.referralTree)
 
-          const mapped = data.directReferrals.map((r: any, idx: number) => ({
-            id: r.id,
-            name: r.name,
-            date: r.createdAt ? r.createdAt.split('T')[0] : new Date().toISOString().split('T')[0],
-            status: r.isActive ? 'active' : 'inactive',
-            plan: r.plan || 'free',
-            level: 1,
-            directReferrals: childrenCountMap[r.id] ?? 0,
-            email: r.email || '',
-          }))
-          // The referralTree returned by /api/referrals has the same root
-          // nodes as directReferrals (the direct referrals themselves).
-          // To avoid double-counting direct referrals, we skip the tree root
-          // and only flatten the children, starting at level 2.
+          // Tarefa (19/09): a lista de referrals agora é construída APENAS
+          // a partir da referralTree (que vem da MATRIZ com spillover cap 4).
+          // Antes, data.directReferrals (10 indicações de patrocínio) eram
+          // TODAS mapeadas como level=1, mas a matriz só permite 4 no nível 1.
+          // Isso causava "Nível 1 — 10 membros" (250% de ocupação — impossível).
+          //
+          // Agora, cada nó da referralTree já tem o nível correto da matriz
+          // (respeita spillover: max 4 por posição, excedentes caem em nível 2+).
           if (data.referralTree && data.referralTree.length > 0) {
             function flattenTree(nodes: any[], level: number): any[] {
               const result: any[] = []
@@ -167,7 +159,7 @@ export function ReferralsPage() {
                 result.push({
                   id: node.id,
                   name: node.name,
-                  date: node.createdAt ? node.createdAt.split('T')[0] : new Date().toISOString().split('T')[0],
+                  date: node.createdAt ? (typeof node.createdAt === 'string' ? node.createdAt.split('T')[0] : new Date(node.createdAt).toISOString().split('T')[0]) : new Date().toISOString().split('T')[0],
                   status: node.isActive ? 'active' : 'inactive',
                   plan: node.plan || 'free',
                   level,
@@ -180,12 +172,26 @@ export function ReferralsPage() {
               }
               return result
             }
-            // Start from the children of the tree root (which are level 2)
-            const level2Nodes = data.referralTree.flatMap((n: any) => n.children || [])
-            const networkReferrals = flattenTree(level2Nodes, 2)
-            setReferrals([...mapped, ...networkReferrals])
-          } else {
+            // A referralTree da API já vem com a estrutura da matriz (nível 1
+            // = posições diretas na matriz, max 4; nível 2+ = spillover).
+            const allReferrals = flattenTree(data.referralTree, 1)
+            setReferrals(allReferrals)
+          } else if (data.directReferrals.length > 0) {
+            // Fallback: se não há referralTree (matriz), usa directReferrals
+            // como nível 1 (legacy, sem spillover).
+            const mapped = data.directReferrals.map((r: any, idx: number) => ({
+              id: r.id,
+              name: r.name,
+              date: r.createdAt ? (typeof r.createdAt === 'string' ? r.createdAt.split('T')[0] : new Date(r.createdAt).toISOString().split('T')[0]) : new Date().toISOString().split('T')[0],
+              status: r.isActive ? 'active' : 'inactive',
+              plan: r.plan || 'free',
+              level: 1,
+              directReferrals: childrenCountMap[r.id] ?? 0,
+              email: r.email || '',
+            }))
             setReferrals(mapped)
+          } else {
+            setReferrals([])
           }
         } else {
           // No referrals data - show empty state
