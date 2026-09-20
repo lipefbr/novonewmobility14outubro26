@@ -70,7 +70,7 @@ export function ReferralsPage() {
   const [copied, setCopied] = useState(false)
   const [detailReferral, setDetailReferral] = useState<any | null>(null)
   const [showAllLevels, setShowAllLevels] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [networkModalOpen, setNetworkModalOpen] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
   const [planFilter, setPlanFilter] = useState<string>('all')
@@ -196,6 +196,18 @@ export function ReferralsPage() {
         console.error('Failed to fetch referrals:', err)
         // On error, show empty state instead of mock data
         setReferrals([])
+        // Tarefa (19/09): se o erro for de rede (ApiNetworkError), tenta
+        // novamente após 2s (pode ser que o dev server reiniciou durante
+        // a compilação sob demanda). Na VPS de produção (build estático),
+        // isso não deveria acontecer, mas é um safety net.
+        if (err instanceof TypeError || (err as any)?.name === 'ApiNetworkError') {
+          setTimeout(() => {
+            if (!cancelled && user?.id) {
+              fetchReferrals()
+            }
+          }, 2000)
+          return // não resolve loading ainda — vai tentar de novo
+        }
       } finally {
         if (!cancelled) {
           setLoading(false)
