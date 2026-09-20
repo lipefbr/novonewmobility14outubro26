@@ -1,5 +1,6 @@
 import { db, prisma } from '@/lib/db'
 import { success, error, formatTimeSince } from '@/lib/api-utils'
+import { countMatrixDescendants } from '@/lib/matrix-placement'
 
 // Build a parent->children map ONCE from a single DB query, then traverse
 // in-memory. This avoids N+1 DB round-trips (up to 9 queries per request)
@@ -128,14 +129,17 @@ export async function GET(request: Request) {
       (r) => new Date(r.createdAt) >= startOfMonth
     ).length
 
-    // Walk the entire referral network (up to 9 levels deep) and count
-    // descendants by level. This drives the Cashback matrix user counts
-    // (Entrada = 5 levels, Residual = 7 levels, Vendas = 9 levels) and the
-    // Visão Rede / Membros Ativos widgets.
-    // We build the children map ONCE and reuse it for both the per-level
-    // count and the per-user downline distribution by plan + weekly breakdown.
+    // Tarefa (19/09): contar descendentes pela árvore da MATRIZ (MatrixPosition),
+    // NÃO pela árvore de patrocínio (User.referredById). Cada matriz tem sua
+    // própria árvore com spillover (cap 4 por posição), então precisamos de 3
+    // contagens separadas (entrada, residual, vendas).
+    const entradaNetwork = await countMatrixDescendants(userId, 'entrada', 5)
+    const residualNetwork = await countMatrixDescendants(userId, 'residual', 7)
+    const vendasNetwork = await countMatrixDescendants(userId, 'vendas', 9)
+
+    // Para distribuição por plano e activity, ainda usamos a árvore de patrocínio
+    // (porque "quem eu trouxe" é diferente de "posição na matriz").
     const childrenMap = await buildChildrenMap()
-    const network = await countNetworkDescendants(userId, childrenMap)
     const descendants = await collectDescendants(userId, childrenMap)
 
     // Per-user "Distribuição da Minha Rede" — descendants grouped by plan.
@@ -196,20 +200,21 @@ export async function GET(request: Request) {
     const residualLevels = [1, 2, 3, 4, 5, 6, 7]
     const vendasLevels = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
-    const sumByLevels = (levels: number[]) =>
-      levels.reduce((sum, lvl) => sum + (network.byLevel[lvl] || 0), 0)
-    const pickByLevels = (levels: number[]): Record<number, number> => {
+    // Tarefa (19/09): cada matriz tem sua própria contagem (respeita spillover)
+    const sumByLevels = (levels: number[], byLevel: Record<number, number>) =>
+      levels.reduce((sum, lvl) => sum + (byLevel[lvl] || 0), 0)
+    const pickByLevels = (levels: number[], byLevel: Record<number, number>): Record<number, number> => {
       const out: Record<number, number> = {}
-      for (const lvl of levels) out[lvl] = network.byLevel[lvl] || 0
+      for (const lvl of levels) out[lvl] = byLevel[lvl] || 0
       return out
     }
 
-    const totalEntradaUsers = sumByLevels(entradaLevels)
-    const totalResidualUsers = sumByLevels(residualLevels)
-    const totalVendasUsers = sumByLevels(vendasLevels)
-    const entradaUsersByLevel = pickByLevels(entradaLevels)
-    const residualUsersByLevel = pickByLevels(residualLevels)
-    const vendasUsersByLevel = pickByLevels(vendasLevels)
+    const totalEntradaUsers = sumByLevels(entradaLevels, entradaNetwork.byLevel)
+    const totalResidualUsers = sumByLevels(residualLevels, residualNetwork.byLevel)
+    const totalVendasUsers = sumByLevels(vendasLevels, vendasNetwork.byLevel)
+    const entradaUsersByLevel = pickByLevels(entradaLevels, entradaNetwork.byLevel)
+    const residualUsersByLevel = pickByLevels(residualLevels, residualNetwork.byLevel)
+    const vendasUsersByLevel = pickByLevels(vendasLevels, vendasNetwork.byLevel)
 
     // Cashback earned (kept for internal use / backwards compatibility)
     const entradaRecords = await db.find('CashbackEntry', '"userId" = $1', [userId])
@@ -380,7 +385,7 @@ export async function GET(request: Request) {
         byLevel: vendasUsersByLevel,
       },
       network: {
-        totalSize: network.total,
+        totalSize: entradaNetwork.total + residualNetwork.total + vendasNetwork.total,
         activeMembers: activeDirect,
         newReferrals,
       },

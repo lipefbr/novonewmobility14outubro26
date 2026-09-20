@@ -1,5 +1,6 @@
 import { db, prisma } from '@/lib/db'
 import { success, error, getEntradaLevels } from '@/lib/api-utils'
+import { countMatrixDescendants } from '@/lib/matrix-placement'
 
 // Count all descendants in the referral tree (recursive, up to 9 levels deep).
 // Returns the total number of descendants, a per-level breakdown, and the
@@ -82,11 +83,11 @@ export async function GET(request: Request) {
       [userId, 'entrada']
     )
 
-    // Walk the entire referral network (up to 9 levels deep) and count
-    // descendants by level. This drives the per-level `currentUsers` and the
-    // matrix `totalUsers` so the UI shows the REAL network size, not the
-    // CashbackEntry transaction count (which is 0 until cashback is paid).
-    const network = await countNetworkDescendants(userId)
+    // Tarefa (19/09): contar descendentes pela árvore da MATRIZ (MatrixPosition),
+    // NÃO pela árvore de patrocínio (User.referredById). A matriz respeita o
+    // cap de 4 por posição + spillover, então se o admin indicou 10 pessoas,
+    // só 4 ficam no nível 1 (as outras 6 caem em spillover nível 2+).
+    const network = await countMatrixDescendants(userId, 'entrada', 5)
 
     // Get all cashback entries (used ONLY for `earned` / `earnedPerLevel` —
     // i.e. actual cashback PAID to the user, which is correctly 0 when no

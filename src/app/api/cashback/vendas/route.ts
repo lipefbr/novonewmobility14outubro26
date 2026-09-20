@@ -1,5 +1,6 @@
 import { db, prisma } from '@/lib/db'
 import { success, error, getVendasLevels } from '@/lib/api-utils'
+import { countMatrixDescendants } from '@/lib/matrix-placement'
 
 // Count all descendants in the referral tree (recursive, up to 9 levels deep).
 // Returns the total number of descendants, a per-level breakdown, and the
@@ -86,7 +87,8 @@ export async function GET(request: Request) {
     // descendants by level. This drives the per-level `currentUsers` and the
     // matrix `totalUsers` so the UI shows the REAL network size, not the
     // CashbackSales transaction count (which is 0 until cashback is paid).
-    const network = await countNetworkDescendants(userId)
+    // Tarefa (19/09): contar pela árvore da MATRIZ (respeita spillover cap 4).
+    const network = await countMatrixDescendants(userId, 'vendas', 9)
 
     // Get all vendas entries (used ONLY for `earned` / `earnedPerLevel` /
     // `earnedByCategory` — i.e. actual cashback PAID to the user, which is

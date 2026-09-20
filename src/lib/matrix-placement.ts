@@ -219,3 +219,94 @@ export async function placeUserInAllMatrices(
     }
   }
 }
+
+// ============================================================================
+// countMatrixDescendants — Conta descendentes pela árvore da MATRIZ
+// (MatrixPosition.parentId), respeitando o cap de 4 por posição + spillover.
+// ----------------------------------------------------------------------------
+// Diferente de contar pela árvore de patrocínio (User.referredById), esta
+// função respeita a estrutura real da matriz: se o admin indicou 10 pessoas,
+// só 4 ficam no nível 1 (cap 4-wide), as outras 6 caem em spillover (níveis 2+).
+//
+// Retorna: { total, byLevel, activeTotal }
+// ============================================================================
+
+export async function countMatrixDescendants(
+  userId: string,
+  matrixType: string,
+  maxDepth: number = 9
+): Promise<{
+  total: number
+  byLevel: Record<number, number>
+  activeTotal: number
+}> {
+  // Busca a posição raiz do usuário nesta matriz
+  const rootPosition = await prisma.matrixPosition.findFirst({
+    where: { userId, matrixType },
+  }).catch(() => null)
+
+  if (!rootPosition) {
+    return { total: 0, byLevel: {}, activeTotal: 0 }
+  }
+
+  // Busca TODAS as MatrixPosition desta matriz de uma vez (evita N+1 queries)
+  const allPositions = await prisma.matrixPosition.findMany({
+    where: { matrixType },
+    select: {
+      id: true,
+      parentId: true,
+      userId: true,
+      level: true,
+      position: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'asc' },
+  }).catch(() => [])
+
+  // Busca os status de ativo de todos os usuários em uma query só
+  const userIds = allPositions.map(p => p.userId)
+  const users = userIds.length > 0
+    ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, isActive: true } }).catch(() => [])
+    : []
+  const userActiveMap = new Map(users.map(u => [u.id, u.isActive]))
+
+  // Constrói mapa parent→children a partir de MatrixPosition (respeita spillover)
+  const childrenMap: Record<string, typeof allPositions> = {}
+  for (const pos of allPositions) {
+    if (pos.parentId) {
+      if (!childrenMap[pos.parentId]) childrenMap[pos.parentId] = []
+      childrenMap[pos.parentId].push(pos)
+    }
+  }
+
+  // BFS pela árvore de MatrixPosition
+  const byLevel: Record<number, number> = {}
+  let total = 0
+  let activeTotal = 0
+  let currentLevel: string[] = [rootPosition.id]
+
+  for (let level = 1; level <= maxDepth; level++) {
+    if (currentLevel.length === 0) break
+    const nextLevel: string[] = []
+    let levelActive = 0
+
+    for (const parentId of currentLevel) {
+      const kids = childrenMap[parentId]
+      if (kids) {
+        for (const k of kids) {
+          nextLevel.push(k.id)
+          total++
+          const isActive = userActiveMap.get(k.userId) ?? false
+          if (isActive) levelActive++
+        }
+      }
+    }
+
+    if (nextLevel.length === 0) break
+    byLevel[level] = nextLevel.length
+    activeTotal += levelActive
+    currentLevel = nextLevel
+  }
+
+  return { total, byLevel, activeTotal }
+}
