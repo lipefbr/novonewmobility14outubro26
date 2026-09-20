@@ -91,7 +91,12 @@ const DEFAULT_SYSTEM_SETTINGS: SeedEntry[] = [
   { key: 'matrix.vendas.width', value: '4', description: 'Largura da Matriz de Vendas', category: 'matrizes' },
   { key: 'matrix.vendas.pct_per_level', value: '0.1', description: '% de comissão por nível da Matriz de Vendas (0.10%)', category: 'matrizes' },
   { key: 'matrix.vendas.base_cents', value: '19990', description: 'Valor base da Matriz de Vendas em centavos (R$ 199,90)', category: 'matrizes' },
-  { key: 'matrix.vendas.salesLimit', value: '1000', description: 'Limite de vendas da Matriz de Vendas (teto para comissões)', category: 'matrizes' },
+  // Tarefa 2 (19/09) — limites financeiros das 3 matrizes em R$ (centavos).
+  // Substitui a antiga matrix.vendas.salesLimit (quantidade de vendas) por
+  // limit_cents em R$. Editável via /api/admin/matrix-config.
+  { key: 'matrix.entrada.limit_cents', value: '9650000', description: 'Limite da Matriz de Entrada em centavos (R$ 96.500,00)', category: 'matrizes' },
+  { key: 'matrix.residual.limit_cents', value: '75000000', description: 'Limite da Matriz Residual em centavos (R$ 750.000,00)', category: 'matrizes' },
+  { key: 'matrix.vendas.limit_cents', value: '0', description: 'Limite da Matriz de Vendas em centavos (0 = a definir pelo cliente)', category: 'matrizes' },
 
   // -------- cashback --------
   { key: 'cashback.entrada_pct', value: '35', description: '% de CashBack da Matriz de Entrada (35%)', category: 'cashback' },

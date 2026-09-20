@@ -654,21 +654,17 @@ const SEED_USERS = [
 ]
 
 const SEED_CONFIGS = [
+  // Tarefa (19/09): removidas as chaves legacy duplicadas (sem ponto) que
+  // conflitavam com as versões modernas (com ponto) do DEFAULT_SYSTEM_SETTINGS.
+  // As chaves abaixo são ÚNICAS e não existem no DEFAULT_SYSTEM_SETTINGS —
+  // servem como "bootstrap" mínimo para o banco antes de o admin abrir
+  // a tela de Configurações (que roda seedDefaults() e cria as outras ~80).
   { key: 'platform_name', value: 'NewMobility', description: 'Platform display name' },
   { key: 'maintenance_mode', value: 'false', description: 'Maintenance mode enabled' },
   { key: 'registration_enabled', value: 'true', description: 'New registrations enabled' },
-  { key: 'cashback_entrada_pct', value: '35', description: 'CashBack Entrada percentage' },
-  { key: 'cashback_residual_pct', value: '45', description: 'CashBack Residual percentage' },
-  { key: 'cashback_vendas_pct', value: '0.9', description: 'CashBack Vendas percentage' },
-  { key: 'min_withdrawal', value: '5000', description: 'Minimum withdrawal amount in cents' },
-  { key: 'max_withdrawal', value: '500000', description: 'Maximum withdrawal amount in cents' },
-  { key: 'withdrawal_fee_pct', value: '2', description: 'Withdrawal fee percentage' },
-  { key: 'app_logo_url', value: '', description: 'Platform logo (base64 data URL)' },
   { key: 'admin_permissions', value: JSON.stringify({ admin: ['*'] }), description: 'Per-role admin page allow-list' },
-  { key: 'points_dailyLoginPoints', value: '1', description: 'Points credited on first login of the day' },
   // Tarefa 2 (19/09) — Limites financeiros das 3 matrizes em R$ (centavos).
-  // Editáveis pelo admin via /api/admin/matrix-config. Default mantido:
-  // Entrada R$ 96.500,00 / Residual R$ 750.000,00 / Vendas 0 ("a definir").
+  // Também presentes no DEFAULT_SYSTEM_SETTINGS para que a UI crie se faltar.
   { key: 'matrix.entrada.limit_cents', value: '9650000', description: 'Limite da Matriz de Entrada em centavos (R$ 96.500,00)' },
   { key: 'matrix.residual.limit_cents', value: '75000000', description: 'Limite da Matriz Residual em centavos (R$ 750.000,00)' },
   { key: 'matrix.vendas.limit_cents', value: '0', description: 'Limite da Matriz de Vendas em centavos (0 = a definir pelo cliente)' },
@@ -1177,6 +1173,36 @@ async function seedSystemConfigs() {
       update: {}, // do not overwrite admin-edited values
       create: { key: c.key, value: c.value, description: c.description },
     })
+  }
+
+  // Tarefa (19/09): remover chaves obsoletas/duplicadas do banco.
+  // Estas chaves foram substituídas por versões modernas (com ponto) e
+  // só causam confusão na tela de Configurações do Sistema.
+  const OBSOLETE_KEYS = [
+    'matrix.vendas.salesLimit',   // substituída por matrix.vendas.limit_cents
+    'cashback_entrada_pct',        // substituída por cashback.entrada_pct
+    'cashback_residual_pct',       // substituída por cashback.residual_pct
+    'cashback_vendas_pct',         // substituída por cashback.vendas_pct
+    'min_withdrawal',              // substituída por saque.min_cents
+    'max_withdrawal',              // substituída por saque.max_cents
+    'withdrawal_fee_pct',          // substituída por saque.fee_pct
+    'app_logo_url',                // não usada (logo é gerenciada via /admin/config/logo)
+    'points_dailyLoginPoints',     // substituída por pontos.daily_login
+    'plan_free_name',              // duplicata de plan.free.name
+    'plan_blue3_name',             // duplicata de plan.blue3.name
+    'plan_blue5_name',             // duplicata de plan.blue5.name
+  ]
+  let removedCount = 0
+  for (const key of OBSOLETE_KEYS) {
+    try {
+      await prisma.systemConfig.delete({ where: { key } })
+      removedCount++
+    } catch {
+      // chave não existe — ignora
+    }
+  }
+  if (removedCount > 0) {
+    console.log(`  ✓ Removed ${removedCount} obsolete config keys`)
   }
   console.log(`  ✓ ${SEED_CONFIGS.length} config keys ready`)
 }

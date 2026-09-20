@@ -64,9 +64,11 @@ const DEFAULT_CONTENT_TEXTS: SeedEntry[] = [
   { key: 'menu_simulator', value: 'Simulador', category: 'menu' },
 
   // -------- planos --------
-  { key: 'plan_free_name', value: 'Gratuito', description: 'Nome do plano gratuito', category: 'planos' },
-  { key: 'plan_blue3_name', value: 'Blue 3', description: 'Nome do plano Blue 3', category: 'planos' },
-  { key: 'plan_blue5_name', value: 'Blue 5 Premium', description: 'Nome do plano Blue 5 Premium', category: 'planos' },
+  // Tarefa (19/09): removidas as chaves plan_free_name, plan_blue3_name,
+  // plan_blue5_name — eram duplicatas de plan.free.name, plan.blue3.name,
+  // plan.blue5.name que já existem no DEFAULT_SYSTEM_SETTINGS (endpoint
+  // /api/admin/system-settings). Manter as duas causava confusão no admin
+  // (via o mesmo valor em 2 lugares diferentes com chaves diferentes).
 ]
 
 // Idempotent seed: inserts only the default content texts that don't already
