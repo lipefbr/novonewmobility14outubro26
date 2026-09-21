@@ -29,7 +29,7 @@ import {
   ArrowUpDown, Receipt, PieChart, Filter, Download, Calendar,
   MessageSquare, Send, Gift, Ticket, Gamepad2, Network, Percent,
   TreePine, Coins, Trophy, AlertCircle, Heart, UsersRound, Layers,
-  LogIn, Loader2, UserPlus, KeyRound, Wrench, Target, Type, Database,
+  LogIn, Loader2, UserPlus, KeyRound, Wrench, Target, Type, Database, CheckCheck,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -3634,7 +3634,31 @@ export function AdminPage() {
   }
 
   // ---------- Withdrawals ----------
+  // Tarefa (22/09): state para popup de confirmação de saque no Financeiro
+  const [financialApproveDialog, setFinancialApproveDialog] = useState<{
+    open: boolean
+    withdrawalId: string | null
+    withdrawalAmount: number
+    userName: string
+    isBatch: boolean
+    batchIds: string[]
+  }>({ open: false, withdrawalId: null, withdrawalAmount: 0, userName: '', isBatch: false, batchIds: [] })
+
   const handleWithdrawalAction = async (withdrawalId: string, action: 'approve' | 'reject') => {
+    if (action === 'approve') {
+      // Tarefa (22/09): abre popup de confirmação antes de aprovar
+      const w = withdrawals.withdrawals.find(x => x.id === withdrawalId) || financialData?.recentTransactions.find(t => t.id === withdrawalId)
+      setFinancialApproveDialog({
+        open: true,
+        withdrawalId,
+        withdrawalAmount: w ? Math.abs(w.amount) : 0,
+        userName: (w as any)?.userName || (w as any)?.user?.name || 'usuário',
+        isBatch: false,
+        batchIds: [],
+      })
+      return
+    }
+    // Rejeitar direto
     setProcessingWithdrawal(withdrawalId)
     try {
       await apiFetch(`/admin/withdrawals/${withdrawalId}`, {
@@ -3642,9 +3666,70 @@ export function AdminPage() {
         body: JSON.stringify({ userId: user?.id, action }),
       })
       loadWithdrawals()
-      toast.success(action === 'approve' ? 'Saque aprovado!' : 'Saque rejeitado!')
+      loadFinancial()
+      toast.success('Saque rejeitado!')
     } catch {
       toast.error('Erro ao processar saque')
+    } finally {
+      setProcessingWithdrawal(null)
+    }
+  }
+
+  // Confirma aprovação individual após popup
+  const confirmFinancialApprove = async () => {
+    const { withdrawalId } = financialApproveDialog
+    if (!withdrawalId) return
+    setFinancialApproveDialog(d => ({ ...d, open: false }))
+    setProcessingWithdrawal(withdrawalId)
+    try {
+      await apiFetch(`/admin/withdrawals/${withdrawalId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ userId: user?.id, action: 'approve' }),
+      })
+      loadWithdrawals()
+      loadFinancial()
+      toast.success('Saque aprovado!')
+    } catch {
+      toast.error('Erro ao aprovar saque')
+    } finally {
+      setProcessingWithdrawal(null)
+    }
+  }
+
+  // Tarefa (22/09): Aprovar Todos os saques pendentes no Financeiro
+  const handleFinancialBatchApprove = () => {
+    const pending = (withdrawals.withdrawals || []).filter(w => w.status === 'pending')
+    if (pending.length === 0) {
+      toast.info('Não há saques pendentes para aprovar.')
+      return
+    }
+    const totalAmount = pending.reduce((sum, w) => sum + Math.abs(w.amount), 0)
+    setFinancialApproveDialog({
+      open: true,
+      withdrawalId: null,
+      withdrawalAmount: totalAmount,
+      userName: '',
+      isBatch: true,
+      batchIds: pending.map(w => w.id),
+    })
+  }
+
+  // Confirma aprovação em lote após popup
+  const confirmFinancialBatchApprove = async () => {
+    const { batchIds } = financialApproveDialog
+    if (batchIds.length === 0) return
+    setFinancialApproveDialog(d => ({ ...d, open: false }))
+    setProcessingWithdrawal('batch')
+    try {
+      await apiFetch('/admin/withdrawals/batch', {
+        method: 'POST',
+        body: JSON.stringify({ userId: user?.id, withdrawalIds: batchIds, action: 'approve' }),
+      })
+      loadWithdrawals()
+      loadFinancial()
+      toast.success(`${batchIds.length} saque(s) aprovado(s)!`)
+    } catch {
+      toast.error('Erro ao aprovar saques em lote')
     } finally {
       setProcessingWithdrawal(null)
     }
@@ -5187,6 +5272,22 @@ export function AdminPage() {
                         <AlertTriangle className="h-4 w-4 text-amber-600" />
                         Saques Pendentes ({financialData.recentTransactions.filter(t => t.type === 'withdrawal' && t.status === 'pending').length})
                       </CardTitle>
+                      {/* Tarefa (22/09): botão "Aprovar Todos" no Financeiro */}
+                      {financialData.recentTransactions.filter(t => t.type === 'withdrawal' && t.status === 'pending').length > 0 && (
+                        <Button
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                          onClick={handleFinancialBatchApprove}
+                          disabled={processingWithdrawal === 'batch'}
+                        >
+                          {processingWithdrawal === 'batch' ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <CheckCheck className="h-3.5 w-3.5" />
+                          )}
+                          Aprovar Todos
+                        </Button>
+                      )}
                     </div>
                   </CardHeader>
                   <CardContent className="p-0">
@@ -5415,6 +5516,48 @@ export function AdminPage() {
               <span className="h-6 w-6 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
             </div>
           )}
+
+          {/* Tarefa (22/09): Dialog de confirmação de saque no Financeiro */}
+          <Dialog open={financialApproveDialog.open} onOpenChange={(open) => !open && setFinancialApproveDialog(d => ({ ...d, open: false }))}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5 text-amber-500" />
+                  Confirmar Aprovação de Saque
+                </DialogTitle>
+                <DialogDescription>
+                  {financialApproveDialog.isBatch ? (
+                    <>
+                      Você deseja realmente aprovar <strong>{financialApproveDialog.batchIds.length} saque(s)</strong> no valor total de{' '}
+                      <strong className="text-emerald-600">R$ {(financialApproveDialog.withdrawalAmount / 100).toFixed(2)}</strong>?
+                    </>
+                  ) : (
+                    <>
+                      Você deseja realmente aprovar o saque de{' '}
+                      <strong className="text-emerald-600">R$ {(financialApproveDialog.withdrawalAmount / 100).toFixed(2)}</strong>
+                      {' '}de <strong>{financialApproveDialog.userName}</strong>?
+                    </>
+                  )}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-800 dark:text-amber-200">
+                <AlertCircle className="h-3.5 w-3.5 inline mr-1" />
+                Esta ação não pode ser desfeita. O valor será liberado para o usuário.
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setFinancialApproveDialog(d => ({ ...d, open: false }))}>
+                  Cancelar
+                </Button>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                  onClick={financialApproveDialog.isBatch ? confirmFinancialBatchApprove : confirmFinancialApprove}
+                >
+                  <Check className="h-4 w-4" />
+                  Sim, aprovar
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         {/* Withdrawals Tab */}

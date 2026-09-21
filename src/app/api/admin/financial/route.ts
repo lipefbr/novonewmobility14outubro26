@@ -41,7 +41,9 @@ export async function GET(req: NextRequest) {
         _sum: { amount: true },
         where: { type: 'withdrawal', status: 'pending' },
       })
-      pendingWithdrawals = pendingWithdrawalsAgg._sum.amount || 0
+      // Tarefa (22/09): saques são armazenados como valor negativo no DB.
+      // Convertemos para absoluto para que o card mostre um valor positivo.
+      pendingWithdrawals = Math.abs(pendingWithdrawalsAgg._sum.amount || 0)
     } catch { /* ignore */ }
 
     try {
@@ -49,7 +51,16 @@ export async function GET(req: NextRequest) {
         _sum: { amount: true },
         where: { type: 'withdrawal', status: { in: ['approved', 'paid'] } },
       })
-      approvedWithdrawals = approvedWithdrawalsAgg._sum.amount || 0
+      approvedWithdrawals = Math.abs(approvedWithdrawalsAgg._sum.amount || 0)
+    } catch { /* ignore */ }
+
+    // Tarefa (22/09): também soma company_withdrawal (saque do lucro da empresa)
+    try {
+      const companyWithdrawalsAgg = await prisma.transaction.aggregate({
+        _sum: { amount: true },
+        where: { type: 'company_withdrawal', status: 'approved' },
+      })
+      approvedWithdrawals += Math.abs(companyWithdrawalsAgg._sum.amount || 0)
     } catch { /* ignore */ }
 
     try {
