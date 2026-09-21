@@ -1735,6 +1735,15 @@ export function AdminPage() {
       loadFinancial()
       loadDriverGoalsTarget()
       loadGoalConfigs()
+      // Tarefa (22/09): carrega tipos de usuário do banco para preencher
+      // as Qualificações Permitidas e os selects de Benefícios
+      if (availableUserTypes.length === 0 && user?.id) {
+        apiFetch<{ types: Array<{ id: string; code: string; label: string; icon: string | null }> }>(
+          `/admin/user-types?userId=${user.id}`,
+        )
+          .then((data) => setAvailableUserTypes(data?.types || []))
+          .catch(() => {})
+      }
     }
     // New tabs
     if (activeTab === 'vouchers') loadVouchers()
@@ -3705,7 +3714,7 @@ export function AdminPage() {
     try {
       await apiFetch(`/admin/withdrawals/${withdrawalId}`, {
         method: 'PUT',
-        body: JSON.stringify({ userId: user?.id, status: action === 'approve' ? 'approved' : 'rejected' }),
+        body: JSON.stringify({ userId: user?.id, action: 'reject' }),
       })
       loadWithdrawals()
       loadFinancial()
@@ -3726,7 +3735,7 @@ export function AdminPage() {
     try {
       await apiFetch(`/admin/withdrawals/${withdrawalId}`, {
         method: 'PUT',
-        body: JSON.stringify({ userId: user?.id, status: 'approved' }),
+        body: JSON.stringify({ userId: user?.id, action: 'approve' }),
       })
       loadWithdrawals()
       loadFinancial()
