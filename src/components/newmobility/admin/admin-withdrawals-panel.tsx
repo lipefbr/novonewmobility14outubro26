@@ -211,6 +211,15 @@ export function AdminWithdrawalsPanel() {
     reason: string
   }>({ open: false, withdrawalId: null, reason: '' })
 
+  // Tarefa 1 (22/09): modal de confirmação ao aprovar saque
+  const [approveDialog, setApproveDialog] = useState<{
+    open: boolean
+    withdrawal: AdminWithdrawalRequest | null
+    isBatch: boolean
+    batchIds: string[]
+    batchTotal: number
+  }>({ open: false, withdrawal: null, isBatch: false, batchIds: [], batchTotal: 0 })
+
   const [detailDialog, setDetailDialog] = useState<{
     open: boolean
     withdrawal: AdminWithdrawalRequest | null
@@ -272,7 +281,17 @@ export function AdminWithdrawalsPanel() {
       toast.error('Sessão do administrador não encontrada.')
       return
     }
+    // Tarefa 1 (22/09): abre modal de confirmação antes de aprovar
+    setApproveDialog({ open: true, withdrawal: w, isBatch: false, batchIds: [], batchTotal: 0 })
+  }
+
+  // Executa a aprovação após confirmação do modal
+  async function confirmApprove() {
+    if (!adminUserId) return
+    const w = approveDialog.withdrawal
+    if (!w) return
     setProcessingId(w.id)
+    setApproveDialog(d => ({ ...d, open: false }))
     try {
       const res = await fetch(
         `/api/admin/asaas/withdrawals/${encodeURIComponent(w.id)}/approve`,
@@ -309,15 +328,22 @@ export function AdminWithdrawalsPanel() {
     const totalAmount = withdrawals
       .filter(w => w.status === 'pending' || w.status === 'under_review')
       .reduce((sum, w) => sum + w.amountCents, 0)
-    if (!confirm(`Aprovar ${pendingIds.length} saque(s)? Total: R$ ${(totalAmount / 100).toFixed(2)}. Serão criadas ${pendingIds.length} transferência(s) no Asaas.`)) {
-      return
-    }
+    // Tarefa 1 (22/09): abre modal de confirmação em vez de confirm() nativo
+    setApproveDialog({ open: true, withdrawal: null, isBatch: true, batchIds: pendingIds, batchTotal: totalAmount })
+  }
+
+  // Executa aprovação em lote após confirmação do modal
+  async function confirmBatchApprove() {
+    if (!adminUserId) return
+    const { batchIds, batchTotal } = approveDialog
+    if (batchIds.length === 0) return
+    setApproveDialog(d => ({ ...d, open: false }))
     setBatchProcessing(true)
     try {
       const res = await fetch('/api/admin/asaas/withdrawals/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminUserId, withdrawalIds: pendingIds, action: 'approve' }),
+        body: JSON.stringify({ adminUserId, withdrawalIds: batchIds, action: 'approve' }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -821,6 +847,59 @@ export function AdminWithdrawalsPanel() {
           )}
         </CardContent>
       </Card>
+
+      {/* Tarefa 1 (22/09): Modal de confirmação ao aprovar saque */}
+      <Dialog open={approveDialog.open} onOpenChange={(open) => !open && setApproveDialog(d => ({ ...d, open: false }))}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-500" />
+              Confirmar Aprovação
+            </DialogTitle>
+            <DialogDescription>
+              {approveDialog.isBatch ? (
+                <>
+                  Você está prestes a aprovar <strong>{approveDialog.batchIds.length} saque(s)</strong> no valor total de{' '}
+                  <strong className="text-emerald-600">R$ {(approveDialog.batchTotal / 100).toFixed(2)}</strong>.
+                  Serão criadas {approveDialog.batchIds.length} transferência(s) no Asaas.
+                </>
+              ) : approveDialog.withdrawal ? (
+                <>
+                  Você deseja realmente aprovar o saque de{' '}
+                  <strong className="text-emerald-600">R$ {(approveDialog.withdrawal.amountCents / 100).toFixed(2)}</strong>
+                  {' '}de <strong>{approveDialog.withdrawal.user?.name || 'usuário'}</strong>?
+                  Uma transferência será criada no Asaas.
+                </>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-800 dark:text-amber-200">
+            <AlertCircle className="h-3.5 w-3.5 inline mr-1" />
+            Esta ação não pode ser desfeita. O valor será transferido automaticamente.
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setApproveDialog(d => ({ ...d, open: false }))}
+              disabled={!!processingId || batchProcessing}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+              onClick={approveDialog.isBatch ? confirmBatchApprove : confirmApprove}
+              disabled={!!processingId || batchProcessing}
+            >
+              {(processingId || batchProcessing) ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Check className="h-4 w-4" />
+              )}
+              Sim, aprovar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Reject Dialog */}
       <Dialog

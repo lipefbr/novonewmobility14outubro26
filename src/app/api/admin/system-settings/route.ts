@@ -183,6 +183,11 @@ const DEFAULT_SYSTEM_SETTINGS: SeedEntry[] = [
   { key: 'saque.auto_approve_below_cents', value: '0', description: 'Aprovar automaticamente saques abaixo deste valor em centavos (0 = sem auto-aprovação)', category: 'saques' },
   // Tarefa 4 (21/09): saques acima deste valor vão para análise manual
   { key: 'saque.manual_review_above_cents', value: '100000', description: 'Saques acima deste valor (em centavos) vão para análise manual (R$ 1.000,00 padrão)', category: 'saques' },
+  // Tarefa 2 (22/09): configurações adicionais de taxa de saque
+  { key: 'saque.fee_free_days', value: '5,6,7,8', description: 'Dias do mês com saque gratuito (separados por vírgula). Ex: 5,6,7,8 = saque grátis dias 5-8', category: 'saques' },
+  { key: 'saque.fee_cap_cents', value: '5000', description: 'Teto máximo de taxa de saque em centavos (R$ 50,00). 0 = sem teto', category: 'saques' },
+  { key: 'saque.pix_fee_cents', value: '0', description: 'Taxa fixa por saque PIX em centavos (0 = grátis)', category: 'saques' },
+  { key: 'saque.ted_fee_cents', value: '350', description: 'Taxa fixa por saque TED em centavos (R$ 3,50)', category: 'saques' },
 
   // -------- metas (extras) --------
   // Goal notification + reset behavior (CONFIG-EXPAND)
