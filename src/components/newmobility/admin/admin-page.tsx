@@ -980,10 +980,15 @@ export function AdminPage() {
   // Preferred over the legacy single-value `driverGoalsTarget` (Gratification
   // row with type='driver_goals_config'). When the array is non-empty, this
   // is the authoritative gate; otherwise the legacy value is consulted.
-  const ALLOWED_QUALIFICATION_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
-    { value: 'motorista', label: 'Motorista' },
-    { value: 'entregador', label: 'Entregador' },
-  ]
+  // Tarefa (22/09): ALLOWED_QUALIFICATION_OPTIONS agora carrega do banco
+  // (availableUserTypes) em vez de ser hardcoded com só motorista/entregador.
+  // Admin pode selecionar qualquer tipo de usuário cadastrado em "Tipos de Usuário".
+  const ALLOWED_QUALIFICATION_OPTIONS: ReadonlyArray<{ value: string; label: string }> = availableUserTypes.length > 0
+    ? availableUserTypes.map(t => ({ value: t.code, label: `${t.icon || '👤'} ${t.label}` }))
+    : [
+        { value: 'motorista', label: '🚗 Motorista' },
+        { value: 'entregador', label: '🛵 Entregador' },
+      ]
   const [allowedQualifications, setAllowedQualifications] = useState<string[]>(['motorista', 'entregador'])
   const [allowedQualificationsLoading, setAllowedQualificationsLoading] = useState(false)
   const [allowedQualificationsSaving, setAllowedQualificationsSaving] = useState(false)
@@ -3647,7 +3652,7 @@ export function AdminPage() {
   const handleWithdrawalAction = async (withdrawalId: string, action: 'approve' | 'reject') => {
     if (action === 'approve') {
       // Tarefa (22/09): abre popup de confirmação antes de aprovar
-      const w = withdrawals.withdrawals.find(x => x.id === withdrawalId) || financialData?.recentTransactions.find(t => t.id === withdrawalId)
+      const w = withdrawals?.withdrawals?.find(x => x.id === withdrawalId) || financialData?.recentTransactions.find(t => t.id === withdrawalId)
       setFinancialApproveDialog({
         open: true,
         withdrawalId,
@@ -3663,7 +3668,7 @@ export function AdminPage() {
     try {
       await apiFetch(`/admin/withdrawals/${withdrawalId}`, {
         method: 'PUT',
-        body: JSON.stringify({ userId: user?.id, action }),
+        body: JSON.stringify({ userId: user?.id, status: action === 'approve' ? 'approved' : 'rejected' }),
       })
       loadWithdrawals()
       loadFinancial()
@@ -3684,7 +3689,7 @@ export function AdminPage() {
     try {
       await apiFetch(`/admin/withdrawals/${withdrawalId}`, {
         method: 'PUT',
-        body: JSON.stringify({ userId: user?.id, action: 'approve' }),
+        body: JSON.stringify({ userId: user?.id, status: 'approved' }),
       })
       loadWithdrawals()
       loadFinancial()
@@ -3698,7 +3703,7 @@ export function AdminPage() {
 
   // Tarefa (22/09): Aprovar Todos os saques pendentes no Financeiro
   const handleFinancialBatchApprove = () => {
-    const pending = (withdrawals.withdrawals || []).filter(w => w.status === 'pending')
+    const pending = (withdrawals?.withdrawals || financialData?.recentTransactions || []).filter((w: any) => w.status === 'pending')
     if (pending.length === 0) {
       toast.info('Não há saques pendentes para aprovar.')
       return
@@ -5516,48 +5521,6 @@ export function AdminPage() {
               <span className="h-6 w-6 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin" />
             </div>
           )}
-
-          {/* Tarefa (22/09): Dialog de confirmação de saque no Financeiro */}
-          <Dialog open={financialApproveDialog.open} onOpenChange={(open) => !open && setFinancialApproveDialog(d => ({ ...d, open: false }))}>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <AlertCircle className="h-5 w-5 text-amber-500" />
-                  Confirmar Aprovação de Saque
-                </DialogTitle>
-                <DialogDescription>
-                  {financialApproveDialog.isBatch ? (
-                    <>
-                      Você deseja realmente aprovar <strong>{financialApproveDialog.batchIds.length} saque(s)</strong> no valor total de{' '}
-                      <strong className="text-emerald-600">R$ {(financialApproveDialog.withdrawalAmount / 100).toFixed(2)}</strong>?
-                    </>
-                  ) : (
-                    <>
-                      Você deseja realmente aprovar o saque de{' '}
-                      <strong className="text-emerald-600">R$ {(financialApproveDialog.withdrawalAmount / 100).toFixed(2)}</strong>
-                      {' '}de <strong>{financialApproveDialog.userName}</strong>?
-                    </>
-                  )}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-800 dark:text-amber-200">
-                <AlertCircle className="h-3.5 w-3.5 inline mr-1" />
-                Esta ação não pode ser desfeita. O valor será liberado para o usuário.
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setFinancialApproveDialog(d => ({ ...d, open: false }))}>
-                  Cancelar
-                </Button>
-                <Button
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
-                  onClick={financialApproveDialog.isBatch ? confirmFinancialBatchApprove : confirmFinancialApprove}
-                >
-                  <Check className="h-4 w-4" />
-                  Sim, aprovar
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
         </TabsContent>
 
         {/* Withdrawals Tab */}
@@ -6316,9 +6279,10 @@ export function AdminPage() {
                               <SelectValue placeholder="Padrão do módulo" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="ambos">Ambos</SelectItem>
-                              <SelectItem value="motorista">Apenas Motorista</SelectItem>
-                              <SelectItem value="entregador">Apenas Entregador</SelectItem>
+                              <SelectItem value="ambos">Todos os tipos acima</SelectItem>
+                              {ALLOWED_QUALIFICATION_OPTIONS.map(opt => (
+                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                           {isSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600 shrink-0" />}
@@ -9617,6 +9581,48 @@ export function AdminPage() {
           </Dialog>
         </TabsContent>
       </Tabs>
+
+      {/* Tarefa (22/09): Dialog de confirmação de saque no Financeiro — fora do Tabs para funcionar em todas as sub-abas */}
+      <Dialog open={financialApproveDialog.open} onOpenChange={(open) => !open && setFinancialApproveDialog(d => ({ ...d, open: false }))}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-500" />
+              Confirmar Aprovação de Saque
+            </DialogTitle>
+            <DialogDescription>
+              {financialApproveDialog.isBatch ? (
+                <>
+                  Você deseja realmente aprovar <strong>{financialApproveDialog.batchIds.length} saque(s)</strong> no valor total de{' '}
+                  <strong className="text-emerald-600">R$ {(financialApproveDialog.withdrawalAmount / 100).toFixed(2)}</strong>?
+                </>
+              ) : (
+                <>
+                  Você deseja realmente aprovar o saque de{' '}
+                  <strong className="text-emerald-600">R$ {(financialApproveDialog.withdrawalAmount / 100).toFixed(2)}</strong>
+                  {' '}de <strong>{financialApproveDialog.userName}</strong>?
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-800 dark:text-amber-200">
+            <AlertCircle className="h-3.5 w-3.5 inline mr-1" />
+            Esta ação não pode ser desfeita. O valor será liberado para o usuário.
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFinancialApproveDialog(d => ({ ...d, open: false }))}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+              onClick={financialApproveDialog.isBatch ? confirmFinancialBatchApprove : confirmFinancialApprove}
+            >
+              <Check className="h-4 w-4" />
+              Sim, aprovar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ===== SERVICE TYPE DIALOG (Item 8) ===== */}
       <Dialog open={serviceTypeDialogOpen} onOpenChange={setServiceTypeDialogOpen}>
