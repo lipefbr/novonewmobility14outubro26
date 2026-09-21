@@ -6156,13 +6156,14 @@ export function AdminPage() {
                   onValueChange={(v) => saveDriverGoalsTarget(v)}
                   disabled={driverGoalsTargetLoading || driverGoalsTargetSaving}
                 >
-                  <SelectTrigger className="w-full sm:w-[180px]">
+                  <SelectTrigger className="w-full sm:w-[220px]">
                     <SelectValue placeholder="Selecione..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="motorista">Apenas Motorista</SelectItem>
-                    <SelectItem value="entregador">Apenas Entregador</SelectItem>
-                    <SelectItem value="ambos">Motorista e Entregador (Ambos)</SelectItem>
+                    <SelectItem value="ambos">Todos os tipos</SelectItem>
+                    {ALLOWED_QUALIFICATION_OPTIONS.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 {driverGoalsTargetSaving && <Loader2 className="h-4 w-4 animate-spin text-blue-600 shrink-0" />}
