@@ -104,14 +104,20 @@ export async function processCashbackDistribution(params: {
       result.skipped.push('Usuário não encontrado')
       return result
     }
+    // Tarefa (22/09): ler quantos níveis de entrada o plano do usuário libera
+    // do SystemConfig (admin-editável). Antes era hardcoded.
     if (user.plan === 'free') {
       result.skipped.push('Plano gratuito: 0 níveis de Entrada liberados')
       return result
     }
-    if (user.plan === 'blue3') {
-      levels = levels.slice(0, 3) // apenas 3 níveis
-    }
-    // blue5 = todos os 5 níveis
+    let maxEntradaLevels = 5
+    try {
+      const config = await prisma.systemConfig.findUnique({
+        where: { key: `plan.${user.plan}.cashback_levels_entrada` },
+      })
+      if (config) maxEntradaLevels = parseInt(config.value, 10) || 5
+    } catch { /* fallback */ }
+    levels = levels.slice(0, maxEntradaLevels)
   }
 
   // 4. Percorrer a árvore de upline via MatrixPosition

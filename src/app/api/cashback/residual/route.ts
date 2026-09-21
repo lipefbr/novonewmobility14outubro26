@@ -122,17 +122,30 @@ export async function GET(request: Request) {
       console.warn('[Cashback residual] Could not load MatrixType, using defaults:', mtErr)
     }
 
+    // Tarefa (22/09): ler quantos níveis de residual o plano do usuário libera
+    const userPlan = user.plan || 'free'
+    let maxUnlockedLevelResidual = 0
+    try {
+      const config = await prisma.systemConfig.findUnique({
+        where: { key: `plan.${userPlan}.cashback_levels_residual` },
+      })
+      maxUnlockedLevelResidual = config ? parseInt(config.value, 10) || 0 : (userPlan === 'blue5' ? 7 : 0)
+    } catch {
+      maxUnlockedLevelResidual = userPlan === 'blue5' ? 7 : 0
+    }
+
     const levels = percentages.map((percentage, i) => {
       const level = i + 1
       const maxUsers = Math.pow(matrixWidth, level)
-      // currentUsers comes from the REAL referral network (descendants at
-      // this level), NOT from CashbackResidual transactions.
+      const locked = level > maxUnlockedLevelResidual
       return {
         level,
         percentage,
         maxUsers,
         currentUsers: network.byLevel[level] || 0,
-        earned: earnedPerLevel[level] || 0,
+        earned: locked ? 0 : (earnedPerLevel[level] || 0),
+        locked,
+        unlocked: !locked,
       }
     })
 

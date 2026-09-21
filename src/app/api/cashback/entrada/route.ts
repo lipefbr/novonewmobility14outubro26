@@ -137,9 +137,18 @@ export async function GET(request: Request) {
     // `earned` is forced to 0 and a `locked: true` flag is set so the
     // frontend and any downstream cashback-computation logic knows to
     // skip them.
+    // Tarefa (22/09): ler quantos níveis de entrada o plano do usuário libera
+    // do SystemConfig (admin-editável). Antes era hardcoded: blue5=5, blue3=3, free=0.
     const userPlan = user.plan || 'free'
-    const isPremium = userPlan === 'premium5' || userPlan === 'blue5'
-    const maxUnlockedLevel = isPremium ? 5 : userPlan === 'blue3' ? 3 : 0
+    let maxUnlockedLevel = 0
+    try {
+      const config = await prisma.systemConfig.findUnique({
+        where: { key: `plan.${userPlan}.cashback_levels_entrada` },
+      })
+      maxUnlockedLevel = config ? parseInt(config.value, 10) || 0 : (userPlan === 'blue5' ? 5 : userPlan === 'blue3' ? 3 : 0)
+    } catch {
+      maxUnlockedLevel = userPlan === 'blue5' ? 5 : userPlan === 'blue3' ? 3 : 0
+    }
 
     const levels = percentages.map((percentage, i) => {
       const level = i + 1

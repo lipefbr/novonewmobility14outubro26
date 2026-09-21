@@ -673,7 +673,7 @@ export function AdminPage() {
   // Plan dialog
   const [planDialogOpen, setPlanDialogOpen] = useState(false)
   const [editingPlan, setEditingPlan] = useState<AdminPlan | null>(null)
-  const [planFormData, setPlanFormData] = useState({ name: '', price: 0, features: '', description: '', matrixEntradaId: '', matrixResidualId: '', matrixVendasId: '', isActive: true, sortOrder: 99 })
+  const [planFormData, setPlanFormData] = useState({ name: '', price: 0, features: '', description: '', matrixEntradaId: '', matrixResidualId: '', matrixVendasId: '', isActive: true, sortOrder: 99, entradaLevels: 0, residualLevels: 0, vendasLevels: 0 })
   const [savingPlan, setSavingPlan] = useState(false)
   const [matrixTypes, setMatrixTypes] = useState<AdminMatrixType[]>([])
 
@@ -3553,12 +3553,25 @@ export function AdminPage() {
   // ---------- Plans CRUD ----------
   const handleOpenNewPlan = () => {
     setEditingPlan(null)
-    setPlanFormData({ name: '', price: 0, features: '', description: '', matrixEntradaId: '', matrixResidualId: '', matrixVendasId: '', isActive: true, sortOrder: 99 })
+    setPlanFormData({ name: '', price: 0, features: '', description: '', matrixEntradaId: '', matrixResidualId: '', matrixVendasId: '', isActive: true, sortOrder: 99, entradaLevels: 0, residualLevels: 0, vendasLevels: 0 })
     setPlanDialogOpen(true)
   }
 
-  const handleOpenEditPlan = (plan: AdminPlan) => {
+  const handleOpenEditPlan = async (plan: AdminPlan) => {
     setEditingPlan(plan)
+    // Tarefa (22/09): carrega níveis liberados do SystemConfig para este plano
+    let entradaLevels = 0, residualLevels = 0, vendasLevels = 0
+    try {
+      const planCode = plan.code || plan.id
+      const [eCfg, rCfg, vCfg] = await Promise.all([
+        apiFetch<{ value?: string }>(`/admin/system-settings/single?key=plan.${planCode}.cashback_levels_entrada&userId=${user?.id}`).catch(() => null),
+        apiFetch<{ value?: string }>(`/admin/system-settings/single?key=plan.${planCode}.cashback_levels_residual&userId=${user?.id}`).catch(() => null),
+        apiFetch<{ value?: string }>(`/admin/system-settings/single?key=plan.${planCode}.cashback_levels_vendas&userId=${user?.id}`).catch(() => null),
+      ])
+      entradaLevels = eCfg?.value ? parseInt(eCfg.value, 10) || 0 : 0
+      residualLevels = rCfg?.value ? parseInt(rCfg.value, 10) || 0 : 0
+      vendasLevels = vCfg?.value ? parseInt(vCfg.value, 10) || 0 : 0
+    } catch { /* defaults to 0 */ }
     const featuresList = typeof plan.features === 'string'
       ? (() => { try { return JSON.parse(plan.features || '[]').join(', ') } catch { return plan.features || '' } })()
       : (plan.features || []).join(', ')
@@ -3572,6 +3585,9 @@ export function AdminPage() {
       matrixVendasId: plan.matrixVendasId || '',
       isActive: plan.isActive,
       sortOrder: plan.sortOrder ?? 99,
+      entradaLevels,
+      residualLevels,
+      vendasLevels,
     })
     setPlanDialogOpen(true)
   }
@@ -3600,9 +3616,16 @@ export function AdminPage() {
             sortOrder: planFormData.sortOrder,
           }),
         })
+        // Tarefa (22/09): salvar quantos níveis de cada matriz o plano libera
+        const planCode = editingPlan.code || editingPlan.id
+        await Promise.all([
+          apiFetch('/admin/system-settings', { method: 'PUT', body: JSON.stringify({ userId: user?.id, key: `plan.${planCode}.cashback_levels_entrada`, value: String(planFormData.entradaLevels) }) }).catch(() => {}),
+          apiFetch('/admin/system-settings', { method: 'PUT', body: JSON.stringify({ userId: user?.id, key: `plan.${planCode}.cashback_levels_residual`, value: String(planFormData.residualLevels) }) }).catch(() => {}),
+          apiFetch('/admin/system-settings', { method: 'PUT', body: JSON.stringify({ userId: user?.id, key: `plan.${planCode}.cashback_levels_vendas`, value: String(planFormData.vendasLevels) }) }).catch(() => {}),
+        ])
         toast.success('Plano atualizado com sucesso!')
       } else {
-        await apiFetch('/admin/plans', {
+        const created = await apiFetch<any>('/admin/plans', {
           method: 'POST',
           body: JSON.stringify({
             userId: user?.id,
@@ -3617,6 +3640,13 @@ export function AdminPage() {
             sortOrder: planFormData.sortOrder,
           }),
         })
+        // Tarefa (22/09): salvar níveis liberados para o novo plano
+        const newPlanCode = created?.code || created?.id || planFormData.name.toLowerCase().replace(/\s+/g, '_')
+        await Promise.all([
+          apiFetch('/admin/system-settings', { method: 'PUT', body: JSON.stringify({ userId: user?.id, key: `plan.${newPlanCode}.cashback_levels_entrada`, value: String(planFormData.entradaLevels) }) }).catch(() => {}),
+          apiFetch('/admin/system-settings', { method: 'PUT', body: JSON.stringify({ userId: user?.id, key: `plan.${newPlanCode}.cashback_levels_residual`, value: String(planFormData.residualLevels) }) }).catch(() => {}),
+          apiFetch('/admin/system-settings', { method: 'PUT', body: JSON.stringify({ userId: user?.id, key: `plan.${newPlanCode}.cashback_levels_vendas`, value: String(planFormData.vendasLevels) }) }).catch(() => {}),
+        ])
         toast.success('Plano criado com sucesso!')
       }
       setPlanDialogOpen(false)
@@ -11299,6 +11329,47 @@ export function AdminPage() {
                 ))}
               </select>
             </div>
+
+            {/* Tarefa (22/09): Níveis liberados por matriz para este plano */}
+            <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 p-3 space-y-2">
+              <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                <Shield className="h-3.5 w-3.5" />
+                Níveis de Cashback Liberados por Matriz
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                Escolha até qual nível cada matriz o plano libera. Ex: Blue 3 libera 3 níveis de Entrada (4x3), Blue 5 libera 5 níveis (4x5).
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground">Níveis Entrada (0-5)</Label>
+                  <Input
+                    type="number" min={0} max={5} step={1}
+                    value={planFormData.entradaLevels}
+                    onChange={(e) => setPlanFormData(d => ({ ...d, entradaLevels: Number(e.target.value) || 0 }))}
+                    className="h-9 text-sm font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground">Níveis Residual (0-7)</Label>
+                  <Input
+                    type="number" min={0} max={7} step={1}
+                    value={planFormData.residualLevels}
+                    onChange={(e) => setPlanFormData(d => ({ ...d, residualLevels: Number(e.target.value) || 0 }))}
+                    className="h-9 text-sm font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground">Níveis Vendas (0-9)</Label>
+                  <Input
+                    type="number" min={0} max={9} step={1}
+                    value={planFormData.vendasLevels}
+                    onChange={(e) => setPlanFormData(d => ({ ...d, vendasLevels: Number(e.target.value) || 0 }))}
+                    className="h-9 text-sm font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+
             <label className="flex items-center gap-2 text-xs cursor-pointer">
               <input type="checkbox" checked={planFormData.isActive} onChange={(e) => setPlanFormData(d => ({ ...d, isActive: e.target.checked }))} className="rounded" />
               Plano ativo (visível para usuários)
