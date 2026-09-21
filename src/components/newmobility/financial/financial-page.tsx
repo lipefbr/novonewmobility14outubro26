@@ -553,6 +553,10 @@ export function FinancialPage() {
   }
   const availableBalance = user?.balanceWithdrawal || 0
 
+  // Tarefa 3 (21/09): Saldo anterior = saldo atual + total sacado
+  // (mostra quanto o usuário tinha antes de fazer os saques)
+  const previousBalance = availableBalance + totalWithdrawn
+
   // ===== Earnings breakdowns (Task 11-G) — all from the logged-in user's transactions =====
   // Total CashBack earned across all cashback-* types/categories
   const totalCashbackEarned = allTransactionsForChart
@@ -1191,7 +1195,11 @@ export function FinancialPage() {
                   <p className="text-xs text-muted-foreground font-medium">Saldo para Saque</p>
                 </div>
                 <p className="text-lg font-bold text-foreground">{formatCurrency(user?.balanceWithdrawal || 0)}</p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">Valor liberado para saque</p>
+                {/* Tarefa 3 (21/09): mostrar saldo anterior (antes dos saques) */}
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Saldo anterior: <span className="font-medium text-foreground/80">{formatCurrency(previousBalance)}</span>
+                </p>
+                <p className="text-[10px] text-muted-foreground">Total sacado: {formatCurrency(totalWithdrawn)}</p>
               </div>
               {/* 8. Saldo reservado para Faturas */}
               <div className="rounded-lg border border-border bg-rose-50/50 dark:bg-rose-950/20 p-4">

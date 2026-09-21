@@ -181,6 +181,8 @@ const DEFAULT_SYSTEM_SETTINGS: SeedEntry[] = [
   { key: 'saque.processing_time_hours', value: '48', description: 'Tempo máximo de processamento de saque em horas (48h)', category: 'saques' },
   { key: 'saque.max_daily_withdrawals', value: '3', description: 'Número máximo de saques por usuário por dia', category: 'saques' },
   { key: 'saque.auto_approve_below_cents', value: '0', description: 'Aprovar automaticamente saques abaixo deste valor em centavos (0 = sem auto-aprovação)', category: 'saques' },
+  // Tarefa 4 (21/09): saques acima deste valor vão para análise manual
+  { key: 'saque.manual_review_above_cents', value: '100000', description: 'Saques acima deste valor (em centavos) vão para análise manual (R$ 1.000,00 padrão)', category: 'saques' },
 
   // -------- metas (extras) --------
   // Goal notification + reset behavior (CONFIG-EXPAND)

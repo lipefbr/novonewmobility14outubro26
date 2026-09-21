@@ -33,6 +33,7 @@ import {
   Banknote,
   ArrowDownToLine,
   Check,
+  CheckCheck,
   X,
   Eye,
   Loader2,
@@ -66,7 +67,7 @@ interface AdminWithdrawalRequest {
   id: string
   userId: string
   amount: number
-  status: 'pending' | 'approved' | 'rejected' | 'paid' | 'failed'
+  status: 'pending' | 'approved' | 'rejected' | 'paid' | 'failed' | 'under_review'
   paymentMethod: 'pix' | 'bank_transfer'
   pixKey?: string | null
   bankCode?: string | null
@@ -98,7 +99,7 @@ interface AdminWithdrawalsResponse {
   }
 }
 
-type FilterKey = 'all' | 'pending' | 'approved' | 'paid' | 'rejected'
+type FilterKey = 'all' | 'pending' | 'approved' | 'paid' | 'rejected' | 'under_review'
 
 const PAGE_SIZE = 20
 
@@ -200,6 +201,9 @@ export function AdminWithdrawalsPanel() {
     rejectedCount: 0,
   })
   const [processingId, setProcessingId] = useState<string | null>(null)
+  // Tarefa 1 (21/09): state para aprovação em lote
+  const [batchProcessing, setBatchProcessing] = useState(false)
+  const pendingCount = withdrawals.filter(w => w.status === 'pending' || w.status === 'under_review').length
 
   const [rejectDialog, setRejectDialog] = useState<{
     open: boolean
@@ -248,6 +252,16 @@ export function AdminWithdrawalsPanel() {
     loadWithdrawals()
   }, [loadWithdrawals])
 
+  // Tarefa 5 (21/09): auto-refresh a cada 30s enquanto a aba estiver ativa.
+  // Garante que saques aprovados por outros admins apareçam sem precisar
+  // atualizar a página manualmente.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadWithdrawals()
+    }, 30000) // 30 segundos
+    return () => clearInterval(interval)
+  }, [loadWithdrawals])
+
   function changeFilter(next: FilterKey) {
     setFilter(next)
     setPage(1)
@@ -278,6 +292,43 @@ export function AdminWithdrawalsPanel() {
       toast.error(err?.message || 'Falha ao aprovar saque')
     } finally {
       setProcessingId(null)
+    }
+  }
+
+  // Tarefa 1 (21/09): Aprovação em lote — aprova todos os saques pendentes
+  async function handleBatchApprove() {
+    if (!adminUserId) {
+      toast.error('Sessão do administrador não encontrada.')
+      return
+    }
+    const pendingIds = withdrawals.filter(w => w.status === 'pending' || w.status === 'under_review').map(w => w.id)
+    if (pendingIds.length === 0) {
+      toast.info('Não há saques pendentes para aprovar.')
+      return
+    }
+    const totalAmount = withdrawals
+      .filter(w => w.status === 'pending' || w.status === 'under_review')
+      .reduce((sum, w) => sum + w.amountCents, 0)
+    if (!confirm(`Aprovar ${pendingIds.length} saque(s)? Total: R$ ${(totalAmount / 100).toFixed(2)}. Serão criadas ${pendingIds.length} transferência(s) no Asaas.`)) {
+      return
+    }
+    setBatchProcessing(true)
+    try {
+      const res = await fetch('/api/admin/asaas/withdrawals/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminUserId, withdrawalIds: pendingIds, action: 'approve' }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error || 'Falha ao aprovar saques em lote')
+      }
+      toast.success(`${data.processed} saque(s) aprovado(s), ${data.failed} falha(s)`)
+      await loadWithdrawals()
+    } catch (err: any) {
+      toast.error(err?.message || 'Falha ao aprovar saques em lote')
+    } finally {
+      setBatchProcessing(false)
     }
   }
 
@@ -384,6 +435,7 @@ export function AdminWithdrawalsPanel() {
   const filterButtons: { key: FilterKey; label: string }[] = [
     { key: 'all', label: 'Todos' },
     { key: 'pending', label: 'Pendentes' },
+    { key: 'under_review', label: 'Em Análise' },
     { key: 'approved', label: 'Aprovados' },
     { key: 'paid', label: 'Pagos' },
     { key: 'rejected', label: 'Rejeitados' },
@@ -402,16 +454,35 @@ export function AdminWithdrawalsPanel() {
             Aprove e processe saques via Asaas
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-2 self-start sm:self-auto"
-          onClick={loadWithdrawals}
-          disabled={loading}
-        >
-          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowDownToLine className="h-3.5 w-3.5" />}
-          Atualizar
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Tarefa 1 (21/09): Botão "Aprovar Todos" — aprovação em lote */}
+          {pendingCount > 0 && (
+            <Button
+              variant="default"
+              size="sm"
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={handleBatchApprove}
+              disabled={batchProcessing}
+            >
+              {batchProcessing ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <CheckCheck className="h-3.5 w-3.5" />
+              )}
+              Aprovar Todos ({pendingCount})
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={loadWithdrawals}
+            disabled={loading}
+          >
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowDownToLine className="h-3.5 w-3.5" />}
+            Atualizar
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -559,7 +630,7 @@ export function AdminWithdrawalsPanel() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1.5">
-                            {w.status === 'pending' && (
+                            {(w.status === 'pending' || w.status === 'under_review') && (
                               <>
                                 <Button
                                   size="sm"
@@ -666,7 +737,7 @@ export function AdminWithdrawalsPanel() {
                       </p>
                     )}
                     <div className="flex items-center gap-2 pt-1">
-                      {w.status === 'pending' && (
+                      {(w.status === 'pending' || w.status === 'under_review') && (
                         <>
                           <Button
                             size="sm"
