@@ -10665,16 +10665,11 @@ export function AdminPage() {
                     </Select>
                   </div>
                 </div>
-                <div className="flex gap-4 mt-3">
-                  <label className="flex items-center gap-2 text-xs cursor-pointer">
-                    <input type="checkbox" checked={editUserData.isDriver} onChange={(e) => updateEditField('isDriver', e.target.checked)} className="rounded border-input" />
-                    <Car className="h-3.5 w-3.5 text-blue-600" /> Motorista
-                  </label>
-                  <label className="flex items-center gap-2 text-xs cursor-pointer">
-                    <input type="checkbox" checked={editUserData.isDelivery} onChange={(e) => updateEditField('isDelivery', e.target.checked)} className="rounded border-input" />
-                    <Bike className="h-3.5 w-3.5 text-amber-600" /> Entregador
-                  </label>
-                </div>
+                {/* Tarefa (21/09): removidos os checkboxes de Motorista e Entregador.
+                    Esses flags (isDriver/isDelivery) agora são controlados AUTOMATICAMENTE
+                    pelo campo "Tipo de Usuário" — quando o admin seleciona "Motorista" no
+                    dropdown acima, o backend deriva isDriver=true automaticamente. O usuário
+                    final não pode trocar seu próprio tipo — só o admin pode. */}
                 {/* Qualificação (UserType code) — dinâmico, carregado da tabela
                     UserType. Antes o admin só conseguia definir o tipo na criação;
                     agora pode mudar depois também (backend PUT já aceitava). */}

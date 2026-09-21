@@ -312,27 +312,22 @@ export function PersonalDataSection({ userId }: { userId: string }) {
         ) : (
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Qualification */}
+              {/* Tarefa (21/09): Qualificação (tipo de usuário) é READ-ONLY para o
+                  usuário final. Só o admin pode trocar via painel admin. */}
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground flex items-center gap-1">
                   <Award className="h-3 w-3" />
                   Qualificação
                 </Label>
-                <Select
-                  value={draft.qualification || ''}
-                  onValueChange={(v) => setField('qualification', v)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Selecione" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {QUALIFICATION_OPTIONS_LOCAL.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Input
+                  value={getQualificationLabel(draft.qualification)}
+                  disabled
+                  className="w-full bg-muted/50 cursor-not-allowed"
+                  placeholder="—"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Somente o administrador pode alterar sua qualificação.
+                </p>
               </div>
 
               {/* Birth Date */}

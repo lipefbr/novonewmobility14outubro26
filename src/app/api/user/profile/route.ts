@@ -118,7 +118,12 @@ export async function PUT(request: Request) {
     if (education !== undefined) updateData.education = education === '' ? null : education
     if (zipCode !== undefined) updateData.zipCode = zipCode === '' ? null : zipCode
     if (sponsorId !== undefined) updateData.sponsorId = sponsorId === '' ? null : sponsorId
-    if (qualification !== undefined) updateData.qualification = qualification === '' ? null : qualification
+    // Tarefa (21/09): qualification (tipo de usuário) NÃO pode ser alterado
+    // pelo próprio usuário via este endpoint — só o admin pode mudar via
+    // /api/admin/users/[id]. Se o usuário final enviar qualification, é
+    // ignorado silenciosamente.
+    // if (qualification !== undefined) updateData.qualification = qualification === '' ? null : qualification
+    // ↑ linha acima comentada para bloquear auto-troca de tipo.
 
     // Emergency contact
     if (emergencyName !== undefined) updateData.emergencyName = emergencyName === '' ? null : emergencyName
