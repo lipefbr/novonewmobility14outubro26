@@ -1381,6 +1381,9 @@ export function AdminPage() {
   const [matrixPositionsPage, setMatrixPositionsPage] = useState(1)
   const [matrixPositionsTotal, setMatrixPositionsTotal] = useState(0)
   const [editingMatrixType, setEditingMatrixType] = useState<any | null>(null)
+  // Tarefa (22/09): state para editar largura/profundidade da matriz no dialog
+  const [editingMatrixWidth, setEditingMatrixWidth] = useState<number>(4)
+  const [editingMatrixDepth, setEditingMatrixDepth] = useState<number>(5)
   const [matrixLevelDialogOpen, setMatrixLevelDialogOpen] = useState(false)
   const [editingMatrixPosition, setEditingMatrixPosition] = useState<any | null>(null)
   const [matrixPositionDialogOpen, setMatrixPositionDialogOpen] = useState(false)
@@ -3431,6 +3434,8 @@ export function AdminPage() {
   // Seeds the local draft from the type's current levelEarnings array.
   const openEditMatrixLevels = (mt: any) => {
     setEditingMatrixType(mt)
+    setEditingMatrixWidth(mt.width || 4)
+    setEditingMatrixDepth(mt.depth || 5)
     const seed = (mt.levelEarnings || []).map((le: any) => ({
       id: le.id,
       level: le.level,
@@ -3481,6 +3486,8 @@ export function AdminPage() {
         method: 'PUT',
         body: JSON.stringify({
           userId: user?.id,
+          width: editingMatrixWidth,
+          depth: editingMatrixDepth,
           levels: normalized,
         }),
       })
@@ -7982,6 +7989,30 @@ export function AdminPage() {
                   </DialogHeader>
 
                   <div className="space-y-3 py-2">
+                    {/* Tarefa (22/09): editar largura e profundidade da matriz */}
+                    <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Largura (indicados por nível)</Label>
+                        <Input
+                          type="number" min={1} max={20} step={1}
+                          value={editingMatrixWidth}
+                          onChange={(e) => setEditingMatrixWidth(Number(e.target.value) || 4)}
+                          className="h-9 text-sm font-mono"
+                        />
+                        <p className="text-[10px] text-muted-foreground">Ex: 4 = matriz 4-wide</p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Profundidade (níveis)</Label>
+                        <Input
+                          type="number" min={1} max={20} step={1}
+                          value={editingMatrixDepth}
+                          onChange={(e) => setEditingMatrixDepth(Number(e.target.value) || 5)}
+                          className="h-9 text-sm font-mono"
+                        />
+                        <p className="text-[10px] text-muted-foreground">Ex: 5 = 5 níveis de profundidade ({editingMatrixWidth}x{editingMatrixDepth})</p>
+                      </div>
+                    </div>
+
                     {matrixLevelDraft.length === 0 ? (
                       <div className="p-6 text-center border border-dashed border-border rounded-lg">
                         <AlertCircle className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />

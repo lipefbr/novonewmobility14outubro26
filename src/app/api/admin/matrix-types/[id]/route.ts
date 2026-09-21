@@ -98,8 +98,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
       await prisma.matrixLevelEarning.deleteMany({ where: { matrixTypeId: id } })
       if (validatedLevels.length) {
+        // Tarefa (22/09): MatrixLevelEarning.id não tem @default(cuid()),
+        // então precisamos gerar ids manualmente.
         data.MatrixLevelEarning = {
-          create: validatedLevels,
+          create: validatedLevels.map((l, i) => ({
+            id: `${id}_lvl_${l.level}_${Date.now()}_${i}`,
+            level: l.level,
+            percentage: l.percentage,
+            fixedBonusCents: l.fixedBonusCents,
+            updatedAt: new Date(),
+          })),
         }
       }
     }

@@ -728,7 +728,7 @@ model DiscountClubPartner {
 }
 
 model MatrixLevelEarning {
-  id              String     @id
+  id              String     @id @default(cuid())
   matrixTypeId    String
   level           Int
   percentage      Float      @default(0)
