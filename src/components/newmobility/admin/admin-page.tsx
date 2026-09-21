@@ -6411,13 +6411,11 @@ export function AdminPage() {
                           </td>
                           <td className="px-3 py-2.5">
                             <Badge variant="outline" className={
-                              item.targetQualification === 'motorista' ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400' :
-                              item.targetQualification === 'entregador' ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400' :
-                              'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400'
+                              item.targetQualification === 'ambos' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' :
+                              'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400'
                             }>
-                              {item.targetQualification === 'motorista' ? 'Motorista' :
-                               item.targetQualification === 'entregador' ? 'Entregador' :
-                               item.targetQualification === 'ambos' ? 'Ambos' : item.targetQualification}
+                              {item.targetQualification === 'ambos' ? 'Todos os tipos' :
+                               ALLOWED_QUALIFICATION_OPTIONS.find(o => o.value === item.targetQualification)?.label || item.targetQualification}
                             </Badge>
                           </td>
                           <td className="px-3 py-2.5 hidden sm:table-cell">
@@ -6507,9 +6505,10 @@ export function AdminPage() {
                     >
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="motorista">Motorista</SelectItem>
-                        <SelectItem value="entregador">Entregador</SelectItem>
-                        <SelectItem value="ambos">Ambos (Motorista + Entregador)</SelectItem>
+                        <SelectItem value="ambos">Todos os tipos</SelectItem>
+                        {ALLOWED_QUALIFICATION_OPTIONS.map(opt => (
+                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -6627,9 +6626,8 @@ export function AdminPage() {
                   <p className="text-[10px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400 font-semibold mb-1">Pré-visualização</p>
                   <p className="text-sm text-foreground">
                     <Badge variant="outline" className="mr-2 bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400">
-                      {goalConfigForm.targetQualification === 'motorista' ? 'Motorista' :
-                       goalConfigForm.targetQualification === 'entregador' ? 'Entregador' :
-                       goalConfigForm.targetQualification === 'ambos' ? 'Ambos' : goalConfigForm.targetQualification}
+                      {goalConfigForm.targetQualification === 'ambos' ? 'Todos os tipos' :
+                       ALLOWED_QUALIFICATION_OPTIONS.find(o => o.value === goalConfigForm.targetQualification)?.label || goalConfigForm.targetQualification}
                     </Badge>
                     <span className="font-medium">{goalConfigForm.targetValue || '—'}</span>
                     <span className="text-muted-foreground"> {goalConfigForm.metricLabel || 'viagens finalizadas'}</span>
