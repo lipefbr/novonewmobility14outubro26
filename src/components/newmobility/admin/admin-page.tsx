@@ -973,6 +973,14 @@ export function AdminPage() {
   }>>([])
   const [benefitTargets, setBenefitTargets] = useState<Record<string, string>>({})
   const [benefitTargetSavingKey, setBenefitTargetSavingKey] = useState<string | null>(null)
+  // Tarefa (22/09): state para dialog de editar benefício
+  const [benefitEditDialog, setBenefitEditDialog] = useState<{
+    open: boolean
+    benefitType: string
+    benefitName: string
+    benefitAmount: number
+    benefitDescription: string
+  }>({ open: false, benefitType: '', benefitName: '', benefitAmount: 0, benefitDescription: '' })
 
   // Task 2-c / Item 7.3 (admin form) — array-based `metas.allowedQualifications`.
   // Stored as a JSON string on SystemConfig under the key
@@ -6149,24 +6157,42 @@ export function AdminPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <Label className="text-xs text-muted-foreground whitespace-nowrap">Módulo visível para:</Label>
-                <Select
-                  value={driverGoalsTarget}
-                  onValueChange={(v) => saveDriverGoalsTarget(v)}
+              {/* Tarefa (22/09): trocado dropdown por checkboxes (igual Qualificações permitidas) */}
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                {driverGoalsTargetLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />}
+                {ALLOWED_QUALIFICATION_OPTIONS.map(opt => {
+                  const checked = driverGoalsTarget === opt.value || driverGoalsTarget === 'ambos'
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => saveDriverGoalsTarget(opt.value)}
+                      disabled={driverGoalsTargetLoading || driverGoalsTargetSaving}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                        checked
+                          ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400'
+                          : 'bg-background border-border text-muted-foreground hover:bg-muted/50'
+                      }`}
+                    >
+                      <input type="checkbox" checked={checked} readOnly className="h-3 w-3 accent-emerald-600" />
+                      {opt.label}
+                    </button>
+                  )
+                })}
+                <button
+                  type="button"
+                  onClick={() => saveDriverGoalsTarget('ambos')}
                   disabled={driverGoalsTargetLoading || driverGoalsTargetSaving}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                    driverGoalsTarget === 'ambos'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400'
+                      : 'bg-background border-border text-muted-foreground hover:bg-muted/50'
+                  }`}
                 >
-                  <SelectTrigger className="w-full sm:w-[220px]">
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ambos">Todos os tipos</SelectItem>
-                    {ALLOWED_QUALIFICATION_OPTIONS.map(opt => (
-                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {driverGoalsTargetSaving && <Loader2 className="h-4 w-4 animate-spin text-blue-600 shrink-0" />}
+                  <input type="checkbox" checked={driverGoalsTarget === 'ambos'} readOnly className="h-3 w-3 accent-emerald-600" />
+                  Todos os tipos
+                </button>
+                {driverGoalsTargetSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600 shrink-0" />}
               </div>
             </CardContent>
           </Card>
@@ -6333,6 +6359,25 @@ export function AdminPage() {
                             </SelectContent>
                           </Select>
                           {isSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-600 shrink-0" />}
+                          {/* Tarefa (22/09): botão Editar benefício */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-xs gap-1 shrink-0"
+                            onClick={() => {
+                              setBenefitEditDialog({
+                                open: true,
+                                benefitType: b.type,
+                                benefitName: b.name,
+                                benefitAmount: b.amount,
+                                benefitDescription: b.description || '',
+                              })
+                            }}
+                            title="Editar benefício"
+                          >
+                            <Edit className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">Editar</span>
+                          </Button>
                         </div>
                       </div>
                     )
@@ -9688,6 +9733,84 @@ export function AdminPage() {
             >
               <Check className="h-4 w-4" />
               Sim, aprovar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== BENEFIT EDIT DIALOG (22/09) ===== */}
+      <Dialog open={benefitEditDialog.open} onOpenChange={(open) => !open && setBenefitEditDialog(d => ({ ...d, open: false }))}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit className="h-4 w-4 text-emerald-600" />
+              Editar Benefício
+            </DialogTitle>
+            <DialogDescription>
+              Edite o nome, valor e descrição do benefício <strong>{benefitEditDialog.benefitType}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Nome do benefício</Label>
+              <Input
+                value={benefitEditDialog.benefitName}
+                onChange={(e) => setBenefitEditDialog(d => ({ ...d, benefitName: e.target.value }))}
+                placeholder="Ex: Auxílio Combustível"
+                className="h-9 text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Valor em centavos (R$)</Label>
+              <Input
+                type="number"
+                value={benefitEditDialog.benefitAmount}
+                onChange={(e) => setBenefitEditDialog(d => ({ ...d, benefitAmount: Number(e.target.value) || 0 }))}
+                placeholder="0"
+                className="h-9 text-sm font-mono"
+              />
+              <p className="text-[10px] text-muted-foreground">{formatCurrency(benefitEditDialog.benefitAmount)}</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Descrição</Label>
+              <Textarea
+                value={benefitEditDialog.benefitDescription}
+                onChange={(e) => setBenefitEditDialog(d => ({ ...d, benefitDescription: e.target.value }))}
+                placeholder="Ex: R$ 2.600/mês (R$100/dia × 26 dias)"
+                className="text-sm"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBenefitEditDialog(d => ({ ...d, open: false }))}>
+              Cancelar
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+              onClick={async () => {
+                if (!user?.id) return
+                try {
+                  await apiFetch('/admin/gratifications-config/benefit', {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                      userId: user.id,
+                      benefitType: benefitEditDialog.benefitType,
+                      name: benefitEditDialog.benefitName,
+                      amount: benefitEditDialog.benefitAmount,
+                      description: benefitEditDialog.benefitDescription,
+                    }),
+                  })
+                  toast.success('Benefício atualizado com sucesso!')
+                  setBenefitEditDialog(d => ({ ...d, open: false }))
+                  loadDriverGoalsTarget()
+                } catch {
+                  toast.error('Erro ao atualizar benefício')
+                }
+              }}
+            >
+              <Save className="h-4 w-4" />
+              Salvar
             </Button>
           </DialogFooter>
         </DialogContent>
