@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
           // Rejeitar: devolve saldo e marca rejected
           await prisma.user.update({
             where: { id: wr.userId },
-            data: { balanceWithdrawal: { increment: wr.amountCents } },
+            data: { balanceWithdrawal: { increment: wr.amount } },
           })
           await prisma.withdrawalRequest.update({
             where: { id: wrId },
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
 
         // action === 'approve' — criar transferência no Asaas
         const user = wr.user as any
-        const amount = centsToAsaasValue(wr.amountCents)
+        const amount = centsToAsaasValue(wr.amount)
         const cpf = sanitizeCpfCnpj(user.cpf)
 
         let transferData: any = {

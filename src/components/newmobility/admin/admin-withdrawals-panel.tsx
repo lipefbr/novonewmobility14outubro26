@@ -327,7 +327,7 @@ export function AdminWithdrawalsPanel() {
     }
     const totalAmount = withdrawals
       .filter(w => w.status === 'pending' || w.status === 'under_review')
-      .reduce((sum, w) => sum + w.amountCents, 0)
+      .reduce((sum, w) => sum + w.amount, 0)
     // Tarefa 1 (22/09): abre modal de confirmação em vez de confirm() nativo
     setApproveDialog({ open: true, withdrawal: null, isBatch: true, batchIds: pendingIds, batchTotal: totalAmount })
   }
@@ -866,7 +866,7 @@ export function AdminWithdrawalsPanel() {
               ) : approveDialog.withdrawal ? (
                 <>
                   Você deseja realmente aprovar o saque de{' '}
-                  <strong className="text-emerald-600">R$ {(approveDialog.withdrawal.amountCents / 100).toFixed(2)}</strong>
+                  <strong className="text-emerald-600">R$ {(approveDialog.withdrawal.amount / 100).toFixed(2)}</strong>
                   {' '}de <strong>{approveDialog.withdrawal.user?.name || 'usuário'}</strong>?
                   Uma transferência será criada no Asaas.
                 </>
