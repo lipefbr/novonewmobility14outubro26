@@ -752,6 +752,10 @@ export function AdminPage() {
   const [financialStatusFilter, setFinancialStatusFilter] = useState('all')
   const [financialDateFrom, setFinancialDateFrom] = useState('')
   const [financialDateTo, setFinancialDateTo] = useState('')
+  // Tarefa (22/09): saque do lucro da empresa (só admin/geral dono)
+  const [companyWithdrawalAmount, setCompanyWithdrawalAmount] = useState('')
+  const [companyWithdrawalPurpose, setCompanyWithdrawalPurpose] = useState('')
+  const [companyWithdrawalLoading, setCompanyWithdrawalLoading] = useState(false)
   const [financialDatePreset, setFinancialDatePreset] = useState('')
 
   // Users bulk actions
@@ -1825,6 +1829,43 @@ export function AdminPage() {
       const data = await apiFetch<FinancialData>(`/admin/financial?userId=${user?.id}`)
       setFinancialData(data)
     } catch { /* ignore */ }
+  }
+
+  // Tarefa (22/09): Saque do lucro da empresa (só admin/geral dono)
+  const handleCompanyWithdrawal = async () => {
+    if (!user?.id) return
+    const amount = parseFloat(companyWithdrawalAmount.replace(',', '.'))
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Valor inválido')
+      return
+    }
+    if (!companyWithdrawalPurpose.trim()) {
+      toast.error('Informe a finalidade do saque')
+      return
+    }
+    if (!confirm(`Confirmar saque do lucro da empresa no valor de R$ ${amount.toFixed(2)}?\nFinalidade: ${companyWithdrawalPurpose.trim()}`)) {
+      return
+    }
+    setCompanyWithdrawalLoading(true)
+    try {
+      const cents = Math.round(amount * 100)
+      await apiFetch('/admin/financial/company-withdrawal', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: user.id,
+          amountCents: cents,
+          purpose: companyWithdrawalPurpose.trim(),
+        }),
+      })
+      toast.success('Saque do lucro da empresa realizado com sucesso')
+      setCompanyWithdrawalAmount('')
+      setCompanyWithdrawalPurpose('')
+      await loadFinancial()
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao sacar lucro da empresa')
+    } finally {
+      setCompanyWithdrawalLoading(false)
+    }
   }
 
   // Item 2 — saveSalesLimit removido. Substituído por saveMatrixLimit(matrix)
@@ -4900,8 +4941,76 @@ export function AdminPage() {
                       </select>
                     </div>
                   </div>
+                  {/* Tarefa (22/09): botão "Buscar" que recarrega os dados */}
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <p className="text-[10px] text-muted-foreground">
+                      Filtros aplicados em tempo real nas transações carregadas.
+                    </p>
+                    <Button
+                      size="sm"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                      onClick={() => loadFinancial()}
+                    >
+                      <Search className="h-3.5 w-3.5" />
+                      Recarregar Dados
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
+
+              {/* Tarefa (22/09): Saque do Lucro da Empresa — só admin/geral dono */}
+              {user?.role === 'admin' && (
+                <Card className="border-emerald-300 dark:border-emerald-700 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20">
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <DollarSign className="h-4 w-4 text-emerald-600" />
+                      Saque do Lucro da Empresa
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <p className="text-xs text-muted-foreground">
+                      Como administrador/dono da plataforma, você pode sacar o lucro da empresa diretamente.
+                      O valor será debitado do saldo da plataforma e registrado como transação administrativa.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Valor do Saque (R$)</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0,00"
+                          value={companyWithdrawalAmount}
+                          onChange={(e) => setCompanyWithdrawalAmount(e.target.value)}
+                          className="h-9"
+                        />
+                      </div>
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <Label className="text-xs">Finalidade do Saque</Label>
+                        <Input
+                          type="text"
+                          placeholder="Ex: Pagamento de fornecedor, investimento, etc."
+                          value={companyWithdrawalPurpose}
+                          onChange={(e) => setCompanyWithdrawalPurpose(e.target.value)}
+                          className="h-9"
+                        />
+                      </div>
+                    </div>
+                    <Button
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+                      onClick={handleCompanyWithdrawal}
+                      disabled={companyWithdrawalLoading || !companyWithdrawalAmount || parseFloat(companyWithdrawalAmount) <= 0}
+                    >
+                      {companyWithdrawalLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <DollarSign className="h-4 w-4" />
+                      )}
+                      Sacar Lucro da Empresa
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* Monthly Revenue Chart - Enhanced */}
