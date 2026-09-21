@@ -1349,7 +1349,9 @@ async function seedEvents() {
 async function seedMatrixTypes() {
   console.log('→ Seeding MatrixTypes...')
   const types = [
-    { code: 'entrada_4x5', name: 'Matriz Entrada 4x5', matrixKind: 'entrada', width: 4, depth: 5, description: 'Matriz de Entrada — 4 indicados diretos por nível, 5 níveis de profundidade', color: '#10b981', isActive: true },
+    // Tarefa (22/09): adicionada matriz entrada 4x3 (Blue 3 usa esta)
+    { code: 'entrada_4x3', name: 'Matriz Entrada 4x3', matrixKind: 'entrada', width: 4, depth: 3, description: 'Matriz de Entrada — 4 indicados diretos por nível, 3 níveis de profundidade (Blue 3)', color: '#3b82f6', isActive: true },
+    { code: 'entrada_4x5', name: 'Matriz Entrada 4x5', matrixKind: 'entrada', width: 4, depth: 5, description: 'Matriz de Entrada — 4 indicados diretos por nível, 5 níveis de profundidade (Blue 5)', color: '#10b981', isActive: true },
     { code: 'residual_4x7', name: 'Matriz Residual 4x7', matrixKind: 'residual', width: 4, depth: 7, description: 'Matriz Residual — 4 indicados por nível, 7 níveis de profundidade', color: '#0d9488', isActive: true },
     { code: 'vendas_4x9', name: 'Matriz Vendas 4x9', matrixKind: 'vendas', width: 4, depth: 9, description: 'Matriz de Vendas — 4 indicados por nível, 9 níveis de profundidade', color: '#f59e0b', isActive: true },
   ]
@@ -1358,7 +1360,8 @@ async function seedMatrixTypes() {
     if (existing) {
       const existingLevels = await prisma.matrixLevelEarning.count({ where: { matrixTypeId: existing.id } }).catch(() => 0)
       if (existingLevels === 0) {
-        const pcts = t.matrixKind === 'entrada' ? [5, 10, 10, 5, 5] : t.matrixKind === 'residual' ? [10, 9, 5, 5, 4, 3, 2] : [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+        // Tarefa (22/09): percentuais da 4x3 são [5, 10, 10] (3 níveis)
+        const pcts = t.code === 'entrada_4x3' ? [5, 10, 10] : t.matrixKind === 'entrada' ? [5, 10, 10, 5, 5] : t.matrixKind === 'residual' ? [10, 9, 5, 5, 4, 3, 2] : [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
         for (let i = 0; i < pcts.length; i++) {
           await prisma.matrixLevelEarning.create({ data: { id: `mle_${t.code}_${i+1}`, matrixTypeId: existing.id, level: i + 1, percentage: pcts[i], fixedBonusCents: 0, updatedAt: new Date() } }).catch(() => {})
         }
@@ -1366,19 +1369,26 @@ async function seedMatrixTypes() {
       continue
     }
     const created = await prisma.matrixType.create({ data: { id: `mt_${t.code}`, updatedAt: new Date(), ...t } })
-    const pcts = t.matrixKind === 'entrada' ? [5, 10, 10, 5, 5] : t.matrixKind === 'residual' ? [10, 9, 5, 5, 4, 3, 2] : [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+    const pcts = t.code === 'entrada_4x3' ? [5, 10, 10] : t.matrixKind === 'entrada' ? [5, 10, 10, 5, 5] : t.matrixKind === 'residual' ? [10, 9, 5, 5, 4, 3, 2] : [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
     for (let i = 0; i < pcts.length; i++) {
       await prisma.matrixLevelEarning.create({ data: { id: `mle_${t.code}_${i+1}`, matrixTypeId: created.id, level: i + 1, percentage: pcts[i], fixedBonusCents: 0, updatedAt: new Date() } }).catch(() => {})
     }
   }
   // Link plans to matrix types
-  const mtEntrada = await prisma.matrixType.findUnique({ where: { code: 'entrada_4x5' } }).catch(() => null)
+  // Tarefa (22/09): Blue 3 usa entrada_4x3, Blue 5 usa entrada_4x5
+  const mtEntrada4x3 = await prisma.matrixType.findUnique({ where: { code: 'entrada_4x3' } }).catch(() => null)
+  const mtEntrada4x5 = await prisma.matrixType.findUnique({ where: { code: 'entrada_4x5' } }).catch(() => null)
   const mtResidual = await prisma.matrixType.findUnique({ where: { code: 'residual_4x7' } }).catch(() => null)
   const mtVendas = await prisma.matrixType.findUnique({ where: { code: 'vendas_4x9' } }).catch(() => null)
-  if (mtEntrada) await prisma.plan.updateMany({ where: { code: { in: ['free', 'blue3', 'blue5'] }, matrixEntradaId: null }, data: { matrixEntradaId: mtEntrada.id } }).catch(() => {})
+  // Blue 3 → entrada 4x3
+  if (mtEntrada4x3) await prisma.plan.updateMany({ where: { code: 'blue3' }, data: { matrixEntradaId: mtEntrada4x3.id } }).catch(() => {})
+  // Blue 5 → entrada 4x5 (upgrade de 4x3 para 4x5)
+  if (mtEntrada4x5) await prisma.plan.updateMany({ where: { code: 'blue5' }, data: { matrixEntradaId: mtEntrada4x5.id } }).catch(() => {})
+  // Free → sem matriz entrada
+  await prisma.plan.updateMany({ where: { code: 'free' }, data: { matrixEntradaId: null } }).catch(() => {})
   if (mtResidual) await prisma.plan.updateMany({ where: { code: { in: ['blue5'] }, matrixResidualId: null }, data: { matrixResidualId: mtResidual.id } }).catch(() => {})
   if (mtVendas) await prisma.plan.updateMany({ where: { code: { in: ['blue5'] }, matrixVendasId: null }, data: { matrixVendasId: mtVendas.id } }).catch(() => {})
-  console.log('  ✓ 3 MatrixTypes + level earnings ready')
+  console.log('  ✓ 4 MatrixTypes + level earnings ready (incluindo entrada 4x3)')
 }
 
 async function seedCareerPlans() {

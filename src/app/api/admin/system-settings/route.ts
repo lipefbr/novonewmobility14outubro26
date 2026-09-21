@@ -176,6 +176,11 @@ const DEFAULT_SYSTEM_SETTINGS: SeedEntry[] = [
   { key: 'career.points_expiry_days', value: '0', description: 'Dias para expiração de pontos de carreira (0 = nunca expira)', category: 'career' },
   { key: 'career.bonus_frequency', value: 'monthly', description: 'Frequência de pagamento do bônus de carreira (monthly/weekly/daily)', category: 'career' },
 
+  // -------- features (22/09): toggle de funcionalidades do menu --------
+  // Tarefa 2: admin pode ativar/desativar o menu Bet e Jogos
+  { key: 'features.bet_enabled', value: 'true', description: 'Ativar/desativar menu de Apostas (Bet) — false esconde do sidebar e bloqueia acesso', category: 'geral' },
+  { key: 'features.games_enabled', value: 'true', description: 'Ativar/desativar menu de Jogos — false esconde do sidebar e bloqueia acesso', category: 'geral' },
+
   // -------- saques (extras) --------
   // Withdrawal processing limits (CONFIG-EXPAND)
   { key: 'saque.processing_time_hours', value: '48', description: 'Tempo máximo de processamento de saque em horas (48h)', category: 'saques' },

@@ -198,19 +198,33 @@ export function Sidebar() {
   // (no admin role required). When null (loading or fetch error) we keep the
   // Metas item visible by default — `userCanSeeMetas` falls back to 'ambos'.
   const [metasConfig, setMetasConfig] = useState<MetasConfig | null>(null)
+  // Tarefa 2 (22/09): config para ativar/desativar Bet e Jogos
+  const [featuresConfig, setFeaturesConfig] = useState<{ bet_enabled?: string; games_enabled?: string }>({})
 
   useEffect(() => {
     let cancelled = false
     async function loadConfig() {
       try {
         const data = await apiFetch<MetasConfig>('/gratifications-config')
-        // Accept either the new array-based allowedQualifications or the
-        // legacy targetQualification — userCanSeeMetas handles both.
         if (!cancelled && data && (data.allowedQualifications || data.targetQualification)) {
           setMetasConfig(data)
         }
       } catch {
-        // Silent fail — keep null so userCanSeeMetas uses the 'ambos' default.
+        // Silent fail
+      }
+      // Tarefa 2 (22/09): carrega features configs (bet_enabled, games_enabled)
+      try {
+        const settingsRes = await apiFetch<{ settings: Array<{ key: string; value: string }> }>('/system-settings/public')
+        if (!cancelled && settingsRes?.settings) {
+          const map: Record<string, string> = {}
+          for (const s of settingsRes.settings) map[s.key] = s.value
+          setFeaturesConfig({
+            bet_enabled: map['features.bet_enabled'] ?? 'true',
+            games_enabled: map['features.games_enabled'] ?? 'true',
+          })
+        }
+      } catch {
+        // Silent fail — mantém defaults (true = visível)
       }
     }
     loadConfig()
@@ -252,6 +266,10 @@ export function Sidebar() {
     if (item.adminOnly && !isAdmin) return false
     if (item.lojistaOnly && !isLojista) return false
     if (item.key === 'gratifications' && !canSeeMetas) return false
+    // Tarefa 2 (22/09): admin pode desativar Bet e Jogos via SystemConfig
+    if (item.key === 'portal-sportbet' && featuresConfig.bet_enabled === 'false') return false
+    if (item.key === 'portal-gamer' && featuresConfig.games_enabled === 'false') return false
+    if ((item.key === 'bets' || item.key === 'jogos') && featuresConfig.games_enabled === 'false') return false
     return true
   })
 
