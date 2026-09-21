@@ -3757,13 +3757,28 @@ export function AdminPage() {
 
   // ---------- Helpers ----------
   const getPlanBadge = (plan: string) => {
+    // Tarefa (19/09): busca cor do plano no array plans[] (carregado do banco).
+    // Antes era hardcoded com só free/blue3/blue5. Agora funciona com qualquer
+    // plano criado pelo admin na aba "Planos & Preços".
     const colors: Record<string, string> = { free: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300', blue3: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', blue5: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' }
+    // Tenta achar o plano no array dinâmico pelo code ou id
+    const found = plans.find(p => p.code === plan || p.id === plan)
+    if (found) {
+      // Cores baseadas no sortOrder/price
+      if (found.price === 0) return colors.free
+      if (found.price <= 50000) return 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400'
+      if (found.price <= 100000) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+    }
     return colors[plan] || colors.free
   }
 
   const getPlanName = (plan: string) => {
+    // Tarefa (19/09): busca nome do plano no array plans[] (carregado do banco).
+    // Antes era hardcoded com só free/blue3/blue5.
     const names: Record<string, string> = { free: 'Gratuito', blue3: 'Blue 3', blue5: 'Blue 5 Premium' }
-    return names[plan] || plan
+    const found = plans.find(p => p.code === plan || p.id === plan)
+    return found?.name || names[plan] || plan
   }
 
   const getTypeColor = (type: string) => {
@@ -4094,19 +4109,41 @@ export function AdminPage() {
                   <CardHeader><CardTitle className="text-sm flex items-center gap-2"><BarChart3 className="h-4 w-4 text-emerald-600" /> Distribuição de Planos</CardTitle></CardHeader>
                   <CardContent>
                     <div className="space-y-3">
-                      {stats.planDistribution.map(p => (
-                        <div key={p.plan} className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0 shrink-0">
-                            <Badge className={getPlanBadge(p.plan)}>{getPlanName(p.plan)}</Badge>
-                          </div>
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden min-w-[40px]">
-                              <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${(p.count / stats.totalUsers) * 100}%` }} />
+                      {/* Tarefa (19/09): mescla planDistribution (usuários por plano) com
+                          plans[] (todos os planos do banco). Planos com 0 usuários também
+                          aparecem (count=0). Antes só mostrava planos que tinham usuários. */}
+                      {(() => {
+                        const distMap: Record<string, number> = {}
+                        for (const p of stats.planDistribution) distMap[p.plan] = p.count
+                        // Todos os planos do banco + qualquer plano que apareceu nos
+                        // usuários mas não está no banco (legacy)
+                        const allPlans = [
+                          ...plans.map(p => p.code || p.id),
+                          ...Object.keys(distMap),
+                        ].filter((v, i, arr) => v && arr.indexOf(v) === i)
+                        // Ordena: free primeiro, depois por sortOrder
+                        allPlans.sort((a, b) => {
+                          const pa = plans.find(p => (p.code || p.id) === a)
+                          const pb = plans.find(p => (p.code || p.id) === b)
+                          return (pa?.sortOrder ?? 99) - (pb?.sortOrder ?? 99)
+                        })
+                        return allPlans.map(planCode => {
+                          const count = distMap[planCode] || 0
+                          return (
+                            <div key={planCode} className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0 shrink-0">
+                                <Badge className={getPlanBadge(planCode)}>{getPlanName(planCode)}</Badge>
+                              </div>
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden min-w-[40px]">
+                                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${stats.totalUsers > 0 ? (count / stats.totalUsers) * 100 : 0}%` }} />
+                                </div>
+                                <span className="text-sm font-medium text-foreground w-8 text-right shrink-0">{count}</span>
+                              </div>
                             </div>
-                            <span className="text-sm font-medium text-foreground w-8 text-right shrink-0">{p.count}</span>
-                          </div>
-                        </div>
-                      ))}
+                          )
+                        })
+                      })()}
                     </div>
                   </CardContent>
                 </Card>
