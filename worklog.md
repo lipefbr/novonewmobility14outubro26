@@ -11120,3 +11120,26 @@ Stage Summary:
 - Comportamento esperado pelo usuário agora funciona: editar "97500.00" → Salvar → Atual: R$ 97.500,00 (não R$ 9.750.000,00).
 - Nenhum outro lugar do admin-page.tsx tinha o mesmo bug (audit dos outros `Math.round(value * 100)` confirmou que recebem R$ direto do input do usuário via `e.target.value`, então multiplicar por 100 é correto nesses casos).
 - Próximo passo: commit + push para deploy automático na VPS LipeHost.
+
+---
+Task ID: 3
+Agent: Z.ai Code (subagent)
+Task: Corrigir bug "Dashboard admin não carrega estatísticas na VPS" (timeout / "Erro ao carregar estatísticas. Verifique sua conexão")
+
+Work Log:
+- Lido o worklog.md para entender histórico (Tarefas 1 e 2 já haviam corrigido db.execute() e mock values em dashboards).
+- Inspecionados os 4 arquivos alvo: src/lib/api.ts, src/app/api/admin/stats/route.ts, src/app/api/admin/dashboard/route.ts, src/components/newmobility/admin/admin-page.tsx.
+- Confirmada a root cause: 7 queries sequenciais em /admin/stats (com findMany + agregação manual de plano) e ~28 queries sequenciais em /admin/dashboard (incluindo loop de 6 meses com 12 queries), todas sob timeout frontend de 10s. Neon Postgres remoto + cold-start estourava o timeout.
+- src/lib/api.ts: DEFAULT_TIMEOUT_MS bumped de 10_000 para 15_000 (com comentário explicativo).
+- src/app/api/admin/stats/route.ts: reescrito — Promise.all executa as 7 queries em paralelo (cada uma com .catch() para resiliência, mantendo o mesmo padrão de try/catch isolado). Substituído findMany + loop manual por prisma.user.groupBy({ by: ['plan'], _count: { _all: true } }). Adicionado cache estático de 30s (cachedStats { data, ts }). Shape da resposta JSON preservado.
+- src/app/api/admin/dashboard/route.ts: reescrito — Promise.all com 14 queries independentes em paralelo. findMany de planDistribution substituído por groupBy. Loop de 6 meses (que fazia 12 queries sequenciais) substituído por UMA findMany de users (createdAt >= sixMonthsAgo) + UMA findMany de transactions (status=paid, type in deposit/bonus) + agregação in-memory por bucket 'YYYY-MM' usando Map. Adicionado cache estático de 30s (cachedDashboard { data, ts }). Shape JSON preservado.
+- src/components/newmobility/admin/admin-page.tsx: adicionado `{ timeoutMs: 30000 }` nas 5 chamadas críticas: loadStats, loadUsers, loadConfigs, loadWithdrawals, loadCareerPlans (mantendo os comentários PT-BR pré-existentes).
+- Validação: rodado `bun run lint`. Encontrados exatamente 13 erros pré-existentes em arquivos auxiliares .js (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js) — todos @typescript-eslint/no-require-imports. Nenhum erro introduzido pelos arquivos alterados (0 erros em src/). NÃO rodei bun run build nem testei via browser (dev server instável no sandbox por OOM), conforme instruções.
+- Commit local criado (64cd635) — sem push (agente principal cuida do deploy).
+
+Stage Summary:
+- Frontend: timeout default 10s -> 15s e timeouts explícitos de 30s nos 5 loaders admin críticos eliminam o sintoma "Verifique sua conexão".
+- Backend: /admin/stats e /admin/dashboard agora executam todas as queries independentes em paralelo (Promise.all) e usam groupBy nativo do Postgres em vez de findMany + loop manual. O loop de 6 meses foi substituído por 2 queries findMany + agregação in-memory, reduzindo de 12 para 2 queries.
+- Backend: cache estático de 30s em ambos endpoints reduz drasticamente a carga em sequências de reload. Shape JSON preservado — frontend não precisa de mudanças adicionais.
+- Latência esperada na VPS: dashboard que antes passava de 10s agora deve ficar na faixa de 0.5-2s (queries em paralelo) no cold-start e <100ms no cache hit.
+- Próximo passo: agente principal faz push e deploy automático na VPS LipeHost.
