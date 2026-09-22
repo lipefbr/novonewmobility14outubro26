@@ -84,6 +84,7 @@ const adminNavItems: AdminNavItem[] = [
   { key: 'talkmobi', label: 'Planos TalkMobi', icon: Smartphone, description: 'Editar planos de celular TalkMobi', group: 'main' },
   { key: 'talkmobi-subscriptions', label: 'Assinaturas TalkMobi', icon: ClipboardCheck, description: 'Receber e aprovar pedidos de assinatura', group: 'main' },
   { key: 'telemedicina', label: 'Telemedicina', icon: HeartPulse, description: 'Aprovar pedidos de ativação', group: 'main' },
+  { key: 'telemedicina-plans', label: 'Planos Telemedicina', icon: HeartPulse, description: 'Gerencie planos de telemedicina (catálogo)', group: 'system' },
   { key: 'challenges', label: 'Desafios', icon: Target, description: 'Criar desafios semanais e mensais', group: 'main' },
   { key: 'announcements', label: 'Anúncios', icon: Megaphone, description: 'Comunicados da plataforma', group: 'system' },
   { key: 'reports', label: 'Relatórios', icon: BarChart3, description: 'Analytics e relatórios', group: 'system' },

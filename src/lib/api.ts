@@ -584,3 +584,27 @@ export const talkMobiApi = {
       method: 'DELETE',
     }),
 }
+
+// Telemedicina plans admin CRUD. Mesmo padrão do talkMobiApi — o GET é público
+// (sem userId), POST/PUT/DELETE exigem admin userId no body/query.
+export const telemedicinaApi = {
+  getPlans: (_userId?: string) =>
+    apiFetch<{ plans: any[] }>('/telemedicina/plans'),
+
+  createPlan: (userId: string, plan: Record<string, unknown>) =>
+    apiFetch<any>('/telemedicina/plans', {
+      method: 'POST',
+      body: JSON.stringify({ userId, ...plan }),
+    }),
+
+  updatePlan: (userId: string, planId: string, updates: Record<string, unknown>) =>
+    apiFetch<any>(`/telemedicina/plans?id=${encodeURIComponent(planId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ userId, ...updates }),
+    }),
+
+  deletePlan: (userId: string, planId: string) =>
+    apiFetch<any>(`/telemedicina/plans?id=${encodeURIComponent(planId)}&userId=${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+    }),
+}

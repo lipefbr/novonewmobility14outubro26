@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -30,22 +30,133 @@ import {
   Users,
   CreditCard,
   Receipt,
+  ArrowRight,
+  Star,
+  Sparkles,
+  Gift,
 } from 'lucide-react'
+import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { apiFetch } from '@/lib/api'
 import { useStore } from '@/lib/store'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { EmptyState } from '../ui/empty-states'
 
-// Telemedicina monthly price (in BRL cents). Kept in sync with
-// /api/telemedicina/request/route.ts `TELEMEDICINA_PRICE_CENTS` so the UI
-// and the (admin-side) review show the same number. Mirrored here as a
-// constant — the API does not currently expose a GET for the price.
-const TELEMEDICINA_PRICE_CENTS = 4990
+// ---------- Types ----------
 
-const TELEMEDICINA_PRICE_BRL = (TELEMEDICINA_PRICE_CENTS / 100).toLocaleString('pt-BR', {
-  style: 'currency',
-  currency: 'BRL',
-})
+interface TelemedicinaPlanDTO {
+  id: string
+  name: string
+  dataAmount: string
+  priceCents: number
+  cashbackCents: number
+  rewardPoints: number
+  description: string | null
+  features: string[]
+  isPopular: boolean
+  isRecommended: boolean
+  sortOrder: number
+  priceFormatted: string
+  cashbackFormatted: string
+}
+
+interface PlansApiResponse {
+  plans: TelemedicinaPlanDTO[]
+}
+
+/**
+ * Catálogo fallback hardcoded — exibido se a API não responder (DB offline,
+ * tabela vazia ou seed falhou). Espelha os 4 planos canônicos de
+ * src/lib/seed-telemedicina.ts para que o usuário sempre veja algo útil,
+ * mesmo com o backend totalmente quebrado. Os `id` são os mesmos slugs para
+ * que a reconciliação do React fique estável quando a API se recuperar.
+ */
+const FALLBACK_PLANS: TelemedicinaPlanDTO[] = [
+  {
+    id: 'telemed-individual',
+    name: 'Plano Individual',
+    dataAmount: '1 pessoa',
+    priceCents: 2990,
+    cashbackCents: 0,
+    rewardPoints: 0,
+    description: null,
+    features: ['Consultas ilimitadas', 'Receitas digitais', 'Suporte 24h'],
+    isPopular: false,
+    isRecommended: false,
+    sortOrder: 1,
+    priceFormatted: 'R$ 29,90',
+    cashbackFormatted: 'R$ 0,00',
+  },
+  {
+    id: 'telemed-familia',
+    name: 'Plano Família',
+    dataAmount: 'Até 4 dependentes',
+    priceCents: 4990,
+    cashbackCents: 0,
+    rewardPoints: 0,
+    description: null,
+    features: [
+      'Consultas ilimitadas',
+      'Receitas digitais',
+      'Suporte 24h',
+      'Até 4 dependentes',
+      'Suporte psicológico',
+    ],
+    isPopular: true,
+    isRecommended: false,
+    sortOrder: 2,
+    priceFormatted: 'R$ 49,90',
+    cashbackFormatted: 'R$ 0,00',
+  },
+  {
+    id: 'telemed-premium',
+    name: 'Plano Premium',
+    dataAmount: 'Ilimitado',
+    priceCents: 8990,
+    cashbackCents: 0,
+    rewardPoints: 0,
+    description: null,
+    features: [
+      'Consultas ilimitadas',
+      'Receitas digitais',
+      'Suporte 24h',
+      'Dependentes ilimitados',
+      'Suporte psicológico',
+      'Descontos em farmácias',
+      'Acompanhamento crônicos',
+    ],
+    isPopular: false,
+    isRecommended: true,
+    sortOrder: 3,
+    priceFormatted: 'R$ 89,90',
+    cashbackFormatted: 'R$ 0,00',
+  },
+  {
+    id: 'telemed-empresarial',
+    name: 'Plano Empresarial',
+    dataAmount: 'Equipe',
+    priceCents: 19990,
+    cashbackCents: 0,
+    rewardPoints: 0,
+    description: null,
+    features: [
+      'Consultas ilimitadas',
+      'Receitas digitais',
+      'Suporte 24h',
+      'Até 10 dependentes',
+      'Suporte psicológico',
+      'Descontos em farmácias',
+      'Acompanhamento crônicos',
+      'Orientação pediátrica',
+      'Gerontologia',
+    ],
+    isPopular: false,
+    isRecommended: false,
+    sortOrder: 4,
+    priceFormatted: 'R$ 199,90',
+    cashbackFormatted: 'R$ 0,00',
+  },
+]
 
 type TelemedPaymentMethod = 'pix' | 'boleto' | 'credit_card'
 
@@ -80,6 +191,12 @@ interface TelemedicinaRequestDTO {
   notes: string | null
   paymentMethod: string | null
   paymentMethodLabel: string | null
+  // Snapshot do plano escolhido no momento do pedido. Pode ser null em
+  // pedidos antigos (criados antes de o catálogo existir) — nesse caso a UI
+  // simplesmente omite essas informações.
+  planId: string | null
+  planName: string | null
+  priceCents: number | null
   status: 'pending' | 'approved' | 'rejected' | 'cancelled'
   adminNotes: string | null
   activationLink: string | null
@@ -94,24 +211,33 @@ interface TelemedicinaResponse {
 }
 
 /**
- * TelemedicinaPage — dedicated page for the user-facing Telemedicina
- * activation flow. Previously this UI lived inside the TalkMobi page
- * (mixed with the TalkMobi plan catalogue). It was extracted into its
- * own module so each service has its own sidebar entry, its own state,
- * and its own data fetches (Task ID 2 — separate Telemedicina x TalkMobi).
+ * TelemedicinaPage — página de Telemedicina do app mobile.
  *
- * The user fills in their holder info + dependents + payment method,
- * submits a request to /api/telemedicina/request, and the admin reviews
- * it in the panel — approving (sends activationLink) or rejecting with
- * a reason. Mirrors the TalkMobi subscription flow on the TalkMobi page.
+ * Mostra um catálogo de planos (grid) carregado de /api/telemedicina/plans.
+ * Cada card tem o preço, features e badges Popular/Recomendado. O botão
+ * "Quero Ativar" abre o dialog de ativação com o plano pré-selecionado — o
+ * usuário preenche dados do titular + dependentes + forma de pagamento, e
+ * submete um pedido em /api/telemedicina/request. O admin revisa no painel.
+ *
+ * Antes desta versão a página mostrava um card único com preço fixo (R$
+ * 49,90/mês). Agora o preço vem do plano escolhido — espelhando o padrão da
+ * página do TalkMobi (Task ID 4).
  */
 export function TelemedicinaPage() {
   const { user } = useStore()
+  const [plans, setPlans] = useState<TelemedicinaPlanDTO[]>([])
+  const [plansLoading, setPlansLoading] = useState(true)
+
   const [telemedOpen, setTelemedOpen] = useState(false)
   const [telemedDetailsOpen, setTelemedDetailsOpen] = useState(false)
   const [telemedRequest, setTelemedRequest] = useState<TelemedicinaRequestDTO | null>(null)
   const [telemedLoading, setTelemedLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+
+  // Plano atualmente selecionado para o dialog de ativação. Vem do clique
+  // "Quero Ativar" no card correspondente. Se o usuário reabrir o dialog a
+  // partir do status banner, reutilizamos o plano do último pedido.
+  const [selectedPlan, setSelectedPlan] = useState<TelemedicinaPlanDTO | null>(null)
 
   // Activation form state (Telemedicina)
   const [form, setForm] = useState({
@@ -126,6 +252,35 @@ export function TelemedicinaPage() {
   // Payment-method selection — required to submit. Defaults to `pix` for
   // convenience (the most common choice), but the user can change it.
   const [paymentMethod, setPaymentMethod] = useState<TelemedPaymentMethod>('pix')
+
+  // ===== Load the public Telemedicina plans catalogue =====
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const data = await apiFetch<PlansApiResponse>('/telemedicina/plans')
+        if (cancelled || !data) return
+        const apiPlans = Array.isArray(data.plans) ? data.plans : []
+        if (apiPlans.length > 0) {
+          setPlans(apiPlans)
+        } else {
+          // API respondeu mas a tabela está vazia / seed falhou — usa o
+          // fallback hardcoded para a página nunca ficar em branco.
+          console.warn('Telemedicina API returned no plans — using hardcoded fallback.')
+          setPlans(FALLBACK_PLANS)
+        }
+      } catch (err) {
+        // Erro de rede / 500 — também cai no fallback para o usuário ver os
+        // quatro planos mesmo com o backend offline.
+        console.error('Telemedicina plans load failed — using hardcoded fallback:', err)
+        setPlans(FALLBACK_PLANS)
+      } finally {
+        if (!cancelled) setPlansLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
 
   // Fetch the user's most recent Telemedicina activation request so we
   // can show its status (pending / approved / rejected) and, when
@@ -158,6 +313,37 @@ export function TelemedicinaPage() {
           if (restored === 'pix' || restored === 'boleto' || restored === 'credit_card') {
             setPaymentMethod(restored)
           }
+          // Restore the previously chosen plan (if it still exists in the
+          // current catalogue) so re-opening the dialog keeps the same
+          // plano selecionado.
+          if (data.request.planId) {
+            const found = plans.find((p) => p.id === data.request.planId)
+            if (found) {
+              setSelectedPlan(found)
+            } else if (data.request.planName && data.request.priceCents != null) {
+              // O plano foi removido do catálogo mas ainda temos o snapshot
+              // — sintetiza um plano "fantasma" só para o diálogo mostrar o
+              // resumo corretamente.
+              setSelectedPlan({
+                id: data.request.planId,
+                name: data.request.planName,
+                dataAmount: '',
+                priceCents: data.request.priceCents,
+                cashbackCents: 0,
+                rewardPoints: 0,
+                description: null,
+                features: [],
+                isPopular: false,
+                isRecommended: false,
+                sortOrder: 0,
+                priceFormatted: (data.request.priceCents / 100).toLocaleString('pt-BR', {
+                  style: 'currency',
+                  currency: 'BRL',
+                }),
+                cashbackFormatted: 'R$ 0,00',
+              })
+            }
+          }
         } else if (user) {
           // Pre-fill with the user's store data for convenience
           setForm((f) => ({
@@ -176,7 +362,7 @@ export function TelemedicinaPage() {
     }
     loadReq()
     return () => { cancelled = true }
-  }, [user?.id, user?.name, user?.email, user?.phone, user?.cpf])
+  }, [user?.id, user?.name, user?.email, user?.phone, user?.cpf, plans])
 
   const handleAddDependent = () => {
     setDependents((d) => [...d, { name: '', kinship: '', birthDate: '', cpf: '' }])
@@ -190,6 +376,25 @@ export function TelemedicinaPage() {
     setDependents((d) => d.map((dep, i) => (i === idx ? { ...dep, [field]: value } : dep)))
   }
 
+  /**
+   * Abre o dialog de ativação com o plano escolhido pré-selecionado. Pré-
+   * preenche o form com os dados do usuário (ou com o último pedido, se
+   * houver). Bloqueia usuários free de continuar (precisam assinar um plano
+   * NewMobility primeiro).
+   */
+  const handleOpenActivation = (plan: TelemedicinaPlanDTO) => {
+    if (!user?.id) {
+      toast.error('Você precisa estar logado para ativar a Telemedicina.')
+      return
+    }
+    if (user.plan === 'free' && user.role !== 'admin') {
+      toast.error('Você precisa assinar um plano da NewMobility antes de contratar a Telemedicina. Acesse "Meu Plano".')
+      return
+    }
+    setSelectedPlan(plan)
+    setTelemedOpen(true)
+  }
+
   const handleSubmitTelemed = async () => {
     if (!user?.id) {
       toast.error('Usuário não autenticado.')
@@ -201,6 +406,10 @@ export function TelemedicinaPage() {
     }
     if (!paymentMethod) {
       toast.error('Selecione a forma de pagamento.')
+      return
+    }
+    if (!selectedPlan) {
+      toast.error('Selecione um plano antes de continuar.')
       return
     }
     setSubmitting(true)
@@ -217,6 +426,9 @@ export function TelemedicinaPage() {
           dependents,
           notes: form.notes || undefined,
           paymentMethod,
+          planId: selectedPlan.id,
+          planName: selectedPlan.name,
+          priceCents: selectedPlan.priceCents,
         }),
       })
       setTelemedRequest(res.request)
@@ -228,7 +440,7 @@ export function TelemedicinaPage() {
         res.message ||
           `Pedido enviado! Após aprovação do admin, você receberá o link de pagamento ${methodLabel}.`,
         {
-          description: `Pagamento via ${methodLabel} · ${TELEMEDICINA_PRICE_BRL}/mês`,
+          description: `${selectedPlan.name} · ${selectedPlan.priceFormatted}/mês · Pagamento via ${methodLabel}`,
         },
       )
     } catch (err: any) {
@@ -237,6 +449,9 @@ export function TelemedicinaPage() {
       setSubmitting(false)
     }
   }
+
+  // Preço formatado do plano atualmente selecionado (para o banner do dialog).
+  const selectedPriceBRL = selectedPlan?.priceFormatted ?? '—'
 
   return (
     <div className="space-y-6">
@@ -258,7 +473,7 @@ export function TelemedicinaPage() {
             <HeartPulse className="h-4 w-4" />
           </div>
           <h3 className="text-base md:text-lg font-bold text-foreground">
-            Telemedicina
+            Planos de Telemedicina
           </h3>
           {telemedRequest && (
             <Badge
@@ -277,11 +492,17 @@ export function TelemedicinaPage() {
               {telemedRequest.status === 'pending' && <Clock className="h-3 w-3 mr-1" />}
               {telemedRequest.status === 'rejected' && <XCircle className="h-3 w-3 mr-1" />}
               {telemedRequest.status === 'approved'
-                ? 'Ativado'
+                ? telemedRequest.planName
+                  ? `${telemedRequest.planName} ativo`
+                  : 'Ativado'
                 : telemedRequest.status === 'pending'
-                  ? 'Em análise'
+                  ? telemedRequest.planName
+                    ? `${telemedRequest.planName} em análise`
+                    : 'Em análise'
                   : telemedRequest.status === 'rejected'
-                    ? 'Recusado'
+                    ? telemedRequest.planName
+                      ? `${telemedRequest.planName} recusado`
+                      : 'Recusado'
                     : 'Cancelado'}
             </Badge>
           )}
@@ -298,7 +519,7 @@ export function TelemedicinaPage() {
                 </div>
                 <div className="flex-1 min-w-0 space-y-2">
                   <h4 className="text-base md:text-lg font-bold text-emerald-800 dark:text-emerald-300">
-                    Telemedicina ativada! 🎉
+                    {telemedRequest.planName ? `${telemedRequest.planName} ativado!` : 'Telemedicina ativada!'}
                   </h4>
                   <p className="text-xs md:text-sm text-emerald-700 dark:text-emerald-400 leading-relaxed">
                     Seu acesso à Telemedicina foi aprovado. Use o link de acesso
@@ -360,10 +581,12 @@ export function TelemedicinaPage() {
                     </p>
                   )}
                   <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-white/60 dark:bg-white/5 border border-amber-200 dark:border-amber-800 px-2 py-0.5 text-amber-800 dark:text-amber-300 font-medium">
-                      <CreditCard className="h-3 w-3" />
-                      {TELEMEDICINA_PRICE_BRL}/mês
-                    </span>
+                    {telemedRequest.priceCents != null && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white/60 dark:bg-white/5 border border-amber-200 dark:border-amber-800 px-2 py-0.5 text-amber-800 dark:text-amber-300 font-medium">
+                        <CreditCard className="h-3 w-3" />
+                        {(telemedRequest.priceCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}/mês
+                      </span>
+                    )}
                     {telemedRequest.paymentMethodLabel && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-white/60 dark:bg-white/5 border border-amber-200 dark:border-amber-800 px-2 py-0.5 text-amber-800 dark:text-amber-300 font-medium">
                         Pagamento via {telemedRequest.paymentMethodLabel}
@@ -374,7 +597,17 @@ export function TelemedicinaPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setTelemedOpen(true)}
+                  onClick={() => {
+                    if (selectedPlan) {
+                      setTelemedOpen(true)
+                    } else if (telemedRequest.planId) {
+                      const p = plans.find((x) => x.id === telemedRequest.planId)
+                      if (p) {
+                        setSelectedPlan(p)
+                        setTelemedOpen(true)
+                      }
+                    }
+                  }}
                   className="border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950/40 w-full md:w-auto shrink-0"
                 >
                   Editar Pedido
@@ -406,7 +639,17 @@ export function TelemedicinaPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setTelemedOpen(true)}
+                  onClick={() => {
+                    if (selectedPlan) {
+                      setTelemedOpen(true)
+                    } else if (telemedRequest.planId) {
+                      const p = plans.find((x) => x.id === telemedRequest.planId)
+                      if (p) {
+                        setSelectedPlan(p)
+                        setTelemedOpen(true)
+                      }
+                    }
+                  }}
                   className="border-rose-300 text-rose-700 hover:bg-rose-100 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-950/40 w-full md:w-auto shrink-0"
                 >
                   Solicitar Novamente
@@ -416,59 +659,176 @@ export function TelemedicinaPage() {
           </Card>
         )}
 
-        {/* ===== DEFAULT (no request or cancelled) — marketing card + CTA ===== */}
-        {(!telemedRequest || telemedRequest.status === 'cancelled') && (
-          <Card className="rounded-2xl shadow-sm overflow-hidden bg-gradient-to-r from-rose-50 to-pink-50 dark:from-rose-950/20 dark:to-pink-950/20 border-rose-200 dark:border-rose-800">
-            <div className="h-1 bg-gradient-to-r from-rose-400 to-pink-400" />
-            <CardContent className="p-4 md:p-6">
-              <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
-                <div className="p-3 rounded-xl bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 shrink-0">
-                  <HeartPulse className="h-6 w-6 md:h-7 md:w-7" />
-                </div>
-                <div className="flex-1 min-w-0 space-y-2">
-                  <h4 className="text-base md:text-lg font-bold text-rose-800 dark:text-rose-300">
-                    Saúde 24h para toda a família
-                  </h4>
-                  <p className="text-xs md:text-sm text-rose-700 dark:text-rose-400 leading-relaxed">
-                    Consultas médicas online ilimitadas, suporte psicológico,
-                    receitas digitais e descontos em farmácias e clínicas
-                    parceiras — tudo pelo app NewMobility.
-                  </p>
-                  <div className="flex flex-wrap gap-3 text-[11px] md:text-xs text-rose-700 dark:text-rose-400">
-                    <span className="inline-flex items-center gap-1">
-                      <Clock className="h-3 w-3" /> Disponível 24h
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <ShieldCheck className="h-3 w-3" /> Sem custo por consulta
-                    </span>
+        {/* ===== PLANS GRID =====
+            Catálogo carregado de /api/telemedicina/plans. Mostra 1 coluna
+            no mobile e 2 colunas no desktop. Cada card tem badges Popular
+            (emerald) / Recomendado (amber), preço grande, features com
+            check e um botão "Quero Ativar" que abre o dialog com o plano
+            pré-selecionado. */}
+        {plansLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {[0, 1, 2, 3].map((i) => (
+              <Card key={i} className="rounded-2xl shadow-sm">
+                <CardContent className="p-4 md:p-6 space-y-3 animate-pulse">
+                  <div className="h-4 w-24 bg-muted rounded" />
+                  <div className="h-6 w-40 bg-muted rounded" />
+                  <div className="h-10 w-full bg-muted rounded" />
+                  <div className="space-y-2">
+                    <div className="h-3 w-full bg-muted rounded" />
+                    <div className="h-3 w-3/4 bg-muted rounded" />
                   </div>
-                </div>
-                <div className="flex flex-col gap-2 w-full md:w-auto shrink-0">
-                  <Button
-                    type="button"
-                    className="bg-rose-600 hover:bg-rose-700 text-white w-full md:w-auto gap-1.5"
-                    onClick={() => setTelemedOpen(true)}
-                  >
-                    <HeartPulse className="h-4 w-4" />
-                    Quero Ativar
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setTelemedDetailsOpen(true)}
-                    className="border-rose-300 text-rose-700 hover:bg-rose-100 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-950/40 w-full md:w-auto"
-                  >
-                    Saiba Mais
-                  </Button>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : plans.length === 0 ? (
+          <Card className="rounded-2xl shadow-sm bg-card">
+            <CardContent className="p-6 md:p-10">
+              <EmptyState
+                icon={HeartPulse}
+                title="Nenhum plano de Telemedicina disponível"
+                description="Os planos serão exibidos aqui assim que o time comercial publicá-los. Volte em breve!"
+              />
             </CardContent>
           </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {plans.map((plan, idx) => (
+              <motion.div
+                key={plan.id}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.05 * idx, duration: 0.3 }}
+              >
+                <Card
+                  className={`rounded-2xl shadow-sm hover:shadow-md transition-shadow relative overflow-hidden flex flex-col h-full ${
+                    plan.isPopular
+                      ? 'ring-2 ring-emerald-500/40 dark:ring-emerald-500/30'
+                      : plan.isRecommended
+                        ? 'ring-2 ring-amber-500/40 dark:ring-amber-500/30'
+                        : ''
+                  }`}
+                >
+                  {plan.isPopular && (
+                    <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg flex items-center gap-1">
+                      <Star className="h-3 w-3 fill-white" />
+                      POPULAR
+                    </div>
+                  )}
+                  {plan.isRecommended && !plan.isPopular && (
+                    <div className="absolute top-0 right-0 bg-amber-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg flex items-center gap-1">
+                      <Sparkles className="h-3 w-3" />
+                      RECOMENDADO
+                    </div>
+                  )}
+
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base md:text-lg font-bold text-foreground">
+                      {plan.name}
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {plan.dataAmount}
+                    </p>
+                  </CardHeader>
+
+                  <CardContent className="flex-1 flex flex-col gap-3">
+                    {/* Price */}
+                    <div>
+                      <span className="text-2xl md:text-3xl font-bold text-foreground">
+                        {plan.priceFormatted}
+                      </span>
+                      <span className="text-xs text-muted-foreground ml-1">/mês</span>
+                    </div>
+
+                    {/* Cashback + Reward Points */}
+                    {(plan.cashbackCents > 0 || plan.rewardPoints > 0) && (
+                      <div className="flex flex-wrap gap-2">
+                        {plan.cashbackCents > 0 && (
+                          <Badge
+                            variant="outline"
+                            className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800 text-[11px]"
+                          >
+                            <Gift className="h-3 w-3 mr-1" />
+                            {plan.cashbackFormatted} de cashback
+                          </Badge>
+                        )}
+                        {plan.rewardPoints > 0 && (
+                          <Badge
+                            variant="outline"
+                            className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800 text-[11px]"
+                          >
+                            <Star className="h-3 w-3 mr-1" />
+                            +{plan.rewardPoints} pontos
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Description */}
+                    {plan.description && (
+                      <p className="text-[11px] md:text-xs text-muted-foreground leading-relaxed">
+                        {plan.description}
+                      </p>
+                    )}
+
+                    {/* Features */}
+                    {plan.features.length > 0 && (
+                      <ul className="space-y-1.5 mt-1">
+                        {plan.features.slice(0, 8).map((f, i) => (
+                          <li key={i} className="flex items-start gap-2 text-xs md:text-sm text-foreground/80">
+                            <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                            <span className="leading-snug">{f}</span>
+                          </li>
+                        ))}
+                        {plan.features.length > 8 && (
+                          <li className="text-[11px] text-muted-foreground">
+                            +{plan.features.length - 8} outros benefícios
+                          </li>
+                        )}
+                      </ul>
+                    )}
+
+                    {/* Subscribe button pinned to bottom */}
+                    <div className="mt-auto pt-3">
+                      <Button
+                        type="button"
+                        onClick={() => handleOpenActivation(plan)}
+                        className={`w-full gap-1.5 ${
+                          plan.isPopular
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                            : plan.isRecommended
+                              ? 'bg-amber-600 hover:bg-amber-700 text-white'
+                              : 'bg-rose-600 hover:bg-rose-700 text-white'
+                        }`}
+                      >
+                        <HeartPulse className="h-3.5 w-3.5" />
+                        Quero Ativar
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
         )}
+
+        {/* "Saiba Mais" button below the grid — opens the informational
+            dialog with the full list of Telemedicina benefits. */}
+        <div className="flex justify-center pt-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setTelemedDetailsOpen(true)}
+            className="border-rose-300 text-rose-700 hover:bg-rose-100 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-950/40"
+          >
+            Saiba Mais sobre Telemedicina
+          </Button>
+        </div>
 
         {/* While the request is still loading from the API, show a
             subtle pulse placeholder so the page isn't blank for a beat. */}
-        {telemedLoading && (
+        {telemedLoading && plans.length === 0 && (
           <Card className="rounded-2xl shadow-sm">
             <CardContent className="p-4 md:p-6 animate-pulse">
               <div className="flex items-center gap-4">
@@ -530,7 +890,9 @@ export function TelemedicinaPage() {
       {/* ===== Telemedicina Activation Form Dialog =====
           User fills in their holder info + dependents + optional notes.
           On submit, POST /api/telemedicina/request creates/updates the
-          request. Admin reviews → approve (sends activationLink) / reject. */}
+          request. Admin reviews → approve (sends activationLink) / reject.
+          O preço agora vem do plano escolhido (selectedPlan) — não mais
+          hardcoded. */}
       <Dialog open={telemedOpen} onOpenChange={setTelemedOpen}>
         <DialogContent className="rounded-2xl shadow-lg sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -550,28 +912,38 @@ export function TelemedicinaPage() {
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            {/* ===== Price banner =====
-                Per BACK-2: the user must see the price and choose a payment
-                method BEFORE submitting the activation request. */}
-            <div className="rounded-2xl border border-emerald-200 dark:border-emerald-800/60 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30 p-4">
-              <div className="flex items-start gap-3">
-                <div className="p-2 rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400 shrink-0">
-                  <HeartPulse className="h-5 w-5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[11px] uppercase tracking-wider font-semibold text-emerald-700 dark:text-emerald-300">
-                    Valor da ativação
-                  </p>
-                  <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100 leading-tight">
-                    {TELEMEDICINA_PRICE_BRL}
-                    <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300 ml-1">/mês</span>
-                  </p>
-                  <p className="text-[11px] text-emerald-700/80 dark:text-emerald-300/80 mt-0.5">
-                    Cobrança mensal recorrente · Cancele quando quiser
-                  </p>
+            {/* ===== Plan + Price banner =====
+                Mostra o plano selecionado e o preço que será cobrado. O
+                preço vem do catálogo (selectedPlan) — não é mais hardcoded. */}
+            {selectedPlan && (
+              <div className="rounded-2xl border border-emerald-200 dark:border-emerald-800/60 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50 dark:text-emerald-400 shrink-0">
+                    <HeartPulse className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] uppercase tracking-wider font-semibold text-emerald-700 dark:text-emerald-300">
+                      Plano selecionado
+                    </p>
+                    <p className="text-sm md:text-base font-bold text-emerald-900 dark:text-emerald-100 leading-tight">
+                      {selectedPlan.name}
+                      {selectedPlan.dataAmount && (
+                        <span className="ml-1.5 text-xs font-normal text-emerald-700 dark:text-emerald-300">
+                          · {selectedPlan.dataAmount}
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100 leading-tight mt-1">
+                      {selectedPriceBRL}
+                      <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300 ml-1">/mês</span>
+                    </p>
+                    <p className="text-[11px] text-emerald-700/80 dark:text-emerald-300/80 mt-0.5">
+                      Cobrança mensal recorrente · Cancele quando quiser
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Holder info */}
             <div className="space-y-3">
@@ -765,11 +1137,21 @@ export function TelemedicinaPage() {
                 Resumo
               </p>
               <p className="text-xs text-foreground">
-                <span className="font-semibold">Ativação Telemedicina</span>
-                <span className="mx-1.5 text-muted-foreground">·</span>
-                <span className="font-semibold text-emerald-700 dark:text-emerald-400">{TELEMEDICINA_PRICE_BRL}/mês</span>
-                <span className="mx-1.5 text-muted-foreground">·</span>
-                <span>Pagamento via <span className="font-semibold">{paymentMethodLabel(paymentMethod)}</span></span>
+                {selectedPlan ? (
+                  <>
+                    <span className="font-semibold">{selectedPlan.name}</span>
+                    <span className="mx-1.5 text-muted-foreground">·</span>
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-400">{selectedPlan.priceFormatted}/mês</span>
+                    <span className="mx-1.5 text-muted-foreground">·</span>
+                    <span>Pagamento via <span className="font-semibold">{paymentMethodLabel(paymentMethod)}</span></span>
+                  </>
+                ) : (
+                  <>
+                    <span className="font-semibold">Ativação Telemedicina</span>
+                    <span className="mx-1.5 text-muted-foreground">·</span>
+                    <span>Pagamento via <span className="font-semibold">{paymentMethodLabel(paymentMethod)}</span></span>
+                  </>
+                )}
               </p>
               <p className="text-[11px] text-muted-foreground">
                 Você será notificado quando o admin aprovar e enviar o link de pagamento.

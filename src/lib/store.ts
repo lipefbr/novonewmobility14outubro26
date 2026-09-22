@@ -67,6 +67,7 @@ export type AdminPageKey =
   | 'talkmobi'
   | 'talkmobi-subscriptions'
   | 'telemedicina'
+  | 'telemedicina-plans'
   | 'service-types'
   | 'content-texts'
   | 'system-settings'

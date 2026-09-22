@@ -43,6 +43,7 @@ import { AdminChallengesPanel } from '@/components/newmobility/admin/admin-chall
 import { AdminUsersPanel } from '@/components/newmobility/admin/admin-users-panel'
 import { AdminUserTypesPanel } from '@/components/newmobility/admin/admin-user-types-panel'
 import { TalkMobiManager } from '@/components/newmobility/admin/talkmobi-manager'
+import { TelemedicinaManager } from '@/components/newmobility/admin/telemedicina-manager'
 import { AdminTelemedicinaPanel } from '@/components/newmobility/admin/admin-telemedicina-panel'
 import { AdminTalkMobiSubscriptionsPanel } from '@/components/newmobility/admin/admin-talkmobi-subscriptions-panel'
 
@@ -567,6 +568,7 @@ const adminPageToTab: Record<string, string> = {
   talkmobi: 'talkmobi',
   'talkmobi-subscriptions': 'talkmobi-subscriptions',
   telemedicina: 'telemedicina',
+  'telemedicina-plans': 'telemedicina-plans',
   'service-types': 'service-types',
   'content-texts': 'content-texts',
   'system-settings': 'system-settings',
@@ -9097,6 +9099,11 @@ export function AdminPage() {
         {/* Telemedicina Tab — admin approval panel for activation requests */}
         <TabsContent value="telemedicina" className="mt-4 space-y-4">
           <AdminTelemedicinaPanel />
+        </TabsContent>
+
+        {/* Telemedicina Plans Tab — admin editor para o catálogo de planos */}
+        <TabsContent value="telemedicina-plans" className="mt-4 space-y-4">
+          <TelemedicinaManager />
         </TabsContent>
 
         {/* ===== CONTENT TEXTS TAB (Item 1) =====

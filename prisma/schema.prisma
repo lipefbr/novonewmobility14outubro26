@@ -775,6 +775,28 @@ model TalkMobiPlan {
   updatedAt     DateTime @updatedAt
 }
 
+// Catálogo de planos de Telemedicina — espelha a estrutura do TalkMobiPlan.
+// O `dataAmount` aqui representa a cobertura do plano ("1 pessoa",
+// "Até 4 dependentes", "Ilimitado", "Equipe") em vez do volume de dados.
+// O admin gerencia via aba "Planos Telemedicina" (CRUD completo em
+// /api/telemedicina/plans) e a página mobile mostra o catálogo em grid.
+model TelemedicinaPlan {
+  id            String   @id
+  name          String
+  dataAmount    String
+  priceCents    Int
+  cashbackCents Int      @default(0)
+  rewardPoints  Int      @default(0)
+  description   String?
+  features      String   @default("[]")
+  isPopular     Boolean  @default(false)
+  isRecommended Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
 model Achievement {
   id          String   @id @default(cuid())
   code        String   @unique

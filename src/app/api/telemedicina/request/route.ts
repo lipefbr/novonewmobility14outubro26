@@ -16,8 +16,11 @@ import { success, error } from '@/lib/api-utils'
  * The TelemedicinaRequest model has no `paymentMethod` column (we cannot
  * modify the schema), so the chosen payment method is stored as a prefix
  * on the `notes` field in the format `[Pagamento: PIX] <user-notes>`.
- * `serializePaymentMethod()` parses it back out so the admin panel and the
- * user's own page can display it cleanly.
+ * Likewise, the chosen plan + price snapshot is stored as a second prefix
+ * `[Plano: <planName> R$ X]` (Task ID 4 — sistema de planos igual ao
+ * TalkMobi). `serializePaymentMethod()` and `parsePlanFromNotes()` parse
+ * them back out so the admin panel and the user's own page can display
+ * them cleanly.
  */
 
 interface Dependent {
@@ -27,6 +30,11 @@ interface Dependent {
   cpf?: string
 }
 
+/**
+ * Preço padrão (em centavos) usado quando o usuário NÃO escolhe um plano do
+ * catálogo (ex.: pedidos antigos antes do catálogo existir). Mantido por
+ * compat — nunca mais é o preço "real", que agora vem de `TelemedicinaPlan`.
+ */
 export const TELEMEDICINA_PRICE_CENTS = 4990
 
 /**
@@ -81,6 +89,76 @@ export function buildNotesWithPayment(method: string | null, userNotes: string |
   return rest ? `[Pagamento: ${label}] ${rest}` : `[Pagamento: ${label}]`
 }
 
+/**
+ * Parse the `[Plano: <planName> R$ <price>] ` prefix from a notes string.
+ * Returns `{ planName, priceCents, notes }` where `notes` is the remaining
+ * text without the prefix (which may still contain the `[Pagamento: …]`
+ * prefix if the caller didn't strip it first — caller is responsible for
+ * chaining parsePaymentFromNotes afterwards).
+ */
+export function parsePlanFromNotes(raw: string | null): {
+  planName: string | null
+  priceCents: number | null
+  notes: string | null
+} {
+  if (!raw) return { planName: null, priceCents: null, notes: null }
+  // Match `[Plano: <name> R$ <price>] <rest>` — o preço pode ter casa decimal
+  // ("R$ 49,90" ou "R$ 49.90") ou ser inteiro ("R$ 49"). Aceitamos ambos.
+  const match = raw.match(
+    /^\[Plano:\s*(.+?)\s*R\$\s*([\d.,]+)\]\s*([\s\S]*)$/i,
+  )
+  if (!match) return { planName: null, priceCents: null, notes: raw }
+  const planName = match[1].trim()
+  // Normaliza "49,90" / "49.90" / "1.999,90" para centavos inteiros.
+  const rawPrice = match[2].trim()
+  const cleaned = rawPrice
+    .replace(/\.(?=\d{3}(\D|$))/g, '') // strip thousands-separator dots
+    .replace(',', '.')
+  const price = Number(cleaned)
+  const priceCents =
+    Number.isFinite(price) && price >= 0 ? Math.round(price * 100) : null
+  const rest = match[3].trim()
+  return { planName, priceCents, notes: rest || null }
+}
+
+/**
+ * Constrói o notes com DOIS prefixes:
+ *   [Pagamento: <method>] [Plano: <planName> R$ <priceFormatted>] <user-notes>
+ *
+ * A ordem (Pagamento ANTES de Plano) é intencional: o painel admin em
+ * `admin-telemedicina-panel.tsx` tem uma cópia LOCAL de parsePaymentFromNotes
+ * que espera `[Pagamento: …]` no START da string. Mantendo esse prefixo
+ * primeiro, o painel continua exibindo o badge "Pagamento via PIX"
+ * corretamente, sem precisar de mudança. A serialize() aqui no route.ts
+ * faz o parse em ordem inversa: PRIMEIRO extrai `[Plano: …]` (que agora
+ * está no MEIO da string) e depois `[Pagamento: …]` do restante.
+ */
+export function buildNotesWithPlanAndPayment(
+  planName: string | null,
+  priceCents: number | null,
+  method: string | null,
+  userNotes: string | null,
+): string | null {
+  // Primeiro monta o "miolo" com o prefixo [Plano: …] + user-notes.
+  let middle: string | null
+  if (!planName || priceCents == null || priceCents < 0) {
+    middle = userNotes ? String(userNotes) : null
+  } else {
+    const priceBRL = (priceCents / 100).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    })
+    const planPrefix = `[Plano: ${planName} ${priceBRL}]`
+    middle = userNotes && String(userNotes).trim()
+      ? `${planPrefix} ${String(userNotes).trim()}`
+      : planPrefix
+  }
+  // Agora envolve com o prefixo [Pagamento: …] se houver método.
+  if (!method) return middle
+  const label = paymentMethodLabel(method) ?? method
+  return middle ? `[Pagamento: ${label}] ${middle}` : `[Pagamento: ${label}]`
+}
+
 export async function GET(req: NextRequest) {
   try {
     const userId = req.nextUrl.searchParams.get('userId')
@@ -115,6 +193,9 @@ export async function POST(req: NextRequest) {
       dependents = [],
       notes,
       paymentMethod,
+      planId,
+      planName,
+      priceCents,
     } = body ?? {}
 
     if (!userId) return error('userId is required', 400)
@@ -138,7 +219,40 @@ export async function POST(req: NextRequest) {
     if (paymentMethod && !method) {
       return error('Forma de pagamento inválida. Use: pix, boleto ou credit_card', 400)
     }
-    const notesWithPayment = buildNotesWithPayment(method, notes ?? null)
+
+    // ===== Plano snapshot (Task ID 4) =====
+    // Se o caller passou um planId, validamos que o plano existe e está
+    // ativo no catálogo — para evitar que um usuário forje um plano com
+    // preço menor. O snapshot (planName, priceCents) vem do banco; se o
+    // caller também enviou esses campos, ignoramos em favor do banco.
+    let resolvedPlanName: string | null = null
+    let resolvedPriceCents: number | null = null
+    if (planId && typeof planId === 'string') {
+      const plan = await prisma.telemedicinaPlan.findUnique({
+        where: { id: planId },
+      })
+      if (!plan || !plan.isActive) {
+        return error('Plano de Telemedicina inválido ou inativo.', 400)
+      }
+      resolvedPlanName = plan.name
+      resolvedPriceCents = plan.priceCents
+    } else if (typeof planName === 'string' && planName.trim()) {
+      // Sem planId mas com planName — usamos o que o caller passou (backward
+      // compat para clientes que só sabem o nome). Aceitamos priceCents se
+      // veio, senão caímos no default histórico (não recomendado).
+      resolvedPlanName = planName.trim()
+      resolvedPriceCents =
+        typeof priceCents === 'number' && Number.isFinite(priceCents) && priceCents >= 0
+          ? Math.round(priceCents)
+          : TELEMEDICINA_PRICE_CENTS
+    }
+
+    const notesWithPlanAndPayment = buildNotesWithPlanAndPayment(
+      resolvedPlanName,
+      resolvedPriceCents,
+      method,
+      notes ?? null,
+    )
 
     // Check for an existing PENDING request — update in place instead of
     // creating duplicates. (Approved/rejected requests stay archived; a
@@ -158,7 +272,7 @@ export async function POST(req: NextRequest) {
           phone: String(phone),
           email: String(email),
           dependents: dependentsStr,
-          notes: notesWithPayment,
+          notes: notesWithPlanAndPayment,
         },
       })
       return success({ request: serialize(updated), message: 'Pedido atualizado com sucesso.' })
@@ -173,7 +287,7 @@ export async function POST(req: NextRequest) {
         phone: String(phone),
         email: String(email),
         dependents: dependentsStr,
-        notes: notesWithPayment,
+        notes: notesWithPlanAndPayment,
         status: 'pending',
       },
     })
@@ -193,9 +307,16 @@ function serialize(r: any) {
   } catch {
     dependents = []
   }
-  // Surface the payment method + clean notes separately so the client
-  // doesn't need to re-parse the `[Pagamento: …]` prefix.
-  const { method, notes: cleanNotes } = parsePaymentFromNotes(r.notes ?? null)
+  // ===== Parse dos dois prefixes do notes (Task ID 4) =====
+  //  1. [Pagamento: <method>]  → no START da string (parsePaymentFromNotes)
+  //  2. [Plano: <name> R$ <price>]  → no restante após o payment (parsePlanFromNotes)
+  // O restante final é o texto do usuário (limpo).
+  //
+  // A ordem [Pagamento] → [Plano] é mantida no buildNotesWithPlanAndPayment
+  // para compatibilidade com o painel admin (que tem cópia local do
+  // parsePaymentFromNotes esperando `[Pagamento: …]` no start da string).
+  const { method, notes: afterPayment } = parsePaymentFromNotes(r.notes ?? null)
+  const { planName, priceCents, notes: cleanNotes } = parsePlanFromNotes(afterPayment)
   return {
     id: r.id,
     userId: r.userId,
@@ -208,6 +329,9 @@ function serialize(r: any) {
     notes: cleanNotes,
     paymentMethod: method,
     paymentMethodLabel: paymentMethodLabel(method),
+    planId: null, // não persistimos planId (snapshot pelo notes) — mantemos por compat de tipo
+    planName,
+    priceCents,
     status: r.status,
     adminNotes: r.adminNotes ?? null,
     activationLink: r.activationLink ?? null,

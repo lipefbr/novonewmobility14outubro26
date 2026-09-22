@@ -63,6 +63,7 @@ const ADMIN_PAGES: PageMeta[] = [
   { key: 'faq', label: 'FAQ', description: 'Perguntas frequentes' },
   { key: 'talkmobi', label: 'Planos TalkMobi', description: 'Editar planos TalkMobi' },
   { key: 'telemedicina', label: 'Telemedicina', description: 'Aprovar ativações' },
+  { key: 'telemedicina-plans', label: 'Planos Telemedicina', description: 'Editar planos de telemedicina' },
 ]
 
 // Default permission set for new roles (admin/support are always present).
