@@ -11143,3 +11143,56 @@ Stage Summary:
 - Backend: cache estático de 30s em ambos endpoints reduz drasticamente a carga em sequências de reload. Shape JSON preservado — frontend não precisa de mudanças adicionais.
 - Latência esperada na VPS: dashboard que antes passava de 10s agora deve ficar na faixa de 0.5-2s (queries em paralelo) no cold-start e <100ms no cache hit.
 - Próximo passo: agente principal faz push e deploy automático na VPS LipeHost.
+
+---
+Task ID: 2
+Agent: Z.ai Code (subagent)
+Task: Adicionar indicador visual no backoffice (AdminWithdrawalsPanel) de que saques solicitados entre os dias 5-8 do mês são gratuitos (sem taxa).
+
+Work Log:
+- Lido worklog.md para contexto (já havia tasks anteriores de bugfix isolamento de dados, db.execute() etc).
+- Adicionado helper `isFreeWithdrawalDay(date: Date | string): boolean` no topo do arquivo `src/components/newmobility/admin/admin-withdrawals-panel.tsx` (logo após `methodBadge`), espelhando a lógica do backend `/api/financial/withdraw` (FREE_WITHDRAWAL_DAY_START=5, _END=8).
+- Adicionado badge verde "Grátis" (Badge emerald-100/emerald-700 + dark mode) ao lado do valor em 4 pontos:
+  1. Tabela desktop — TableCell de Valor (linha ~652).
+  2. Lista mobile — span de Valor (linha ~770).
+  3. Modal de detalhes — DetailRow "Valor" (linha ~1031).
+  4. Modal de confirmação de aprovação — inline ao lado do R$ ... (linha ~900).
+- Adicionado banner informativo sutil (emerald) no topo da lista de saques dentro do fragment `<><div className="mx-3 mt-3 rounded-md ...">...</div></>` que abre quando há withdrawals — visível apenas quando hoje está na janela 5-8 (`isFreeWithdrawalDay(new Date())`).
+- Comentários PT-BR preservados. Sem emojis.
+- Lint: `bun run lint` rodou — apenas os 13 erros pré-existentes em arquivos .js auxiliares (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js). Zero erros no arquivo modificado.
+- Commit local feito (sem push): `feat(admin): badge Grátis para saques na janela 5-8 do mês`.
+
+Stage Summary:
+- Admin agora consegue distinguir visualmente saques com taxa vs sem taxa (janela gratuita dias 5-8).
+- Badge aparece em todos os 4 contextos onde o valor do saque é exibido (lista desktop, lista mobile, modal de detalhes, modal de aprovação).
+- Banner de conscientização aparece automaticamente para o admin durante os dias 5-8 do mês, lembrando de aprovar sem descontar taxa.
+- Lógica espelha exatamente o backend (`/api/financial/withdraw`) — mesma janela 5-8.
+- Não houve alteração de schema Prisma nem de API backend (frontend-only).
+
+---
+Task ID: 1
+Agent: Z.ai Code (main)
+Task: Corrigir bug "plano de carreira não tá salvando" no backoffice admin
+
+Work Log:
+- Investigação completa do fluxo: handleSaveCareerPlan (admin-page.tsx ~2663) → apiFetch PUT/POST → /api/admin/career-plans/[id]/route.ts → prisma.careerPlan.update/create.
+- Teste direto da API via script Node (/tmp/test-career-plan.mjs): PUT com payload exato do frontend retornou HTTP 200 e persistiu corretamente (minPoints=100, rewardWithdrawalCents=250000, bonusCents=250000 espelhado). POST de novo plano também funcionou (HTTP 201). **API está correta — bug estava no frontend.**
+- RAIZ DO BUG (frontend): inputs `type="number"` com `value={(cents || 0) / 100}` e `onChange={(e) => Math.round(Number(e.target.value) * 100)}`. Quando o usuário (Brasil) digita "2500,00" com VÍRGULA decimal, `Number("2500,00") = NaN`, `|| 0 = 0`, estado vira 0. Ao salvar, recompensa fica R$ 0 e o usuário vê "não salvou" (parece que os dados não persistiram, mas na verdade persistiram como 0).
+- Hipótese secundária confirmada: `loadCareerPlans()` após save era fire-and-forget (sem await). Se a recarga falhasse por timeout (VPS lenta com Neon Postgres), a lista não atualizava e o usuário via valores antigos mesmo após PUT 200 + toast success. Catch vazio `/* ignore */` escondia o erro.
+- FIX aplicado em `src/components/newmobility/admin/admin-page.tsx`:
+  1. **Novo helper `parseBrlToCents(raw)`**: aceita formatos "2500.00" (US), "2500,00" (BR), "2.500,00" (BR com milhar), "2500" (inteiro), "" (vazio→0). Rejeita negativos e não-numéricos. Validado com 12 testes (100% pass).
+  2. **Inputs 9.1 (Carteira Saque) e 9.2 (Carteira Compras)**: trocado `type="number" step="0.01"` por `type="text" inputMode="decimal"`. Agora aceita vírgula. Display usa `.toFixed(2).replace('.', ',')` quando valor > 0, string vazia quando 0 (para usuário poder digitar sem "0" atrapalhando).
+  3. **handleSaveCareerPlan**: 
+     - `timeoutMs: 30000` no PUT e POST (default era 15s, mas VPS pode ser lenta).
+     - `await loadCareerPlans()` ANTES de `setCareerPlanDialogOpen(false)` — garante que a lista recarregue antes do dialog fechar.
+     - `console.error('[handleSaveCareerPlan] erro ao salvar:', err)` para debug futuro.
+     - Toast de erro com `duration: 6000` (mais tempo para o usuário ler).
+  4. **loadCareerPlans**: catch antes era `/* ignore */` — agora loga `console.error('[loadCareerPlans] falha ao recarregar planos:', err)` para debug de timeout.
+- Lint: 0 erros novos (apenas os 13 pré-existentes em arquivos .js auxiliares).
+- Input 9.3 (Recompensa Pontos) e Pontos Mínimos mantidos como `type="number"` pois são inteiros sem decimal.
+
+Stage Summary:
+- Arquivo modificado: `src/components/newmobility/admin/admin-page.tsx` (handleSaveCareerPlan + loadCareerPlans + inputs 9.1 e 9.2 + novo helper parseBrlToCents).
+- Bug corrigido: usuário agora pode digitar "2.500,00" (formato BR) e o sistema salva corretamente 250000 centavos.
+- UX melhorada: toast de erro fica 6s (era padrão ~4s), tem log no console para debug, dialog só fecha após lista recarregar.
+- Comportamento esperado pelo usuário agora funciona: editar recompensa para "2.500,00" → Salvar → toast "Plano de carreira atualizado!" → lista recarrega mostrando R$ 2.500,00.

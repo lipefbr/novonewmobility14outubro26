@@ -2620,7 +2620,12 @@ export function AdminPage() {
     try {
       const data = await apiFetch<{ plans: CareerPlanItem[] }>(`/admin/career-plans?userId=${user?.id}`, { timeoutMs: 30000 })
       setCareerPlans(data.plans || [])
-    } catch { /* ignore */ } finally { setCareerPlanLoading(false) }
+    } catch (err) {
+      // Log para debug — antes o catch era vazio e escondia timeouts/erros de rede,
+      // dando a falsa impressão de que "não salvou" quando na verdade salvou mas
+      // a lista não recarregou.
+      console.error('[loadCareerPlans] falha ao recarregar planos:', err)
+    } finally { setCareerPlanLoading(false) }
   }
 
   const handleOpenCreateCareerPlan = () => {
@@ -2660,6 +2665,24 @@ export function AdminPage() {
     setCareerPlanDialogOpen(true)
   }
 
+  // Helper: converte string de input (R$) para centavos. Aceita formatos:
+  //   "2500.00" (US), "2500,00" (BR), "2.500,00" (BR com milhar), "2500" (inteiro)
+  // Isso evita o bug de type=number rejeitar vírgula e salvar como 0.
+  const parseBrlToCents = (raw: string): number => {
+    const v = (raw || '').trim()
+    if (!v) return 0
+    let sanitized: string
+    if (v.includes(',')) {
+      // Formato BR: remove pontos de milhar, troca vírgula decimal por ponto
+      sanitized = v.replace(/\./g, '').replace(',', '.')
+    } else {
+      sanitized = v
+    }
+    const brl = parseFloat(sanitized)
+    if (!Number.isFinite(brl) || brl < 0) return 0
+    return Math.round(brl * 100)
+  }
+
   const handleSaveCareerPlan = async () => {
     if (!careerPlanForm.code || !careerPlanForm.name) {
       toast.error('Preencha código e nome')
@@ -2670,18 +2693,19 @@ export function AdminPage() {
       // BACK-9 — send all 4 new reward fields. The API mirrors
       // rewardWithdrawalCents into the legacy bonusCents/rewardType columns
       // for backward compatibility.
+      const withdrawalCents = Number(careerPlanForm.rewardWithdrawalCents) || 0
       const payload: Record<string, unknown> = {
         userId: user?.id,
         code: careerPlanForm.code,
         name: careerPlanForm.name,
         description: careerPlanForm.description || undefined,
         minPoints: Number(careerPlanForm.minPoints) || 0,
-        rewardWithdrawalCents: Number(careerPlanForm.rewardWithdrawalCents) || 0,
+        rewardWithdrawalCents: withdrawalCents,
         rewardShoppingCents: Number(careerPlanForm.rewardShoppingCents) || 0,
         rewardPoints: Number(careerPlanForm.rewardPoints) || 0,
         gratification: careerPlanForm.gratification || undefined,
         // Legacy fields — sent for backward compat with older API routes.
-        bonusCents: Number(careerPlanForm.rewardWithdrawalCents) || Number(careerPlanForm.bonusCents) || 0,
+        bonusCents: withdrawalCents || Number(careerPlanForm.bonusCents) || 0,
         rewardType: careerPlanForm.rewardType,
         color: careerPlanForm.color || undefined,
         icon: careerPlanForm.icon || undefined,
@@ -2690,19 +2714,24 @@ export function AdminPage() {
       }
       if (editingCareerPlan) {
         await apiFetch(`/admin/career-plans/${editingCareerPlan.id}`, {
-          method: 'PUT', body: JSON.stringify(payload),
+          method: 'PUT', body: JSON.stringify(payload), timeoutMs: 30000,
         })
         toast.success('Plano de carreira atualizado!')
       } else {
         await apiFetch('/admin/career-plans', {
-          method: 'POST', body: JSON.stringify(payload),
+          method: 'POST', body: JSON.stringify(payload), timeoutMs: 30000,
         })
         toast.success('Plano de carreira criado!')
       }
+      // Await reload para garantir que a lista atualize ANTES de fechar o dialog.
+      // Antes era fire-and-forget — se o reload falhasse (timeout na VPS), o
+      // usuário via a lista antiga e achava que "não salvou".
+      await loadCareerPlans()
       setCareerPlanDialogOpen(false)
-      loadCareerPlans()
     } catch (err: any) {
-      toast.error(err?.message || 'Erro ao salvar plano de carreira')
+      console.error('[handleSaveCareerPlan] erro ao salvar:', err)
+      const msg = err?.message || 'Erro ao salvar plano de carreira'
+      toast.error(msg, { duration: 6000 })
     } finally { setCareerPlanSaving(false) }
   }
 
@@ -10198,10 +10227,10 @@ export function AdminPage() {
                 <div>
                   <Label className="text-xs">9.1 Carteira Saque (R$)</Label>
                   <Input
-                    type="number"
-                    step="0.01"
-                    value={(careerPlanForm.rewardWithdrawalCents || 0) / 100}
-                    onChange={(e) => setCareerPlanForm(f => ({ ...f, rewardWithdrawalCents: Math.round((Number(e.target.value) || 0) * 100) }))}
+                    type="text"
+                    inputMode="decimal"
+                    value={(careerPlanForm.rewardWithdrawalCents || 0) > 0 ? ((careerPlanForm.rewardWithdrawalCents || 0) / 100).toFixed(2).replace('.', ',') : ''}
+                    onChange={(e) => setCareerPlanForm(f => ({ ...f, rewardWithdrawalCents: parseBrlToCents(e.target.value) }))}
                     placeholder="0,00"
                     className="h-9 text-sm"
                   />
@@ -10209,10 +10238,10 @@ export function AdminPage() {
                 <div>
                   <Label className="text-xs">9.2 Carteira Compras (R$)</Label>
                   <Input
-                    type="number"
-                    step="0.01"
-                    value={(careerPlanForm.rewardShoppingCents || 0) / 100}
-                    onChange={(e) => setCareerPlanForm(f => ({ ...f, rewardShoppingCents: Math.round((Number(e.target.value) || 0) * 100) }))}
+                    type="text"
+                    inputMode="decimal"
+                    value={(careerPlanForm.rewardShoppingCents || 0) > 0 ? ((careerPlanForm.rewardShoppingCents || 0) / 100).toFixed(2).replace('.', ',') : ''}
+                    onChange={(e) => setCareerPlanForm(f => ({ ...f, rewardShoppingCents: parseBrlToCents(e.target.value) }))}
                     placeholder="0,00"
                     className="h-9 text-sm"
                   />
