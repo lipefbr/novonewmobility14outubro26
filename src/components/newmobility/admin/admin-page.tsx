@@ -1728,9 +1728,15 @@ export function AdminPage() {
   // per-role allow-list stored in the database.
   const { canAccess, loading: permissionsLoading } = useAdminPermissions(user)
 
+  // RACE CONDITION FIX (dashboard VPS "Erro ao carregar estatísticas"):
+  // Antes o useEffect disparava `loadStats()` no mount com `user?.id` ainda
+  // undefined (store hidratando do localStorage). A URL virava
+  // `/admin/stats?userId=undefined` → backend 403 → stats=null → "Erro ao
+  // carregar estatísticas". Agora esperamos ter `user.id` antes de chamar.
   useEffect(() => {
+    if (!user?.id) return
     loadStats()
-  }, [])
+  }, [user?.id])
 
   // ADM-4 — load custom roles once so the Role Selects in both the Create
   // and Edit user dialogs can list roles the admin created in the
@@ -1799,14 +1805,24 @@ export function AdminPage() {
   }, [activeTab, searchQuery, planFilter, statusFilter, noSponsorFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter, ticketPriorityFilter, voucherStatusFilter, voucherPage, betStatusFilter, betPage, matrixSelectedUser, matrixType, loadContentTexts, loadSystemSettings, loadMatrixLimits, loadMatrixPositions])
 
   const loadStats = async () => {
+    // Defesa extra: se user.id ainda não está disponível (ex: store
+    // hidratando), não dispara a chamada — evita URL `?userId=undefined`
+    // que retornaria 403 e mostraria "Erro ao carregar estatísticas".
+    if (!user?.id) {
+      setLoading(false)
+      return
+    }
     try {
       setLoading(true)
       // Task 3: 30s timeout — /admin/stats hits Neon Postgres which can
       // be slow on cold-start, and the previous 10s default was timing out
       // on the VPS.
-      const data = await apiFetch<AdminStats>(`/admin/stats?userId=${user?.id}`, { timeoutMs: 30000 })
+      const data = await apiFetch<AdminStats>(`/admin/stats?userId=${user.id}`, { timeoutMs: 30000 })
       setStats(data)
-    } catch { /* ignore */ } finally { setLoading(false) }
+    } catch (err) {
+      // Log para debug de futuros erros de rede/timeout.
+      console.error('[loadStats] falha ao carregar estatísticas:', err)
+    } finally { setLoading(false) }
   }
 
   const loadUsers = async () => {
