@@ -7,6 +7,7 @@ import { ReactNode } from 'react'
 export type Section =
   | 'dashboard'
   | 'categorias'
+  | 'driver-categories'
   | 'lojas'
   | 'produtos'
   | 'banners'

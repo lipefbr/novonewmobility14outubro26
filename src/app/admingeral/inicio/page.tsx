@@ -21,6 +21,7 @@ import { ProdutosSection } from '@/components/admingeral/sections/produtos'
 import { BannersSection } from '@/components/admingeral/sections/banners'
 import { PedidosSection } from '@/components/admingeral/sections/pedidos'
 import { MotoristasSection } from '@/components/admingeral/sections/motoristas'
+import { DriverCategoriesSection } from '@/components/admingeral/sections/driver-categories'
 import { UsuariosSection } from '@/components/admingeral/sections/usuarios'
 import { ConfigSection } from '@/components/admingeral/sections/config'
 
@@ -39,6 +40,7 @@ const NAV_ITEMS: Array<{ key: Section; label: string; icon: typeof LayoutDashboa
   { key: 'banners', label: 'Banners', icon: ImageIcon },
   { key: 'pedidos', label: 'Pedidos', icon: ClipboardList, badgeKey: 'orders' },
   { key: 'motoristas', label: 'Motoristas', icon: Car, badgeKey: 'drivers' },
+  { key: 'driver-categories', label: 'Categorias de Motorista', icon: Car },
   { key: 'usuarios', label: 'Usuários', icon: Users },
   { key: 'config', label: 'Configurações', icon: Settings },
 ]
@@ -101,6 +103,7 @@ export default function AdmingeralInicioPage() {
       case 'banners': return <BannersSection />
       case 'pedidos': return <PedidosSection />
       case 'motoristas': return <MotoristasSection onApprove={() => checkAuth()} />
+      case 'driver-categories': return <DriverCategoriesSection />
       case 'usuarios': return <UsuariosSection />
       case 'config': return <ConfigSection />
     }
