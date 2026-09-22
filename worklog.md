@@ -11416,3 +11416,96 @@ Stage Summary:
   * hasUnsavedChanges via comparação de Sets entre requiredDocTypes local e allDocTypes.map(type) — ordem não importa para o diff visual. Botão "Salvar" fica desabilitado quando não há mudanças.
   * Quando admin desmarca tudo, o usuário vê banner verde "Nenhum documento é exigido" (visual OK) — não mexe no kycStatus do banco. Se o admin depois marcar docs novamente, o usuário volta a ver os cards normalmente.
   * Caso edge: usuário já tinha enviado CNH_front, admin remove CNH_front dos exigidos. Card desaparece, mas documento continua no banco. Se admin re-adicionar CNH_front, o card reaparece mostrando o doc já enviado.
+
+---
+Task ID: 8
+Agent: Z.ai Code (subagent)
+Task: Permitir o admin adicionar novos tipos de documento KYC e editar os existentes (label, descrição, ícone, ativo/inativo).
+
+Work Log:
+- Lido /home/z/my-project/worklog.md (Tarefas 1-7) para entender histórico. Em especial a Task 7 que introduziu o painel admin com checkboxes fixas dos 6 tipos.
+- Lidos arquivos-chave antes de implementar: src/lib/kyc.ts (KYC_DOC_TYPES + KYC_DOC_LABELS + getRequiredKycDocTypes), src/app/api/admin/kyc-config/route.ts (GET/PUT Task 7), src/app/api/kyc/route.ts (GET/POST usuário), src/components/newmobility/admin/admin-kyc-config-panel.tsx (painel checkboxes), src/components/newmobility/kyc/kyc-page.tsx (DOC_METAS hardcodeado), prisma/schema.prisma (modelos KycDocument, SystemConfig, AuditLog, UserType usado como referência de padrão de CRUD).
+- Etapa 1 — Adicionado model `KycDocType` ao schema.prisma (entre KycDocument e AuditLog):
+  * Campos: id (cuid), code (unique), label, description?, icon (default "FileText"), isDefault (default false), isActive (default true), sortOrder (default 99), createdAt, updatedAt.
+  * Comentário em PT-BR documentando Task 8 e regras (code não editável, isDefault imutável via API, tipos padrão não excluíveis).
+  * `bun run db:push` → sucesso (39ms sync + 491ms generate).
+- Etapa 2 — Criado `src/lib/seed-kyc-doc-types.ts`:
+  * Exporta DEFAULT_KYC_DOC_TYPES (array com os 6: cnh_front, cnh_back, rg_front, rg_back, proof_address, selfie_document — mesmos labels/descrições/ícones da Task 7).
+  * Exporta `seedKycDocTypesIfEmpty()` idempotente: upsert por `code`, só cria rows que ainda não existem (admin mantém edições feitas em tipos padrão).
+- Etapa 3a — Criado `src/app/api/admin/kyc-doc-types/route.ts` (GET + POST):
+  * GET: valida admin (role='admin' OU userType='admin'/'ADMIN'). Chama seedKycDocTypesIfEmpty() (tolerante a falhas). Lista TODOS os tipos ordenados por [sortOrder asc, createdAt asc].
+  * POST: valida admin. Body { userId, code, label, description?, icon?, isActive?, sortOrder? }. Validações: code obrigatório + regex `/^[a-z0-9_]+$/` + máx 40 chars; label obrigatório + máx 80 chars; description máx 280; icon whitelist de 12 (IdCard, FileText, MapPin, Camera, CreditCard, User, Briefcase, Home, Car, Plane, Award, ShieldCheck); isDefault sempre false (forçado pela API — proteção). Cria AuditLog action='kyc.doctype.create'.
+- Etapa 3b — Criado `src/app/api/admin/kyc-doc-types/[id]/route.ts` (PUT + DELETE):
+  * PUT: valida admin. Body { userId, label?, description?, icon?, isActive?, sortOrder?, code?, isDefault? }. Proteções: code NÃO editável (rejeita se mudou — é unique e referenciado por KycDocument.docType); isDefault NÃO editável (só o seed define). Valida campos fornecidos (length, icon whitelist, número). AuditLog action='kyc.doctype.update' com before/after.
+  * DELETE: valida admin. Recusa se isDefault=true com mensagem "Tipos padrão não podem ser excluídos, apenas desativados. Use o toggle 'Ativo' para esconder esse tipo dos usuários." Se isDefault=false, exclui fisicamente. AuditLog action='kyc.doctype.delete'.
+- Etapa 4 — Atualizado `src/lib/kyc.ts`:
+  * Mantidos KYC_DOC_TYPES e KYC_DOC_LABELS exportados como fallback (não quebra imports existentes).
+  * Novo `KycDocTypeRow` interface.
+  * Novo `getAllKycDocTypes()` async: chama seedKycDocTypesIfEmpty() (tolerante a falhas), lê TODOS os tipos ordenados por sortOrder. Fail-safe retorna [] em caso de erro.
+  * Atualizado `getRequiredKycDocTypes()`: agora lê tipos ATIVOS do banco (Set de codes), cruza com config admin `kyc.required_doc_types`. Tipos desativados automaticamente saem da lista de exigidos. Default (sem config) = TODOS os ativos do banco (não mais os 6 hardcodeados). Fail-safe em caso de erro retorna os 6 hardcodeados (KYC_DOC_TYPES).
+- Etapa 5 — Atualizado `src/app/api/admin/kyc-config/route.ts` (Task 7):
+  * GET: allDocTypes agora vem do banco via getAllKycDocTypes() filtrado por isActive=true (não mais KYC_DOC_TYPES.map(...)). Inclui id, sortOrder, isDefault para o painel admin montar o grid.
+  * PUT: validação de requiredDocTypes agora checa cada code contra Set de tipos ATIVOS do banco (não mais array hardcodeado KYC_DOC_TYPES). Rejeita silenciosamente duplicatas e codes inexistentes/desativados.
+- Etapa 6 — Atualizado `src/app/api/kyc/route.ts` (GET + POST usuário):
+  * GET: agora retorna `allDocTypes` (metadados: type/label/description/icon) dos tipos ATIVOS do banco — UI do usuário usa para montar cards. requiredDocTypes continua vindo do helper getRequiredKycDocTypes().
+  * POST: validação de docType agora consulta o banco:
+    - Se isConfigured=true (admin marcou array vazio ou alguns): rejeita se vazio ou se docType não está na lista exigida.
+    - Se isConfigured=false (default): consulta KycDocType por code, exige isActive=true. Fallback final: se a tabela estiver vazia/bugada, aceita os 6 hardcodeados (compat com bases antigas).
+- Etapa 7 — Reescrito `src/components/newmobility/admin/admin-kyc-config-panel.tsx`:
+  * Carrega config E tipos em paralelo no mount (Promise.all). Estado: allDocTypes (com isActive, isDefault, sortOrder), requiredDocTypes, isConfigured, editOpen, newOpen, newOpenCounter, editingType, savingType, deletingId.
+  * Cabeçalho com botão verde "Novo Tipo" (Plus) + Badge "Configurado"/"Padrão".
+  * Grid editável de cards (1 col mobile, 2 desktop). Cada card mostra:
+    - Checkbox "Exigir deste tipo" no topo (disabled se tipo inativo).
+    - Badge "Padrão" (azul) ou "Customizado" (roxo).
+    - Ícone (mapeado do nome string via ICON_MAP de 12 componentes lucide) + label + descrição + code em fonte monospace pequena.
+    - Switch Ativo/Inativo com label "Ativo/Inativo" (otimista: atualiza UI imediatamente, reverte em caso de erro).
+    - Botão Editar (Pencil) e Excluir (Trash2 — disabled+title explicativo se isDefault).
+  * Aviso amarelo quando requiredDocTypes=[] ("KYC será opcional...").
+  * Botão "Salvar Exigência" no rodapé (disabled quando hasUnsavedChanges=false via comparação de Sets).
+  * Dialog Editar (EditDocTypeDialog) com Label*, Descrição, Ícone (Select shadcn com 12 opções + preview ao lado), Ativo (Switch), Ordem (number). Componente remonta via `key={editingType.id}` para evitar setState-in-useEffect (lint rule react-hooks/set-state-in-effect).
+  * Dialog Novo (NewDocTypeDialog) com Código* (regex [a-z0-9_], normalização client-side, mostra preview "Será salvo como: X" se usuário digitou inválido), Label*, Descrição, Ícone (Select), Ativo, Ordem. Componente remonta via `key={`new-${counter}`}` a cada abertura para começar limpo.
+  * Confirmação nativa `window.confirm` antes de excluir tipo customizado (explica que docs já enviados com esse docType continuam existindo mas não aparecerão na UI).
+  * Toasts para todas as ações (criar, editar, ativar, desativar, excluir, salvar exigência). Dark mode em todos os elementos. Loading states com Loader2.
+- Etapa 8 — Atualizado `src/components/newmobility/kyc/kyc-page.tsx` (UI do usuário):
+  * Removido DOC_METAS hardcodeado. Substituído por consumo de `data.allDocTypes` da API (mapeia type/label/description/icon string → Icon componente via ICON_MAP de 12 entradas, igual ao admin).
+  * Adicionado FALLBACK_DOC_METAS (os 6 hardcodeados antigos) para o caso de a API retornar allDocTypes vazio (base antiga pré-Task 8 ou erro de rede) — usuário continua conseguindo subir documentos.
+  * visibleDocMetas = sourceDocMetas.filter(requiredDocTypes.includes) — usuário só vê cards dos tipos exigidos pelo admin.
+  * Toda a UX de upload/preview/status/banner verde quando noDocsRequired mantida (Task 7).
+- Validação do seed (script tsx):
+  * seedKycDocTypesIfEmpty() criou 6 rows na primeira chamada. Segunda chamada criou 0 (idempotente).
+  * getAllKycDocTypes() retorna 6 rows na ordem correta.
+  * getRequiredKycDocTypes() sem config: retorna todos os 6 ativos, isConfigured=false.
+  * Criado tipo customizado `passport` via prisma direto, revalidado: getAllKycDocTypes() retorna 7 rows. requiredDocTypes inclui passport quando isConfigured=false (default = todos ativos).
+  * Setado config `kyc.required_doc_types=['cnh_front','passport']`: requiredDocTypes=[cnh_front,passport], isConfigured=true.
+  * Desativado `passport`: requiredDocTypes=[cnh_front] automaticamente (cross-filter funcionou).
+  * Cleanup: deletado config e passport, count final = 6 (esperado).
+- Lint: `bun run lint` → 13 erros, TODOS pré-existentes em arquivos .js auxiliares (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js — @typescript-eslint/no-require-imports). ZERO erros novos em src/. (Inicialmente houve 3 erros novos em admin-kyc-config-panel.tsx — react-hooks/set-state-in-effect por usar useEffect para sincronizar form — corrigidos refatorando dialogs para usar `key` prop no parent e useState inicializado dos props.)
+- Commit local: 36edea8 — 'feat(kyc): admin pode adicionar/editar tipos de documento - Task ID 8'. 9 arquivos alterados, +1740 -245. Sem push (agente principal fará).
+
+Stage Summary:
+- Arquivos criados (3):
+  * `src/lib/seed-kyc-doc-types.ts` — DEFAULT_KYC_DOC_TYPES (6 tipos) + seedKycDocTypesIfEmpty() idempotente (upsert por code).
+  * `src/app/api/admin/kyc-doc-types/route.ts` — GET lista todos (ativos+inativos); POST cria novo customizado (valida code regex [a-z0-9_]+, icon whitelist 12, isDefault forçado false). Exporta ALLOWED_KYC_DOC_ICONS reusado pelo [id].
+  * `src/app/api/admin/kyc-doc-types/[id]/route.ts` — PUT edita (protege code/isDefault); DELETE exclui (recusa isDefault=true).
+- Arquivos modificados (6):
+  * `prisma/schema.prisma` — adicionado model KycDocType (id, code unique, label, description?, icon default "FileText", isDefault default false, isActive default true, sortOrder default 99, timestamps).
+  * `src/lib/kyc.ts` — adicionado KycDocTypeRow interface + getAllKycDocTypes() (lê banco, chama seed). getRequiredKycDocTypes() agora cruza config admin com tipos ATIVOS do banco (desativados saem automaticamente). KYC_DOC_TYPES/KYC_DOC_LABELS mantidos como fallback.
+  * `src/app/api/admin/kyc-config/route.ts` (Task 7) — GET allDocTypes vem do banco (isActive=true). PUT valida codes contra tipos ativos do banco.
+  * `src/app/api/kyc/route.ts` — GET retorna allDocTypes (metadados para UI). POST valida docType contra banco (ativo=true) com fallback para 6 hardcodeados se tabela vazia.
+  * `src/components/newmobility/admin/admin-kyc-config-panel.tsx` — reescrito: grid editável de cards com checkbox Exigir + Switch Ativo + Editar + Excluir (disabled se isDefault). Dialog Editar (Label, Desc, Icon Select+preview, Ativo, Ordem). Dialog Novo (Code regex, Label, Desc, Icon, Ativo, Ordem). Botão Novo Tipo verde. Toasts, dark mode, loading. Lint clean (sem setState-in-useEffect).
+  * `src/components/newmobility/kyc/kyc-page.tsx` — removido DOC_METAS hardcodeado. Consome allDocTypes da API via ICON_MAP de 12 ícones. Fallback FALLBACK_DOC_METAS (6 originais) para bases antigas/erros. UX de upload/preview/banner verde preservada.
+- `bun run db:push`: SUCESSO. Tabela KycDocType criada, Prisma Client regenerado. Seed validado: 6 rows inseridas, idempotente em segunda chamada.
+- `bun run lint`: 13 erros, TODOS pré-existentes em .js auxiliares (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js — @typescript-eslint/no-require-imports). ZERO erros novos em src/. (Houve 3 erros novos em admin-kyc-config-panel.tsx no primeiro lint — react-hooks/set-state-in-effect — corrigidos refatorando os 2 Dialogs para remontar via `key` prop no parent em vez de sincronizar via useEffect.)
+- Validação do seed (count de tipos no banco): 6 (cnh_front, cnh_back, rg_front, rg_back, proof_address, selfie_document), todos isDefault=true, isActive=true, com sortOrder 1-6. Scripts de validação tsx executados manualmente e depois removidos do working tree.
+- Decisões de design:
+  * Mantida retrocompatibilidade: KYC_DOC_TYPES e KYC_DOC_LABELS continuam exportados de src/lib/kyc.ts como fallback. kyc-page.tsx tem FALLBACK_DOC_METAS para bases antigas. /api/kyc POST aceita os 6 hardcodeados se KycDocType estiver vazia.
+  * seedKycDocTypesIfEmpty() é idempotente (upsert por code, só cria se não existe) — admin mantém edições feitas em tipos padrão. É chamado automaticamente em getAllKycDocTypes() e no GET /api/admin/kyc-doc-types, então qualquer base nova ou existente sempre terá os 6 padrão disponíveis sem intervenção manual.
+  * `code` NÃO é editável depois de criado — é unique e referenciado por KycDocument.docType (string livre). Se o admin precisar mudar o code, precisa excluir (se isDefault=false) e criar novo. Tipos padrão não podem ser excluídos nem ter code alterado.
+  * `isDefault` NÃO é editável via API — só o seed define isDefault=true para os 6 originais. Isso impede que o admin "promova" um tipo customizado a padrão (quebra a regra "padrões não podem ser excluídos") ou "rebaixe" um padrão (perderia a proteção de exclusão).
+  * Cross-filter automático: getRequiredKycDocTypes() cruza config admin (array de codes) com Set de tipos ATIVOS do banco. Se o admin desativar um tipo que estava marcado como exigido, ele automaticamente deixa de ser exigido — não precisa re-salvar a config. Isso é mais robusto do que o comportamento da Task 7 (que só validava contra array hardcodeado).
+  * Otimismo no Switch Ativo/Inativo: UI atualiza imediatamente, reverte em caso de erro. Switch desativado também remove o tipo da lista de exigidos (localmente e visualmente — a API faria o mesmo na hora de salvar, mas isso reflete imediatamente para o admin).
+  * Dialogs remontam via `key` prop no parent em vez de sincronizar state via useEffect — satisfaz lint rule react-hooks/set-state-in-effect do Next.js 16 + React 19. EditDocTypeDialog usa `key={editingType.id}` (remonta quando admin clica em editar outro tipo). NewDocTypeDialog usa `key={`new-${counter}`}` (counter incrementado antes de setNewOpen(true), garante remount a cada abertura para form começar limpo).
+  * 12 ícones whitelist (IdCard, FileText, MapPin, Camera, CreditCard, User, Briefcase, Home, Car, Plane, Award, ShieldCheck) — cobre documentos comuns: identidade, comprovante, foto, cartão, pessoa, trabalho, imóvel, carro, passaporte, prêmios, certificações, segurança. Mesma lista usada pelo admin (Select) e pelo usuário (ICON_MAP).
+  * Confirmação de exclusão usa window.confirm() nativo (simples e claro) — o projeto não usa AlertDialog para este caso. Explica que docs já enviados com aquele docType continuam existindo no banco mas não aparecerão na UI nem serão aceitos em novos uploads (comportamento esperado e seguro).
+  * Limitação conhecida (não bloqueante para Task 8): admin-kyc-panel.tsx (painel de REVISÃO de KYC, Task 14-A) tem seu próprio DOC_LABELS map hardcodeado com os 5 primeiros tipos (sem selfie_document). Se um admin criar um tipo customizado e um usuário enviar doc desse tipo, o painel de revisão mostrará o code cru (ex: "passport") em vez do label amigável. Não foi corrigido porque: (1) está fora do escopo da Task 8 (admin adicionar/editar tipos), (2) o fallback `doc.docType` já mostra o code (não quebra), (3) ajustar isso exigiria tornar admin-kyc-panel.tsx async e buscar tipos do banco (refatoração maior). Sugerido como follow-up.
+  * Não quebra imports: verificado via grep — somente admin-kyc-panel.tsx tem um COMENTÁRIO referenciando KYC_DOC_LABELS (não import). Nenhum arquivo importa KYC_DOC_TYPES/KYC_DOC_LABELS atualmente, mas mantê-los como fallback custa pouco e protege contra regressões.
