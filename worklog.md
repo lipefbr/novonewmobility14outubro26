@@ -11258,3 +11258,24 @@ Stage Summary:
   * O admin-telemedicina-panel.tsx (painel de APROVAÇÃO — diferente do painel de PLANOS que criei) tem cópia local de `parsePaymentFromNotes` que espera `[Pagamento: …]` no START do notes. Resolvido mantendo esse prefixo PRIMEIRO no `buildNotesWithPlanAndPayment` (ordem [Pagamento] → [Plano]) — assim o badge "Pagamento via PIX" continua aparecendo sem precisar mexer no admin panel de aprovação. O prefixo `[Plano: …]` aparece como texto no notes para o admin (cosmético, não quebra).
 - Resultado para o usuário:
   * "em telemedicina, coloque igual o talkmoby pra planos e no usuario podera ver isso" → ATENDIDO. A página mobile de Telemedicina agora mostra um catálogo de 4 planos (igual ao TalkMobi), com badges Popular/Recomendado, features, preços distintos por plano, e botão "Quero Ativar" que envia o plano escolhido no pedido. O admin gerencia os planos via aba "Planos Telemedicina" no painel admin (CRUD completo, mesmo padrão do TalkMobi Manager).
+
+---
+Task ID: 4-verify
+Agent: Z.ai Code (main)
+Task: Validação + fix conflito (parseBrlToCents duplicado) do sistema de planos de Telemedicina
+
+Work Log:
+- Subagent (Task 4) implementou sistema completo de planos de Telemedicina igual ao TalkMobi: schema Prisma `TelemedicinaPlan` + seed `seed-telemedicina-plans` (4 planos: Individual R$29,90 / Família R$49,90 Popular / Premium R$89,90 Recomendado / Empresarial R$199,90) + API CRUD `/api/telemedicina/plans` + UI admin `TelemedicinaManager` + UI mobile (grid de planos + dialog de ativação com plano escolhido) + integração com `/api/telemedicina/request` (aceita planId).
+- Ao subir dev server para validar, encontrei erro: `Module parse failed: Identifier 'parseBrlToCents' has already been declared` (HTTP 500 na home). O subagent reintroduziu a função `parseBrlToCents` (const arrow function na linha ~2673) que já existia como `function parseBrlToCents` na linha ~1074 (compartilhada por goal-config). Conflito de declaração.
+- Fix: removida a definição duplicada. As referências em `handleSaveCareerPlan` e nos inputs 9.1/9.2 do career plan continuam usando a `function` original (que tem a mesma lógica de sanitização BR→US).
+- Validação pós-fix: home retornou HTTP 200 (3s). API `/api/telemedicina/plans` retornou os 4 planos corretamente com DTO completo (id, name, dataAmount, priceCents, cashbackCents, features, isPopular, isRecommended, priceFormatted, cashbackFormatted).
+- Lint: 0 erros novos (13 pré-existentes em .js auxiliares).
+- Commit `5617797` enviado para origin + backup — deploy automático VPS LipeHost acionado.
+
+Stage Summary:
+- Sistema de planos de Telemedicina funcional e no ar:
+  - Admin: aba "Planos Telemedicina" no backoffice (sidebar → Sistema) com CRUD completo (criar/editar/excluir planos, marcar Popular/Recomendado, definir features/cashback/pontos).
+  - Usuário: página /telemedicina mostra grid de 4 planos com cards (preço, features, badges Popular/Recomendado) e botão "Quero Ativar" por plano. Dialog de ativação passa planId para o backend.
+  - API: GET público /api/telemedicina/plans (auto-seed se vazio), POST/PUT/DELETE admin.
+- Compatibilidade: API /api/telemedicina/request aceita planId opcional (snapshot do plano no notes), mantendo retrocompatibilidade com pedidos existentes sem plano.
+- Bug de conflito de declaração parseBrlToCents corrigido antes do deploy.
