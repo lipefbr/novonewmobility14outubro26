@@ -2,6 +2,13 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
+// Task 3: in-memory cache (30s). The /admin/dashboard endpoint previously
+// ran ~28 sequential Prisma queries (including 12 inside a 6-month loop),
+// which on Neon Postgres could exceed the 10s frontend timeout — especially
+// during cold-starts.
+const DASHBOARD_CACHE_TTL_MS = 30_000
+let cachedDashboard: { data: any; ts: number } | null = null
+
 export async function GET(req: NextRequest) {
   try {
     const adminUserId = req.nextUrl.searchParams.get('userId')
@@ -10,124 +17,128 @@ export async function GET(req: NextRequest) {
     const admin = await prisma.user.findUnique({ where: { id: adminUserId } })
     if (!admin || admin.role !== 'admin') return error('Unauthorized', 403)
 
+    // Serve cached payload if still fresh.
+    if (cachedDashboard && Date.now() - cachedDashboard.ts < DASHBOARD_CACHE_TTL_MS) {
+      return success(cachedDashboard.data)
+    }
+
     const now = new Date()
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
     const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    // First day of the month 5 months ago — start of the 6-month window
+    // (current month + previous 5).
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1)
 
-    // Core stats - run sequentially to avoid SQLite issues
-    let totalUsers = 0
-    let activeUsers = 0
-    let newUsersToday = 0
-    let totalRevenue = 0
-    let pendingWithdrawals = 0
-    let pendingWithdrawalsCount = 0
-    let totalCashbackDistributed = 0
-
-    try { totalUsers = await prisma.user.count() } catch { /* ignore */ }
-    try { activeUsers = await prisma.user.count({ where: { isActive: true } }) } catch { /* ignore */ }
-    try { newUsersToday = await prisma.user.count({ where: { createdAt: { gte: todayStart } } }) } catch { /* ignore */ }
-
-    try {
-      const revenueAgg = await prisma.transaction.aggregate({
+    // Run all independent queries in PARALLEL (was sequential). Each query
+    // resolves to a safe fallback on error so one failure does not break
+    // the whole response.
+    const [
+      totalUsers,
+      activeUsers,
+      newUsersToday,
+      revenueAgg,
+      pendingWdAgg,
+      cashbackAgg,
+      planGroups,
+      recentTransactions,
+      topEarners,
+      thisMonthUsers,
+      lastMonthUsers,
+      monthlyUsersRaw,
+      monthlyRevenueRaw,
+      pendingWithdrawalsList,
+    ] = await Promise.all([
+      prisma.user.count().catch(() => 0),
+      prisma.user.count({ where: { isActive: true } }).catch(() => 0),
+      prisma.user.count({ where: { createdAt: { gte: todayStart } } }).catch(() => 0),
+      prisma.transaction.aggregate({
         _sum: { amount: true },
         where: { status: 'paid', type: { in: ['deposit', 'cashback_entry', 'cashback_residual', 'cashback_sales', 'gratification', 'bonus'] } },
-      })
-      totalRevenue = revenueAgg._sum.amount || 0
-    } catch { /* ignore */ }
-
-    try {
-      const pendingWdAgg = await prisma.transaction.aggregate({
+      }).catch(() => ({ _sum: { amount: null } })),
+      prisma.transaction.aggregate({
         _sum: { amount: true }, _count: true,
         where: { type: 'withdrawal', status: 'pending' },
-      })
-      pendingWithdrawals = pendingWdAgg._sum.amount || 0
-      pendingWithdrawalsCount = pendingWdAgg._count || 0
-    } catch { /* ignore */ }
-
-    try {
-      const cashbackAgg = await prisma.transaction.aggregate({
+      }).catch(() => ({ _sum: { amount: null }, _count: 0 })),
+      prisma.transaction.aggregate({
         _sum: { amount: true },
         where: { type: { in: ['cashback_entry', 'cashback_residual', 'cashback_sales'] }, status: 'approved' },
-      })
-      totalCashbackDistributed = cashbackAgg._sum.amount || 0
-    } catch { /* ignore */ }
-
-    // Plan distribution
-    let planDistribution: { plan: string; count: number }[] = []
-    try {
-      const allUsers = await prisma.user.findMany({ select: { plan: true } })
-      const planMap: Record<string, number> = {}
-      for (const u of allUsers) {
-        planMap[u.plan] = (planMap[u.plan] || 0) + 1
-      }
-      planDistribution = Object.entries(planMap).map(([plan, count]) => ({ plan, count }))
-    } catch { /* ignore */ }
-
-    // Recent transactions
-    let recentTransactions: any[] = []
-    try {
-      recentTransactions = await prisma.transaction.findMany({
+      }).catch(() => ({ _sum: { amount: null } })),
+      // Postgres supports native groupBy — far cheaper than findMany + manual
+      // aggregation over the full users table.
+      prisma.user.groupBy({
+        by: ['plan'],
+        _count: { _all: true },
+      }).catch(() => []),
+      prisma.transaction.findMany({
         take: 10,
         orderBy: { createdAt: 'desc' },
         include: { user: { select: { id: true, name: true, email: true } } },
-      })
-    } catch { /* ignore */ }
-
-    // Top earners
-    let topEarners: any[] = []
-    try {
-      topEarners = await prisma.user.findMany({
+      }).catch(() => []),
+      prisma.user.findMany({
         take: 10,
         orderBy: { balanceWithdrawal: 'desc' },
         select: { id: true, name: true, email: true, plan: true, balanceWithdrawal: true, careerPoints: true },
-      })
-    } catch { /* ignore */ }
+      }).catch(() => []),
+      prisma.user.count({ where: { createdAt: { gte: thisMonthStart } } }).catch(() => 0),
+      prisma.user.count({ where: { createdAt: { gte: lastMonthStart, lt: thisMonthStart } } }).catch(() => 0),
+      // Single query for the whole 6-month window — replaces the previous
+      // 6-iteration loop with 12 sequential queries.
+      prisma.user.findMany({
+        where: { createdAt: { gte: sixMonthsAgo } },
+        select: { createdAt: true },
+      }).catch(() => []),
+      prisma.transaction.findMany({
+        where: {
+          status: 'paid',
+          createdAt: { gte: sixMonthsAgo },
+          type: { in: ['deposit', 'bonus'] },
+        },
+        select: { amount: true, createdAt: true },
+      }).catch(() => []),
+      prisma.transaction.findMany({
+        where: { type: 'withdrawal', status: 'pending' },
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        include: { user: { select: { id: true, name: true, email: true } } },
+      }).catch(() => []),
+    ])
 
-    // Monthly growth
-    let thisMonthUsers = 0
-    let lastMonthUsers = 0
-    try { thisMonthUsers = await prisma.user.count({ where: { createdAt: { gte: thisMonthStart } } }) } catch { /* ignore */ }
-    try { lastMonthUsers = await prisma.user.count({ where: { createdAt: { gte: lastMonthStart, lt: thisMonthStart } } }) } catch { /* ignore */ }
+    const totalRevenue = revenueAgg._sum.amount || 0
+    const pendingWithdrawals = pendingWdAgg._sum.amount || 0
+    const pendingWithdrawalsCount = pendingWdAgg._count || 0
+    const totalCashbackDistributed = cashbackAgg._sum.amount || 0
+    const planDistribution = (planGroups as any[])
+      .map((g) => ({ plan: g.plan, count: g._count?._all ?? 0 }))
 
     const monthlyGrowth = lastMonthUsers > 0
       ? Number((((thisMonthUsers - lastMonthUsers) / lastMonthUsers) * 100).toFixed(1))
       : 100
 
-    // Monthly growth data (last 6 months)
-    const monthlyGrowthData = []
+    // Aggregate the 6-month window in memory: group rows by 'YYYY-MM' bucket.
+    // Build the buckets up-front so months with zero activity still appear.
+    const monthlyGrowthData: { month: string; newUsers: number; revenue: number }[] = []
     for (let i = 5; i >= 0; i--) {
       const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 1)
-      let monthUsers = 0
-      let monthRevenue = 0
-      try { monthUsers = await prisma.user.count({ where: { createdAt: { gte: monthStart, lt: monthEnd } } }) } catch { /* ignore */ }
-      try {
-        const monthRevAgg = await prisma.transaction.aggregate({
-          _sum: { amount: true },
-          where: { status: 'paid', createdAt: { gte: monthStart, lt: monthEnd }, type: { in: ['deposit', 'bonus'] } },
-        })
-        monthRevenue = monthRevAgg._sum.amount || 0
-      } catch { /* ignore */ }
       monthlyGrowthData.push({
         month: monthStart.toISOString().slice(0, 7),
-        newUsers: monthUsers,
-        revenue: monthRevenue,
+        newUsers: 0,
+        revenue: 0,
       })
     }
+    const bucketMap = new Map(monthlyGrowthData.map((b) => [b.month, b]))
+    for (const u of monthlyUsersRaw as { createdAt: Date }[]) {
+      const key = u.createdAt.toISOString().slice(0, 7)
+      const bucket = bucketMap.get(key)
+      if (bucket) bucket.newUsers += 1
+    }
+    for (const t of monthlyRevenueRaw as { amount: number; createdAt: Date }[]) {
+      const key = t.createdAt.toISOString().slice(0, 7)
+      const bucket = bucketMap.get(key)
+      if (bucket) bucket.revenue += t.amount || 0
+    }
 
-    // Pending withdrawals list
-    let pendingWithdrawalsList: any[] = []
-    try {
-      pendingWithdrawalsList = await prisma.transaction.findMany({
-        where: { type: 'withdrawal', status: 'pending' },
-        take: 5,
-        orderBy: { createdAt: 'desc' },
-        include: { user: { select: { id: true, name: true, email: true } } },
-      })
-    } catch { /* ignore */ }
-
-    return success({
+    const data = {
       totalUsers,
       activeUsers,
       inactiveUsers: totalUsers - activeUsers,
@@ -142,7 +153,11 @@ export async function GET(req: NextRequest) {
       monthlyGrowth,
       monthlyGrowthData,
       pendingWithdrawalsList,
-    })
+    }
+
+    cachedDashboard = { data, ts: Date.now() }
+
+    return success(data)
   } catch (err) {
     console.error('Admin dashboard GET error:', err)
     return error('Failed to fetch dashboard data', 500)

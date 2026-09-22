@@ -1799,7 +1799,10 @@ export function AdminPage() {
   const loadStats = async () => {
     try {
       setLoading(true)
-      const data = await apiFetch<AdminStats>(`/admin/stats?userId=${user?.id}`)
+      // Task 3: 30s timeout — /admin/stats hits Neon Postgres which can
+      // be slow on cold-start, and the previous 10s default was timing out
+      // on the VPS.
+      const data = await apiFetch<AdminStats>(`/admin/stats?userId=${user?.id}`, { timeoutMs: 30000 })
       setStats(data)
     } catch { /* ignore */ } finally { setLoading(false) }
   }
@@ -1810,14 +1813,14 @@ export function AdminPage() {
       // Item 13: forward the "Sem patrocinador" toggle to the API so the
       // server filters by referredById=null AND role != 'admin'.
       if (noSponsorFilter) params.set('noSponsor', 'true')
-      const data = await apiFetch<{ users: AdminUser[]; total: number; page: number; totalPages: number }>(`/admin/users?${params}`)
+      const data = await apiFetch<{ users: AdminUser[]; total: number; page: number; totalPages: number }>(`/admin/users?${params}`, { timeoutMs: 30000 })
       setUsers(data)
     } catch { /* ignore */ }
   }
 
   const loadConfigs = async () => {
     try {
-      const data = await apiFetch<SystemConfigs>(`/admin/config?userId=${user?.id}`)
+      const data = await apiFetch<SystemConfigs>(`/admin/config?userId=${user?.id}`, { timeoutMs: 30000 })
       setConfigs(data)
     } catch { /* ignore */ }
   }
@@ -1839,7 +1842,7 @@ export function AdminPage() {
   const loadWithdrawals = async () => {
     try {
       const params = new URLSearchParams({ userId: user?.id || '', status: withdrawalStatusFilter })
-      const data = await apiFetch<{ withdrawals: AdminWithdrawal[]; total: number; page: number; totalPages: number; stats: WithdrawalStats }>(`/admin/withdrawals?${params}`)
+      const data = await apiFetch<{ withdrawals: AdminWithdrawal[]; total: number; page: number; totalPages: number; stats: WithdrawalStats }>(`/admin/withdrawals?${params}`, { timeoutMs: 30000 })
       setWithdrawals(data)
     } catch { /* ignore */ }
   }
@@ -2615,7 +2618,7 @@ export function AdminPage() {
   const loadCareerPlans = async () => {
     setCareerPlanLoading(true)
     try {
-      const data = await apiFetch<{ plans: CareerPlanItem[] }>(`/admin/career-plans?userId=${user?.id}`)
+      const data = await apiFetch<{ plans: CareerPlanItem[] }>(`/admin/career-plans?userId=${user?.id}`, { timeoutMs: 30000 })
       setCareerPlans(data.plans || [])
     } catch { /* ignore */ } finally { setCareerPlanLoading(false) }
   }

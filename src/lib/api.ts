@@ -2,7 +2,10 @@
 
 // API service for NewMobility frontend
 const API_BASE = '/api'
-const DEFAULT_TIMEOUT_MS = 10_000
+// Task 3: bumped from 10s to 15s — Neon Postgres has higher latency per
+// query and cold-start can be slow. Critical admin endpoints override
+// this with explicit `timeoutMs: 30000`.
+const DEFAULT_TIMEOUT_MS = 15_000
 
 export class ApiError extends Error {
   status: number
