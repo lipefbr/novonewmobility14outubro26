@@ -20,6 +20,9 @@ import { useTranslation } from '@/lib/i18n'
 import { useAdminPermissions } from '@/lib/admin-permissions'
 import { formatCurrency, categoryLabel, cn } from '@/lib/utils'
 import { apiFetch, adminApi } from '@/lib/api'
+// Task ID 6: invalida o cache do `useBranding()` após salvar configs, para
+// que o novo nome da plataforma apareça no sidebar/header/footer sem F5.
+import { invalidateBrandingCache } from '@/lib/use-branding'
 import {
   Shield, Users, DollarSign, TrendingUp, Activity, Settings, Search,
   ChevronLeft, ChevronRight, ChevronDown, BarChart3, Clock, Mail, Check, X,
@@ -3229,7 +3232,13 @@ export function AdminPage() {
         method: 'PUT',
         body: JSON.stringify({ userId: user?.id, configs }),
       })
-      toast.success('Configurações salvas com sucesso!')
+      // Task ID 6: invalida o cache do `useBranding()` para que o novo nome
+      // da plataforma apareça imediatamente no sidebar/footer/metadata. O
+      // <title> da aba do navegador só atualiza após F5 (metadata é server-side).
+      invalidateBrandingCache()
+      toast.success('Configurações salvas com sucesso!', {
+        description: 'Recarregue a página (F5) para ver o nome atualizado em todo o site.',
+      })
     } catch { toast.error('Erro ao salvar configurações') } finally { setSavingConfig(false) }
   }
 

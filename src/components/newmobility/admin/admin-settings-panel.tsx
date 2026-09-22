@@ -26,6 +26,9 @@ import {
 import { toast } from 'sonner'
 import { useStore } from '@/lib/store'
 import { apiFetch } from '@/lib/api'
+// Task ID 6: invalida o cache do `useBranding()` após salvar, para que o
+// novo nome da plataforma apareça imediatamente no sidebar/footer/metadata.
+import { invalidateBrandingCache } from '@/lib/use-branding'
 
 // ---------- Types ----------
 
@@ -61,7 +64,8 @@ export function AdminSettingsPanel() {
       ])
       setLogoUrl(logoRes.logoUrl || null)
       setPendingLogo(null)
-      if (configRes.app_name) setAppName(configRes.app_name)
+      if (configRes.platform_name) setAppName(configRes.platform_name)
+      else if (configRes.app_name) setAppName(configRes.app_name)
       if (configRes.primary_color) setPrimaryColor(configRes.primary_color)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao carregar configurações')
@@ -138,17 +142,27 @@ export function AdminSettingsPanel() {
     if (!user?.id) return
     setSavingConfig(true)
     try {
+      // Task ID 6: a partir de agora a chave canônica do nome da plataforma é
+      // `platform_name` (a mesma editada em Configurações do Sistema → Nome
+      // da Plataforma no admin-page.tsx). Mantemos `app_name` como mirror
+      // para retrocompatibilidade com versões antigas que ainda leem só essa.
       await apiFetch('/admin/config', {
         method: 'PUT',
         body: JSON.stringify({
           userId: user.id,
           configs: {
+            platform_name: appName,
             app_name: appName,
             primary_color: primaryColor,
           },
         }),
       })
-      toast.success('Configurações salvas com sucesso')
+      // Invalida o cache do `useBranding()` para que o novo nome apareça
+      // imediatamente no sidebar/header/footer sem precisar de F5.
+      invalidateBrandingCache()
+      toast.success('Configurações salvas com sucesso!', {
+        description: 'Recarregue a página (F5) para ver o nome atualizado em todo o site.',
+      })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao salvar configurações')
     } finally {
@@ -266,8 +280,10 @@ export function AdminSettingsPanel() {
             Identidade Visual
           </CardTitle>
           <CardDescription className="text-xs">
-            Nome exibido no backoffice e cor primária do tema. (A cor primária é armazenada mas o tema ainda precisa
-            ser regenerado para aplicá-la em produção.)
+            Nome exibido no sidebar/header/footer do backoffice e cor primária do tema.
+            <strong> Task ID 6:</strong> o nome agora é persistido em
+            <code>SystemConfig.platform_name</code> (a mesma chave lida pelo painel
+            "Configurações da Plataforma").
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -280,7 +296,7 @@ export function AdminSettingsPanel() {
                 onChange={(e) => setAppName(e.target.value)}
                 placeholder="NewMobility"
               />
-              <p className="text-[10px] text-muted-foreground">Salvo em <code>SystemConfig.app_name</code>.</p>
+              <p className="text-[10px] text-muted-foreground">Salvo em <code>SystemConfig.platform_name</code> (mirror <code>app_name</code>).</p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="primary-color" className="text-xs flex items-center gap-1.5">

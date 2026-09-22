@@ -59,6 +59,9 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
 import { toast } from 'sonner'
+// Task ID 6: hook client que carrega o nome/logo configurados pelo admin
+// em `Configurações do Sistema` (platform_name / app_name / app_logo_url).
+import { useBranding } from '@/lib/use-branding'
 
 interface AdminNavItem {
   key: AdminPageKey
@@ -129,6 +132,10 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
+  // Task ID 6: nome da plataforma lido do banco (platform_name || app_name).
+  // Antes era hardcodeado como "NewMobility" em 3 lugares deste arquivo.
+  const branding = useBranding()
+
   const handleItemClick = (key: AdminPageKey) => {
     setAdminActivePage(key)
     setAdminMobileSidebarOpen(false)
@@ -167,7 +174,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
               animate={{ opacity: 1, x: 0 }}
               className="flex flex-col min-w-0"
             >
-              <span className="text-white font-bold text-base truncate">NewMobility</span>
+              <span className="text-white font-bold text-base truncate">{branding.name}</span>
               <span className="text-emerald-400 text-xs truncate font-semibold">Admin Panel</span>
             </motion.div>
           )}
@@ -453,7 +460,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                   <div className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shadow-md shadow-emerald-500/20 shrink-0">
                     <Shield className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   </div>
-                  <span className="font-bold text-white text-xs sm:text-sm sm:text-base truncate">NewMobility Admin</span>
+                  <span className="font-bold text-white text-xs sm:text-sm sm:text-base truncate">{branding.name} Admin</span>
                 </div>
 
                 <div className="hidden lg:flex items-center gap-2 min-w-0">
@@ -551,7 +558,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           <footer className="bg-gray-900 border-t border-gray-800 px-4 py-3 shrink-0 hidden md:block">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
               <p className="text-xs text-gray-500 text-center">
-                © {new Date().getFullYear()} NewMobility Admin Panel · Todos os direitos reservados
+                © {new Date().getFullYear()} {branding.name} Admin Panel · Todos os direitos reservados
               </p>
               <div className="flex items-center gap-3">
                 <span className="text-xs text-gray-600 flex items-center gap-1">
