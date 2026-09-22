@@ -2667,23 +2667,8 @@ export function AdminPage() {
     setCareerPlanDialogOpen(true)
   }
 
-  // Helper: converte string de input (R$) para centavos. Aceita formatos:
-  //   "2500.00" (US), "2500,00" (BR), "2.500,00" (BR com milhar), "2500" (inteiro)
-  // Isso evita o bug de type=number rejeitar vírgula e salvar como 0.
-  const parseBrlToCents = (raw: string): number => {
-    const v = (raw || '').trim()
-    if (!v) return 0
-    let sanitized: string
-    if (v.includes(',')) {
-      // Formato BR: remove pontos de milhar, troca vírgula decimal por ponto
-      sanitized = v.replace(/\./g, '').replace(',', '.')
-    } else {
-      sanitized = v
-    }
-    const brl = parseFloat(sanitized)
-    if (!Number.isFinite(brl) || brl < 0) return 0
-    return Math.round(brl * 100)
-  }
+  // Helper parseBrlToCents é definido mais acima (linha ~1074) e é compartilhado
+  // por várias funções (goal-config, career-plan, telemedicina-plans). Não redefinir aqui.
 
   const handleSaveCareerPlan = async () => {
     if (!careerPlanForm.code || !careerPlanForm.name) {

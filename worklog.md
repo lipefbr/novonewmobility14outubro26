@@ -11196,3 +11196,65 @@ Stage Summary:
 - Bug corrigido: usuário agora pode digitar "2.500,00" (formato BR) e o sistema salva corretamente 250000 centavos.
 - UX melhorada: toast de erro fica 6s (era padrão ~4s), tem log no console para debug, dialog só fecha após lista recarregar.
 - Comportamento esperado pelo usuário agora funciona: editar recompensa para "2.500,00" → Salvar → toast "Plano de carreira atualizado!" → lista recarrega mostrando R$ 2.500,00.
+
+---
+Task ID: 4
+Agent: Z.ai Code (subagent)
+Task: Criar sistema de planos de Telemedicina (CRUD admin + catálogo mobile) igual ao TalkMobi — admin gerencia planos, usuário final vê o catálogo na página de telemedicina.
+
+Work Log:
+- Lido o worklog.md (Tarefas 1-3: bugfix matrix config, dashboard admin, badge de saque grátis) e arquivos de referência (schema.prisma TalkMobiPlan, /api/talkmobi/plans/route.ts, src/lib/seed-talkmobi.ts, talkmobi-page.tsx, telemedicina-page.tsx, /api/telemedicina/request/route.ts, admin-page.tsx, admin-layout.tsx, admin-permissions-panel.tsx, talkmobi-manager.tsx).
+- Etapa 1: Adicionado modelo `TelemedicinaPlan` em `prisma/schema.prisma` logo após `TalkMobiPlan`. Estrutura idêntica (id, name, dataAmount, priceCents, cashbackCents, rewardPoints, description, features JSON, isPopular, isRecommended, isActive, sortOrder, timestamps).
+- Etapa 2: `bun run db:push` executado com sucesso ("Your database is now in sync with your Prisma schema. Done in 50ms"). Tabela `TelemedicinaPlan` criada e Prisma Client regenerado.
+- Etapa 3: Criado `src/lib/seed-telemedicina.ts` com `DEFAULT_TELEMEDICINA_PLANS` (4 planos) e funções `seedTelemedicinaPlansIfEmpty()` (idempotente via upsert) + `seedTelemedicinaPlansForce()` + entry-point standalone. Planos: Individual R$29,90 / Família R$49,90 (Popular) / Premium R$89,90 (Recomendado) / Empresarial R$199,90.
+- Etapa 4: Criado `src/app/api/telemedicina/plans/route.ts` replicando EXATAMENTE o padrão de `/api/talkmobi/plans/route.ts`: GET público (com auto-seed) + POST admin (com slugify) + PUT admin (subconjunto de campos) + DELETE admin (soft-delete isActive=false). Helper `toDTO` com parse defensivo do JSON de features. `requireAdmin` verifica role='admin'.
+- Etapa 5: Adicionada aba `telemedicina-plans` no admin:
+  * `src/lib/store.ts`: adicionado `'telemedicina-plans'` ao union `AdminPageKey`.
+  * `src/components/newmobility/admin/admin-layout.tsx`: adicionada entrada sidebar `{ key: 'telemedicina-plans', label: 'Planos Telemedicina', icon: HeartPulse, description: 'Gerencie planos de telemedicina (catálogo)', group: 'system' }` logo após a entrada `telemedicina`.
+  * `src/components/newmobility/admin/admin-page.tsx`: import do `TelemedicinaManager`, mapeamento `'telemedicina-plans': 'telemedicina-plans'` em `adminPageToTab`, e `<TabsContent value="telemedicina-plans">` logo após o TabsContent telemedicina existente.
+  * `src/components/newmobility/admin/admin-permissions-panel.tsx`: adicionada entrada à lista `ADMIN_PAGES`.
+  * Criado `src/components/newmobility/admin/telemedicina-manager.tsx` (copia adaptada de talkmobi-manager.tsx): grid de cards com stats (Total/Ativos/Populares/Recomendados), badges Popular (emerald) / Recomendado (amber), Switch de ativo/inativo, dialog CRUD com campos id (slug, só no create), nome, cobertura (dataAmount), preço (centavos), cashback, pontos, descrição, features (textarea), switches isPopular/isRecommended/isActive, sortOrder, e dialog de confirmação para delete.
+  * Adicionado helper `telemedicinaApi` em `src/lib/api.ts` (getPlans/createPlan/updatePlan/deletePlan — espelha `talkMobiApi`).
+- Etapa 6: Reescrito `src/components/newmobility/telemedicina/telemedicina-page.tsx`:
+  * Carrega planos via `apiFetch('/telemedicina/plans')` no useEffect (igual talkmobi-page.tsx).
+  * Substituiu o card único hardcoded por um GRID de cards de planos (1 col mobile, 2 col desktop). Cada card tem nome, dataAmount (subtitle), preço grande `/mês`, badges Popular/Recomendado, features com checks, descrição opcional, e botão "Quero Ativar" (rose/emerald/amber conforme destaque).
+  * Botão "Quero Ativar" abre o dialog de ativação com o plano escolhido pré-selecionado (passa planId + planName + priceCents no POST).
+  * Banner do dialog agora mostra o plano selecionado (nome + dataAmount + preço/mês) em vez do preço fixo hardcoded.
+  * FALLBACK_PLANS (4 planos hardcoded) exibidos se a API falhar — espelha o padrão do talkmobi.
+  * Status banners (approved/pending/rejected) agora mostram `planName` quando disponível.
+  * Type `TelemedicinaRequestDTO` estendido com `planId`, `planName`, `priceCents` para refletir o novo shape da API.
+- Etapa 7-8: Atualizado `src/app/api/telemedicina/request/route.ts`:
+  * POST agora aceita `planId`, `planName`, `priceCents` no body. Se `planId` vier, busca o plano no banco (`prisma.telemedicinaPlan.findUnique`) e valida `isActive=true` — REJEITA se inválido/inativo (evita usuário forjar preço menor). O snapshot (planName + priceCents) vem do banco, não do caller.
+  * Criado helper `buildNotesWithPlanAndPayment(planName, priceCents, method, userNotes)` que monta o notes com DOIS prefixes: `[Pagamento: <method>] [Plano: <name> R$ <price>] <user-notes>`. A ordem (Pagamento ANTES de Plano) é intencional: o painel admin em `admin-telemedicina-panel.tsx` tem cópia LOCAL de `parsePaymentFromNotes` que espera `[Pagamento: …]` no START da string — mantendo esse prefixo primeiro, o badge "Pagamento via PIX" continua aparecendo sem precisar tocar no admin panel.
+  * Criado `parsePlanFromNotes(raw)` que extrai `[Plano: <name> R$ <price>]` do início (ou meio) da string, normalizando o preço BRL ("R$ 49,90" / "R$ 49.90" / "R$ 1.999,90") para centavos inteiros.
+  * `serialize()` atualizada: PRIMEIRO extrai `[Pagamento: …]` (parsePaymentFromNotes), DEPOIS extrai `[Plano: …]` do restante (parsePlanFromNotes). Retorna `planName`, `priceCents`, `planId: null` (não persistimos planId — snapshot via notes). Mantém `paymentMethod` + `paymentMethodLabel` + `notes` limpo para backward compat.
+  * Validado o round-trip com script Node (4 cenários: plano+pagamento+notes, só pagamento, plano+pagamento sem notes, só notes). Todos passam.
+- Validação:
+  * `bun run lint` rodou — exatamente 13 erros pré-existentes em arquivos .js auxiliares (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js — todos @typescript-eslint/no-require-imports). ZERO erros novos em src/.
+  * `bun run db:push` confirmou tabela criada.
+  * Script de verificação via `bunx tsx` confirmou: count=4 após seed, e os 4 planos retornados com features corretamente serializadas como JSON array.
+  * Script de round-trip de parse/build confirmou: `[Pagamento: PIX] [Plano: Plano Família R$ 49,90] tenho alergia` → parses back to `{method:'pix', planName:'Plano Família', priceCents:4990, cleanNotes:'tenho alergia'}`.
+  * Não rodei `bun run build` (conforme instruções). Não testei via agent-browser (dev server instável no sandbox por OOM, conforme já documentado no worklog das Tarefas 1-3).
+- Commit local criado (e659c27): `feat(telemedicina): sistema de planos (CRUD admin + catálogo mobile) - Task ID 4`. 13 arquivos alterados, +1879 -113.
+
+Stage Summary:
+- Arquivos criados (3):
+  * `src/lib/seed-telemedicina.ts` — seed idempotente com 4 planos canônicos.
+  * `src/app/api/telemedicina/plans/route.ts` — API CRUD completa (GET público + POST/PUT/DELETE admin) replicando o padrão do TalkMobi.
+  * `src/components/newmobility/admin/telemedicina-manager.tsx` — UI admin (grid de cards + dialog CRUD + dialog delete).
+- Arquivos modificados (10):
+  * `prisma/schema.prisma` — novo modelo `TelemedicinaPlan`.
+  * `src/lib/store.ts` — `'telemedicina-plans'` adicionado ao `AdminPageKey` union.
+  * `src/lib/api.ts` — novo helper `telemedicinaApi` (getPlans/createPlan/updatePlan/deletePlan).
+  * `src/components/newmobility/admin/admin-layout.tsx` — entrada sidebar `telemedicina-plans` (group: system, icon HeartPulse).
+  * `src/components/newmobility/admin/admin-page.tsx` — import `TelemedicinaManager` + mapeamento `adminPageToTab` + `<TabsContent value="telemedicina-plans">`.
+  * `src/components/newmobility/admin/admin-permissions-panel.tsx` — entrada em `ADMIN_PAGES`.
+  * `src/components/newmobility/telemedicina/telemedicina-page.tsx` — REESCRITA: grid de planos no lugar do card único hardcoded; dialog mostra plano selecionado; envia `planId` no POST; FALLBACK_PLANS para resiliência.
+  * `src/app/api/telemedicina/request/route.ts` — POST aceita `planId` + valida plano ativo no catálogo; helpers `parsePlanFromNotes` e `buildNotesWithPlanAndPayment`; `serialize()` retorna `planName` + `priceCents`.
+- `bun run db:push`: SUCESSO ("Your database is now in sync with your Prisma schema. Done in 50ms"). Tabela `TelemedicinaPlan` criada e Prisma Client regenerado.
+- `bun run lint`: 13 erros, TODOS pré-existentes em arquivos .js auxiliares (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js — todos @typescript-eslint/no-require-imports). ZERO erros novos introduzidos em src/.
+- Problemas encontrados:
+  * Dev server não estável no sandbox (OOM após ~30s, processo morre sozinho). Já documentado nas Tarefas 1-3. Por isso a validação via API/browser foi substituída por: (a) lint pass, (b) script tsx que roda o seed + verifica 4 planos inseridos, (c) script tsx que valida o round-trip parse/build do notes com 4 cenários. Todos passaram.
+  * O admin-telemedicina-panel.tsx (painel de APROVAÇÃO — diferente do painel de PLANOS que criei) tem cópia local de `parsePaymentFromNotes` que espera `[Pagamento: …]` no START do notes. Resolvido mantendo esse prefixo PRIMEIRO no `buildNotesWithPlanAndPayment` (ordem [Pagamento] → [Plano]) — assim o badge "Pagamento via PIX" continua aparecendo sem precisar mexer no admin panel de aprovação. O prefixo `[Plano: …]` aparece como texto no notes para o admin (cosmético, não quebra).
+- Resultado para o usuário:
+  * "em telemedicina, coloque igual o talkmoby pra planos e no usuario podera ver isso" → ATENDIDO. A página mobile de Telemedicina agora mostra um catálogo de 4 planos (igual ao TalkMobi), com badges Popular/Recomendado, features, preços distintos por plano, e botão "Quero Ativar" que envia o plano escolhido no pedido. O admin gerencia os planos via aba "Planos Telemedicina" no painel admin (CRUD completo, mesmo padrão do TalkMobi Manager).
