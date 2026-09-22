@@ -172,6 +172,15 @@ function methodBadge(method: AdminWithdrawalRequest['paymentMethod']) {
   )
 }
 
+// Helper: retorna true se a data de criação do saque está na janela gratuita (dias 5-8 do mês).
+// Espelha a lógica do backend /api/financial/withdraw (FREE_WITHDRAWAL_DAY_START=5, _END=8).
+function isFreeWithdrawalDay(date: Date | string): boolean {
+  const d = typeof date === 'string' ? new Date(date) : date
+  if (isNaN(d.getTime())) return false
+  const day = d.getDate()
+  return day >= 5 && day <= 8
+}
+
 function withdrawalDetailsSummary(w: AdminWithdrawalRequest): string {
   if (w.paymentMethod === 'pix') {
     return `PIX: ${w.pixKey || '—'}`
@@ -605,6 +614,14 @@ export function AdminWithdrawalsPanel() {
             </div>
           ) : (
             <>
+              {isFreeWithdrawalDay(new Date()) && (
+                <div className="mx-3 mt-3 rounded-md border border-emerald-200 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/20 p-2 mb-3">
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                    <span className="font-semibold">Janela gratuita ativa:</span>
+                    saques solicitados hoje (dias 5-8) não têm taxa. Aproveite para aprovar sem descontar.
+                  </p>
+                </div>
+              )}
               {/* Desktop table */}
               <div className="hidden md:block max-h-[32rem] overflow-y-auto custom-scrollbar">
                 <Table>
@@ -633,7 +650,14 @@ export function AdminWithdrawalsPanel() {
                           </div>
                         </TableCell>
                         <TableCell className="font-bold text-foreground">
-                          {formatAmountCents(Number(w.amount) || 0)}
+                          <div className="flex items-center gap-2">
+                            {isFreeWithdrawalDay(w.createdAt) && (
+                              <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 text-[9px] px-1.5 py-0">
+                                Grátis
+                              </Badge>
+                            )}
+                            <span>{formatAmountCents(Number(w.amount) || 0)}</span>
+                          </div>
                         </TableCell>
                         <TableCell>{methodBadge(w.paymentMethod)}</TableCell>
                         <TableCell className="max-w-[260px]">
@@ -743,9 +767,16 @@ export function AdminWithdrawalsPanel() {
                           {w.user?.email || ''}
                         </p>
                       </div>
-                      <span className="text-sm font-bold text-foreground shrink-0">
-                        {formatAmountCents(Number(w.amount) || 0)}
-                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {isFreeWithdrawalDay(w.createdAt) && (
+                          <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 text-[9px] px-1.5 py-0">
+                            Grátis
+                          </Badge>
+                        )}
+                        <span className="text-sm font-bold text-foreground">
+                          {formatAmountCents(Number(w.amount) || 0)}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       {statusBadge(w.status)}
@@ -866,7 +897,14 @@ export function AdminWithdrawalsPanel() {
               ) : approveDialog.withdrawal ? (
                 <>
                   Você deseja realmente aprovar o saque de{' '}
-                  <strong className="text-emerald-600">R$ {(approveDialog.withdrawal.amount / 100).toFixed(2)}</strong>
+                  <strong className="text-emerald-600 inline-flex items-center gap-1.5">
+                    R$ {(approveDialog.withdrawal.amount / 100).toFixed(2)}
+                    {isFreeWithdrawalDay(approveDialog.withdrawal.createdAt) && (
+                      <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 text-[9px] px-1.5 py-0">
+                        Grátis
+                      </Badge>
+                    )}
+                  </strong>
                   {' '}de <strong>{approveDialog.withdrawal.user?.name || 'usuário'}</strong>?
                   Uma transferência será criada no Asaas.
                 </>
@@ -991,7 +1029,14 @@ export function AdminWithdrawalsPanel() {
                 {methodBadge(detailDialog.withdrawal.paymentMethod)}
               </DetailRow>
               <DetailRow label="Valor">
-                {formatAmountCents(Number(detailDialog.withdrawal.amount) || 0)}
+                <span className="inline-flex items-center gap-1.5">
+                  {isFreeWithdrawalDay(detailDialog.withdrawal.createdAt) && (
+                    <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 text-[9px] px-1.5 py-0">
+                      Grátis
+                    </Badge>
+                  )}
+                  {formatAmountCents(Number(detailDialog.withdrawal.amount) || 0)}
+                </span>
               </DetailRow>
               <DetailRow label="Solicitante">
                 <div className="flex flex-col text-right">
