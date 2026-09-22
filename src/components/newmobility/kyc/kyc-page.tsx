@@ -538,9 +538,17 @@ export default function KycPage() {
   }
 
   const status = data?.status ?? 'none'
+  const requiredDocTypes = data?.requiredDocTypes ?? []
+  const noDocsRequired = requiredDocTypes.length === 0
   const uploadedCount = data?.uploadedCount ?? 0
-  const totalRequired = data?.totalRequired ?? 5
-  const progressPct = Math.round((uploadedCount / totalRequired) * 100)
+  const totalRequired = requiredDocTypes.length
+  // Quando nenhum doc é exigido (admin desmarcou tudo), tratamos como
+  // 100% visualmente — mas NÃO alteramos o kycStatus no banco.
+  const progressPct = noDocsRequired
+    ? 100
+    : totalRequired > 0
+      ? Math.round((uploadedCount / totalRequired) * 100)
+      : 0
   const docsByType: Record<string, KycDocument> = {}
   for (const d of data?.documents ?? []) {
     // Keep the most recently updated doc per type (defensive — should be unique)
@@ -548,6 +556,13 @@ export default function KycPage() {
       docsByType[d.docType] = d
     }
   }
+
+  // Filtra DOC_METAS pelos tipos exigidos (Task ID 7). Se a API retornou
+  // requiredDocTypes (configurada ou default = todos os 6), mostra só esses.
+  // Se requiredDocTypes está vazio (admin desmarcou tudo), não mostra cards.
+  const visibleDocMetas = noDocsRequired
+    ? []
+    : DOC_METAS.filter((m) => requiredDocTypes.includes(m.type))
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -559,51 +574,70 @@ export default function KycPage() {
         </p>
       </div>
 
-      {/* Status banner */}
-      <StatusBanner status={status} reason={data?.kycRejectedReason ?? null} />
-
-      {/* Doc cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {DOC_METAS.map((meta) => (
-          <DocUploadCard
-            key={meta.type}
-            meta={meta}
-            doc={docsByType[meta.type]}
-            onUpload={(file) => handleUpload(meta.type, file)}
-            onDelete={handleDelete}
-            uploading={uploadingType === meta.type}
-          />
-        ))}
-      </div>
-
-      {/* Progress */}
-      <Card className="rounded-2xl shadow-sm">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <CardTitle className="text-base">Progresso de envio</CardTitle>
-              <CardDescription>
-                {uploadedCount} de {totalRequired} documentos enviados
-              </CardDescription>
-            </div>
-            <div className="rounded-full bg-gray-100 px-3 py-1 text-sm font-semibold text-gray-700">
-              {progressPct}%
-            </div>
+      {/* Status banner — quando nenhum doc é exigido, sobrescreve com banner OK */}
+      {noDocsRequired ? (
+        <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900 shadow-sm">
+          <div className="rounded-full bg-emerald-100 p-2">
+            <ShieldCheck className="h-5 w-5" />
           </div>
-        </CardHeader>
-        <CardContent>
-          <Progress value={progressPct} className="h-3 w-full" />
-          <p className="mt-3 text-xs text-muted-foreground">
-            {status === 'approved'
-              ? 'Tudo pronto! Sua conta está verificada.'
-              : status === 'pending'
-                ? 'Documentos enviados. Aguarde a análise da nossa equipe (geralmente 24h).'
-                : status === 'rejected'
-                  ? 'Reenvie os documentos rejeitados acima para nova análise.'
-                  : 'Envie todos os documentos acima para iniciar a verificação.'}
-          </p>
-        </CardContent>
-      </Card>
+          <div className="flex-1">
+            <p className="font-semibold">Nenhum documento é exigido no momento</p>
+            <p className="text-sm text-emerald-700">
+              Seu KYC está completo. Saques, cashback e evolução de plano estão
+              liberados.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <StatusBanner status={status} reason={data?.kycRejectedReason ?? null} />
+      )}
+
+      {/* Doc cards — só renderiza se houver tipos exigidos */}
+      {visibleDocMetas.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {visibleDocMetas.map((meta) => (
+            <DocUploadCard
+              key={meta.type}
+              meta={meta}
+              doc={docsByType[meta.type]}
+              onUpload={(file) => handleUpload(meta.type, file)}
+              onDelete={handleDelete}
+              uploading={uploadingType === meta.type}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Progress — esconde quando nenhum doc é exigido (não faz sentido) */}
+      {!noDocsRequired && (
+        <Card className="rounded-2xl shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <CardTitle className="text-base">Progresso de envio</CardTitle>
+                <CardDescription>
+                  {uploadedCount} de {totalRequired} documentos enviados
+                </CardDescription>
+              </div>
+              <div className="rounded-full bg-gray-100 px-3 py-1 text-sm font-semibold text-gray-700">
+                {progressPct}%
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Progress value={progressPct} className="h-3 w-full" />
+            <p className="mt-3 text-xs text-muted-foreground">
+              {status === 'approved'
+                ? 'Tudo pronto! Sua conta está verificada.'
+                : status === 'pending'
+                  ? 'Documentos enviados. Aguarde a análise da nossa equipe (geralmente 24h).'
+                  : status === 'rejected'
+                    ? 'Reenvie os documentos rejeitados acima para nova análise.'
+                    : 'Envie todos os documentos acima para iniciar a verificação.'}
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

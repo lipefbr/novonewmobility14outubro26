@@ -157,3 +157,70 @@ export const KYC_DOC_LABELS: Record<KycDocType, string> = {
   proof_address: 'Comprovante de Endereço',
   selfie_document: 'Selfie com Documento',
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task ID 7 — Configuração admin: quais tipos de documento são exigidos.
+//
+// A chave SystemConfig `kyc.required_doc_types` guarda um JSON array de
+// strings (subset de KYC_DOC_TYPES) com os tipos que o admin marcou como
+// obrigatórios. Se a chave NÃO existir, retornamos TODOS os 6 (default
+// histórico — mantém o comportamento anterior à Task 7).
+//
+// Um array vazio significa "nenhum documento exigido" — o KYC torna-se
+// opcional (usuário pode sacar sem enviar nada).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const KYC_REQUIRED_DOC_TYPES_KEY = 'kyc.required_doc_types'
+
+/**
+ * Lê a config admin `kyc.required_doc_types` e devolve a lista de tipos
+ * de documento que o usuário precisa enviar. Faz fallback para
+ * KYC_DOC_TYPES (todos os 6) se a chave não existir ou estiver malformada.
+ *
+ * Retorna `{ requiredDocTypes, isConfigured }`:
+ *   - `requiredDocTypes: string[]` — pode ser vazio (admin desmarcou tudo).
+ *   - `isConfigured: boolean` — true se a chave existe no banco. Útil para o
+ *     POST decidir entre aceitar qualquer um dos 6 (default) ou só os exigidos.
+ */
+export async function getRequiredKycDocTypes(): Promise<{
+  requiredDocTypes: string[]
+  isConfigured: boolean
+}> {
+  try {
+    const { prisma } = await import('@/lib/db')
+    const row = await prisma.systemConfig.findUnique({
+      where: { key: KYC_REQUIRED_DOC_TYPES_KEY },
+      select: { value: true },
+    })
+    if (!row || !row.value) {
+      return { requiredDocTypes: [...KYC_DOC_TYPES], isConfigured: false }
+    }
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(row.value)
+    } catch {
+      console.warn(
+        '[getRequiredKycDocTypes] valor não é JSON válido, usando default. value=',
+        row.value
+      )
+      return { requiredDocTypes: [...KYC_DOC_TYPES], isConfigured: false }
+    }
+    if (!Array.isArray(parsed)) {
+      return { requiredDocTypes: [...KYC_DOC_TYPES], isConfigured: false }
+    }
+    // Filtra itens inválidos (não-string ou fora dos 6 permitidos) e remove
+    // duplicatas preservando a ordem definida pelo admin.
+    const seen = new Set<string>()
+    const filtered: string[] = []
+    for (const item of parsed) {
+      if (typeof item === 'string' && (KYC_DOC_TYPES as readonly string[]).includes(item) && !seen.has(item)) {
+        seen.add(item)
+        filtered.push(item)
+      }
+    }
+    return { requiredDocTypes: filtered, isConfigured: true }
+  } catch (err) {
+    console.error('[getRequiredKycDocTypes] erro ao ler config KYC:', err)
+    return { requiredDocTypes: [...KYC_DOC_TYPES], isConfigured: false }
+  }
+}

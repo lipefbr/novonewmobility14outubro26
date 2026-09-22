@@ -40,6 +40,7 @@ import { AdminReportsPanel } from '@/components/newmobility/admin/admin-reports-
 import { AdminWithdrawalsPanel } from '@/components/newmobility/admin/admin-withdrawals-panel'
 import { AsaasConfigPanel } from '@/components/newmobility/admin/asaas-config-panel'
 import AdminKycPanel from '@/components/newmobility/admin/admin-kyc-panel'
+import { AdminKycConfigPanel } from '@/components/newmobility/admin/admin-kyc-config-panel'
 import { AdminAuditPanel } from '@/components/newmobility/admin/admin-audit-panel'
 import { AdminPermissionsPanel } from '@/components/newmobility/admin/admin-permissions-panel'
 import { AdminChallengesPanel } from '@/components/newmobility/admin/admin-challenges-panel'
@@ -9078,6 +9079,8 @@ export function AdminPage() {
 
         {/* KYC Approval Tab — Task 14-A */}
         <TabsContent value="kyc" className="mt-4 space-y-4">
+          {/* Task ID 7 — config admin: quais docs são exigidos */}
+          <AdminKycConfigPanel />
           <AdminKycPanel />
         </TabsContent>
 

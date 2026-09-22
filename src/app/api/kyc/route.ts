@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 import { getSession } from '@/lib/auth'
-import { KYC_DOC_TYPES, type KycDocType, invalidateKycCache } from '@/lib/kyc'
+import { KYC_DOC_TYPES, type KycDocType, invalidateKycCache, getRequiredKycDocTypes } from '@/lib/kyc'
 
 /**
  * GET /api/kyc
@@ -34,9 +34,16 @@ export async function GET(req: NextRequest) {
 
     if (!user) return error('Usuário não encontrado', 404)
 
-    // Count how many of the 5 required docTypes are uploaded
+    // Task ID 7 — lista de tipos exigidos vem da config admin
+    // (SystemConfig.kyc.required_doc_types). Se não configurado, default =
+    // todos os 6 (mantém comportamento histórico).
+    const { requiredDocTypes } = await getRequiredKycDocTypes()
+
+    // Conta quantos dos tipos EXIGIDOS já foram enviados (não dos 6).
     const uploadedTypes = new Set(documents.map((d) => d.docType))
-    const uploadedCount = KYC_DOC_TYPES.filter((t) => uploadedTypes.has(t)).length
+    const uploadedCount = requiredDocTypes.filter((t) =>
+      uploadedTypes.has(t)
+    ).length
 
     return success({
       status: user.kycStatus,
@@ -62,8 +69,8 @@ export async function GET(req: NextRequest) {
         updatedAt: d.updatedAt,
       })),
       uploadedCount,
-      totalRequired: KYC_DOC_TYPES.length,
-      requiredDocTypes: KYC_DOC_TYPES,
+      totalRequired: requiredDocTypes.length,
+      requiredDocTypes,
     })
   } catch (err) {
     console.error('GET /api/kyc error:', err)
@@ -109,12 +116,33 @@ export async function POST(req: NextRequest) {
 
     const { docType, fileUrl, fileName, fileSize, mimeType } = body
 
-    // Validate docType
-    if (!docType || !KYC_DOC_TYPES.includes(docType as KycDocType)) {
-      return error(
-        `Tipo de documento inválido. Permitidos: ${KYC_DOC_TYPES.join(', ')}`,
-        400
-      )
+    // Task ID 7 — valida docType contra a config admin (se configurada):
+    //   - Se admin marcou array VAZIO  → rejeita upload (KYC opcional).
+    //   - Se admin marcou alguns       → só aceita os exigidos.
+    //   - Se admin NÃO configurou       → mantém default (qualquer um dos 6).
+    const { requiredDocTypes, isConfigured } = await getRequiredKycDocTypes()
+
+    if (isConfigured) {
+      if (requiredDocTypes.length === 0) {
+        return error(
+          'Nenhum documento é exigido no momento. Seu KYC já está completo.',
+          400
+        )
+      }
+      if (!requiredDocTypes.includes(docType)) {
+        return error(
+          `Tipo de documento inválido. Documentos exigidos: ${requiredDocTypes.join(', ')}`,
+          400
+        )
+      }
+    } else {
+      // Default histórico: aceita qualquer um dos 6.
+      if (!docType || !KYC_DOC_TYPES.includes(docType as KycDocType)) {
+        return error(
+          `Tipo de documento inválido. Permitidos: ${KYC_DOC_TYPES.join(', ')}`,
+          400
+        )
+      }
     }
 
     // Validate fileUrl (must be a base64 data URL)
