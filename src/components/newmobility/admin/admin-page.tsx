@@ -850,12 +850,17 @@ export function AdminPage() {
         }
       }>(`/admin/matrix-config?userId=${user.id}`)
       if (data) {
+        // Conversão: o backend devolve em CENTAVOS. Mostramos o input em R$
+        // (com 2 casas decimais, usando ponto como separador) para casar com o
+        // placeholder ("96500.00") e o label ("Limite (R$)"). O salvamento
+        // converte de volta para centavos (brl * 100).
+        const toBrlString = (cents: number) => (cents / 100).toFixed(2)
         setEntradaLimit(data.entradaLimitCents)
-        setEntradaLimitInput(String(data.entradaLimitCents))
+        setEntradaLimitInput(toBrlString(data.entradaLimitCents))
         setResidualLimit(data.residualLimitCents)
-        setResidualLimitInput(String(data.residualLimitCents))
+        setResidualLimitInput(toBrlString(data.residualLimitCents))
         setVendasLimit(data.vendasLimitCents)
-        setVendasLimitInput(String(data.vendasLimitCents))
+        setVendasLimitInput(toBrlString(data.vendasLimitCents))
         if (data.history) {
           setEntradaHistory(data.history.entrada || [])
           setResidualHistory(data.history.residual || [])
@@ -878,8 +883,20 @@ export function AdminPage() {
       if (matrix === 'entrada') valueStr = entradaLimitInput
       if (matrix === 'residual') valueStr = residualLimitInput
       if (matrix === 'vendas') valueStr = vendasLimitInput
-      // Converte input de R$ (com vírgula/ponto) para centavos
-      const brl = parseFloat(valueStr.replace(',', '.'))
+      // Converte input de R$ para centavos. Aceita formatos:
+      //   "96500.00"  (US)  → 96500.00
+      //   "96500,00"  (BR)  → 96500.00
+      //   "96.500,00" (BR com milhar) → 96500.00
+      //   "96500"     (inteiro) → 96500
+      const sanitizeBrl = (raw: string) => {
+        const v = raw.trim()
+        if (v.includes(',')) {
+          // Formato BR: remove pontos de milhar, troca vírgula decimal por ponto
+          return v.replace(/\./g, '').replace(',', '.')
+        }
+        return v
+      }
+      const brl = parseFloat(sanitizeBrl(valueStr))
       if (!Number.isFinite(brl) || brl < 0) {
         toast.error('Valor deve ser um número positivo em R$')
         return
@@ -893,7 +910,7 @@ export function AdminPage() {
       if (matrix === 'residual') setResidualLimit(cents)
       if (matrix === 'vendas') setVendasLimit(cents)
       toast.success(`Limite da matriz ${matrix} atualizado`)
-      // Recarrega histórico
+      // Recarrega histórico e re-sincroniza o input com o valor salvo
       await loadMatrixLimits()
     } catch (err) {
       console.error(`Failed to save ${matrix} limit:`, err)

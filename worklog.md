@@ -11092,3 +11092,31 @@ Stage Summary:
 - Nenhum arquivo de código foi editado (git status: só db/custom.db com dados demo + arquivos novos de entrega).
 - Zero menções a "NewMobility" e zero links/URLs no PDF — marca 100% LipeHost com logo do usuário na capa, contracapa e header de todas as páginas.
 - Pendências futuras: (1) corrigir redirect-before-hydration em useMobileAuth/lojista guard; (2) criar seed coeso (sellerName dos produtos == nome do lojista demo) para novos ambientes; (3) módulos "Em breve" do motorista/lojista (corridas, carteira, financeiro).
+
+---
+Task ID: 2
+Agent: Z.ai Code (main)
+Task: Corrigir bug "esses 3 eu edito mas não tá salvando os dados" — limites financeiros das matrizes (Entrada/Residual/Vendas) não persistiam corretamente
+
+Work Log:
+- Análise do screenshot enviado pelo usuário (Captura de Tela 2026-09-22 às 14.15.06.png) via VLM: tela mostra 3 cards (Matriz Entrada, Matriz Residual, Matriz Vendas) na aba "Matrizes" do painel admin, cada um com input "Limite (R$)" + botão "Salvar" + texto "Atual: R$ X".
+- Identificado o componente: `src/components/newmobility/admin/admin-page.tsx` (linhas ~7338-7475), estados `entradaLimitInput`/`residualLimitInput`/`vendasLimitInput` + função `saveMatrixLimit(matrix)` (linhas ~873-921) + `loadMatrixLimits` (linhas ~838-870).
+- Identificada a API: `src/app/api/admin/matrix-config/route.ts` — GET devolve `{entradaLimitCents, residualLimitCents, vendasLimitCents}` em CENTAVOS; PUT recebe `{userId, matrix, limitCents}` em CENTAVOS (inteiro >= 0) e faz upsert em `SystemConfig` (keys: `matrix.entrada.limit_cents`, `matrix.residual.limit_cents`, `matrix.vendas.limit_cents`) + AuditLog.
+- RAIZ DO BUG (frontend): `loadMatrixLimits` populava o input com `String(data.entradaLimitCents)` = "9650000" (CENTAVOS), mas o placeholder dizia "96500.00" e o label "Limite (R$)". Quando o usuário clicava Salvar, `saveMatrixLimit` fazia `parseFloat("9750000") * 100 = 975000000` — salvava um valor 100x MAIOR que o desejado. O "Atual" então explodia para R$ 9.750.000,00 em vez de R$ 97.500,00, dando a sensação de "não salvou".
+- FIX aplicado em `src/components/newmobility/admin/admin-page.tsx`:
+  1. `loadMatrixLimits`: agora converte centavos→R$ ao popular o input via helper `toBrlString(cents) = (cents/100).toFixed(2)`. Ex: 9650000 → "96500.00" (casa com placeholder e label).
+  2. `saveMatrixLimit`: mantém `Math.round(brl * 100)` (R$→centavos) que agora está correto pois o input está em R$. Adicionado `sanitizeBrl()` que aceita formatos "96500.00" (US), "96500,00" (BR), "96.500,00" (BR com milhar) e "96500" (inteiro).
+  3. Após salvar, chama `loadMatrixLimits()` para re-sincronizar o input com o valor persistido (garante que o que está na tela é o que está no banco).
+- Validação por script Node (`/tmp/test-fix.mjs`): provou ANTES vs DEPOIS com cenário real (R$ 97.500,00):
+  - ANTES: input "9750000" → parseFloat=9750000 → *100 = 975000000 cents = R$ 9.750.000,00 (100x maior, BUG)
+  - DEPOIS: input "97500.00" → parseFloat=97500 → *100 = 9750000 cents = R$ 97.500,00 (CORRETO)
+  - Formato BR "96.500,00" → sanitize→"96500.00" → 9650000 cents = R$ 96.500,00 (CORRETO)
+- Lint: `bun run lint` — 0 erros novos no admin-page.tsx (os 13 erros pré-existentes são em arquivos .js auxiliares keep-alive/persistent-server/process-manager/run-forever/supervisor que usam require()).
+- Teste E2E via agent-browser: dev server sofre OOM-kill recorrente no sandbox (next-server atingindo ~3GB RSS, máquina tem 4GB), impedindo navegação até a aba Matrizes. Validação conceitual via script Node é conclusiva quanto à correção.
+
+Stage Summary:
+- Arquivo modificado: `src/components/newmobility/admin/admin-page.tsx` (loadMatrixLimits + saveMatrixLimit).
+- Bug corrigido: input agora mostra R$ (não centavos) e o salvamento converte R$→centavos corretamente, sem multiplicação dupla.
+- Comportamento esperado pelo usuário agora funciona: editar "97500.00" → Salvar → Atual: R$ 97.500,00 (não R$ 9.750.000,00).
+- Nenhum outro lugar do admin-page.tsx tinha o mesmo bug (audit dos outros `Math.round(value * 100)` confirmou que recebem R$ direto do input do usuário via `e.target.value`, então multiplicar por 100 é correto nesses casos).
+- Próximo passo: commit + push para deploy automático na VPS LipeHost.
