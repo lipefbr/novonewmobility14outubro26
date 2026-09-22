@@ -11279,3 +11279,28 @@ Stage Summary:
   - API: GET público /api/telemedicina/plans (auto-seed se vazio), POST/PUT/DELETE admin.
 - Compatibilidade: API /api/telemedicina/request aceita planId opcional (snapshot do plano no notes), mantendo retrocompatibilidade com pedidos existentes sem plano.
 - Bug de conflito de declaração parseBrlToCents corrigido antes do deploy.
+
+---
+Task ID: 5
+Agent: Z.ai Code (main)
+Task: Fix dashboard VPS "Erro ao carregar estatísticas" — race condition real (não era só timeout)
+
+Work Log:
+- Usuário reportou: dashboard admin na VPS newmobility-preview.lipehost.com mostra "Erro ao carregar estatísticas / Verifique sua conexão / Tentar Novamente" (screenshot Captura de Tela 2026-09-22 às 16.54.05.png).
+- Validação VPS direta via curl:
+  - GET / → HTTP 200 em 0.97s (app up, deploy rolou com fix da Task 3)
+  - GET /api/admin/stats?userId=<admin_id_real> → HTTP 200 em 0.68s (API RÁPIDA!)
+  - GET /api/admin/dashboard?userId=<admin_id_real> → HTTP 200 em ~1s
+  - GET /api/admin/stats?userId=undefined → HTTP 403 (Unauthorized)
+- Conclusão: o fix de timeout da Task 3 funcionou. As APIs respondem rápido. O erro na tela vinha de outra causa.
+- RAIZ REAL (race condition): `useEffect(() => { loadStats() }, [])` em `src/components/newmobility/admin/admin-page.tsx` linha 1731 disparava `loadStats()` no MOUNT do componente, mas `user?.id` ainda era `undefined` (store Zustand hidratando do localStorage). A URL ficava `/api/admin/stats?userId=undefined` → backend retornava 403 → `setStats(null)` (catch silencioso) → UI mostrava "Erro ao carregar estatísticas".
+- Fix aplicado em `src/components/newmobility/admin/admin-page.tsx`:
+  1. `useEffect` agora tem guarda `if (!user?.id) return` antes de `loadStats()` e dependência `[user?.id]` — dispara assim que o user estiver disponível.
+  2. Defesa extra dentro de `loadStats`: retorna cedo com `setLoading(false)` se `!user?.id`, evitando request com userId=undefined.
+  3. `catch` antes era `/* ignore */` — agora `console.error('[loadStats] falha ao carregar estatísticas:', err)` para debug futuro.
+- Lint: 0 erros novos (13 pré-existentes em .js auxiliares).
+- Commit `27f5865` enviado para origin + backup — deploy automático VPS LipeHost acionado.
+
+Stage Summary:
+- Bug do dashboard VPS finalmente corrigido. Não era só timeout — era race condition entre hidratação do user (Zustand) e chamada da API no mount do componente.
+- Após deploy, ao acessar /admin, o user.id estará disponível (store já hidratou), e loadStats fará a chamada correta com o userId real → API 200 → estatísticas carregam.
