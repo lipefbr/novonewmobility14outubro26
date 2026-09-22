@@ -11304,3 +11304,58 @@ Work Log:
 Stage Summary:
 - Bug do dashboard VPS finalmente corrigido. Não era só timeout — era race condition entre hidratação do user (Zustand) e chamada da API no mount do componente.
 - Após deploy, ao acessar /admin, o user.id estará disponível (store já hidratou), e loadStats fará a chamada correta com o userId real → API 200 → estatísticas carregam.
+
+---
+Task ID: 6
+Agent: Z.ai Code (subagent)
+Task: Corrigir o bug onde o usuário edita "Nome da Plataforma" no painel admin (Configurações do Sistema) mas o nome NÃO troca no menu (sidebar) nem no site (header/footer/metadata).
+
+Work Log:
+- Lido worklog.md (Tarefas 1-5) para entender histórico recente do projeto NewMobility.
+- Lidos arquivos de referência: src/app/layout.tsx (metadata hardcodeada "NewMobility - BackOffice | ..."), src/components/newmobility/admin/admin-layout.tsx (3 ocorrências hardcodeadas de "NewMobility" nas linhas 170, 456, 554), src/app/api/system-settings/public/route.ts (só retornava features.* e platform.*), src/app/api/admin/config/route.ts (já tinha platform_name nos defaults), src/components/newmobility/admin/admin-settings-panel.tsx (lia/salvava app_name divergente), src/components/newmobility/admin/admin-page.tsx linha 5994 (onde usuário edita platform_name) e linha 3225 (handleSaveConfig do Configurações da Plataforma).
+- Etapa 1 — Atualizada API pública /api/system-settings/public: adicionadas chaves `platform_name`, `app_name`, `app_logo_url`, `primary_color` à lista PUBLIC_KEYS (mantidas as features.bet_enabled, features.games_enabled, platform.registration_enabled, platform.maintenance_mode existentes).
+- Etapa 2 — Criado hook client `useBranding()` em `src/lib/use-branding.ts`:
+  * Chama apiFetch('/system-settings/public') no mount.
+  * Cache em localStorage (chave `nm-branding-cache-v1`) com TTL 5 min para evitar re-fetch em toda navegação.
+  * Hidrata estado síncrono do cache no useState inicial (evita flash de "NewMobility" quando já há nome custom salvo).
+  * Retorna `{ name, logoUrl, primaryColor, loading }` onde `name = platform_name || app_name || 'NewMobility'` (fallback robusto).
+  * Exporta `invalidateBrandingCache()` para forçar refresh após salvar config.
+- Etapa 3 — Convertida metadata de `src/app/layout.tsx`:
+  * Antes: `export const metadata: Metadata = { title: "NewMobility - BackOffice | ..." }` (hardcodeado).
+  * Agora: `export async function generateMetadata(): Promise<Metadata>` que lê `platform_name` e `app_name` direto do banco via `prisma.systemConfig.findMany` (server-side). Fallback 'NewMobility' se banco indisponível. Title, description e keywords dinâmicos.
+- Etapa 4 — Atualizado `src/components/newmobility/admin/admin-layout.tsx`:
+  * Importado `useBranding` de `@/lib/use-branding`.
+  * Inicializado `const branding = useBranding()` no topo do AdminLayout.
+  * Substituídas as 3 ocorrências hardcodeadas:
+    - Linha 170 (sidebar desktop header): `<span>{branding.name}</span>` (antes: `<span>NewMobility</span>`).
+    - Linha 456 (sidebar mobile header): `<span>{branding.name} Admin</span>` (antes: `NewMobility Admin`).
+    - Linha 554 (footer): `© {year} {branding.name} Admin Panel · Todos os direitos reservados` (antes: `NewMobility Admin Panel`).
+  * Comentário `// Task ID 6:` adicionado explicando o porquê.
+- Etapa 5 — Unificada chave em `src/components/newmobility/admin/admin-settings-panel.tsx` (Identidade Visual):
+  * `loadAll`: agora lê `platform_name` primeiro, com fallback `app_name` (retrocompat com usuários que já tinham salvado pela aba Identidade Visual antiga).
+  * `handleSaveConfig`: agora grava AMBAS as chaves (`platform_name` e `app_name` com mesmo valor) para manter consistência total e retrocompatibilidade.
+  * Descrição do card "Identidade Visual" atualizada explicando que o nome é persistido em `SystemConfig.platform_name`.
+  * Hint abaixo do input atualizada: "Salvo em SystemConfig.platform_name (mirror app_name)".
+- Etapa 6 — Invalidação de cache + UX:
+  * `admin-settings-panel.tsx` (Identidade Visual): chama `invalidateBrandingCache()` após PUT /admin/config. Toast atualizado com `description: 'Recarregue a página (F5) para ver o nome atualizado em todo o site.'`.
+  * `admin-page.tsx` (Configurações da Plataforma, handleSaveConfig na linha 3228): também chama `invalidateBrandingCache()` após PUT, e o toast agora tem `description` idêntico. Import de `invalidateBrandingCache` adicionado.
+  * Nota: o `<title>` da aba do navegador só atualiza após F5 porque metadata é server-side (generateMetadata). O sidebar/footer admin atualizam imediatamente (client-side) graças à invalidação do cache.
+
+Stage Summary:
+- Arquivos criados (1):
+  * `src/lib/use-branding.ts` — hook client `useBranding()` + `invalidateBrandingCache()` com cache localStorage TTL 5min.
+- Arquivos modificados (5):
+  * `src/app/api/system-settings/public/route.ts` — PUBLIC_KEYS agora inclui platform_name, app_name, app_logo_url, primary_color.
+  * `src/app/layout.tsx` — metadata agora via `generateMetadata()` que lê platform_name/app_name do banco (server-side). Title/description/keywords dinâmicos.
+  * `src/components/newmobility/admin/admin-layout.tsx` — 3 ocorrências de "NewMobility" hardcodeadas substituídas por `{branding.name}` (sidebar desktop, sidebar mobile, footer).
+  * `src/components/newmobility/admin/admin-settings-panel.tsx` — agora grava em `platform_name` (canônica) + mirror `app_name` (retrocompat). Faz fallback app_name no load. Invalida cache do useBranding e avisa no toast.
+  * `src/components/newmobility/admin/admin-page.tsx` — handleSaveConfig (Configurações da Plataforma) também invalida cache do useBranding e adiciona nota no toast para F5.
+- `bun run lint`: 13 erros, TODOS pré-existentes em arquivos .js auxiliares (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js — @typescript-eslint/no-require-imports). ZERO erros novos em src/.
+- Validação runtime (dev server subido manualmente para teste):
+  * GET /api/system-settings/public → 200, retornando `[features.bet_enabled, features.games_enabled, platform.maintenance_mode, platform.registration_enabled, platform_name:"New Mobility"]`. O valor "New Mobility" já estava no banco (salvo pelo admin quando testava o bug).
+  * GET / → 200 em 2.5s, com `<title>New Mobility - BackOffice | Sistema de CashBack Multinível</title>` (dinâmico! antes era hardcodeado "NewMobility - BackOffice | ...").
+- Decisões de design:
+  * Mantida retrocompatibilidade: admin-settings-panel.tsx lê `platform_name` primeiro mas faz fallback `app_name` se o primeiro não existir. No save, grava AMBAS as chaves com o mesmo valor — isso garante que qualquer código antigo que ainda leia `app_name` continue funcionando até ser migrado.
+  * Cache localStorage no useBranding com TTL 5min + hidratação síncrona do estado inicial para evitar flash de "NewMobility" quando já há nome custom salvo. Sem o cache síncrono, o hook retornaria o default "NewMobility" no primeiro render e só atualizaria após o fetch resolver ( causaria flicker visível).
+  * `invalidateBrandingCache()` chamado nos 2 handlers de save (admin-settings-panel.tsx e admin-page.tsx) para que o sidebar/footer atualizem imediatamente sem F5. O `<title>` da aba (server-side metadata) só atualiza após F5 — por isso o toast avisa o usuário.
+- Commit local: `8c0b574` — `fix(branding): nome da plataforma vem do banco (platform_name/app_name) - Task ID 6`. 6 arquivos alterados, +232 -17. Sem push (agente principal fará).
