@@ -11071,3 +11071,24 @@ Stage Summary:
 - Validação client-side: botão Salvar fica disabled quando `code` ou `name` vazios; `code` fica disabled em edição (campo unique no DB).
 - `bun run lint` nos 4 arquivos editados (`admin-page.tsx`, `admin-layout.tsx`, `admin-permissions-panel.tsx`, `store.ts`) — sem erros ou warnings novos. Os 13 errors do `bun run lint` global são todos pré-existentes em scripts JS de infraestrutura (`keep-alive.js`, `persistent-server.js`, `process-manager.js`, `run-forever.js`, `supervisor.js`) que usam `require()` — não relacionados a esta task.
 - `tsc --noEmit` confirmou: nenhum erro TS novo relacionado a `driverCategory*` / `AdminDriverCategory` / `handle*DriverCategory` (os erros pré-existentes em AdminPlan/AdminVoucher são de código legado não alterado por esta task).
+
+---
+Task ID: 1
+Agent: Z.ai Code (main)
+Task: Verificar versão GitHub + gerar PDF de apresentação dos APPS (Cliente/Lojista/Motorista/AdminGeral) com marca LipeHost e logo, sem editar código
+
+Work Log:
+- git fetch + reset --hard origin/main: sandbox estava 27 commits atrás; sincronizado com 5ecf487 (fix gratificações Visibilidade/Benefícios) — agora local == GitHub.
+- Prisma generate + dev server reiniciado (instável por OOM do sandbox: next-server morria com ~3GB RSS; mitigado com NODE_OPTIONS max-old-space-size=1200 e recapturas).
+- Capturas via agent-browser (viewport 390x844, mobile-first) com script .zscripts/mask.js injetado por eval: substitui "NewMobility"→"LipeHost" em todos os text nodes/title, remove nextjs-portal e substitui imagens 404 (products burger.jpg etc.) por placeholders SVG emoji com gradiente — TUDO via DOM do browser, sem editar código.
+- 27 screenshots capturados em /home/z/my-project/screenshots/ (login+inicio+mobilidade+mercado+shopping+alimentacao+medidrop+assistencia+carteira+pedidos+perfil+procurar do mobile; login+inicio+produtos+pedidos+financeiro+mais+ultimos-pedidos do lojista; login+inicio+corridas+carteira+mais do motorista; login+inicio x2 do admingeral).
+- Bug de product discovery descoberto (NÃO corrigido em código): páginas com MobileCategoryLayout/lojista/mobile pedidos fazem redirect se abertas por URL direta antes da hidratação do zustand (useMobileAuth vê user null → /login → login auto-push /inicio). Navegação client-side (clicks) funciona. Registrar como bug futuro: checar hidratação antes de redirect.
+- Dados demo ajustados APENAS no banco (não é código): 5 produtos do marketplace religados a sellerName "Luciana Lojista" + 4 MarketplaceOrders criados (paid/shipped/pending/delivered) para o cliente demo — necessário porque pedidos mobile apareciam vazios.
+- PDF: /home/z/my-project/pdf-output/apresentacao-lipehost.html (9 páginas A4, fonte Inter, capa/contracapa pretas com logo do usuário embutido, frames de celular em CSS, legendas numeradas) → html2pdf-next.js --nopaged → apresentacao-lipehost.pdf (2.2MB, vetorial, metadados LipeHost).
+- QA: poster_validate check-html 0 erros; pdf_qa.py PASS final (após 3 iterações corrigindo overflow das legendas na p3, transbordo na p6 motorista reestruturada para 4 phones em linha, e sobreposição flow/note na p8).
+
+Stage Summary:
+- Entregáveis: /home/z/my-project/apresentacao-lipehost-apps.pdf (9 páginas: capa, ecossistema+fluxo cashback, cliente I, cliente II verticals, lojista, motorista, admin geral, recursos+jornada, contracapa) + HTML fonte editável em pdf-output/ + 27 PNGs em screenshots/.
+- Nenhum arquivo de código foi editado (git status: só db/custom.db com dados demo + arquivos novos de entrega).
+- Zero menções a "NewMobility" e zero links/URLs no PDF — marca 100% LipeHost com logo do usuário na capa, contracapa e header de todas as páginas.
+- Pendências futuras: (1) corrigir redirect-before-hydration em useMobileAuth/lojista guard; (2) criar seed coeso (sellerName dos produtos == nome do lojista demo) para novos ambientes; (3) módulos "Em breve" do motorista/lojista (corridas, carteira, financeiro).

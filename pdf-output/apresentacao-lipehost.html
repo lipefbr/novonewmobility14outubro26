@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>LipeHost — Apresentação do Ecossistema de Aplicativos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  /* ═══════════════ BASE ═══════════════ */
+  @page { size: 210mm 297mm; margin: 0; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html, body { margin: 0; padding: 0; background: #000000; }
+  body { font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif; color: #111111; }
+
+  .page {
+    width: 210mm; height: 297mm;
+    position: relative;
+    page-break-after: always;
+    break-after: page;
+  }
+  .page:last-child { page-break-after: auto; break-after: auto; }
+
+  .page-dark  { background: #000000; color: #ffffff; }
+  .page-light { background: #f7f6f4; color: #111111; }
+
+  /* ═══════════════ HEADER / FOOTER ═══════════════ */
+  .phead {
+    position: absolute; top: 10mm; left: 12mm; right: 12mm;
+    display: flex; align-items: flex-end; justify-content: space-between;
+    border-bottom: 0.6mm solid #111; padding-bottom: 3mm;
+  }
+  .phead .kicker { font-size: 7pt; font-weight: 700; letter-spacing: 0.28em; color: #111; }
+  .phead .kicker span { color: #8a8a8a; font-weight: 500; }
+  .phead .sect { font-size: 15pt; font-weight: 800; letter-spacing: -0.01em; margin-top: 1mm; }
+  .pfoot {
+    position: absolute; bottom: 8mm; left: 12mm; right: 12mm;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 7pt; letter-spacing: 0.18em; color: #9a9a9a; font-weight: 500;
+  }
+  .pfoot .num { color: #111; font-weight: 800; font-size: 8pt; }
+  .page-dark .pfoot { color: #777; }
+  .page-dark .pfoot .num { color: #fff; }
+
+  .logo-chip {
+    display: inline-block; background: #000; border-radius: 2.4mm; overflow: hidden;
+    line-height: 0; border: 0.3mm solid #2a2a2a;
+  }
+  .logo-chip img { width: 22mm; display: block; }
+
+  /* ═══════════════ CAPA ═══════════════ */
+  .cover { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .cover .glow {
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 160mm; height: 160mm; border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.0) 62%);
+  }
+  .cover-logo img { width: 128mm; display: block; }
+  .cover-kicker { font-size: 8.5pt; letter-spacing: 0.5em; color: #8f8f8f; font-weight: 600; margin-top: 14mm; }
+  .cover-title { font-size: 34pt; font-weight: 900; letter-spacing: -0.02em; line-height: 1.04; margin: 6mm 0 0; }
+  .cover-sub { font-size: 11.5pt; font-weight: 400; color: #b9b9b9; margin-top: 6mm; line-height: 1.65; max-width: 138mm; }
+  .cover-tags { display: flex; gap: 4mm; margin-top: 12mm; }
+  .cover-tag {
+    border: 0.45mm solid #3d3d3d; color: #e8e8e8; border-radius: 10mm;
+    padding: 2.2mm 6mm; font-size: 8pt; font-weight: 600; letter-spacing: 0.08em;
+  }
+  .cover-meta { position: absolute; bottom: 14mm; left: 0; right: 0; text-align: center;
+    font-size: 7.5pt; color: #6f6f6f; letter-spacing: 0.3em; font-weight: 500; }
+
+  /* ═══════════════ PHONE FRAMES ═══════════════ */
+  .grid3 { position: absolute; top: 34mm; left: 12mm; right: 12mm; display: flex; justify-content: space-between; }
+  .cell { width: 57.2mm; text-align: center; }
+  .cell.gap-t { margin-top: 6mm; }
+  .phone {
+    width: 48mm; margin: 0 auto; background: #101010; border-radius: 6.5mm;
+    padding: 1.6mm 1.6mm 2mm; box-shadow: 0 2mm 5mm rgba(0,0,0,0.18);
+    position: relative;
+  }
+  .phone .screen { border-radius: 5mm; overflow: hidden; background: #fff; line-height: 0; position: relative; }
+  .phone .screen img { width: 100%; display: block; }
+  .phone .notch {
+    position: absolute; top: 2.6mm; left: 50%; transform: translateX(-50%);
+    width: 14mm; height: 1.7mm; background: #101010; border-radius: 2mm; z-index: 3;
+  }
+  .cap { margin-top: 3.2mm; }
+  .cap .n { font-size: 7.4pt; font-weight: 800; color: #111; letter-spacing: 0.14em; }
+  .cap .t { font-size: 9.5pt; font-weight: 700; color: #111; margin-top: 0.8mm; line-height: 1.25; }
+  .cap .d { font-size: 7.6pt; color: #6d6d6d; line-height: 1.45; margin-top: 1.2mm; }
+
+  /* ═══════════════ ECOSYSTEM PAGE ═══════════════ */
+  .eco-wrap { position: absolute; top: 34mm; left: 12mm; right: 12mm; }
+  .lead { font-size: 10.5pt; line-height: 1.75; color: #333; max-width: 170mm; }
+  .lead b { color: #000; }
+  .app-cards { display: flex; gap: 4.5mm; margin-top: 9mm; }
+  .app-card {
+    flex: 1; background: #fff; border: 0.45mm solid #e2e0dc; border-radius: 4mm;
+    padding: 6mm 5mm 5.5mm; position: relative;
+  }
+  .app-card .idx { font-size: 7.2pt; font-weight: 800; color: #9a9a9a; letter-spacing: 0.2em; }
+  .app-card h3 { font-size: 12pt; font-weight: 800; margin: 2.5mm 0 0; letter-spacing: -0.01em; }
+  .app-card p { font-size: 8pt; line-height: 1.6; color: #666; margin: 2.5mm 0 0; }
+  .app-card .bar { position: absolute; top: 0; left: 5mm; width: 12mm; height: 1.2mm; background: #000; border-radius: 0 0 1mm 1mm; }
+  .stats { display: flex; gap: 4.5mm; margin-top: 9mm; }
+  .stat { flex: 1; border-top: 0.7mm solid #111; padding-top: 3mm; }
+  .stat .v { font-size: 21pt; font-weight: 900; letter-spacing: -0.03em; }
+  .stat .l { font-size: 7.5pt; color: #777; font-weight: 600; letter-spacing: 0.06em; margin-top: 1mm; line-height: 1.4; }
+  .flow { margin-top: 9mm; background: #111; color: #fff; border-radius: 4mm; padding: 6.5mm 7mm; }
+  .flow .flow-title { font-size: 8pt; font-weight: 800; letter-spacing: 0.22em; color: #9c9c9c; }
+  .flow-steps { display: flex; align-items: center; justify-content: space-between; margin-top: 4.5mm; }
+  .fstep { text-align: center; flex: 1; }
+  .fstep .fn { font-size: 8.5pt; font-weight: 700; line-height: 1.3; }
+  .fstep .fd { font-size: 7.2pt; color: #9d9d9d; margin-top: 1mm; line-height: 1.4; }
+  .farrow { color: #5c5c5c; font-size: 10pt; padding: 0 2mm; font-weight: 300; }
+
+  /* ═══════════════ NOTE BLOCK ═══════════════ */
+  .note {
+    position: absolute; left: 12mm; right: 12mm;
+    background: #fff; border: 0.45mm solid #e2e0dc; border-left: 1.2mm solid #111;
+    border-radius: 3mm; padding: 4.5mm 6mm; font-size: 8.2pt; line-height: 1.6; color: #555;
+  }
+  .note b { color: #111; }
+
+  /* ═══════════════ FEATURE GRID ═══════════════ */
+  .feat-grid { position: absolute; top: 34mm; left: 12mm; right: 12mm; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4.5mm; }
+  .feat { background: #fff; border: 0.45mm solid #e2e0dc; border-radius: 4mm; padding: 5.5mm 5mm 5mm; }
+  .feat .ic { width: 9mm; height: 9mm; border-radius: 2.4mm; background: #111; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11pt; }
+  .feat h4 { font-size: 9.5pt; font-weight: 800; margin: 3mm 0 0; }
+  .feat p { font-size: 7.6pt; color: #666; line-height: 1.55; margin: 1.6mm 0 0; }
+
+  /* ═══════════════ BACK COVER ═══════════════ */
+  .back { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .back img { width: 96mm; display: block; }
+  .back .q { font-size: 13pt; color: #d9d9d9; font-weight: 300; line-height: 1.8; max-width: 150mm; margin-top: 12mm; }
+  .back .q b { color: #fff; font-weight: 700; }
+  .back .apps-line { display: flex; gap: 8mm; margin-top: 14mm; }
+  .back .apps-line div { font-size: 8pt; color: #8a8a8a; letter-spacing: 0.22em; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════ PÁGINA 1 · CAPA ═══════════════════════════ -->
+<section class="page page-dark cover">
+  <div class="glow"></div>
+  <div class="cover-logo"><img src="logo-lipehost.png" alt="LipeHost"></div>
+  <div class="cover-kicker">APRESENTAÇÃO DE PRODUTO</div>
+  <h1 class="cover-title">Ecossistema de<br>Aplicativos Multi-Serviços</h1>
+  <p class="cover-sub">Uma conta. Quatro aplicativos. Mobilidade urbana, compras, entregas,
+  serviços e cashback em uma única plataforma — com visão executiva em tempo real.</p>
+  <div class="cover-tags">
+    <div class="cover-tag">APP DO CLIENTE</div>
+    <div class="cover-tag">APP DO LOJISTA</div>
+    <div class="cover-tag">APP DO MOTORISTA</div>
+    <div class="cover-tag">ADMIN GERAL</div>
+  </div>
+  <div class="cover-meta">DOCUMENTO COM TELAS REAIS DO SISTEMA</div>
+</section>
+
+<!-- ═══════════════════════════ PÁGINA 2 · ECOSISTEMA ═══════════════════════════ -->
+<section class="page page-light">
+  <div class="phead">
+    <div>
+      <div class="kicker">LIPEHOST <span>·</span> VISÃO GERAL</div>
+      <div class="sect">Um ecossistema, quatro aplicativos</div>
+    </div>
+    <div class="logo-chip"><img src="logo-lipehost.png" alt="LipeHost"></div>
+  </div>
+
+  <div class="eco-wrap">
+    <p class="lead">A plataforma <b>LipeHost</b> reúne, em um único ecossistema digital, os serviços do dia a dia —
+    corridas, compras, restaurantes, mercado, farmácia e assistência — conectados por um sistema de
+    <b>cashback multinível</b> e uma <b>carteira digital</b> com saldos por categoria. Cada perfil de usuário
+    conta com um aplicativo dedicado, todos alimentados pela mesma base de dados e pelo mesmo motor de
+    benefícios.</p>
+
+    <div class="app-cards">
+      <div class="app-card"><div class="bar"></div>
+        <div class="idx">01 · CLIENTE</div><h3>App do Cliente</h3>
+        <p>Central de serviços com mobilidade urbana, shopping, alimentação, mercado, farmácia
+        MediDrop, assistência 24h, carteira digital e acompanhamento de pedidos.</p>
+      </div>
+      <div class="app-card"><div class="bar"></div>
+        <div class="idx">02 · VENDEDOR</div><h3>App do Lojista</h3>
+        <p>Painel completo da loja: vendas do dia, atalhos de gestão, publicação de produtos
+        com estoque e percentual de cashback, e pedidos recebidos em tempo real.</p>
+      </div>
+      <div class="app-card"><div class="bar"></div>
+        <div class="idx">03 · PRESTADOR</div><h3>App do Motorista</h3>
+        <p>Estação de trabalho do parceiro: mapa de operação, alternância online/offline,
+        ganhos do dia, contagem de corridas e avaliação média por estrelas.</p>
+      </div>
+      <div class="app-card"><div class="bar"></div>
+        <div class="idx">04 · GESTÃO</div><h3>Admin Geral</h3>
+        <p>Dashboard executivo do ecossistema: faturamento do dia e da semana, contadores
+        por perfil de usuário, lojas ativas, produtos, categorias e pedidos recentes.</p>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="v">4</div><div class="l">aplicativos integrados<br>com conta única</div></div>
+      <div class="stat"><div class="v">8</div><div class="l">saldos na carteira<br>(por categoria de uso)</div></div>
+      <div class="stat"><div class="v">3</div><div class="l">categorias de corrida<br>(Econômico, Comfort, Moto)</div></div>
+      <div class="stat"><div class="v">15%</div><div class="l">cashback máximo<br>em compras do marketplace</div></div>
+    </div>
+
+    <div class="flow">
+      <div class="flow-title">FLUXO DE COMPRA COM CASHBACK</div>
+      <div class="flow-steps">
+        <div class="fstep"><div class="fn">1 · Compra</div><div class="fd">cliente paga no app<br>(PIX ou carteira)</div></div>
+        <div class="farrow">→</div>
+        <div class="fstep"><div class="fn">2 · Confirmação</div><div class="fd">pedido segue para<br>a loja vendedora</div></div>
+        <div class="farrow">→</div>
+        <div class="fstep"><div class="fn">3 · Cashback</div><div class="fd">percentual creditado<br>na carteira do cliente</div></div>
+        <div class="farrow">→</div>
+        <div class="fstep"><div class="fn">4 · Rede</div><div class="fd">indicadores da rede<br>também recebem bônus</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pfoot"><span>LIPEHOST · DOCUMENTO DE APRESENTAÇÃO</span><span class="num">02</span></div>
+</section>
+
+<!-- ═══════════════════════════ PÁGINA 3 · CLIENTE I ═══════════════════════════ -->
+<section class="page page-light">
+  <div class="phead">
+    <div>
+      <div class="kicker">APP 01 <span>·</span> CLIENTE — ACESSO, INÍCIO E CARTEIRA</div>
+      <div class="sect">Tudo o que o cliente precisa em uma tela</div>
+    </div>
+    <div class="logo-chip"><img src="logo-lipehost.png" alt="LipeHost"></div>
+  </div>
+
+  <div class="grid3">
+    <div class="cell">
+      <div class="phone"><div class="notch"></div><div class="screen"><img src="shots/00-mobile-login.png" alt="Login do app do cliente"></div></div>
+      <div class="cap"><div class="n">1.0</div><div class="t">Login com conta única</div>
+      <div class="d">Autenticação segura compartilhada com todo o ecossistema, com recuperação de senha e cadastro guiado.</div></div>
+    </div>
+    <div class="cell">
+      <div class="phone"><div class="notch"></div><div class="screen"><img src="shots/01-mobile-inicio.png" alt="Tela inicial"></div></div>
+      <div class="cap"><div class="n">1.1</div><div class="t">Início — central de serviços</div>
+      <div class="d">Saldo resumido, ações rápidas da carteira, 8 verticals de serviço e produtos em destaque com cashback.</div></div>
+    </div>
+    <div class="cell">
+      <div class="phone"><div class="notch"></div><div class="screen"><img src="shots/11-mobile-mobilidade.png" alt="Mobilidade"></div></div>
+      <div class="cap"><div class="n">1.2</div><div class="t">Mobilidade urbana</div>
+      <div class="d">Solicitação de corrida com origem, destino e três categorias de veículo — Econômico, Comfort e Moto — com preço estimado e motoristas próximos.</div></div>
+    </div>
+  </div>
+
+  <div class="grid3" style="top: 152mm;">
+    <div class="cell">
+      <div class="phone"><div class="notch"></div><div class="screen"><img src="shots/05-mobile-carteira.png" alt="Carteira digital"></div></div>
+      <div class="cap"><div class="n">1.3</div><div class="t">Carteira multi-saldos</div>
+      <div class="d">Oito saldos por categoria — saque, mobilidade, compras, refeição, farmácia, gratificação, livre e pendente.</div></div>
+    </div>
+    <div class="cell">
+      <div class="phone"><div class="notch"></div><div class="screen"><img src="shots/06-mobile-pedidos.png" alt="Meus pedidos"></div></div>
+      <div class="cap"><div class="n">1.4</div><div class="t">Meus pedidos</div>
+      <div class="d">Histórico completo com filtros por status, valores e cashback creditado em cada compra.</div></div>
+    </div>
+    <div class="cell">
+      <div class="phone"><div class="notch"></div><div class="screen"><img src="shots/07-mobile-perfil.png" alt="Perfil do usuário"></div></div>
+      <div class="cap"><div class="n">1.5</div><div class="t">Perfil e plano</div>
+      <div class="d">Dados pessoais editáveis, chave PIX, endereço, saldo consolidado, indicações e o plano de benefícios ativo.</div></div>
+    </div>
+  </div>
+
+  <div class="pfoot"><span>LIPEHOST · DOCUMENTO DE APRESENTAÇÃO</span><span class="num">03</span></div>
+</section>
+
+<!-- ═══════════════════════════ PÁGINA 4 · CLIENTE II ═══════════════════════════ -->
+<section class="page page-light">
+  <div class="phead">
+    <div>
+      <div class="kicker">APP 01 <span>·</span> CLIENTE — VERTICALS DE COMPRA E SERVIÇO</div>
+      <div class="sect">Compras e serviços com cashback</div>
+    </div>
+    <div class="logo-chip"><img src="logo-lipehost.png" alt="LipeHost"></div>
+  </div>
+
+  <div class="grid3">
+    <div class="cell">
+      <div class="phone"><div class="notch"></div><div class="screen"><img src="shots/03-mobile-shopping.png" alt="Shopping"></div></div>
+      <div class="cap"><div class="n">1.6</div><div class="t">Shopping</div>
+      <div class="d">Marketplace de lojas parceiras com até 15% de cashback creditado direto na carteira.</div></div>
+    </div>
+    <div class="cell">
+      <div class="phone"><div class="notch"></div><div class="screen"><img src="shots/04-mobile-alimentacao.png" alt="Alimentação"></div></div>
+      <div class="cap"><div class="n">1.7</div><div class="t">Alimentação</div>
+      <div class="d">Restaurantes parceiros com entrega rápida, filtros por destaque e cashback em cada pedido.</div></div>
+    </div>
+    <div class="cell">
+      <div class="phone"><div class="notch"></div><div class="screen"><img src="shots/02-mobile-mercado.png" alt="Mercado"></div></div>
+      <div class="cap"><div class="n">1.8</div><div class="t">Mercado</div>
+      <div class="d">Compras de supermercado com entrega em até 2 horas, organizadas por categorias.</div></div>
+    </div>
+  </div>
+
+  <div class="grid3" style="top: 152mm;">
+    <div class="cell">
+      <div class="phone"><div class="notch"></div><div class="screen"><img src="shots/08-mobile-medidrop.png" alt="MediDrop farmácia"></div></div>
+      <div class="cap"><div class="n">1.9</div><div class="t">MediDrop · farmácia</div>
+      <div class="d">Medicamentos e itens de saúde entregues em casa, com saldo dedicado de farmácia.</div></div>
+    </div>
+    <div class="cell">
+      <div class="phone"><div class="notch"></div><div class="screen"><img src="shots/09-mobile-assistencia.png" alt="Assistência 24h"></div></div>
+      <div class="cap"><div class="n">1.10</div><div class="t">Assistência 24h</div>
+      <div class="d">Solicitação de profissionais qualificados para serviços e reparos, com acompanhamento no app.</div></div>
+    </div>
+    <div class="cell">
+      <div class="phone"><div class="notch"></div><div class="screen"><img src="shots/10-mobile-procurar.png" alt="Busca unificada"></div></div>
+      <div class="cap"><div class="n">1.11</div><div class="t">Busca unificada</div>
+      <div class="d">Pesquisa transversal por produtos, lojas e categorias populares de todo o ecossistema.</div></div>
+    </div>
+  </div>
+
+  <div class="pfoot"><span>LIPEHOST · DOCUMENTO DE APRESENTAÇÃO</span><span class="num">04</span></div>
+</section>
+
+<!-- ═══════════════════════════ PÁGINA 5 · LOJISTA ═══════════════════════════ -->
+<section class="page page-light">
+  <div class="phead">
+    <div>
+      <div class="kicker">APP 02 <span>·</span> LOJISTA — PAINEL DO VENDEDOR</div>
+      <div class="sect">A loja inteira na palma da mão</div>
+    </div>
+    <div class="logo-chip"><img src="logo-lipehost.png" alt="LipeHost"></div>
+  </div>
+
+  <div class="grid3" style="top: 36mm;">
+    <div class="cell" style="width: 42mm;">
+      <div class="phone" style="width: 37mm;"><div class="notch"></div><div class="screen"><img src="shots/20-lojista-login.png" alt="Login do lojista"></div></div>
+      <div class="cap"><div class="n">2.0</div><div class="t">Acesso do parceiro</div>
+      <div class="d">Login exclusivo para lojistas, com a mesma conta da plataforma.</div></div>
+    </div>
+    <div class="cell" style="width: 42mm;">
+      <div class="phone" style="width: 37mm;"><div class="notch"></div><div class="screen"><img src="shots/21-lojista-inicio.png" alt="Dashboard do lojista"></div></div>
+      <div class="cap"><div class="n">2.1</div><div class="t">Dashboard de vendas</div>
+      <div class="d">Vendas do dia com comparativo, loja aberta/fechada e 8 atalhos de gestão.</div></div>
+    </div>
+    <div class="cell" style="width: 42mm;">
+      <div class="phone" style="width: 37mm;"><div class="notch"></div><div class="screen"><img src="shots/22-lojista-produtos.png" alt="Meus produtos"></div></div>
+      <div class="cap"><div class="n">2.2</div><div class="t">Catálogo de produtos</div>
+      <div class="d">Publicação com fotos, preço promocional, estoque e percentual de cashback por produto.</div></div>
+    </div>
+    <div class="cell" style="width: 42mm;">
+      <div class="phone" style="width: 37mm;"><div class="notch"></div><div class="screen"><img src="shots/26-lojista-ultimos-pedidos.png" alt="Últimos pedidos"></div></div>
+      <div class="cap"><div class="n">2.3</div><div class="t">Pedidos em tempo real</div>
+      <div class="d">Fila de pedidos com status — em preparo, saiu para entrega, entregue — e valores.</div></div>
+    </div>
+  </div>
+
+  <div class="note" style="bottom: 78mm;">
+    <b>Gestão no dia a dia:</b> o painel do lojista concentra atalhos para cupons e ofertas, horários de funcionamento,
+    avaliações dos clientes, relatórios de vendas, configurações de entrega e suporte — reduzindo a operação da loja
+    a poucos toques. Os últimos pedidos aparecem na entrada do painel, com número, itens, tempo e valor de cada compra.
+  </div>
+
+  <div class="note" style="bottom: 42mm; border-left-color: #b9b9b9;">
+    <b>Roadmap do módulo:</b> as telas de gestão avançada de pedidos e financeiro do lojista (resumo de vendas por
+    período, taxas e saques via PIX) seguem em desenvolvimento e foram registradas neste documento exatamente como
+    estão — com aviso honesto de "em breve" dentro do próprio aplicativo.
+  </div>
+
+  <div class="pfoot"><span>LIPEHOST · DOCUMENTO DE APRESENTAÇÃO</span><span class="num">05</span></div>
+</section>
+
+<!-- ═══════════════════════════ PÁGINA 6 · MOTORISTA ═══════════════════════════ -->
+<section class="page page-light">
+  <div class="phead">
+    <div>
+      <div class="kicker">APP 03 <span>·</span> MOTORISTA — PRESTADOR DE SERVIÇOS</div>
+      <div class="sect">A estação de trabalho do parceiro</div>
+    </div>
+    <div class="logo-chip"><img src="logo-lipehost.png" alt="LipeHost"></div>
+  </div>
+
+  <div class="grid3" style="top: 36mm;">
+    <div class="cell" style="width: 42.75mm;">
+      <div class="phone" style="width: 37.5mm;"><div class="notch"></div><div class="screen"><img src="shots/30-motorista-login.png" alt="Login do motorista"></div></div>
+      <div class="cap"><div class="n">3.0</div><div class="t">Acesso do motorista</div>
+      <div class="d">Login dedicado aos parceiros de mobilidade da plataforma.</div></div>
+    </div>
+    <div class="cell" style="width: 42.75mm;">
+      <div class="phone" style="width: 37.5mm;"><div class="notch"></div><div class="screen"><img src="shots/31-motorista-inicio.png" alt="Painel do motorista"></div></div>
+      <div class="cap"><div class="n">3.1</div><div class="t">Mapa + modo online</div>
+      <div class="d">Online/offline, ganhos do dia, corridas e avaliação média.</div></div>
+    </div>
+    <div class="cell" style="width: 42.75mm;">
+      <div class="phone" style="width: 37.5mm;"><div class="notch"></div><div class="screen"><img src="shots/32-motorista-corridas.png" alt="Minhas corridas"></div></div>
+      <div class="cap"><div class="n">3.2</div><div class="t">Minhas corridas</div>
+      <div class="d">Histórico de viagens com ganhos (em desenvolvimento).</div></div>
+    </div>
+    <div class="cell" style="width: 42.75mm;">
+      <div class="phone" style="width: 37.5mm;"><div class="notch"></div><div class="screen"><img src="shots/33-motorista-carteira.png" alt="Carteira do motorista"></div></div>
+      <div class="cap"><div class="n">3.3</div><div class="t">Carteira do parceiro</div>
+      <div class="d">Saldo para saque e repasses (em desenvolvimento).</div></div>
+    </div>
+  </div>
+
+  <div class="note" style="top: 172mm;">
+    <b>Como funciona:</b> ao ficar online, o motorista passa a receber solicitações de corrida do App do Cliente
+    nas categorias Econômico, Comfort e Moto. O painel exibe os três indicadores que o parceiro acompanha a cada
+    turno — ganhos acumulados do dia, número de corridas concluídas e avaliação média recebida dos passageiros.
+  </div>
+
+  <div class="note" style="top: 208mm; border-left-color: #b9b9b9;">
+    <b>Menu "Mais opções":</b> a tela complementar do aplicativo concentra documentos do veículo, dados pessoais,
+    suporte e configurações da conta. Assim como o histórico de corridas e a carteira do parceiro, o módulo
+    aparece no app com o aviso de desenvolvimento — registrando o roadmap transparente do produto.
+  </div>
+
+  <div class="pfoot"><span>LIPEHOST · DOCUMENTO DE APRESENTAÇÃO</span><span class="num">06</span></div>
+</section>
+
+<!-- ═══════════════════════════ PÁGINA 7 · ADMIN GERAL ═══════════════════════════ -->
+<section class="page page-light">
+  <div class="phead">
+    <div>
+      <div class="kicker">APP 04 <span>·</span> ADMIN GERAL — VISÃO EXECUTIVA</div>
+      <div class="sect">O ecossistema inteiro em um dashboard</div>
+    </div>
+    <div class="logo-chip"><img src="logo-lipehost.png" alt="LipeHost"></div>
+  </div>
+
+  <div class="grid3" style="top: 36mm;">
+    <div class="cell">
+      <div class="phone"><div class="notch"></div><div class="screen"><img src="shots/40-admingeral-login.png" alt="Login admin"></div></div>
+      <div class="cap"><div class="n">4.0</div><div class="t">Acesso restrito</div>
+      <div class="d">Portal exclusivo da equipe de gestão do ecossistema de aplicativos.</div></div>
+    </div>
+    <div class="cell">
+      <div class="phone"><div class="notch"></div><div class="screen"><img src="shots/41-admingeral-inicio.png" alt="Dashboard admin"></div></div>
+      <div class="cap"><div class="n">4.1</div><div class="t">Faturamento e perfis</div>
+      <div class="d">Receita do dia e dos últimos 7 dias, clientes, motoristas, lojistas e entregadores ativos na base.</div></div>
+    </div>
+    <div class="cell">
+      <div class="phone"><div class="notch"></div><div class="screen"><img src="shots/42-admingeral-inicio-2.png" alt="Dashboard admin detalhes"></div></div>
+      <div class="cap"><div class="n">4.2</div><div class="t">Operação e catálogo</div>
+      <div class="d">Lojas ativas, produtos publicados, categorias do marketplace e pedidos recentes da plataforma.</div></div>
+    </div>
+  </div>
+
+  <div class="note" style="bottom: 58mm;">
+    <b>Decisão com dados:</b> o Admin Geral consolida os indicadores dos quatro aplicativos em tempo real.
+    A gestão acompanha o faturamento por janela de tempo, o crescimento da base por perfil (clientes, motoristas,
+    lojistas e entregadores) e o movimento do marketplace — lojas ativas, produtos publicados e pedidos recentes —
+    sem precisar acessar cada aplicativo separadamente.
+  </div>
+
+  <div class="note" style="bottom: 30mm; border-left-color: #b9b9b9;">
+    <b>Base de demonstração:</b> as telas desta apresentação foram capturadas com o ambiente de demonstração
+    populado — clientes, lojas, produtos e pedidos reais de teste — para evidenciar o funcionamento completo
+    de todos os fluxos do ecossistema.
+  </div>
+
+  <div class="pfoot"><span>LIPEHOST · DOCUMENTO DE APRESENTAÇÃO</span><span class="num">07</span></div>
+</section>
+
+<!-- ═══════════════════════════ PÁGINA 8 · RECURSOS ═══════════════════════════ -->
+<section class="page page-light">
+  <div class="phead">
+    <div>
+      <div class="kicker">LIPEHOST <span>·</span> RECURSOS TRANSVERSAIS</div>
+      <div class="sect">Recursos e diferenciais do ecossistema</div>
+    </div>
+    <div class="logo-chip"><img src="logo-lipehost.png" alt="LipeHost"></div>
+  </div>
+
+  <div class="feat-grid" style="top: 36mm;">
+    <div class="feat"><div class="ic">%</div><h4>Cashback automático</h4>
+      <p>Percentual devolvido na carteira a cada compra, configurável por plano, categoria e produto.</p></div>
+    <div class="feat"><div class="ic">◈</div><h4>Rede de indicações</h4>
+      <p>Programa multinível que recompensa quem indica: bônus de entrada, residual e de vendas conforme o plano.</p></div>
+    <div class="feat"><div class="ic">₿</div><h4>Carteira digital</h4>
+      <p>Oito saldos por categoria, transferências entre usuários, depósitos e saque via PIX.</p></div>
+    <div class="feat"><div class="ic">▤</div><h4>Planos de benefícios</h4>
+      <p>Planos Blue em diferentes níveis que liberam percentuais de cashback e faixas da rede de indicações.</p></div>
+    <div class="feat"><div class="ic">◉</div><h4>Mobilidade completa</h4>
+      <p>Corridas com três categorias de veículo, preço estimado, motoristas próximos e histórico de viagens.</p></div>
+    <div class="feat"><div class="ic">❑</div><h4>Marketplace</h4>
+      <p>Catálogo multi-categoria com avaliações, favoritos, estoque, preços promocionais e pedidos rastreáveis.</p></div>
+    <div class="feat"><div class="ic">☰</div><h4>Conta única</h4>
+      <p>Um cadastro para os quatro aplicativos: cliente, lojista, motorista e gestão compartilham a mesma base.</p></div>
+    <div class="feat"><div class="ic">✦</div><h4>Gamificação</h4>
+      <p>Pontos, sequências de atividade, desafios e conquistas que aumentam o engajamento dos usuários.</p></div>
+    <div class="feat"><div class="ic">◔</div><h4>Tempo real</h4>
+      <p>Status de pedidos e corridas atualizados no app, com notificações push para cada etapa da jornada.</p></div>
+  </div>
+
+  <div class="flow" style="position: absolute; top: 198mm; left: 12mm; right: 12mm;">
+    <div class="flow-title">JORNADA DO USUÁRIO NO ECOSSISTEMA</div>
+    <div class="flow-steps">
+      <div class="fstep"><div class="fn">Cadastro</div><div class="fd">conta única<br>em qualquer app</div></div>
+      <div class="farrow">→</div>
+      <div class="fstep"><div class="fn">Plano Blue</div><div class="fd">adesão libera<br>níveis de cashback</div></div>
+      <div class="farrow">→</div>
+      <div class="fstep"><div class="fn">Uso diário</div><div class="fd">corridas, compras<br>e serviços no app</div></div>
+      <div class="farrow">→</div>
+      <div class="fstep"><div class="fn">Cashback</div><div class="fd">crédito automático<br>na carteira digital</div></div>
+      <div class="farrow">→</div>
+      <div class="fstep"><div class="fn">Rede</div><div class="fd">bônus por indicação<br>de novos usuários</div></div>
+    </div>
+  </div>
+
+  <div class="note" style="bottom: 28mm;">
+    <b>Arquitetura multi-app:</b> todos os aplicativos consomem a mesma API e o mesmo painel de administração,
+    garantindo consistência de saldo, cashback e cadastro. Um novo vertical (como farmácia ou assistência) é
+    ativado por configuração — sem publicar um aplicativo novo — e passa a aparecer na central do cliente,
+    na busca unificada e no dashboard executivo automaticamente.
+  </div>
+
+  <div class="pfoot"><span>LIPEHOST · DOCUMENTO DE APRESENTAÇÃO</span><span class="num">08</span></div>
+</section>
+
+<!-- ═══════════════════════════ PÁGINA 9 · CONTRACAPA ═══════════════════════════ -->
+<section class="page page-dark back">
+  <img src="logo-lipehost.png" alt="LipeHost">
+  <p class="q">Uma plataforma. <b>Quatro aplicativos.</b><br>
+  Mobilidade, compras, entregas e serviços —<br>com cashback em cada transação.</p>
+  <div class="apps-line">
+    <div>CLIENTE</div><div>LOJISTA</div><div>MOTORISTA</div><div>ADMIN GERAL</div>
+  </div>
+  <div class="cover-meta" style="bottom: 14mm;">DOCUMENTO DE APRESENTAÇÃO · TELAS REAIS DO SISTEMA</div>
+</section>
+
+</body>
+</html>
