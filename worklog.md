@@ -11359,3 +11359,60 @@ Stage Summary:
   * Cache localStorage no useBranding com TTL 5min + hidratação síncrona do estado inicial para evitar flash de "NewMobility" quando já há nome custom salvo. Sem o cache síncrono, o hook retornaria o default "NewMobility" no primeiro render e só atualizaria após o fetch resolver ( causaria flicker visível).
   * `invalidateBrandingCache()` chamado nos 2 handlers de save (admin-settings-panel.tsx e admin-page.tsx) para que o sidebar/footer atualizem imediatamente sem F5. O `<title>` da aba (server-side metadata) só atualiza após F5 — por isso o toast avisa o usuário.
 - Commit local: `8c0b574` — `fix(branding): nome da plataforma vem do banco (platform_name/app_name) - Task ID 6`. 6 arquivos alterados, +232 -17. Sem push (agente principal fará).
+
+---
+Task ID: 7
+Agent: Z.ai Code (subagent)
+Task: Permitir que o admin escolha quais tipos de documento são exigidos no KYC (o usuário só vê os campos marcados pelo admin).
+
+Work Log:
+- Lido /home/z/my-project/worklog.md (Tarefas 1-6) para entender histórico recente do projeto NewMobility.
+- Lidos arquivos-chave: src/lib/kyc.ts (constante KYC_DOC_TYPES com os 6 tipos + isKycApproved com cache), src/app/api/kyc/route.ts (GET/POST), src/components/newmobility/kyc/kyc-page.tsx (DOC_METAS + render), src/app/api/admin/config/route.ts (padrão de autenticação via userId query), src/app/api/admin/kyc/[userId]/approve/route.ts (padrão de AuditLog), src/components/newmobility/admin/admin-page.tsx (linha 9080 — TabsContent value="kyc").
+- Verificado schema AuditLog real (via prisma db pull): campos reais são userId/action/entityType/entityId/details/ipAddress/userAgent/createdAt. NOTA: o approve/route.ts existente usa campos inexistentes (adminId, adminName, targetUserId, targetEmail) — pre-existing bug que falha silenciosamente no try/catch. Para Task 7 usei SOMENTE os campos válidos.
+- Etapa 1 — Atualizado src/lib/kyc.ts:
+  * Exportada constante KYC_REQUIRED_DOC_TYPES_KEY = 'kyc.required_doc_types' (chave dotted, mesmo padrão usado em 'platform.maintenance_mode').
+  * Criado helper async getRequiredKycDocTypes() que lê SystemConfig, parseia JSON, valida que cada item é string E está em KYC_DOC_TYPES, remove duplicatas preservando ordem. Retorna { requiredDocTypes, isConfigured }. Fallback para KYC_DOC_TYPES (todos os 6) quando chave não existe ou está malformada. Mantém client-safe via dynamic import('@/lib/db').
+- Etapa 2 — Criado src/app/api/admin/kyc-config/route.ts:
+  * GET: aceita userId via getSession OU query param. Valida admin (role='admin' OU userType='admin'/'ADMIN'). Retorna { requiredDocTypes, isConfigured, allDocTypes: [{type,label,description,icon}] }. allDocTypes é sempre os 6, com metadados para o painel montar checkboxes.
+  * PUT: valida admin (session.role='admin' OU re-check por body userType). Body = { userId, requiredDocTypes }. Sanitiza: cada item precisa ser string E estar em KYC_DOC_TYPES. Aceita array vazio (cenário "KYC opcional"). Persiste via prisma.systemConfig.upsert com category='kyc'. Cria AuditLog (action='kyc.config.update', entityType='SystemConfig', entityId='kyc.required_doc_types', details=JSON com before/after/count). Retorna mensagem dinâmica indicando se KYC virou opcional.
+- Etapa 3 — Atualizado src/app/api/kyc/route.ts (GET + POST):
+  * GET: agora chama getRequiredKycDocTypes() e retorna requiredDocTypes/totalRequired/uploadedCount FILTRADOS pela config admin. uploadedCount conta só quantos dos FILTRADOS já foram enviados (não dos 6).
+  * POST: lógica em 3 ramos — (1) se isConfigured=true e requiredDocTypes=[] → rejeita com "Nenhum documento é exigido no momento. Seu KYC já está completo." (400); (2) se isConfigured=true e requiredDocTypes não-vazio → só aceita docType que esteja na lista exigida; (3) se isConfigured=false (default) → mantém comportamento histórico (aceita qualquer um dos 6).
+- Etapa 4 — Criado src/components/newmobility/admin/admin-kyc-config-panel.tsx:
+  * Componente client com Card (header + content). Carrega config no mount via fetch('/api/admin/kyc-config?userId=' + user.id). Estado: requiredDocTypes, isConfigured, allDocTypes, loading, saving, restoring.
+  * Renderiza grid 1-col mobile / 2-col desktop de <label> com Checkbox + ícone lucide (mapeado de string→componente via ICON_MAP). Cada checkbox com label, descrição curta e ícone verde quando marcado.
+  * Aviso amarelo destacado quando nenhum doc marcado ("Nenhum documento exigido — o KYC será opcional. Usuários poderão sacar sem enviar documentos.").
+  * Badge no header: "Configurado" (verde) quando isConfigured=true, "Padrão (todos os 6)" (âmbar) quando false.
+  * Botão "Restaurar Padrão" (marca todos os 6 localmente sem salvar — usuário precisa clicar em Salvar para persistir). Botão "Salvar Configuração" (disabled quando não há alterações não persistidas). hasUnsavedChanges via comparação de Sets.
+  * Dark mode suportado (classes dark: em todos os elementos). Loading state com spinner Loader2. Toasts de sucesso/erro via sonner. Usa componentes shadcn/ui Card/Button/Badge/Checkbox.
+- Etapa 5 — Atualizado src/components/newmobility/admin/admin-page.tsx:
+  * Importado AdminKycConfigPanel.
+  * No <TabsContent value="kyc">, adicionado <AdminKycConfigPanel /> ACIMA do <AdminKycPanel /> existente. Comentário "// Task ID 7 — config admin: quais docs são exigidos".
+- Etapa 6 — Atualizado src/components/newmobility/kyc/kyc-page.tsx (UI do usuário):
+  * Derivado requiredDocTypes de data.requiredDocTypes. noDocsRequired = requiredDocTypes.length === 0.
+  * visibleDocMetas = DOC_METAS.filter(m => requiredDocTypes.includes(m.type)) — usuário só vê cards dos tipos exigidos.
+  * Quando noDocsRequired: substitui StatusBanner por banner verde custom "Nenhum documento é exigido no momento. Seu KYC está completo. Saques, cashback e evolução de plano estão liberados." + esconde grid de upload cards + esconde card de progresso. NÃO muda kycStatus no banco (só visual).
+  * totalRequired agora usa requiredDocTypes.length (não mais hardcoded 5). Progress bar calcula uploadedCount / totalRequired corretamente.
+  * Import ShieldCheck já existia, reaproveitado para o banner verde.
+- Lint: bun run lint → 13 erros, TODOS pré-existentes em .js auxiliares (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js — @typescript-eslint/no-require-imports). ZERO erros novos em src/.
+- Commit local: ed1e5dc — 'feat(kyc): admin pode escolher quais documentos são exigidos - Task ID 7'. 6 arquivos alterados, +742 -56. Sem push.
+
+Stage Summary:
+- Arquivos criados (2):
+  * `src/app/api/admin/kyc-config/route.ts` — GET (lê config + retorna 6 tipos com metadata) e PUT (valida admin, sanitiza array, upsert em SystemConfig.kyc.required_doc_types, AuditLog action='kyc.config.update').
+  * `src/components/newmobility/admin/admin-kyc-config-panel.tsx` — painel client com checkboxes para os 6 tipos, aviso amarelo quando vazio, botões Salvar/Restaurar Padrão, dark mode, loading states.
+- Arquivos modificados (4):
+  * `src/lib/kyc.ts` — adicionado KYC_REQUIRED_DOC_TYPES_KEY + getRequiredKycDocTypes() helper async client-safe.
+  * `src/app/api/kyc/route.ts` — GET retorna lista filtrada pela config admin; POST valida docType contra lista filtrada (rejeita upload se admin marcou vazio).
+  * `src/components/newmobility/admin/admin-page.tsx` — adiciona AdminKycConfigPanel acima do AdminKycPanel no TabsContent "kyc".
+  * `src/components/newmobility/kyc/kyc-page.tsx` — filtra DOC_METAS pela requiredDocTypes; banner verde + esconde cards/progresso quando nenhum doc é exigido (visual only, não toca kycStatus).
+- `bun run lint`: 13 erros, TODOS pré-existentes em arquivos .js auxiliares. ZERO erros novos em src/.
+- Decisões de design:
+  * Chave SystemConfig = `kyc.required_doc_types` (com ponto) — mesmo padrão de `platform.maintenance_mode` já usado no projeto. Não precisa mudar o schema Prisma.
+  * Default (sem config) = todos os 6 — mantém comportamento histórico, não quebra usuários existentes. Diferenciação via flag isConfigured: o POST só rejeita se a chave existir E for array vazio. Se admin nunca configurou, aceita qualquer um dos 6.
+  * AuditLog usa apenas campos reais do schema (userId, action, entityType, entityId, details) — não usei adminId/targetUserId que existem em outras rotas KYC (pre-existing bug, falha silenciosa).
+  * O ícone dos tipos de doc é enviado como STRING da API para o painel (IdCard/FileText/MapPin/Camera) e mapeado para componente lucide no client via ICON_MAP — evita serializar funções em JSON.
+  * "Restaurar Padrão" só marca localmente (não persiste) — força o admin a clicar em "Salvar" para confirmar. Evita salvamento acidental.
+  * hasUnsavedChanges via comparação de Sets entre requiredDocTypes local e allDocTypes.map(type) — ordem não importa para o diff visual. Botão "Salvar" fica desabilitado quando não há mudanças.
+  * Quando admin desmarca tudo, o usuário vê banner verde "Nenhum documento é exigido" (visual OK) — não mexe no kycStatus do banco. Se o admin depois marcar docs novamente, o usuário volta a ver os cards normalmente.
+  * Caso edge: usuário já tinha enviado CNH_front, admin remove CNH_front dos exigidos. Card desaparece, mas documento continua no banco. Se admin re-adicionar CNH_front, o card reaparece mostrando o doc já enviado.
