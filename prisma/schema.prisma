@@ -906,6 +906,34 @@ model KycDocument {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// KycDocType — Catálogo editável de tipos de documento KYC (Task ID 8).
+// ----------------------------------------------------------------------------
+// Antes da Task 8, os 6 tipos (cnh_front, cnh_back, rg_front, rg_back,
+// proof_address, selfie_document) eram hardcodeados em src/lib/kyc.ts
+// (constante KYC_DOC_TYPES). Agora são persistidos nesta tabela e o admin
+// pode:
+//   - editar label/descrição/ícone/ordem/ativo dos 6 padrão (isDefault=true);
+//   - adicionar novos tipos customizados (ex: passport, income_proof);
+//   - excluir tipos customizados (isDefault=false NÃO pode ser excluído, só
+//     desativado, para preservar histórico de KycDocument.docType).
+//
+// `code` é unique e referenciado por KycDocument.docType (string livre) — nunca
+// deve ser editado depois de criado.
+// ─────────────────────────────────────────────────────────────────────────────
+model KycDocType {
+  id          String   @id @default(cuid())
+  code        String   @unique  // ex: 'cnh_front', 'passport', 'income_proof'
+  label       String             // ex: 'CNH Frente', 'Passaporte'
+  description String?            // ex: 'Foto nítida da frente da CNH'
+  icon        String   @default("FileText")  // nome do ícone lucide-react
+  isDefault   Boolean  @default(false)  // true para os 6 padrão (não podem ser excluídos)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(99)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Audit log (Task 14-D)
 // Records admin actions for compliance: who did what, when, from where.
 // ─────────────────────────────────────────────────────────────────────────────

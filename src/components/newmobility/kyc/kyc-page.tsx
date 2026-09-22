@@ -30,6 +30,13 @@ import {
   Eye,
   RefreshCw,
   Camera,
+  CreditCard,
+  User,
+  Briefcase,
+  Home,
+  Car,
+  Plane,
+  Award,
 } from 'lucide-react'
 
 // ---------- Types ----------
@@ -61,10 +68,37 @@ interface KycResponse {
   uploadedCount: number
   totalRequired: number
   requiredDocTypes: string[]
+  // Task ID 8 — allDocTypes: metadados de tipos ativos do banco.
+  allDocTypes?: AllDocTypeMeta[]
+}
+
+interface AllDocTypeMeta {
+  type: string
+  label: string
+  description: string
+  icon: string
+}
+
+// ---------- Icon mapping ----------
+// Mapeia nome do ícone (string vinda da API) para o componente lucide.
+// Os 12 ícones permitidos pela API admin (ALLOWED_KYC_DOC_ICONS).
+const ICON_MAP: Record<string, typeof IdCard> = {
+  IdCard,
+  FileText,
+  MapPin,
+  Camera,
+  CreditCard,
+  User,
+  Briefcase,
+  Home,
+  Car,
+  Plane,
+  Award,
+  ShieldCheck,
 }
 
 // ---------- Doc type metadata ----------
-
+// (Task ID 8 — agora vem da API, não é mais hardcodeado DOC_METAS.)
 interface DocMeta {
   type: string
   title: string
@@ -72,43 +106,17 @@ interface DocMeta {
   Icon: typeof IdCard
 }
 
-const DOC_METAS: DocMeta[] = [
-  {
-    type: 'cnh_front',
-    title: 'CNH Frente',
-    description: 'Foto nítida da frente da CNH',
-    Icon: IdCard,
-  },
-  {
-    type: 'cnh_back',
-    title: 'CNH Verso',
-    description: 'Foto nítida do verso da CNH',
-    Icon: IdCard,
-  },
-  {
-    type: 'rg_front',
-    title: 'RG Frente',
-    description: 'Foto da frente do RG (caso não tenha CNH)',
-    Icon: FileText,
-  },
-  {
-    type: 'rg_back',
-    title: 'RG Verso',
-    description: 'Foto do verso do RG',
-    Icon: FileText,
-  },
-  {
-    type: 'proof_address',
-    title: 'Comprovante de Endereço',
-    description: 'Conta de água/luz/telefone com CEP (últimos 90 dias)',
-    Icon: MapPin,
-  },
-  {
-    type: 'selfie_document',
-    title: 'Selfie com Documento',
-    description: 'Foto segurando o documento de identificação ao lado do rosto',
-    Icon: Camera,
-  },
+// Fallback usado quando a API não retorna allDocTypes (cenário edge — ex:
+// erro de rede, base antiga antes da Task 8). Mantém os 6 originais para que
+// o usuário continue conseguindo subir documentos mesmo se a KycDocType
+// estiver vazia/indisponível.
+const FALLBACK_DOC_METAS: DocMeta[] = [
+  { type: 'cnh_front', title: 'CNH Frente', description: 'Foto nítida da frente da CNH', Icon: IdCard },
+  { type: 'cnh_back', title: 'CNH Verso', description: 'Foto nítida do verso da CNH', Icon: IdCard },
+  { type: 'rg_front', title: 'RG Frente', description: 'Foto da frente do RG (caso não tenha CNH)', Icon: FileText },
+  { type: 'rg_back', title: 'RG Verso', description: 'Foto do verso do RG', Icon: FileText },
+  { type: 'proof_address', title: 'Comprovante de Endereço', description: 'Conta de água/luz/telefone com CEP (últimos 90 dias)', Icon: MapPin },
+  { type: 'selfie_document', title: 'Selfie com Documento', description: 'Foto segurando o documento de identificação ao lado do rosto', Icon: Camera },
 ]
 
 const MAX_FILE_SIZE = 3 * 1024 * 1024 // 3 MB
@@ -557,12 +565,20 @@ export default function KycPage() {
     }
   }
 
-  // Filtra DOC_METAS pelos tipos exigidos (Task ID 7). Se a API retornou
-  // requiredDocTypes (configurada ou default = todos os 6), mostra só esses.
-  // Se requiredDocTypes está vazio (admin desmarcou tudo), não mostra cards.
+  // Task ID 8 — DOC_METAS não é mais hardcodeado. allDocTypes vem da API
+  // (ler da tabela KycDocType). Filtra pelos requiredDocTypes (config admin).
+  // Fallback para FALLBACK_DOC_METAS se a API não retornou allDocTypes.
+  const allDocMetas: DocMeta[] = (data?.allDocTypes ?? []).map((d) => ({
+    type: d.type,
+    title: d.label,
+    description: d.description,
+    Icon: ICON_MAP[d.icon] ?? FileText,
+  }))
+  const sourceDocMetas = allDocMetas.length > 0 ? allDocMetas : FALLBACK_DOC_METAS
+
   const visibleDocMetas = noDocsRequired
     ? []
-    : DOC_METAS.filter((m) => requiredDocTypes.includes(m.type))
+    : sourceDocMetas.filter((m) => requiredDocTypes.includes(m.type))
 
   return (
     <div className="space-y-6 p-4 md:p-6">

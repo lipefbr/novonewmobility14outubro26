@@ -162,9 +162,11 @@ export const KYC_DOC_LABELS: Record<KycDocType, string> = {
 // Task ID 7 — Configuração admin: quais tipos de documento são exigidos.
 //
 // A chave SystemConfig `kyc.required_doc_types` guarda um JSON array de
-// strings (subset de KYC_DOC_TYPES) com os tipos que o admin marcou como
-// obrigatórios. Se a chave NÃO existir, retornamos TODOS os 6 (default
-// histórico — mantém o comportamento anterior à Task 7).
+// strings (codes de tipos que existem na tabela KycDocType) com os tipos que
+// o admin marcou como obrigatórios. Se a chave NÃO existir, retornamos TODOS
+// os tipos ativos da tabela KycDocType (default histórico — mantém o
+// comportamento anterior à Task 7, com o acréscimo da Task 8 que tornou o
+// catálogo editável).
 //
 // Um array vazio significa "nenhum documento exigido" — o KYC torna-se
 // opcional (usuário pode sacar sem enviar nada).
@@ -172,15 +174,80 @@ export const KYC_DOC_LABELS: Record<KycDocType, string> = {
 
 export const KYC_REQUIRED_DOC_TYPES_KEY = 'kyc.required_doc_types'
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Task ID 8 — Catálogo editável de tipos de documento KYC.
+//
+// `getAllKycDocTypes()` lê a tabela KycDocType e retorna a lista completa de
+// tipos (ativos e inativos). A API admin usa para mostrar o grid editável.
+// O painel do usuário e a validação de upload filtram por isActive=true.
+//
+// Mantemos a constante KYC_DOC_TYPES e o mapa KYC_DOC_LABELS exportados
+// como fallback — outros arquivos ainda os importam e não devem quebrar.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface KycDocTypeRow {
+  id: string
+  code: string
+  label: string
+  description: string | null
+  icon: string
+  isDefault: boolean
+  isActive: boolean
+  sortOrder: number
+}
+
+/**
+ * Lê TODOS os tipos de documento KYC do banco (ativos e inativos),
+ * ordenados por sortOrder asc, createdAt asc. Chama `seedKycDocTypesIfEmpty()`
+ * antes da query para garantir que os 6 padrão existam em bases novas.
+ *
+ * Retorna array vazio se houver qualquer erro (fail-safe).
+ */
+export async function getAllKycDocTypes(): Promise<KycDocTypeRow[]> {
+  try {
+    const { prisma } = await import('@/lib/db')
+    // Idempotente: cria os 6 padrão se a tabela estiver vazia.
+    try {
+      const { seedKycDocTypesIfEmpty } = await import('@/lib/seed-kyc-doc-types')
+      await seedKycDocTypesIfEmpty()
+    } catch (seedErr) {
+      console.error('[getAllKycDocTypes] seed failed:', seedErr)
+    }
+
+    const rows = await prisma.kycDocType.findMany({
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    })
+    return rows.map((r) => ({
+      id: r.id,
+      code: r.code,
+      label: r.label,
+      description: r.description,
+      icon: r.icon,
+      isDefault: r.isDefault,
+      isActive: r.isActive,
+      sortOrder: r.sortOrder,
+    }))
+  } catch (err) {
+    console.error('[getAllKycDocTypes] erro ao ler tipos KYC:', err)
+    return []
+  }
+}
+
 /**
  * Lê a config admin `kyc.required_doc_types` e devolve a lista de tipos
- * de documento que o usuário precisa enviar. Faz fallback para
- * KYC_DOC_TYPES (todos os 6) se a chave não existir ou estiver malformada.
+ * de documento que o usuário precisa enviar. Faz fallback para TODOS os
+ * tipos ativos do banco se a chave não existir (default histórico).
+ *
+ * Após a Task 8, o catálogo veio do banco. Esta função cruza a config
+ * admin (array de codes) com a lista de tipos ATIVOS do banco — assim,
+ * se o admin desativar um tipo que ainda está marcado como exigido, ele
+ * automaticamente deixa de ser exigido (não aparece para o usuário).
  *
  * Retorna `{ requiredDocTypes, isConfigured }`:
- *   - `requiredDocTypes: string[]` — pode ser vazio (admin desmarcou tudo).
+ *   - `requiredDocTypes: string[]` — pode ser vazio (admin desmarcou tudo
+ *     OU todos os exigidos foram desativados).
  *   - `isConfigured: boolean` — true se a chave existe no banco. Útil para o
- *     POST decidir entre aceitar qualquer um dos 6 (default) ou só os exigidos.
+ *     POST decidir entre aceitar qualquer tipo ativo (default) ou só os exigidos.
  */
 export async function getRequiredKycDocTypes(): Promise<{
   requiredDocTypes: string[]
@@ -188,12 +255,22 @@ export async function getRequiredKycDocTypes(): Promise<{
 }> {
   try {
     const { prisma } = await import('@/lib/db')
+
+    // Carrega lista de tipos ATIVOS do banco (codes) — usado para filtrar.
+    const activeRows = await prisma.kycDocType.findMany({
+      where: { isActive: true },
+      select: { code: true },
+    })
+    const activeCodes = new Set(activeRows.map((r) => r.code))
+    const activeCodeList = activeRows.map((r) => r.code)
+
     const row = await prisma.systemConfig.findUnique({
       where: { key: KYC_REQUIRED_DOC_TYPES_KEY },
       select: { value: true },
     })
     if (!row || !row.value) {
-      return { requiredDocTypes: [...KYC_DOC_TYPES], isConfigured: false }
+      // Default histórico: TODOS os tipos ativos do banco.
+      return { requiredDocTypes: activeCodeList, isConfigured: false }
     }
     let parsed: unknown
     try {
@@ -203,17 +280,17 @@ export async function getRequiredKycDocTypes(): Promise<{
         '[getRequiredKycDocTypes] valor não é JSON válido, usando default. value=',
         row.value
       )
-      return { requiredDocTypes: [...KYC_DOC_TYPES], isConfigured: false }
+      return { requiredDocTypes: activeCodeList, isConfigured: false }
     }
     if (!Array.isArray(parsed)) {
-      return { requiredDocTypes: [...KYC_DOC_TYPES], isConfigured: false }
+      return { requiredDocTypes: activeCodeList, isConfigured: false }
     }
-    // Filtra itens inválidos (não-string ou fora dos 6 permitidos) e remove
-    // duplicatas preservando a ordem definida pelo admin.
+    // Filtra itens inválidos (não-string, ou que não existem no banco, ou
+    // que foram desativados). Remove duplicatas preservando a ordem do admin.
     const seen = new Set<string>()
     const filtered: string[] = []
     for (const item of parsed) {
-      if (typeof item === 'string' && (KYC_DOC_TYPES as readonly string[]).includes(item) && !seen.has(item)) {
+      if (typeof item === 'string' && activeCodes.has(item) && !seen.has(item)) {
         seen.add(item)
         filtered.push(item)
       }
@@ -221,6 +298,7 @@ export async function getRequiredKycDocTypes(): Promise<{
     return { requiredDocTypes: filtered, isConfigured: true }
   } catch (err) {
     console.error('[getRequiredKycDocTypes] erro ao ler config KYC:', err)
+    // Fail-safe: retorna os 6 hardcodeados (fallback da constante estática).
     return { requiredDocTypes: [...KYC_DOC_TYPES], isConfigured: false }
   }
 }

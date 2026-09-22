@@ -2,11 +2,18 @@ import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 import { getSession } from '@/lib/auth'
-import { KYC_DOC_TYPES, type KycDocType, invalidateKycCache, getRequiredKycDocTypes } from '@/lib/kyc'
+import {
+  invalidateKycCache,
+  getRequiredKycDocTypes,
+  getAllKycDocTypes,
+} from '@/lib/kyc'
 
 /**
  * GET /api/kyc
  * Returns the current user's KYC status + their uploaded KycDocuments.
+ *
+ * Task ID 8 — `requiredDocTypes` e `allDocTypes` (metadados para UI) agora
+ * vêm da tabela KycDocType (catálogo editável). Só retornamos tipos ativos.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -34,10 +41,22 @@ export async function GET(req: NextRequest) {
 
     if (!user) return error('Usuário não encontrado', 404)
 
-    // Task ID 7 — lista de tipos exigidos vem da config admin
-    // (SystemConfig.kyc.required_doc_types). Se não configurado, default =
-    // todos os 6 (mantém comportamento histórico).
+    // Task ID 7+8 — lista de tipos exigidos vem da config admin
+    // (SystemConfig.kyc.required_doc_types), cruzada com tipos ATIVOS do
+    // banco. Se não configurado, default = TODOS os tipos ativos.
     const { requiredDocTypes } = await getRequiredKycDocTypes()
+
+    // Task ID 8 — allDocTypes: metadados dos tipos ativos (para o usuário
+    // saber quais existem e a UI montar os cards). Inclui label/description/icon.
+    const allRows = await getAllKycDocTypes()
+    const allDocTypes = allRows
+      .filter((r) => r.isActive)
+      .map((r) => ({
+        type: r.code,
+        label: r.label,
+        description: r.description ?? '',
+        icon: r.icon,
+      }))
 
     // Conta quantos dos tipos EXIGIDOS já foram enviados (não dos 6).
     const uploadedTypes = new Set(documents.map((d) => d.docType))
@@ -71,6 +90,7 @@ export async function GET(req: NextRequest) {
       uploadedCount,
       totalRequired: requiredDocTypes.length,
       requiredDocTypes,
+      allDocTypes,
     })
   } catch (err) {
     console.error('GET /api/kyc error:', err)
@@ -101,6 +121,9 @@ const ALLOWED_MIME = new Set([
  *   { docType, fileUrl (base64 data URL), fileName?, fileSize?, mimeType? }
  * Sets user.kycStatus='pending' if currently 'none'.
  * Returns the created/updated KycDocument.
+ *
+ * Task ID 8 — validação de docType agora consulta o banco (KycDocType):
+ *   - precisa existir E estar ativo (isActive=true).
  */
 export async function POST(req: NextRequest) {
   try {
@@ -116,10 +139,10 @@ export async function POST(req: NextRequest) {
 
     const { docType, fileUrl, fileName, fileSize, mimeType } = body
 
-    // Task ID 7 — valida docType contra a config admin (se configurada):
+    // Task ID 7+8 — valida docType contra a config admin (se configurada):
     //   - Se admin marcou array VAZIO  → rejeita upload (KYC opcional).
     //   - Se admin marcou alguns       → só aceita os exigidos.
-    //   - Se admin NÃO configurou       → mantém default (qualquer um dos 6).
+    //   - Se admin NÃO configurou       → aceita qualquer tipo ATIVO do banco.
     const { requiredDocTypes, isConfigured } = await getRequiredKycDocTypes()
 
     if (isConfigured) {
@@ -136,12 +159,31 @@ export async function POST(req: NextRequest) {
         )
       }
     } else {
-      // Default histórico: aceita qualquer um dos 6.
-      if (!docType || !KYC_DOC_TYPES.includes(docType as KycDocType)) {
-        return error(
-          `Tipo de documento inválido. Permitidos: ${KYC_DOC_TYPES.join(', ')}`,
-          400
-        )
+      // Default histórico (pós-Task 8): aceita qualquer tipo ATIVO do banco.
+      // Não confiamos no `requiredDocTypes` aqui porque ele pode estar vazio
+      // se o admin desativou todos os tipos — mas se a config NÃO está
+      // salvada, o comportamento esperado é aceitar qualquer tipo ativo.
+      const activeRow = await prisma.kycDocType.findUnique({
+        where: { code: docType },
+        select: { isActive: true },
+      })
+      if (!activeRow || !activeRow.isActive) {
+        // Fallback final: se a tabela KycDocType estiver vazia/bugada,
+        // aceita os 6 hardcodeados (compatibilidade com bases antigas).
+        const FALLBACK_CODES = [
+          'cnh_front',
+          'cnh_back',
+          'rg_front',
+          'rg_back',
+          'proof_address',
+          'selfie_document',
+        ]
+        if (!FALLBACK_CODES.includes(docType)) {
+          return error(
+            `Tipo de documento inválido: "${docType}". Não existe ou está desativado.`,
+            400
+          )
+        }
       }
     }
 

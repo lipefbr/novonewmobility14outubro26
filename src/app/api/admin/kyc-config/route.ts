@@ -3,21 +3,23 @@ import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 import { getSession } from '@/lib/auth'
 import {
-  KYC_DOC_TYPES,
-  KYC_DOC_LABELS,
   KYC_REQUIRED_DOC_TYPES_KEY,
   getRequiredKycDocTypes,
-  type KycDocType,
+  getAllKycDocTypes,
 } from '@/lib/kyc'
 
 /**
  * GET /api/admin/kyc-config
  *
  * Retorna a lista de tipos de documento exigidos no KYC (config admin) e a
- * lista completa de tipos disponíveis (com label/descrição/ícone) para o
- * painel admin montar os checkboxes.
+ * lista completa de tipos ATIVOS do banco (Task ID 8 — catálogo editável)
+ * com label/descrição/ícone para o painel admin montar os checkboxes.
  *
  * Query: ?userId=<adminId> (ou header Authorization via getSession).
+ *
+ * Task ID 8: allDocTypes agora vem do banco (getAllKycDocTypes) em vez de
+ * KYC_DOC_TYPES hardcodeado. Só retornamos tipos isActive=true — o painel
+ * de checkboxes só mostra tipos que o usuário pode exigir.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -37,12 +39,20 @@ export async function GET(req: NextRequest) {
 
     const { requiredDocTypes, isConfigured } = await getRequiredKycDocTypes()
 
-    const allDocTypes = KYC_DOC_TYPES.map((t) => ({
-      type: t,
-      label: KYC_DOC_LABELS[t as KycDocType],
-      description: DOC_DESCRIPTIONS[t as KycDocType],
-      icon: DOC_ICON_NAMES[t as KycDocType],
-    }))
+    // Task ID 8 — allDocTypes vem do banco. Filtramos para ATIVOS, pois o
+    // painel de checkboxes só deve oferecer tipos que o usuário pode exigir.
+    const allRows = await getAllKycDocTypes()
+    const allDocTypes = allRows
+      .filter((r) => r.isActive)
+      .map((r) => ({
+        id: r.id,
+        type: r.code,
+        label: r.label,
+        description: r.description ?? '',
+        icon: r.icon,
+        isDefault: r.isDefault,
+        sortOrder: r.sortOrder,
+      }))
 
     return success({
       requiredDocTypes,
@@ -61,7 +71,8 @@ export async function GET(req: NextRequest) {
  * Body: { userId, requiredDocTypes: string[] }
  *
  * Salva em SystemConfig.kyc.required_doc_types (JSON array). Aceita array
- * vazio (KYC opcional). Valida que cada item está em KYC_DOC_TYPES.
+ * vazio (KYC opcional). Valida que cada item é um code que existe no banco
+ * E está ativo (Task ID 8).
  * Cria AuditLog (action='kyc.config.update').
  */
 export async function PUT(req: NextRequest) {
@@ -107,16 +118,18 @@ export async function PUT(req: NextRequest) {
     if (!Array.isArray(requiredDocTypes)) {
       return error('requiredDocTypes deve ser um array de strings', 400)
     }
-    // Valida que cada item é string E está em KYC_DOC_TYPES. Rejeita
-    // silenciosamente duplicatas (mantém a primeira ocorrência).
+
+    // Task ID 8 — valida cada code contra os tipos ATIVOS do banco.
+    // Rejeita silenciosamente duplicatas (mantém a primeira ocorrência).
+    const activeRows = await prisma.kycDocType.findMany({
+      where: { isActive: true },
+      select: { code: true },
+    })
+    const activeCodes = new Set(activeRows.map((r) => r.code))
     const seen = new Set<string>()
     const sanitized: string[] = []
     for (const item of requiredDocTypes) {
-      if (
-        typeof item === 'string' &&
-        (KYC_DOC_TYPES as readonly string[]).includes(item) &&
-        !seen.has(item)
-      ) {
+      if (typeof item === 'string' && activeCodes.has(item) && !seen.has(item)) {
         seen.add(item)
         sanitized.push(item)
       }
@@ -181,28 +194,4 @@ export async function PUT(req: NextRequest) {
     console.error('PUT /api/admin/kyc-config error:', err)
     return error('Erro ao salvar configuração KYC', 500)
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Metadados estáticos dos 6 tipos (descrição curta + nome do ícone lucide).
-// O ícone é enviado como string para o cliente montar o componente
-// (evita serializar uma função).
-// ─────────────────────────────────────────────────────────────────────────────
-
-const DOC_DESCRIPTIONS: Record<KycDocType, string> = {
-  cnh_front: 'Foto nítida da frente da CNH do usuário',
-  cnh_back: 'Foto nítida do verso da CNH',
-  rg_front: 'Foto da frente do RG (alternativa à CNH)',
-  rg_back: 'Foto do verso do RG',
-  proof_address: 'Conta de água/luz/telefone com CEP (últimos 90 dias)',
-  selfie_document: 'Foto segurando o documento ao lado do rosto',
-}
-
-const DOC_ICON_NAMES: Record<KycDocType, string> = {
-  cnh_front: 'IdCard',
-  cnh_back: 'IdCard',
-  rg_front: 'FileText',
-  rg_back: 'FileText',
-  proof_address: 'MapPin',
-  selfie_document: 'Camera',
 }
