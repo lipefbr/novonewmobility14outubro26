@@ -11569,3 +11569,74 @@ Stage Summary:
   * Card inativo fica com opacity-60 (mesma regra do painel NewMobility) — visualmente descreve que está inativo mas ainda aparece na lista.
   * Posição no NAV_ITEMS: logo após 'motoristas' (não após 'categorias') — agrupa visualmente os itens de motorista (cadastro + categorias de veículo) e separa das 'categorias' de app (AppCategory).
   * Ícone Car reutilizado (já importado no page.tsx) para 'driver-categories' — visualmente consistente com 'motoristas' (também usa Car), já que ambos são conceitos relacionados a motorista.
+
+---
+Task ID: 10
+Agent: Z.ai Code (subagent)
+Task: Tornar a seção "Categorias de Motorista" do painel Admin Geral (/admingeral/inicio) EDITÁVEL (CRUD completo: criar, editar, excluir, ativar/desativar) para que o admin possa gerenciar as categorias direto no admingeral sem precisar ir no painel NewMobility. Hoje a seção é read-only (Task 9). Precisa virar CRUD completo.
+
+Work Log:
+- Lido worklog.md (últimas ~100 linhas) para entender contexto da Task 9 (que criou a seção read-only) e da Task 8 (que criou CRUD de KycDocType — usada como referência de padrão lint para dialogs).
+- Lidos arquivos de referência:
+  * src/app/api/admingeral/driver-categories/route.ts — só tinha GET (read-only), usado requireAppAdmin.
+  * src/components/admingeral/sections/driver-categories.tsx — seção read-only da Task 9 (caixa azul, grid 2x2 métricas, border-top colorido, emojis).
+  * src/app/api/admin/driver-categories/route.ts e [id]/route.ts — CRUD do painel NewMobility, usado como referência de validação.
+  * src/components/admingeral/sections/categorias.tsx — referência visual de CRUD (mas usa form inline, não dialog).
+  * src/components/newmobility/admin/admin-page.tsx (linhas 8685-8828 e 2760-2866) — referência visual do card de categoria + handlers CRUD (load/create/edit/delete/toggle).
+  * prisma/schema.prisma — model DriverCategory (id, code unique, name, description?, sortOrder, monthlyTripsTarget, bonusCents, maxCancellationPerMonth, color?, icon?, isActive, users[]).
+  * src/lib/admingeral-guard.ts — requireAppAdmin(userId) aceita role='admin' OU userType='admin'.
+  * src/components/ui/{dialog,switch,textarea,label,input,button,badge,card}.tsx — componentes shadcn disponíveis.
+  * src/lib/api.ts — apiFetch com timeout e ApiError.
+  * src/components/admingeral/types.ts — formatBRL já exportado (reutilizado).
+- Etapa 1 — Ampliado src/app/api/admingeral/driver-categories/route.ts:
+  * Mantido GET existente (lista todas com userCount).
+  * Adicionado POST: valida code (regex [a-z0-9_]+, max 40 chars, case-insensitive unique via findFirst+toLowerCase), name (obrigatório, trim, max 80 chars). Defaults: monthlyTripsTarget=0, bonusCents=0, maxCancellationPerMonth=2, isActive=true, sortOrder=99. Retorna 201 com a categoria criada. Usa requireAppAdmin(userId).
+- Etapa 2 — Criado src/app/api/admingeral/driver-categories/[id]/route.ts:
+  * PUT: edita campos fornecidos (name, description, sortOrder, monthlyTripsTarget, bonusCents, maxCancellationPerMonth, color, icon, isActive). NÃO permite editar code (ignora silenciosamente se vier no body — melhora UX vs erro 400). Valida name (não vazio, max 80). Retorna 404 se não existir. Usa requireAppAdmin.
+  * DELETE: bloqueia se houver motoristas vinculados (prisma.user.count where driverCategoryId=id). Retorna 400 com mensagem "Não é possível excluir: X motorista(s) vinculado(s) a esta categoria. Desative a categoria em vez de excluir." Se userCount=0, exclui fisicamente. Retorna {deleted: true}.
+- Etapa 3 — Reescrito src/components/admingeral/sections/driver-categories.tsx (de read-only → CRUD completo):
+  * Mantida caixa azul explicativa da Task 9 (4 bullets sobre categoria ≠ plano de carreira, bônus condicional, tolerância zero, etc.).
+  * Header agora tem 3 elementos: Badge com contagem + botão outline "Gerenciar no painel NewMobility" (link secundário) + botão verde "Nova Categoria".
+  * Em cada card, adicionada seção de ações (border-top + pt-2):
+    - Toggle Ativo/Inativo (botão ghost com ícone Power, cor emerald quando ativo)
+    - Editar (botão ghost com ícone Pencil, cor blue)
+    - Excluir (botão ghost com ícone Trash2, cor red)
+  * Overlay de loading no card durante toggle/delete (Loader2 spinner com bg-white/70 backdrop-blur).
+  * Optimistic UI no toggle: atualiza local antes da API, reverte em erro.
+  * Excluir valida no client se userCount > 0 (toast.error imediato sem chamar API), depois window.confirm com mensagem explicando que ação é irreversível e orientando desativar.
+  * Empty state agora tem botão "Criar primeira categoria" (não mais instrução para ir ao painel NewMobility).
+- Etapa 3 (Dialogs) — Componente DriverCategoryDialog:
+  * Dialog único para criar E editar (mode prop).
+  * Campos: código* (input com regex filter [a-z0-9_], disabled quando editando, max 40), nome* (max 80), descrição (textarea), ordem (number default 99), meta mensal (number default 0), bônus R$ (input text com inputMode="decimal" aceita vírgula/ponto — usa parseBrlToCents), cancelamento/mês (number default 2 com hint "0 = tolerância zero"), cor (input type=color + input hex com preview ao lado), ícone (input text, placeholder emoji), ativo (Switch com label explicativa).
+  * Preview do card em tempo real no form (mostra emoji + nome + code com border-top da cor escolhida).
+  * Validação client-side espelha server-side (code regex, name length).
+  * Loading state: spinner no botão Salvar (disabled durante submit).
+  * Toasts de sucesso/erro via sonner.
+  * Dialog remonta via key={counter} (counter = Date.now() a cada abertura) — mesma técnica da Task 8 para evitar lint react-hooks/set-state-in-effect do Next.js 16 + React 19. Estado do form inicializado via useState(() => initial ? ... : EMPTY_FORM) sem useEffect.
+- Etapa 4 — Helpers locais parseBrlToCents e formatCentsToBrlInput:
+  * parseBrlToCents: aceita "500,00", "1.500,00", "1500", "1500,00" — remove pontos (milhar), troca vírgula por ponto, parseFloat * 100, round. Retorna 0 para string vazia/inválida.
+  * formatCentsToBrlInput: 50000 → "500,00", 0 → "0,00". Usa toLocaleString('pt-BR', {min:2, max:2}).
+  * Decidido manter helpers locais (não exportar para types.ts) porque só esta seção usa — se outra seção precisar, pode extrair depois.
+- Lint: `bun run lint` → 13 erros, TODOS pré-existentes em arquivos .js auxiliares (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js — @typescript-eslint/no-require-imports). ZERO erros novos em src/. Comportamento idêntico às Tasks 8 e 9 (mesmos 13 erros pré-existentes).
+- Dev server: rodando OK (porta 3000). Compilação do novo [id]/route.ts e do driver-categories.tsx reescrito sem erros no dev.log.
+- Commit local: f1e2795 — 'feat(admingeral): CRUD completo de Categorias de Motorista - Task ID 10'. 3 arquivos alterados, +857 -94. Sem push (agente principal fará).
+
+Stage Summary:
+- Arquivos criados (1):
+  * `src/app/api/admingeral/driver-categories/[id]/route.ts` — PUT (edita campos; code protegido) + DELETE (bloqueia se houver motoristas vinculados, orienta desativar). Usa requireAppAdmin.
+- Arquivos modificados (2):
+  * `src/app/api/admingeral/driver-categories/route.ts` — mantido GET existente; adicionado POST com validação (code regex [a-z0-9_]+ max 40 case-insensitive unique, name max 80). Defaults: monthlyTripsTarget=0, bonusCents=0, maxCancellationPerMonth=2, isActive=true, sortOrder=99. Retorna 201.
+  * `src/components/admingeral/sections/driver-categories.tsx` — reescrito de read-only para CRUD completo: botão "Nova Categoria" (verde), botões Editar/Excluir/Toggle por card, Dialog de Criar/Editar com form completo (9 campos + preview), optimistic UI no toggle, overlay de loading, toasts, window.confirm antes de excluir, helpers parseBrlToCents/formatCentsToBrlInput para bônus em formato BR.
+- `bun run lint`: 13 erros, TODOS pré-existentes em arquivos .js auxiliares (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js — @typescript-eslint/no-require-imports). ZERO erros novos em src/. Mesmos 13 erros das Tasks 8 e 9.
+- Decisões de design:
+  * Dialog único para criar E editar (mode prop): reduz duplicação de código. Estado inicializado via useState(() => initial ? mapped : EMPTY_FORM) + key={counter} no parent para remontar a cada abertura. Mesma técnica da Task 8 (admin-kyc-config-panel.tsx) — satisfaz lint react-hooks/set-state-in-effect do Next.js 16 + React 19.
+  * `code` NÃO é editável depois de criado — é unique e referenciado por User.driverCategoryId. API PUT ignora silenciosamente se vier no body (melhor UX que erro 400). O input fica disabled com bg-slate-50 no modo edit, com hint "Não editável (unique + referenciado)".
+  * `bonusCents` aceita vírgula decimal (formato BR) via helper parseBrlToCents — flexível: aceita "500,00", "1.500,00", "1500", "1500.00". Helper local (não exportado para types.ts) porque só esta seção usa.
+  * DELETE com guarda dupla: client-side valida userCount > 0 antes de chamar API (toast.error imediato sem confirm dialog), server-side valida novamente (proteção contra race condition). Mensagem orienta desativar em vez de excluir (mantém histórico de motoristas vinculados).
+  * Toggle com optimistic UI: atualiza local imediatamente (feedback instantâneo), reverte em caso de erro. Overlay de loading no card (Loader2 com bg-white/70 backdrop-blur) desabilita botões durante a operação.
+  * "Gerenciar no painel NewMobility" agora é link secundário (variant outline, ícone ExternalLink) — o CRUD principal é direto aqui. Mantido como escape hatch caso o admin queira usar a UI antiga (admin-page.tsx do NewMobility).
+  * Botão "Nova Categoria" em verde (emerald-600) — destaque visual vs outros botões azuis/outline da seção. Mesma cor usada no painel NewMobility admin (handleOpenCreateDriverCategory usa bg-emerald-600 indiretamente via Car icon header card).
+  * Preview do card em tempo real dentro do Dialog: mostra emoji + nome + code + border-top da cor escolhida. Ajuda o admin a visualizar o resultado antes de salvar.
+  * Visual da Task 9 preservado: caixa azul explicativa (4 bullets), grid 2x2 de métricas (Meta mensal / Bônus / Cancelamento / Motoristas), border-top colorido, emojis como ícones, badge Ativo/Inativo (emerald quando ativo, gray quando inativo), opacity-60 em cards inativos. Mantém consistência entre painel admingeral e painel NewMobility admin.
+  * Empty state agora tem CTA "Criar primeira categoria" (em vez de instruir ir ao painel NewMobility) — reflete que o CRUD agora é direto aqui.
+  * Limitação conhecida (não bloqueante): a API /api/admin/driver-categories (painel NewMobility) e a /api/admingeral/driver-categories (painel admingeral) são DUAS rotas separadas que operam sobre a MESMA tabela DriverCategory. Ambas usam guards diferentes (requireAdmin vs requireAppAdmin) mas qualquer uma pode criar/editar/excluir. Isso é intencional — o admin pode usar qualquer um dos dois painéis. Se uma categoria for criada em um painel, aparecerá no outro após reload (ambas fazem GET na mesma tabela).
