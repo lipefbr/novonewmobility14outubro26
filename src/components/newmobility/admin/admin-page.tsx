@@ -1806,7 +1806,7 @@ export function AdminPage() {
       loadMatrixTypes()
       loadMatrixPositions()
     }
-  }, [activeTab, searchQuery, planFilter, statusFilter, noSponsorFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter, ticketPriorityFilter, voucherStatusFilter, voucherPage, betStatusFilter, betPage, matrixSelectedUser, matrixType, loadContentTexts, loadSystemSettings, loadMatrixLimits, loadMatrixPositions])
+  }, [activeTab, searchQuery, planFilter, statusFilter, noSponsorFilter, userPage, withdrawalStatusFilter, cashbackTypeFilter, cashbackUserFilter, ticketStatusFilter, ticketPriorityFilter, voucherStatusFilter, voucherPage, betStatusFilter, betPage, matrixSelectedUser, matrixType, loadContentTexts, loadSystemSettings, loadMatrixLimits, loadMatrixPositions, user?.id])
 
   const loadStats = async () => {
     // Defesa extra: se user.id ainda não está disponível (ex: store
@@ -1830,8 +1830,9 @@ export function AdminPage() {
   }
 
   const loadUsers = async () => {
+    if (!user?.id) return
     try {
-      const params = new URLSearchParams({ userId: user?.id || '', search: searchQuery, plan: planFilter, status: statusFilter, page: String(userPage) })
+      const params = new URLSearchParams({ userId: user.id, search: searchQuery, plan: planFilter, status: statusFilter, page: String(userPage) })
       // Item 13: forward the "Sem patrocinador" toggle to the API so the
       // server filters by referredById=null AND role != 'admin'.
       if (noSponsorFilter) params.set('noSponsor', 'true')
@@ -1841,29 +1842,33 @@ export function AdminPage() {
   }
 
   const loadConfigs = async () => {
+    if (!user?.id) return
     try {
-      const data = await apiFetch<SystemConfigs>(`/admin/config?userId=${user?.id}`, { timeoutMs: 30000 })
+      const data = await apiFetch<SystemConfigs>(`/admin/config?userId=${user.id}`, { timeoutMs: 30000 })
       setConfigs(data)
     } catch { /* ignore */ }
   }
 
   const loadAnnouncements = async () => {
+    if (!user?.id) return
     try {
-      const data = await apiFetch<AdminAnnouncement[]>(`/admin/announcements?userId=${user?.id}`)
+      const data = await apiFetch<AdminAnnouncement[]>(`/admin/announcements?userId=${user.id}`)
       setAnnouncements(Array.isArray(data) ? data : [])
     } catch { /* ignore */ }
   }
 
   const loadPlans = async () => {
+    if (!user?.id) return
     try {
-      const data = await apiFetch<{ plans: AdminPlan[] }>(`/admin/plans?userId=${user?.id}`)
+      const data = await apiFetch<{ plans: AdminPlan[] }>(`/admin/plans?userId=${user.id}`)
       setPlans(data.plans || [])
     } catch { /* ignore */ }
   }
 
   const loadWithdrawals = async () => {
+    if (!user?.id) return
     try {
-      const params = new URLSearchParams({ userId: user?.id || '', status: withdrawalStatusFilter })
+      const params = new URLSearchParams({ userId: user.id, status: withdrawalStatusFilter })
       const data = await apiFetch<{ withdrawals: AdminWithdrawal[]; total: number; page: number; totalPages: number; stats: WithdrawalStats }>(`/admin/withdrawals?${params}`, { timeoutMs: 30000 })
       setWithdrawals(data)
     } catch { /* ignore */ }
@@ -1892,8 +1897,9 @@ export function AdminPage() {
   }
 
   const loadFinancial = async () => {
+    if (!user?.id) return
     try {
-      const data = await apiFetch<FinancialData>(`/admin/financial?userId=${user?.id}`)
+      const data = await apiFetch<FinancialData>(`/admin/financial?userId=${user.id}`)
       setFinancialData(data)
     } catch { /* ignore */ }
   }
@@ -2048,8 +2054,9 @@ export function AdminPage() {
   }
 
   const loadTickets = async () => {
+    if (!user?.id) return
     try {
-      const params = new URLSearchParams({ userId: user?.id || '', status: ticketStatusFilter, priority: ticketPriorityFilter })
+      const params = new URLSearchParams({ userId: user.id, status: ticketStatusFilter, priority: ticketPriorityFilter })
       const data = await apiFetch<{ tickets: AdminTicket[] }>(`/admin/support/tickets?${params}`)
       setTickets(data.tickets || [])
     } catch { /* ignore */ }
@@ -2057,9 +2064,10 @@ export function AdminPage() {
 
   // ---------- Vouchers ----------
   const loadVouchers = async () => {
+    if (!user?.id) return
     setVoucherLoading(true)
     try {
-      const data = await adminApi.getVouchers(user?.id || '', voucherPage, 20)
+      const data = await adminApi.getVouchers(user.id, voucherPage, 20)
       setVoucherData(data)
     } catch { /* ignore */ } finally { setVoucherLoading(false) }
   }
@@ -2113,9 +2121,10 @@ export function AdminPage() {
 
   // ---------- Bets ----------
   const loadBets = async () => {
+    if (!user?.id) return
     setBetLoading(true)
     try {
-      const data = await adminApi.getBets(user?.id || '', betStatusFilter, betPage, 20)
+      const data = await adminApi.getBets(user.id, betStatusFilter, betPage, 20)
       setBetData(data)
     } catch { /* ignore */ } finally { setBetLoading(false) }
   }
@@ -2222,16 +2231,18 @@ export function AdminPage() {
 
   // ---------- Cashback / Points Config ----------
   const loadCashbackConfig = async () => {
+    if (!user?.id) return
     setCashbackConfigLoading(true)
     try {
-      const data = await adminApi.getCashbackConfig(user?.id || '')
+      const data = await adminApi.getCashbackConfig(user.id)
       setCashbackConfig(data)
     } catch { /* ignore */ } finally { setCashbackConfigLoading(false) }
   }
 
   const loadPointsConfig = async () => {
+    if (!user?.id) return
     try {
-      const data = await adminApi.getPointsConfig(user?.id || '')
+      const data = await adminApi.getPointsConfig(user.id)
       setPointsConfig(data)
     } catch { /* ignore */ }
   }
@@ -2392,9 +2403,10 @@ export function AdminPage() {
 
   // ---------- Game Config ----------
   const loadGameConfigs = async () => {
+    if (!user?.id) return
     setGameConfigLoading(true)
     try {
-      const data = await apiFetch<{ configs: GameConfigItem[] }>(`/admin/game-config?userId=${user?.id}`)
+      const data = await apiFetch<{ configs: GameConfigItem[] }>(`/admin/game-config?userId=${user.id}`)
       setGameConfigs(data.configs || [])
     } catch { /* ignore */ } finally { setGameConfigLoading(false) }
   }
@@ -2556,9 +2568,10 @@ export function AdminPage() {
 
   // ---------- Achievements ----------
   const loadAchievements = async () => {
+    if (!user?.id) return
     setAchievementLoading(true)
     try {
-      const data = await apiFetch<{ achievements: AchievementItem[] }>(`/admin/achievements?userId=${user?.id}`)
+      const data = await apiFetch<{ achievements: AchievementItem[] }>(`/admin/achievements?userId=${user.id}`)
       setAchievements(data.achievements || [])
     } catch { /* ignore */ } finally { setAchievementLoading(false) }
   }
@@ -2758,11 +2771,21 @@ export function AdminPage() {
   // corridas, bônus em centavos (só pago se bater a meta), e limite de
   // cancelamentos por mês (0 = tolerância zero para categoria idoso).
   const loadDriverCategories = async () => {
+    // Race condition fix: se user.id ainda não está disponível (store
+    // hidratando do localStorage), não dispara a chamada — evita URL
+    // `?userId=undefined` que retornaria 403 e deixaria a lista vazia.
+    if (!user?.id) {
+      setDriverCategoriesLoading(false)
+      return
+    }
     setDriverCategoriesLoading(true)
     try {
-      const data = await apiFetch<{ categories: AdminDriverCategory[] }>(`/admin/driver-categories?userId=${user?.id}`)
+      const data = await apiFetch<{ categories: AdminDriverCategory[] }>(`/admin/driver-categories?userId=${user.id}`, { timeoutMs: 30000 })
       setDriverCategories(data.categories || [])
-    } catch { /* ignore */ } finally { setDriverCategoriesLoading(false) }
+    } catch (err) {
+      // Log para debug de futuros erros de rede/timeout.
+      console.error('[loadDriverCategories] falha ao carregar:', err)
+    } finally { setDriverCategoriesLoading(false) }
   }
 
   const handleOpenCreateDriverCategory = () => {
@@ -2867,9 +2890,10 @@ export function AdminPage() {
 
   // ---------- Streak Rewards ----------
   const loadStreakRewards = async () => {
+    if (!user?.id) return
     setStreakRewardLoading(true)
     try {
-      const data = await apiFetch<{ rewards: StreakRewardItem[] }>(`/admin/streak-rewards?userId=${user?.id}`)
+      const data = await apiFetch<{ rewards: StreakRewardItem[] }>(`/admin/streak-rewards?userId=${user.id}`)
       setStreakRewards(data.rewards || [])
     } catch { /* ignore */ } finally { setStreakRewardLoading(false) }
   }
