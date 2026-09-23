@@ -11509,3 +11509,63 @@ Stage Summary:
   * Confirmação de exclusão usa window.confirm() nativo (simples e claro) — o projeto não usa AlertDialog para este caso. Explica que docs já enviados com aquele docType continuam existindo no banco mas não aparecerão na UI nem serão aceitos em novos uploads (comportamento esperado e seguro).
   * Limitação conhecida (não bloqueante para Task 8): admin-kyc-panel.tsx (painel de REVISÃO de KYC, Task 14-A) tem seu próprio DOC_LABELS map hardcodeado com os 5 primeiros tipos (sem selfie_document). Se um admin criar um tipo customizado e um usuário enviar doc desse tipo, o painel de revisão mostrará o code cru (ex: "passport") em vez do label amigável. Não foi corrigido porque: (1) está fora do escopo da Task 8 (admin adicionar/editar tipos), (2) o fallback `doc.docType` já mostra o code (não quebra), (3) ajustar isso exigiria tornar admin-kyc-panel.tsx async e buscar tipos do banco (refatoração maior). Sugerido como follow-up.
   * Não quebra imports: verificado via grep — somente admin-kyc-panel.tsx tem um COMENTÁRIO referenciando KYC_DOC_LABELS (não import). Nenhum arquivo importa KYC_DOC_TYPES/KYC_DOC_LABELS atualmente, mas mantê-los como fallback custa pouco e protege contra regressões.
+
+---
+Task ID: 9
+Agent: Z.ai Code (subagent)
+Task: Adicionar seção "Categorias de Motorista" no painel Admin Geral (/admingeral/inicio) que lista as DriverCategory criadas no painel NewMobility admin.
+
+Work Log:
+- Lido worklog.md (últimas 80 linhas) para entender contexto recente (Task 8 — KycDocType admin).
+- Lidos arquivos de referência:
+  * src/components/admingeral/types.ts — union Section.
+  * src/components/admingeral/sections/categorias.tsx — REFERÊNCIA visual (AppCategory).
+  * src/components/admingeral/sections/motoristas.tsx — REFERÊNCIA de fetch com apiFetch + useStore.
+  * src/app/api/admingeral/categories/route.ts — padrão de API admingeral (requireAppAdmin).
+  * src/app/api/admin/driver-categories/route.ts — API CRUD original (GET/POST) do painel NewMobility.
+  * src/components/newmobility/admin/admin-page.tsx (linhas 8684-8828) — aba "driver-categories" do painel NewMobility, para espelhar layout (caixa azul explicativa, grid 2x2 de métricas, border-top com cor, badge Ativo/Inativo, emoji como ícone).
+  * prisma/schema.prisma — model DriverCategory (code unique, name, description?, sortOrder, monthlyTripsTarget, bonusCents, maxCancellationPerMonth, color?, icon?, isActive, users[]).
+  * src/lib/admingeral-guard.ts — requireAppAdmin(userId).
+- Etapa 1 — Atualizado src/components/admingeral/types.ts:
+  * Adicionado 'driver-categories' ao union Section (após 'categorias').
+- Etapa 2 — Criado src/app/api/admingeral/driver-categories/route.ts:
+  * GET ?userId=<adminId> com requireAppAdmin (mesmo padrão das outras APIs admingeral).
+  * Lista todas as DriverCategory (ativas + inativas) ordenadas por [sortOrder asc, createdAt asc].
+  * Inclui _count.users (motoristas vinculados) como userCount.
+  * Retorna { categories: [{id, code, name, description, sortOrder, monthlyTripsTarget, bonusCents, maxCancellationPerMonth, color, icon, isActive, userCount, createdAt, updatedAt}] }.
+  * READ-ONLY — sem POST/PUT/DELETE. Edição fica no painel NewMobility (/api/admin/driver-categories).
+- Etapa 3 — Criado src/components/admingeral/sections/driver-categories.tsx:
+  * SÓ leitura. Mesma estrutura visual da aba "driver-categories" do painel NewMobility para consistência.
+  * Caixa explicativa azul (4 bullets): categoria de veículo NÃO é plano de carreira; bônus só é pago se bater meta; maxCancellationPerMonth=0 = tolerância zero (idoso); demais toleram até 2.
+  * Header com Badge (contagem total) + botão outline "Gerenciar no painel NewMobility" (window.location.href = '/').
+  * Grid de cards (1 col mobile, 2 desktop) com: emoji + nome + code mono + badge Ativo/Inativo; descrição; grid 2x2 de métricas (Meta mensal, Bônus via formatBRL, Cancelamento/mês com badge vermelho "Tolerância ZERO" se 0, Motoristas vinculados); border-top com cor da categoria (style inline).
+  * Empty state com ícone Car + mensagem explicando para criar no painel NewMobility.
+  * Loading state com Loader2.
+  * Reutiliza formatBRL já exportado de @/components/admingeral/types (R$ formatado).
+- Etapa 4 — Atualizado src/app/admingeral/inicio/page.tsx:
+  * Importado DriverCategoriesSection.
+  * Adicionado ao NAV_ITEMS após 'motoristas': { key: 'driver-categories', label: 'Categorias de Motorista', icon: Car }. (Ícone Car já estava importado.)
+  * Adicionado case 'driver-categories': return <DriverCategoriesSection /> no renderSection().
+- Etapa 5 — Verificado se outros switches precisavam do novo case:
+  * `rg "case 'motoristas'" src/` → apenas 1 ocorrência (page.tsx, já atualizada).
+  * `rg "driver-categories"` em src/ → API original + admin-page.tsx (NewMobility) + admin-permissions-panel.tsx + admin-layout.tsx (mapeamento de abas do NewMobility — não relacionado a admingeral). Nenhum outro lugar no admingeral precisava do novo case.
+- Lint: `bun run lint` → 13 erros, TODOS pré-existentes em arquivos .js auxiliares (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js — @typescript-eslint/no-require-imports). ZERO erros novos em src/.
+- Dev server: rodando OK ( porta 3000, sem erros no dev.log relacionados às mudanças).
+- Commit local: a04a487 — 'feat(admingeral): seção Categorias de Motorista (read-only) - Task ID 9'. 4 arquivos alterados, +268. Sem push.
+
+Stage Summary:
+- Arquivos criados (2):
+  * `src/app/api/admingeral/driver-categories/route.ts` — GET com requireAppAdmin, lista todas DriverCategory (ativas+inativas) com userCount, ordenadas por sortOrder+createdAt. READ-ONLY.
+  * `src/components/admingeral/sections/driver-categories.tsx` — seção read-only espelhando layout da aba "driver-categories" do painel NewMobility (caixa azul explicativa, grid 2x2 de métricas, border-top com cor, badge Ativo/Inativo, emojis como ícones, botão "Gerenciar no painel NewMobility").
+- Arquivos modificados (2):
+  * `src/components/admingeral/types.ts` — adicionado 'driver-categories' ao union Section (logo após 'categorias').
+  * `src/app/admingeral/inicio/page.tsx` — adicionado NAV_ITEM 'driver-categories' (label 'Categorias de Motorista', icon Car) logo após 'motoristas' + case 'driver-categories' no renderSection() importando DriverCategoriesSection.
+- `bun run lint`: 13 erros, TODOS pré-existentes em arquivos .js auxiliares (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js). ZERO erros novos em src/. Comportamento idêntico ao da Task 8 (mesmos 13 erros pré-existentes).
+- Decisões de design:
+  * READ-ONLY por design: o usuário pediu "deve voltar as categorias que foram criadas no outro admin". A edição (criar/editar/excluir/ativar) continua centralizada no painel NewMobility admin (/api/admin/driver-categories com POST/PUT/DELETE). O painel Admin Geral é o painel de "gestão de apps" do ecossistema — vê, mas não edita, as categorias de motorista. Isso evita duplicidade de lógica e mantém uma única fonte de verdade.
+  * Botão "Gerenciar no painel NewMobility" no header (variant outline, ícone ExternalLink): leva o admin para `/` onde está o painel NewMobility admin (com a aba "Categorias de Motorista"). Implementado via window.location.href (não router.push) porque o painel NewMobility é uma SPA separada e o admin pode voltar pelo navegador.
+  * Espelhamento visual intencional com o painel NewMobility (admin-page.tsx linha 8685+): mesma caixa azul explicativa, mesmo grid 2x2 de métricas, mesmo uso de border-top colorido, mesmo badge Ativo/Inativo, mesmo uso de emojis como ícones (já são emojis no banco — Safira=🔷 etc). Mantém familiaridade para o admin que usa ambos os painéis.
+  * Uso de formatBRL de @/components/admingeral/types (já exportado) para formatar bonusCents em R$ — consistente com o resto do painel admingeral (motoristas.tsx, categorias.tsx usam os helpers de types.ts).
+  * Card inativo fica com opacity-60 (mesma regra do painel NewMobility) — visualmente descreve que está inativo mas ainda aparece na lista.
+  * Posição no NAV_ITEMS: logo após 'motoristas' (não após 'categorias') — agrupa visualmente os itens de motorista (cadastro + categorias de veículo) e separa das 'categorias' de app (AppCategory).
+  * Ícone Car reutilizado (já importado no page.tsx) para 'driver-categories' — visualmente consistente com 'motoristas' (também usa Car), já que ambos são conceitos relacionados a motorista.
