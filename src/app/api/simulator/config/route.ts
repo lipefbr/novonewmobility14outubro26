@@ -82,7 +82,11 @@ export async function GET() {
     let dbPlans: Array<{ code: string; name: string; priceCents: number }> = []
     try {
       const rows = await prisma.plan.findMany({
-        where: { isActive: true },
+        // isDefault: true → apenas os tiers canônicos de upgrade (free/blue3/
+        // blue5). Planos mensais add-on (matriz_residual, cash_back_de_vendas)
+        // são isDefault:false e NÃO são opções de plano no simulador — mesmo
+        // filtro do GET público /api/plans.
+        where: { isActive: true, isDefault: true },
         orderBy: { sortOrder: 'asc' },
         select: { code: true, name: true, priceCents: true },
       })

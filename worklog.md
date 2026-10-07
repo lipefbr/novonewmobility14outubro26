@@ -11640,3 +11640,63 @@ Stage Summary:
   * Visual da Task 9 preservado: caixa azul explicativa (4 bullets), grid 2x2 de métricas (Meta mensal / Bônus / Cancelamento / Motoristas), border-top colorido, emojis como ícones, badge Ativo/Inativo (emerald quando ativo, gray quando inativo), opacity-60 em cards inativos. Mantém consistência entre painel admingeral e painel NewMobility admin.
   * Empty state agora tem CTA "Criar primeira categoria" (em vez de instruir ir ao painel NewMobility) — reflete que o CRUD agora é direto aqui.
   * Limitação conhecida (não bloqueante): a API /api/admin/driver-categories (painel NewMobility) e a /api/admingeral/driver-categories (painel admingeral) são DUAS rotas separadas que operam sobre a MESMA tabela DriverCategory. Ambas usam guards diferentes (requireAdmin vs requireAppAdmin) mas qualquer uma pode criar/editar/excluir. Isso é intencional — o admin pode usar qualquer um dos dois painéis. Se uma categoria for criada em um painel, aparecerá no outro após reload (ambas fazem GET na mesma tabela).
+
+---
+Task ID: 11
+Agent: Z.ai Code (subagent)
+Task: Remover valores hardcoded da área do membro (backoffice do usuário) para que as edições do admin (planos, percentuais de matriz, bases de cashback) se reflitam imediatamente. Problema relatado: "planos no painel edito mas no backoffice nao muda". PROIBIDO tocar no painel admin (admin-page.tsx) nem no admingeral.
+
+Work Log:
+- Lido worklog.md (últimas 80 linhas) — contexto das Tasks 8/9/10 (padrões de lint, dev server instável por OOM).
+- Auditados os 3 arquivos-alvo:
+  * src/app/api/plans/calculate-upgrade/route.ts — PLAN_PRICES hardcoded DIVERGENTE do banco (blue3: 15000, blue5: 85000 vs DB 99990/99990).
+  * src/components/newmobility/myplan/myplan-page.tsx — nextBillingDate='05/02/2025' fixo (3 usos: card Plano Atual, card Mensalidade, Histórico de Faturas); card "Estimativa de Upgrade" com R$450/R$150 e 45%/75% fixos; fallback do handleCalculateUpgrade com roi fixo 45000.
+  * src/components/newmobility/simulator/earnings-simulator.tsx — 100% local: PLAN_OPTIONS/ENTRADA_LEVELS/RESIDUAL_LEVELS/VENDAS_LEVELS/DEFAULT_CB_*/DEFAULT_DIRECT_REFERRAL_CASHBACK_PCT constantes, zero fetch.
+- Lidas referências para consistência: src/app/api/simulator/calculate/route.ts (keys de config), src/lib/api-utils.ts (getEntradaLevels/getResidualLevels/getVendasLevels + DEFAULT_*_LEVELS), admin-page.tsx (linhas 3656-3763: como o admin salva unlocks — keys `plan.{code}.cashback_levels_{entrada|residual|vendas}` via /admin/system-settings; preços via PUT /admin/plans na tabela Plan), prisma/schema.prisma (model Plan: code unique, name, priceCents, isActive, isDefault, sortOrder), src/lib/db.ts (exporta db e prisma), src/lib/api.ts (apiFetch), src/lib/utils.ts (formatDate).
+- Etapa 1 — REESCRITO src/app/api/plans/calculate-upgrade/route.ts:
+  * Removidos PLAN_PRICES/PLAN_NAMES hardcoded. Nova função loadPlanCatalog(): `prisma.plan.findMany({ where: { isActive: true }, orderBy: { sortOrder: 'asc' } })` monta os maps a partir de `priceCents`/`name` do banco a cada request.
+  * Aliases preservados: premium5 espelha blue5 (preço e nome) após o load; PLAN_ORDER inalterado; normalizePlan(premium5→blue5) inalterado.
+  * Fallbacks (banco vazio/erro): free 0, blue3 99990, blue5 99990 (nomes Gratuito/Blue 3/Blue 5 Premium) — agora alinhados ao DB e ao POST /api/simulator/calculate (antes: 15000/85000 divergentes).
+  * estimatedIncrease mantido como está (é estimativa de potencial da matriz, ok) — ROI continua calculado contra o preço REAL do banco.
+- Etapa 2 — CORRIGIDO src/components/newmobility/myplan/myplan-page.tsx:
+  * Helpers extraídos para module-level (reuso sem drift): isPlanBucketInvoice() (mesma regra de bucket que estava inline no useEffect), isInvoicePaid() (status 'paid' OU paidAt preenchido) e formatDueDate() (dd/MM/yyyy pt-BR SEM drift de timezone: slice(0,10) + 'T00:00:00' parseado como hora local — 'YYYY-MM-DD' puro seria UTC midnight e viraria dia anterior em offsets negativos).
+  * useEffect das invoices agora usa os helpers module-level (o isPlanBucket local foi removido).
+  * nextBillingDate: derivado de userInvoices (estado que a página JÁ carrega de /api/invoices — zero round-trip extra): menor dueDate entre faturas do bucket plano não pagas (sort crescente por dueDate, null vira Infinity). Sem pendência → '—'. Os 3 usos (linha ~896 card Plano Atual, ~1140 card Mensalidade, ~1512 Histórico) renderizam o valor dinâmico.
+  * Card "Estimativa de Upgrade": "CB Estimado+/mês" = `+{formatCurrency(upgradeCalc.estimatedMonthlyCashbackIncrease)}` e "ROI Estimado" = `{upgradeCalc.roi}%` — ambos '—' enquanto upgradeCalc for null. Removedos R$450/R$150 e 45%/75% fixos.
+  * Fallback do handleCalculateUpgrade (catch): `estimatedIncrease = planId === 'blue5' ? 960000 : 15000` (espelha a API) e `roi = targetPrice > 0 ? Math.round((estimatedIncrease / targetPrice) * 100) : 0` — targetPrice vem do plans state (DB-sourced). Antes: dividia 45000 fixo.
+- Etapa 3 — CRIADO src/app/api/simulator/config/route.ts (GET público, sem auth — só dados de marketing, sem PII):
+  * plans: tabela Plan (isActive, orderBy sortOrder asc) → { code, label (name), priceCents }; se banco vazio/erro → FALLBACK_PLANS (free 0, blue3 99990, blue5 99990).
+  * unlocks: batch read de `plan.{code}.cashback_levels_entrada|residual|vendas` (EXATAMENTE as keys que o admin-page.tsx handleSavePlan grava) com fallback por código (free 0/0/0, blue3 3/0/0, blue5 5/7/9; códigos desconhecidos 0/0/0). Parser estrito parseLevel(): um "0" configurado pelo admin é respeitado (parseInt||default do POST ignoraria 0 — melhoria intencional no GET).
+  * Percentuais: getEntradaLevels()/getResidualLevels()/getVendasLevels() de @/lib/api-utils (mesmos helpers do POST /api/simulator/calculate → SystemConfig cashback_{type}_level_{n}).
+  * Bases + referral: MESMAS keys e defaults do POST — matrix.entrada/residual/vendas.base_cents (99900/139900/19990) e cashback.direct_referral_pct (10) → GET e POST ficam consistentes por construção.
+  * Response: { plans, entradaLevels, residualLevels, vendasLevels, cbEntradaBaseCents, cbResidualBaseCents, cbVendasBaseCents, directReferralPct }.
+- Etapa 4 — ATUALIZADO src/components/newmobility/simulator/earnings-simulator.tsx:
+  * PlanCode padronizado 'gratuito' → 'free' (código do banco; label do picker continua "Gratuito"). Varredura confirmou que 'gratuito' só era usado como código/type — os demais usos eram texto de UI.
+  * Novos tipos SimulatorConfigResponse (shape da API) e SimulatorConfigValues (valores runtime), DEFAULT_SIM_CONFIG semeado com as constantes locais (que agora são fallbacks oficiais).
+  * useEffect no mount: apiFetch('/simulator/config') (padrão async IIFE + cancelled flag, mesmo padrão anti-lint react-hooks/set-state-in-effect do projeto). Merge dos plans do banco sobre os templates PLAN_OPTIONS (preserva selectedClass/accent por código) + tagline reconstruída via buildTagline(): "R$ X/mês · N níveis Entrada" ou "R$ X/mês · E + R + V níveis" (blue5) ou "R$ 0/mês · Sem cashback" (free). Cada campo numérico aceito só se válido (>= 0), senão mantém o default.
+  * simulate() agora recebe `config: SimulatorConfigValues` (planOptions, levels, bases, directReferralPct) — zero constantes globais dentro; useMemo deps inclui simConfig (recalcula quando a config chega).
+  * Renders migrados: plan picker usa simConfig.planOptions; badge/unlocks/labels das 3 matrizes usam simConfig.cb*BasesCents; cashback por indicação e textos ("Cada indicação rende X% do valor do plano", "(X% da mensalidade)") usam simConfig.directReferralPct. Textos "CashBack ... fixo" → "CashBack ... (R$ X) × %" (não é mais "fixo").
+- Varredura final: `rg -n "05/02/2025|R\\$ 450|'45%'|'75%'" src/components/newmobility/` → apenas comentários explicativos da Task 11 em myplan-page.tsx e uma animação `width: '75%'` de barra de progresso em profile-page.tsx (não relacionada). Os 99990/15000 remanescentes são FALLBACKS oficiais (permitidos). dashboard-page.tsx e cashback-page.tsx verificados visualmente: usam /api/dashboard e /api/cashback/* — já dinâmicos, intocados.
+- Validação:
+  * `bun run lint`: 13 erros, TODOS pré-existentes nos .js auxiliares da raiz (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js). ZERO erros novos em src/.
+  * `bunx tsc --noEmit`: 0 erros nos 4 arquivos tocados (1 erro TS2769 encontrado e corrigido durante o desenvolvimento: Map com array literal any[] → explicit Map<string,string> + loop set). Os 143 erros TS restantes do projeto são pré-existentes em outros locais (examples/, skills/, rotas antigas).
+  * Teste funcional do GET /api/simulator/config: NÃO foi possível — o dev server (next-server v16.1.3) estava morto/travado por OOM durante toda a sessão (HTTP 000, conexão recusada; memória do box esgotada pelo processo anterior com 2.6GB). Tentei reviver via auto-restart.sh (setsid) mas o processo morria logo após "Ready". Aceito como "tudo bem" pela task — validação ficou por lint + tsc + análise estática.
+- Commit local: 66adb09 — 'fix(member-area): remover valores hardcoded do backoffice do membro - Task ID 11'. 4 arquivos, +550 -98. Sem push.
+
+Stage Summary:
+- Arquivos criados (1):
+  * `src/app/api/simulator/config/route.ts` — GET público: plans+preços da tabela Plan, unlocks via SystemConfig (keys do painel admin), percentuais via get*Levels(), bases e directReferralPct com as MESMAS keys/defaults do POST /api/simulator/calculate. Parser estrito respeita "0" configurado.
+- Arquivos modificados (3):
+  * `src/app/api/plans/calculate-upgrade/route.ts` — preços/nomes lidos da tabela Plan a cada request (prisma.plan.findMany isActive/sortOrder); alias premium5=blue5; fallback 0/99990/99990 substituindo os divergentes 0/15000/85000.
+  * `src/components/newmobility/myplan/myplan-page.tsx` — nextBillingDate dinâmico das invoices reais (formatDueDate timezone-safe, '—' sem pendência); card Estimativa de Upgrade 100% upgradeCalc; helpers isPlanBucketInvoice/isInvoicePaid/formatDueDate em module-level; fallback ROI com preço real.
+  * `src/components/newmobility/simulator/earnings-simulator.tsx` — fetch de config no mount com fallback completo; simulate() parametrizado; useMemo inclui config; taglines dinâmicas; PlanCode 'free'; textos de UI dinâmicos.
+- `bun run lint`: 13 erros, TODOS pré-existentes (.js auxiliares da raiz). ZERO novos em src/.
+- Decisões importantes:
+  * Unlocks dos planos no GET config: verifiquei como o admin edita — handleSavePlan (admin-page.tsx ~3725) grava keys `plan.{code}.cashback_levels_entrada|residual|vendas` no SystemConfig. O GET usa EXATAMENTE essas keys (batch read) com fallback por código (free 0/0/0 · blue3 3/0/0 · blue5 5/7/9). Os campos matrixEntradaId/matrixResidualId/matrixVendasId da tabela Plan NÃO foram usados para derivar unlocks (a task sugere "mais simples: ler as configs" — segui o caminho simples, alinhado ao POST /api/simulator/calculate que já usa as mesmas keys).
+  * Parser estrito no GET (parseLevel): intencionalmente mais correto que o padrão `parseInt(cfg) || fallback` do POST — um unlock "0" configurado pelo admin é respeitado no GET (o POST teria o bug de ignorar 0; NÃO toquei no POST porque mexer nele não foi pedido e o comportamento atual dele só difere quando admin configura 0).
+  * Preços: a task pede tabela Plan como fonte do GET config — mas o POST /api/simulator/calculate lê `plan.{code}.price_cents` do SystemConfig com fallback 99990. Mantive o GET na tabela Plan (fonte que o painel admin realmente edita via PUT /admin/plans) e NÃO alterei o POST. Se algum dia esses dois forem divergentes, a divergência já existia antes da Task 11 (POST vs tabela Plan) — ficou registrado como limitação conhecida.
+  * Fallback de preços do calculate-upgrade agora é 99990 (não 15000/85000): alinhado ao seed do banco e ao restante das APIs — se o banco falhar, o usuário vê o preço correto em vez do antigo errado.
+  * estimatedIncrease mantido: é potencial teórico da matriz (L4+L5), não valor editável pelo admin — ok por design.
+  * nextBillingDate sem pendência mostra '—' (não inventa data); o card Mensalidade continua com badge "Pendente" estática (comportamento pré-existente, fora do escopo).
+  * 'gratuito' → 'free' no simulador foi seguro: único código de plano com nome divergente do banco; grep confirmou que nenhum acesso interno dependia da string 'gratuito' (só labels de UI, que continuam "Gratuito").
+  * Nenhum arquivo do painel admin (admin-page.tsx) ou admingeral foi tocado — o GET config só LÊ as mesmas fontes que o admin escreve.
