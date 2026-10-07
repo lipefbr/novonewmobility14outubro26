@@ -39,6 +39,54 @@ const invoiceTypeLabels: Record<string, string> = {
   residual_entry: 'Entrada Residual',
 }
 
+// ─── Invoice helpers (Task 11) ───────────────────────────────────────
+// Module-level so the cashback-vendas block check (useEffect below),
+// the next-billing-date derivation and the invoice history all use the
+// EXACT same bucket/paid rules — no drift between call sites.
+//
+// Plan-bucket invoice types per src/lib/billing.ts bucketInvoiceType:
+//   'plan' | 'monthly_fee' | 'plan_*' | 'subscription' | '*upgrade*'
+function isPlanBucketInvoice(rawType: string | null | undefined): boolean {
+  if (!rawType) return false
+  const t = String(rawType).toLowerCase()
+  if (t.includes('telemed')) return false
+  if (t.includes('telemoby') || t.includes('talkmobi')) return false
+  if (t.includes('cashback')) return false
+  if (t.includes('entrada') || t.includes('residual_entry')) return false
+  if (
+    t === 'plan' ||
+    t.startsWith('plan_') ||
+    t === 'monthly_fee' ||
+    t === 'subscription' ||
+    t.includes('upgrade')
+  ) {
+    return true
+  }
+  return false
+}
+
+// An invoice counts as "paid" if its status is 'paid' OR it has a
+// non-empty paidAt timestamp.
+function isInvoicePaid(inv: { status: string | null; paidAt: string | null }): boolean {
+  return (
+    inv.status === 'paid' ||
+    (inv.paidAt !== null && inv.paidAt !== undefined && inv.paidAt !== '')
+  )
+}
+
+// Format an invoice dueDate (ISO string or YYYY-MM-DD) as dd/MM/yyyy
+// (pt-BR) WITHOUT timezone drift: slicing the calendar date part and
+// parsing it as LOCAL midnight guarantees the same day is rendered in
+// any timezone (a bare 'YYYY-MM-DD' would be parsed as UTC midnight and
+// could render as the previous day in negative offsets like America/
+// Sao_Paulo). Returns '—' for null/invalid input.
+function formatDueDate(dueDate: string | null | undefined): string {
+  if (!dueDate) return '—'
+  const datePart = String(dueDate).slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return '—'
+  return formatDate(`${datePart}T00:00:00`)
+}
+
 // Initial loading-state fallback. These values are ONLY used until the
 // `/api/plans` fetch resolves (and as a graceful fallback if the API
 // is unreachable). Once the API responds, the `plans` state is rebuilt
@@ -390,38 +438,15 @@ export function MyPlanPage() {
         // "Pagar Faturas").
         setUserInvoices(invoices)
 
-        // Plan-bucket invoice types per src/lib/billing.ts bucketInvoiceType:
-        //   'plan' | 'monthly_fee' | 'plan_*' | 'subscription' | '*upgrade*'
+        // Task 11: the plan-bucket/paid rules now live in the module-level
+        // helpers (isPlanBucketInvoice / isInvoicePaid) so the next-billing-
+        // date derivation uses the EXACT same rules as this block check.
         // We treat an invoice as "unpaid plan invoice" when:
         //   - its bucket resolves to 'plan', AND
         //   - its status is not 'paid' AND paidAt is null.
-        const isPlanBucket = (rawType: string | null | undefined): boolean => {
-          if (!rawType) return false
-          const t = String(rawType).toLowerCase()
-          if (t.includes('telemed')) return false
-          if (t.includes('telemoby') || t.includes('talkmobi')) return false
-          if (t.includes('cashback')) return false
-          if (t.includes('entrada') || t.includes('residual_entry')) return false
-          if (
-            t === 'plan' ||
-            t.startsWith('plan_') ||
-            t === 'monthly_fee' ||
-            t === 'subscription' ||
-            t.includes('upgrade')
-          ) {
-            return true
-          }
-          return false
-        }
-
-        const unpaidPlanInvoices = invoices.filter((inv) => {
-          // An invoice counts as "paid" if its status is 'paid' OR it has
-          // a non-empty paidAt timestamp.
-          const paidFlag =
-            inv.status === 'paid' ||
-            (inv.paidAt !== null && inv.paidAt !== undefined && inv.paidAt !== '')
-          return isPlanBucket(inv.type) && !paidFlag
-        })
+        const unpaidPlanInvoices = invoices.filter(
+          (inv) => isPlanBucketInvoice(inv.type) && !isInvoicePaid(inv)
+        )
 
         if (unpaidPlanInvoices.length > 0) {
           // Pick the most overdue / oldest pending plan invoice to surface
@@ -472,7 +497,24 @@ export function MyPlanPage() {
     : plans
 
   const currentPlanData = plans.find((p) => p.id === currentPlan) || plans[2]
-  const nextBillingDate = '05/02/2025'
+
+  // ─── Next billing date (Task 11 — no more hardcoded '05/02/2025') ──
+  // Derived from the user's REAL invoices (`userInvoices`, fetched above
+  // from /api/invoices): it is the EARLIEST dueDate among the user's
+  // UNPAID plan-bucket invoices (plan / plan_* / monthly_fee /
+  // subscription / *upgrade*). When nothing is pending we render '—'
+  // instead of a fake fixed date. The unpaid-plan-invoice fetch already
+  // drives the cashback-vendas block check, so this costs no extra
+  // network round-trip. Rendering uses formatDueDate (dd/MM/yyyy pt-BR,
+  // timezone-safe).
+  const nextUnpaidPlanInvoice = [...userInvoices]
+    .filter((inv) => isPlanBucketInvoice(inv.type) && !isInvoicePaid(inv))
+    .sort((a, b) => {
+      const da = a.dueDate ? new Date(String(a.dueDate).slice(0, 10) + 'T00:00:00').getTime() : Infinity
+      const db = b.dueDate ? new Date(String(b.dueDate).slice(0, 10) + 'T00:00:00').getTime() : Infinity
+      return da - db
+    })[0]
+  const nextBillingDate = formatDueDate(nextUnpaidPlanInvoice?.dueDate)
   const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<string>('blue5')
   const [upgradeCalc, setUpgradeCalc] = useState<any>(null)
@@ -513,14 +555,21 @@ export function MyPlanPage() {
       )
       const currentPrice = planPrices[currentPlan] || 0
       const targetPrice = planPrices[planId] || 0
+      // Task 11: the ROI fallback now derives from the REAL DB-sourced
+      // plan price (plans state) instead of a hardcoded 45000/R$ 850
+      // divisor. The increase estimates mirror /api/plans/calculate-
+      // upgrade (blue5 unlock = entrada L4+L5 potential ≈ R$ 9.600/mês;
+      // blue3 ≈ R$ 150/mês) so the fallback stays consistent with the
+      // API response shape.
+      const estimatedIncrease = planId === 'blue5' ? 960000 : 15000
       setUpgradeCalc({
         currentPlan: { id: currentPlan, name: planNames[currentPlan], price: currentPrice },
         targetPlan: { id: planId, name: planNames[planId], price: targetPrice },
         upgradeCost: targetPrice - currentPrice,
         monthlyDifference: targetPrice - currentPrice,
         newFeatures: planId === 'blue5' ? ['CashBack Shopping', 'Portal Gamer', 'Portal Sport Bet', 'Seguro Auto', 'Seguro de Vida', 'Telemedicina'] : ['CashBack Mobilidade', 'CashBack Farmácia'],
-        estimatedMonthlyCashbackIncrease: planId === 'blue5' ? 45000 : 15000,
-        roi: targetPrice > 0 ? Math.round((45000 / targetPrice) * 100) : 0,
+        estimatedMonthlyCashbackIncrease: estimatedIncrease,
+        roi: targetPrice > 0 ? Math.round((estimatedIncrease / targetPrice) * 100) : 0,
       })
     } finally {
       setCalcLoading(false)
@@ -1228,13 +1277,17 @@ export function MyPlanPage() {
                   <div>
                     <p className="text-xs text-muted-foreground">CB Estimado+/mês</p>
                     <p className="text-lg font-bold text-emerald-600">
-                      +{selectedPlan === 'blue5' ? 'R$ 450,00' : 'R$ 150,00'}
+                      {/* Task 11: dynamic from /api/plans/calculate-upgrade
+                          (upgradeCalc) instead of hardcoded R$ 450/R$ 150. */}
+                      {upgradeCalc ? `+${formatCurrency(upgradeCalc.estimatedMonthlyCashbackIncrease)}` : '—'}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">ROI Estimado</p>
                     <p className="text-lg font-bold text-emerald-600">
-                      {selectedPlan === 'blue5' ? '45%' : '75%'}
+                      {/* Task 11: dynamic ROI from upgradeCalc (computed
+                          server-side against the real DB plan price). */}
+                      {upgradeCalc && typeof upgradeCalc.roi === 'number' ? `${upgradeCalc.roi}%` : '—'}
                     </p>
                   </div>
                 </div>

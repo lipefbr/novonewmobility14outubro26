@@ -17,9 +17,15 @@
 //     now been corrected.
 //
 // What this rewrite does (Task 2-b, Item 13):
-//   • Pure client-side computation via `useMemo` — no API call, no network
-//     latency, no silent error swallowing. Every slider movement recomputes
-//     the projection instantly.
+//   • Pure client-side computation via `useMemo` — every slider movement
+//     recomputes the projection instantly, no per-keystroke API round-
+//     trips. (Task 11: the CONFIG — plan prices, unlocks, matrix level
+//     percentages, cashback bases and the direct-referral % — is fetched
+//     ONCE on mount from GET /api/simulator/config, which reads the
+//     admin-editable `Plan` table + SystemConfig, so admin edits in the
+//     admin panel propagate to the simulator. If that fetch fails, the
+//     hardcoded defaults below are used as a fallback so the simulator
+//     always works.)
 //   • Three ACTUAL NewMobility plan tiers:
 //       - Gratuito (R$ 0/mês)      — no cashback matrices unlocked.
 //       - Blue 3  (R$ 999,90/mês)  — unlocks 3 níveis of Cashback Entrada
@@ -57,7 +63,7 @@
 //     shadow-sm. NO slate colors.
 // ============================================================================
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -66,6 +72,7 @@ import { Badge } from '@/components/ui/badge'
 import { Slider } from '@/components/ui/slider'
 import { Separator } from '@/components/ui/separator'
 import { formatBRL } from '@/lib/format'
+import { apiFetch } from '@/lib/api'
 import {
   Calculator,
   TrendingUp,
@@ -100,7 +107,10 @@ import { motion, AnimatePresence } from 'framer-motion'
 // ROI = (totalMonthlyEarnings / mensalidade) × 100.
 // ---------------------------------------------------------------------------
 
-type PlanCode = 'gratuito' | 'blue3' | 'blue5'
+// Task 11: the free tier is now coded `free` (matches the DB `Plan.code`)
+// instead of the display-only `gratuito`. The picker label still reads
+// "Gratuito".
+type PlanCode = 'free' | 'blue3' | 'blue5'
 
 interface PlanOption {
   code: PlanCode
@@ -127,9 +137,13 @@ interface PlanOption {
   }
 }
 
+// Task 11: this is now the FALLBACK plan catalog (used until the config
+// fetch resolves and when GET /api/simulator/config fails). The runtime
+// catalog (`simConfig.planOptions`) is merged from the DB-sourced
+// `Plan` rows + SystemConfig unlocks served by /api/simulator/config.
 const PLAN_OPTIONS: PlanOption[] = [
   {
-    code: 'gratuito',
+    code: 'free',
     label: 'Gratuito',
     priceCents: 0,
     tagline: 'R$ 0/mês · Sem cashback',
@@ -226,6 +240,84 @@ const MATRIX_WIDTH = 4
 const DEFAULT_DIRECT_REFERRAL_CASHBACK_PCT = 10
 
 // ---------------------------------------------------------------------------
+// Task 11 — Live config from GET /api/simulator/config
+// ---------------------------------------------------------------------------
+// The endpoint reads the admin-editable sources:
+//   • Plan table (prices/labels) + SystemConfig unlocks per plan code
+//   • SystemConfig matrix level percentages (cashback_{type}_level_{n})
+//   • SystemConfig cashback bases (matrix.{entrada|residual|vendas}.base_cents)
+//   • SystemConfig direct-referral % (cashback.direct_referral_pct)
+interface SimulatorConfigResponse {
+  plans?: Array<{
+    code: string
+    label: string
+    priceCents: number
+    unlocks: { entrada: number; residual: number; vendas: number }
+  }>
+  entradaLevels?: number[]
+  residualLevels?: number[]
+  vendasLevels?: number[]
+  cbEntradaBaseCents?: number
+  cbResidualBaseCents?: number
+  cbVendasBaseCents?: number
+  directReferralPct?: number
+}
+
+// The runtime config values the simulator computes with. Initialised with
+// the hardcoded defaults above and replaced field-by-field once the
+// config fetch resolves (each field keeps its default when the API omits
+// it or the request fails).
+interface SimulatorConfigValues {
+  planOptions: PlanOption[]
+  entradaLevels: MatrixLevel[]
+  residualLevels: MatrixLevel[]
+  vendasLevels: MatrixLevel[]
+  cbEntradaBaseCents: number
+  cbResidualBaseCents: number
+  cbVendasBaseCents: number
+  directReferralPct: number
+}
+
+const DEFAULT_SIM_CONFIG: SimulatorConfigValues = {
+  planOptions: PLAN_OPTIONS,
+  entradaLevels: ENTRADA_LEVELS,
+  residualLevels: RESIDUAL_LEVELS,
+  vendasLevels: VENDAS_LEVELS,
+  cbEntradaBaseCents: DEFAULT_CB_ENTRADA_BASE_CENTS,
+  cbResidualBaseCents: DEFAULT_CB_RESIDUAL_BASE_CENTS,
+  cbVendasBaseCents: DEFAULT_CB_VENDAS_BASE_CENTS,
+  directReferralPct: DEFAULT_DIRECT_REFERRAL_CASHBACK_PCT,
+}
+
+/**
+ * Convert a percentage array from the API ([5, 10, 10, 5, 5]) into the
+ * MatrixLevel[] shape the projection uses (level is 1-indexed).
+ */
+function toMatrixLevels(pcts: number[]): MatrixLevel[] {
+  return pcts.map((pct, i) => ({ level: i + 1, pct }))
+}
+
+/**
+ * Build a plan tagline from LIVE config values, e.g.
+ * "R$ 999,90/mês · 5 + 7 + 9 níveis". Replaces the old hardcoded taglines
+ * once the DB-sourced config arrives (Task 11).
+ */
+function buildTagline(
+  priceCents: number,
+  unlocks: { entrada: number; residual: number; vendas: number }
+): string {
+  const price =
+    priceCents > 0
+      ? `R$ ${(priceCents / 100).toFixed(2).replace('.', ',')}/mês`
+      : 'R$ 0/mês'
+  if (unlocks.entrada === 0) return `${price} · Sem cashback`
+  if (unlocks.vendas > 0) {
+    return `${price} · ${unlocks.entrada} + ${unlocks.residual} + ${unlocks.vendas} níveis`
+  }
+  return `${price} · ${unlocks.entrada} níveis Entrada`
+}
+
+// ---------------------------------------------------------------------------
 // Computation helpers
 // ---------------------------------------------------------------------------
 
@@ -312,51 +404,55 @@ function projectMatrix(
  * Pure function — no side effects, no async. Wrapped in `useMemo` so
  * the result recomputes instantly whenever an input changes.
  *
- * Task 2-b (Item 13) rules:
- *   - Gratuito: no cashback at all (direct referrals, entrada, residual,
- *     vendas all return 0). ROI = null.
- *   - Blue 3:   direct-referral cashback = 10% of R$ 999,90 (R$ 99,99)
- *               per referral. Entrada = 3 levels only. Residual = 0.
- *               Vendas = 0. ROI = totalMonthly / 99990 × 100.
- *   - Blue 5:   direct-referral cashback = 10% of R$ 999,90 (R$ 99,99)
- *               per referral. Entrada = 5 levels, Residual = 7 levels,
- *               Vendas = 9 levels. ROI = totalMonthly / 99990 × 100.
+ * Task 11: ALL tunable values (plan catalog, level percentages, cashback
+ * bases, direct-referral %) now come from `params.config` — which is
+ * seeded with the defaults below and replaced by the live values served
+ * by GET /api/simulator/config (admin-editable). Rules:
+ *   - free:   no cashback at all (direct referrals, entrada, residual,
+ *             vendas all return 0). ROI = null.
+ *   - blue3:  direct-referral cashback = directReferralPct% of the plan
+ *             price per referral. Entrada = unlocked entrada levels only.
+ *             Residual/Vendas = whatever the plan unlocks (default 0).
+ *   - blue5:  Entrada 5 + Residual 7 + Vendas 9 by default (configurable).
+ *             ROI = totalMonthly / planPrice × 100.
  *
- * Each matrix uses a FIXED CashBack base value (BACK-13):
- *   - Entrada  base = R$ 999,00  (99900 cents)
- *   - Residual base = R$ 1.399,00 (139900 cents)
- *   - Vendas   base = R$ 199,90 (19990 cents)
+ * Each matrix uses the LIVE CashBack base value (admin-editable):
+ *   - Entrada  base = default R$ 999,00  (99900 cents)
+ *   - Residual base = default R$ 1.399,00 (139900 cents)
+ *   - Vendas   base = default R$ 199,90 (19990 cents)
  */
 function simulate(params: {
   plan: PlanCode
   directReferrals: number
   avgMonthlySpendCents: number
   matrixFillPercent: number
+  config: SimulatorConfigValues
 }): SimulationResult {
-  const planOption = PLAN_OPTIONS.find((p) => p.code === params.plan) ?? PLAN_OPTIONS[0]
-  const planPriceCents = planOption.priceCents
-  const unlocks = planOption.unlocks
+  const { config } = params
+  const planOption = config.planOptions.find((p) => p.code === params.plan) ?? config.planOptions[0]
+  const planPriceCents = planOption?.priceCents ?? 0
+  const unlocks = planOption?.unlocks ?? { entrada: 0, residual: 0, vendas: 0 }
 
   const safeDirectReferrals = Math.max(0, Math.floor(params.directReferrals))
   const safeAvgSpend = Math.max(0, Math.floor(params.avgMonthlySpendCents))
   const safeFill = Math.max(0, Math.min(100, params.matrixFillPercent))
 
-  // Direct-referral cashback: 10% of the plan mensalidade per referral
-  // (one-time). For Gratuito (priceCents = 0) this is 0.
+  // Direct-referral cashback: % of the plan mensalidade per referral
+  // (one-time). For free (priceCents = 0) this is 0.
   const directReferralCashback =
-    safeDirectReferrals * Math.round((planPriceCents * DEFAULT_DIRECT_REFERRAL_CASHBACK_PCT) / 100)
+    safeDirectReferrals * Math.round((planPriceCents * config.directReferralPct) / 100)
 
   // Each matrix is projected ONLY for the levels the plan unlocks.
-  //   - Blue 3 unlocks 3 entrada levels → slice(0, 3).
-  //   - Blue 5 unlocks all 5 entrada + all 7 residual + all 9 vendas.
-  //   - Gratuito unlocks nothing → all three projections are empty.
-  const entradaLevels = ENTRADA_LEVELS.slice(0, Math.max(0, unlocks.entrada))
-  const residualLevels = RESIDUAL_LEVELS.slice(0, Math.max(0, unlocks.residual))
-  const vendasLevels = VENDAS_LEVELS.slice(0, Math.max(0, unlocks.vendas))
+  //   - blue3 unlocks 3 entrada levels by default → slice(0, 3).
+  //   - blue5 unlocks all entrada + residual + vendas levels by default.
+  //   - free unlocks nothing → all three projections are empty.
+  const entradaLevels = config.entradaLevels.slice(0, Math.max(0, unlocks.entrada))
+  const residualLevels = config.residualLevels.slice(0, Math.max(0, unlocks.residual))
+  const vendasLevels = config.vendasLevels.slice(0, Math.max(0, unlocks.vendas))
 
-  const entradaMonthly = projectMatrix(entradaLevels, DEFAULT_CB_ENTRADA_BASE_CENTS, safeFill)
-  const residualMonthly = projectMatrix(residualLevels, DEFAULT_CB_RESIDUAL_BASE_CENTS, safeFill)
-  const vendasMonthly = projectMatrix(vendasLevels, DEFAULT_CB_VENDAS_BASE_CENTS, safeFill)
+  const entradaMonthly = projectMatrix(entradaLevels, config.cbEntradaBaseCents, safeFill)
+  const residualMonthly = projectMatrix(residualLevels, config.cbResidualBaseCents, safeFill)
+  const vendasMonthly = projectMatrix(vendasLevels, config.cbVendasBaseCents, safeFill)
 
   const totalMonthly = entradaMonthly.total + residualMonthly.total + vendasMonthly.total
   const totalAnnual = totalMonthly * 12
@@ -391,6 +487,94 @@ export function EarningsSimulator() {
   const [avgMonthlySpendBRL, setAvgMonthlySpendBRL] = useState<number>(200)
   const [matrixFillPercent, setMatrixFillPercent] = useState<number>(50)
 
+  // --- Live config (Task 11) ---
+  // Seeded with the hardcoded defaults so the simulator renders instantly;
+  // replaced field-by-field once GET /api/simulator/config resolves. The
+  // endpoint reads the admin-editable Plan table + SystemConfig, so admin
+  // edits to plan prices/unlocks, matrix percentages, cashback bases and
+  // the referral % propagate to this simulator.
+  const [simConfig, setSimConfig] = useState<SimulatorConfigValues>(DEFAULT_SIM_CONFIG)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const cfg = await apiFetch<SimulatorConfigResponse>('/simulator/config')
+        if (cancelled || !cfg) return
+
+        // Merge DB-sourced plans with the fallback templates so
+        // presentation-only fields (accent colors) and any plan the API
+        // didn't return still render correctly. Taglines are rebuilt from
+        // the live price/unlocks (e.g. "R$ 999,90/mês · 5 + 7 + 9 níveis").
+        const apiPlans = Array.isArray(cfg.plans) ? cfg.plans : []
+        const planOptions: PlanOption[] = PLAN_OPTIONS.map((tpl) => {
+          const apiPlan = apiPlans.find((p) => p.code === tpl.code)
+          if (!apiPlan) return tpl
+          const priceCents =
+            typeof apiPlan.priceCents === 'number' && apiPlan.priceCents >= 0
+              ? apiPlan.priceCents
+              : tpl.priceCents
+          const unlocks =
+            apiPlan.unlocks &&
+            typeof apiPlan.unlocks.entrada === 'number' &&
+            typeof apiPlan.unlocks.residual === 'number' &&
+            typeof apiPlan.unlocks.vendas === 'number'
+              ? apiPlan.unlocks
+              : tpl.unlocks
+          return {
+            ...tpl,
+            label: apiPlan.label || tpl.label,
+            priceCents,
+            unlocks,
+            tagline: buildTagline(priceCents, unlocks),
+          }
+        })
+
+        // Keep the currently selected plan valid: if the plan code the user
+        // has selected no longer exists, fall back to the first option.
+        setSimConfig((prev) => ({
+          ...prev,
+          planOptions,
+          entradaLevels:
+            Array.isArray(cfg.entradaLevels) && cfg.entradaLevels.length > 0
+              ? toMatrixLevels(cfg.entradaLevels)
+              : prev.entradaLevels,
+          residualLevels:
+            Array.isArray(cfg.residualLevels) && cfg.residualLevels.length > 0
+              ? toMatrixLevels(cfg.residualLevels)
+              : prev.residualLevels,
+          vendasLevels:
+            Array.isArray(cfg.vendasLevels) && cfg.vendasLevels.length > 0
+              ? toMatrixLevels(cfg.vendasLevels)
+              : prev.vendasLevels,
+          cbEntradaBaseCents:
+            typeof cfg.cbEntradaBaseCents === 'number' && cfg.cbEntradaBaseCents > 0
+              ? cfg.cbEntradaBaseCents
+              : prev.cbEntradaBaseCents,
+          cbResidualBaseCents:
+            typeof cfg.cbResidualBaseCents === 'number' && cfg.cbResidualBaseCents > 0
+              ? cfg.cbResidualBaseCents
+              : prev.cbResidualBaseCents,
+          cbVendasBaseCents:
+            typeof cfg.cbVendasBaseCents === 'number' && cfg.cbVendasBaseCents > 0
+              ? cfg.cbVendasBaseCents
+              : prev.cbVendasBaseCents,
+          directReferralPct:
+            typeof cfg.directReferralPct === 'number' && cfg.directReferralPct > 0
+              ? cfg.directReferralPct
+              : prev.directReferralPct,
+        }))
+      } catch (err) {
+        // Config fetch failed — keep the hardcoded defaults so the
+        // simulator always works (same behavior as pre-Task 11).
+        console.warn('Failed to load simulator config, using defaults:', err)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // --- "Simular" gate ---
   // false on first render → user sees a prompt to click Simular.
   // Once true, stays true and results update reactively on every input change.
@@ -406,8 +590,9 @@ export function EarningsSimulator() {
         directReferrals,
         avgMonthlySpendCents,
         matrixFillPercent,
+        config: simConfig,
       }),
-    [plan, directReferrals, avgMonthlySpendCents, matrixFillPercent]
+    [plan, directReferrals, avgMonthlySpendCents, matrixFillPercent, simConfig]
   )
 
   const handleSimulate = () => {
@@ -422,7 +607,7 @@ export function EarningsSimulator() {
         Selecione o Plano
       </Label>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        {PLAN_OPTIONS.map((p) => {
+        {simConfig.planOptions.map((p) => {
           const isSelected = plan === p.code
           return (
             <button
@@ -591,7 +776,7 @@ export function EarningsSimulator() {
               1,
               Users,
               (v) => `${v} pessoa${v === 1 ? '' : 's'}`,
-              'Quantas indicações diretas você espera fazer. Cada indicação rende 10% do valor do plano (uma vez).'
+              `Quantas indicações diretas você espera fazer. Cada indicação rende ${simConfig.directReferralPct}% do valor do plano (uma vez).`
             )}
             {renderSlider(
               'Gasto Médio Mensal / Indicação',
@@ -669,7 +854,7 @@ export function EarningsSimulator() {
                   </div>
                   <div className="flex flex-col items-start sm:items-end gap-1">
                     <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[10px]">
-                      {PLAN_OPTIONS.find((p) => p.code === result.plan)?.label ?? '—'}
+                      {simConfig.planOptions.find((p) => p.code === result.plan)?.label ?? '—'}
                     </Badge>
                     <p className="text-[11px] text-muted-foreground">
                       Plano: <span className="font-semibold text-foreground">{formatBRL(result.planPriceCents)}/mês</span>
@@ -703,9 +888,9 @@ export function EarningsSimulator() {
                       <p className="text-[11px] text-muted-foreground mt-1">
                         {result.directReferrals} indicaç{result.directReferrals === 1 ? 'ão' : 'ões'} ×{' '}
                         {formatBRL(
-                          Math.round((result.planPriceCents * DEFAULT_DIRECT_REFERRAL_CASHBACK_PCT) / 100)
+                          Math.round((result.planPriceCents * simConfig.directReferralPct) / 100)
                         )}{' '}
-                        por indicação (10% da mensalidade)
+                        por indicação ({simConfig.directReferralPct}% da mensalidade)
                       </p>
                     </>
                   ) : (
@@ -735,7 +920,7 @@ export function EarningsSimulator() {
                       </p>
                       <p className="text-[10px] text-muted-foreground">
                         Matriz 4x5 ·{' '}
-                        {PLAN_OPTIONS.find((p) => p.code === result.plan)?.unlocks.entrada ?? 0}{' '}
+                        {simConfig.planOptions.find((p) => p.code === result.plan)?.unlocks.entrada ?? 0}{' '}
                         níveis desbloqueados
                       </p>
                     </div>
@@ -747,7 +932,7 @@ export function EarningsSimulator() {
                         <span className="text-sm font-medium text-muted-foreground">/mês</span>
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-1">
-                        CashBack Entrada: {formatBRL(DEFAULT_CB_ENTRADA_BASE_CENTS)} × % por nível
+                        CashBack Entrada: {formatBRL(simConfig.cbEntradaBaseCents)} × % por nível
                       </p>
                     </>
                   ) : (
@@ -775,7 +960,7 @@ export function EarningsSimulator() {
                       </p>
                       <p className="text-[10px] text-muted-foreground">
                         Matriz 4x7 ·{' '}
-                        {PLAN_OPTIONS.find((p) => p.code === result.plan)?.unlocks.residual ?? 0}{' '}
+                        {simConfig.planOptions.find((p) => p.code === result.plan)?.unlocks.residual ?? 0}{' '}
                         níveis desbloqueados
                       </p>
                     </div>
@@ -787,7 +972,7 @@ export function EarningsSimulator() {
                         <span className="text-sm font-medium text-muted-foreground">/mês</span>
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-1">
-                        CashBack Residual: {formatBRL(DEFAULT_CB_RESIDUAL_BASE_CENTS)} × % por nível
+                        CashBack Residual: {formatBRL(simConfig.cbResidualBaseCents)} × % por nível
                       </p>
                     </>
                   ) : (
@@ -817,7 +1002,7 @@ export function EarningsSimulator() {
                       </p>
                       <p className="text-[10px] text-muted-foreground">
                         Matriz 4x9 ·{' '}
-                        {PLAN_OPTIONS.find((p) => p.code === result.plan)?.unlocks.vendas ?? 0}{' '}
+                        {simConfig.planOptions.find((p) => p.code === result.plan)?.unlocks.vendas ?? 0}{' '}
                         níveis desbloqueados
                       </p>
                     </div>
@@ -829,7 +1014,7 @@ export function EarningsSimulator() {
                         <span className="text-sm font-medium text-muted-foreground">/mês</span>
                       </p>
                       <p className="text-[11px] text-muted-foreground mt-1">
-                        CashBack Vendas: {formatBRL(DEFAULT_CB_VENDAS_BASE_CENTS)} × % por nível
+                        CashBack Vendas: {formatBRL(simConfig.cbVendasBaseCents)} × % por nível
                       </p>
                     </>
                   ) : (
@@ -854,17 +1039,17 @@ export function EarningsSimulator() {
               {result.entradaMonthly.levels.length > 0 && renderMatrixTable(
                 'Entrada 4x5',
                 result.entradaMonthly,
-                `CashBack Entrada fixo (${formatBRL(DEFAULT_CB_ENTRADA_BASE_CENTS)}) × %`
+                `CashBack Entrada (${formatBRL(simConfig.cbEntradaBaseCents)}) × %`
               )}
               {result.residualMonthly.levels.length > 0 && renderMatrixTable(
                 'Residual 4x7',
                 result.residualMonthly,
-                `CashBack Residual fixo (${formatBRL(DEFAULT_CB_RESIDUAL_BASE_CENTS)}) × %`
+                `CashBack Residual (${formatBRL(simConfig.cbResidualBaseCents)}) × %`
               )}
               {result.vendasMonthly.levels.length > 0 && renderMatrixTable(
                 'Vendas 4x9',
                 result.vendasMonthly,
-                `CashBack Vendas fixo (${formatBRL(DEFAULT_CB_VENDAS_BASE_CENTS)}) × %`
+                `CashBack Vendas (${formatBRL(simConfig.cbVendasBaseCents)}) × %`
               )}
             </div>
           </motion.div>
