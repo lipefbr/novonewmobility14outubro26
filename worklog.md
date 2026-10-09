@@ -11700,3 +11700,56 @@ Stage Summary:
   * nextBillingDate sem pendência mostra '—' (não inventa data); o card Mensalidade continua com badge "Pendente" estática (comportamento pré-existente, fora do escopo).
   * 'gratuito' → 'free' no simulador foi seguro: único código de plano com nome divergente do banco; grep confirmou que nenhum acesso interno dependia da string 'gratuito' (só labels de UI, que continuam "Gratuito").
   * Nenhum arquivo do painel admin (admin-page.tsx) ou admingeral foi tocado — o GET config só LÊ as mesmas fontes que o admin escreve.
+
+---
+Task ID: 12
+Agent: Z.ai Code (orchestrator)
+Task: Pegar a última versão do git e remover valores hardcoded do backoffice admin (NÃO do dashboard admingeral, NÃO da área do membro — já feito na Task 11). Problema relatado: "coisas que estão fixas, tipo planos no painel edito mas no backoffice não muda".
+
+Work Log:
+- `git fetch origin && git status` → working tree limpo, sincronizado com origin/main (HEAD: 3fd9aef). Descartadas 14 alterações locais vazias (mode/whitespace).
+- Dev server reiniciado com `NODE_OPTIONS='--max-old-space-size=1024'` (OOM protection — box tem 4GB, Next 16 webpack + Chrome headless não cabem juntos).
+- Audit (via subagent Explore) dos componentes `src/components/newmobility/admin/**`: encontradas 2 HIGH, 1 MEDIUM, 6 LOW. Cross-check com Tasks 4/6/9/10/11 confirmou que planos/cashback/matrix/driver-categories/career/achievements/streaks/telemedicina-catalog/talkmobi já são dinâmicos.
+- **H-1 fix** — `src/components/newmobility/admin/admin-users-panel.tsx`:
+  * Bug: linhas 896 e 1385 usavam ternários literais `u.plan === 'blue5' ? 'Blue 5' : u.plan === 'blue3' ? 'Blue 3' : 'Gratuito'` — quando admin renomeia "Blue 5 Premium" via Plans tab, a aba Usuários continuava mostrando o nome antigo.
+  * O componente JÁ carregava o catálogo de planos do banco (`dbPlans` via `/api/plans`) no estado `allPlans` (memo linhas 395-403), mas não usava para o label.
+  * Adicionado helper `planLabel(code)` (useCallback, deps `[allPlans]`) que faz lookup em `allPlans` com fallback para o código cru ou '—'.
+  * Substituídos os 2 ternários: badge da lista (linha 905) e Detail "Plano" do dialog (linha 1394). `PLAN_OPTIONS` mantido como seed/fallback do `allPlans`.
+- **H-2 fix** — backend `src/app/api/admin/telemedicina/route.ts` + frontend `src/components/newmobility/admin/admin-telemedicina-panel.tsx`:
+  * Bug: o painel admin de Telemedicina mostrava "R$ 49,90/mês" hardcodeado em 3 lugares (badge da lista, dialog de aprovação, dialog de detalhes). Quando admin edita o preço do plano Telemedicina via Telemedicina Plans tab, o painel de aprovação continuava mostrando R$ 49,90.
+  * Causa-raiz: o `serialize()` do `/api/admin/telemedicina/route.ts` NÃO fazia parse dos prefixes `[Pagamento: …]` e `[Plano: <name> R$ <price>]` que a API `/api/telemedicina/request` grava no campo `notes` (Task 4). O serialize do request route JÁ fazia esse parse, mas o admin route tinha o próprio serialize que só devolvia `notes` cru.
+  * Backend: importei `parsePaymentFromNotes`, `parsePlanFromNotes`, `paymentMethodLabel`, `TELEMEDICINA_PRICE_CENTS` de `@/app/api/telemedicina/request/route`. Reescrito `serialize()` para fazer o parse em 2 etapas (payment → plan) e expor `paymentMethod`, `paymentMethodLabel`, `planName`, `priceCents` (+ `notes` limpo). Fallback `priceCents ?? TELEMEDICINA_PRICE_CENTS` (4990) para pedidos legados sem snapshot.
+  * Frontend: estendido `TelemedicinaRequestDTO` com `paymentMethod?`, `paymentMethodLabel?`, `planName?`, `priceCents?`. Importado `formatCurrency` de `@/lib/utils`. Substituídos os 3 literais "R$ 49,90":
+    - Badge da lista: `{req.planName ? `${req.planName} · ` : ''}{req.priceCents != null ? formatCurrency(req.priceCents) : '—'}/mês`
+    - Dialog de aprovação: preço + label do plano dinâmicos
+    - Dialog de detalhes: preço + nome do plano dinâmicos
+  * Adicionado helper `getPaymentLabel(req)` que prioriza `req.paymentMethodLabel` (backend) e cai no parse local só se o backend não enviar (backward-compat). Atualizadas as 5 chamadas `parsePaymentFromNotes(req.notes)` → `getPaymentLabel(req)` (badge, notes limpos do list, notes do detail, dialog aprovação, dialog detalhes). Como o backend agora devolve `notes` limpo, as exibições de "Observações do usuário" usam `req.notes` direto.
+  * A função module-level `parsePaymentFromNotes` local foi mantida (usada como fallback no `getPaymentLabel`).
+- **M-1 fix** — backend `src/app/api/financial/withdraw/route.ts` + frontend `src/components/newmobility/admin/admin-withdrawals-panel.tsx`:
+  * Bug: dias de saque grátis (5-8) eram constantes hardcodeadas `FREE_WITHDRAWAL_DAY_START=5` / `_END=8` no backend e `day >= 5 && day <= 8` no frontend. Não eram editáveis em lugar nenhum.
+  * Descoberta: já existe a key `saque.fee_free_days` (valor `"5,6,7,8"`, lista separada por vírgula) no seed de defaults do `/api/admin/system-settings/route.ts` (linha 192) — mas o backend de withdraw NÃO a lia, e o admin-withdrawals-panel também não.
+  * Backend: removidas as constantes `FREE_WITHDRAWAL_DAY_START/END`. Adicionados `DEFAULT_FREE_DAYS=[5,6,7,8]`, `parseFreeDays(raw)` (split por vírgula, filter 1-31, fallback default), `formatFreeDaysLabel()` (mostra "5-8" se contíguo, senão "5,6,7,8"). `getWithdrawalConfig()` agora retorna `freeDays: number[]`. `isFreeWithdrawalDay(date, freeDays)` faz `freeDays.includes(day)` (lista vazia = sem grátis). Description da Transaction agora usa `formatFreeDaysLabel(wConfig.freeDays)` dinâmico.
+  * Frontend: adicionado estado `freeDays` (default `[5,6,7,8]`) + `freeDaysLabel` derivado (mesma lógica contígua do backend). `useEffect` no mount faz `apiFetch('/admin/config?userId=…')` (que retorna TODAS as SystemConfig rows) e parseia `saque.fee_free_days`. Adicionado `isFreeDay(date)` (useCallback, deps `[freeDays]`) que substitui o helper module-level. Substituídas as 5 chamadas `isFreeWithdrawalDay(x)` → `isFreeDay(x)` (banner "Janela gratuita ativa", badge "Grátis" da lista desktop, badge mobile, dialog aprovação, dialog detalhes). Banner text "dias 5-8" → `dias ${freeDaysLabel}`. Helper module-level `isFreeWithdrawalDay` removido (era dead code).
+  * Importado `apiFetch` de `@/lib/api` (não estava importado antes).
+- Validação:
+  * `bun run lint`: 13 erros, TODOS pré-existentes nos .js auxiliares da raiz (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js). ZERO erros novos em src/. Mesmos 13 das Tasks anteriores.
+  * `bunx tsc --noEmit`: ZERO erros nos 5 arquivos tocados (filtrado por nome de arquivo). Erro TS18047 pré-existente em `telemedicina-page.tsx:320` (área do membro, NÃO tocado nesta task) — era da Task 4.
+  * Script tsx de verificação (deletado após uso, conforme regra "no test code"): 4/4 testes do parse passaram — `[Pagamento: PIX] [Plano: Blue 5 Premium R$ 49,90] …` → planName="Blue 5 Premium", priceCents=4990, cleanNotes correto. Legacy plain notes → null/null (fallback 4990). DB: `saque.fee_free_days` não seedado localmente (será seedado quando admin visitar a aba SystemConfig — defaults incluem `"5,6,7,8"`); backend e frontend ambos defaultam para [5,6,7,8] quando ausente.
+  * Home page HTTP 200 (compila todos os componentes admin importados via page.tsx) — prova que as mudanças frontend compilam sem erro.
+  * agent-browser: NÃO foi possível rodar full-flow (login → navegar abas) — o box de 4GB não comporta Next 16 webpack dev server (~1.5GB) + Chrome headless (~1GB) concorrentemente; o processo Next é OOM-killed toda vez que o Chrome sobe. Mesma limitação registrada na Task 11. Validação ficou por compile + tsc + tsx + lint, como na Task anterior.
+
+Stage Summary:
+- Arquivos modificados (5):
+  * `src/components/newmobility/admin/admin-users-panel.tsx` — helper `planLabel(code)` (useCallback) que faz lookup em `allPlans` (estado já carregado do DB via /api/plans); substituídos 2 ternários literais "Blue 5/Blue 3/Gratuito" na badge da lista e no Detail do dialog. (H-1)
+  * `src/app/api/admin/telemedicina/route.ts` — `serialize()` agora importa e usa `parsePaymentFromNotes` + `parsePlanFromNotes` de `@/app/api/telemedicina/request/route`; expõe `paymentMethod`, `paymentMethodLabel`, `planName`, `priceCents` (+ notes limpo) no DTO. Fallback priceCents=TELEMEDICINA_PRICE_CENTS para pedidos legados. (H-2 backend)
+  * `src/components/newmobility/admin/admin-telemedicina-panel.tsx` — DTO estendido com planName/priceCents/paymentMethodLabel; 3 literais "R$ 49,90" substituídos por `formatCurrency(req.priceCents)` + nome do plano; helper `getPaymentLabel(req)` (prioriza backend, cai em parse local); 5 chamadas de parsePaymentFromNotes migradas. (H-2 frontend)
+  * `src/app/api/financial/withdraw/route.ts` — removidas constantes hardcodeadas 5/8; `getWithdrawalConfig()` lê `saque.fee_free_days` (lista "5,6,7,8"); `isFreeWithdrawalDay(date, freeDays)` usa `includes`; description da Transaction usa `formatFreeDaysLabel()` dinâmico. (M-1 backend)
+  * `src/components/newmobility/admin/admin-withdrawals-panel.tsx` — estado `freeDays` + `freeDaysLabel`; useEffect carrega `/admin/config` e parseia `saque.fee_free_days`; `isFreeDay(date)` (closure sobre freeDays) substitui helper module-level; 5 chamadas + banner text migrados; helper morto removido; importado `apiFetch`. (M-1 frontend)
+- `bun run lint`: 13 erros pré-existentes (.js auxiliares). ZERO novos em src/.
+- `bunx tsc --noEmit`: ZERO erros nos 5 arquivos tocados.
+- Decisões:
+  * H-1 usou o estado `allPlans` que JÁ existia (carregado do /api/plans) — zero round-trips extra, só reuso de dado já em memória. Fallback `code` cru (não 'Gratuito') se o plano não estiver no catálogo — mais honesto que inventar um nome.
+  * H-2 reutilizou os helpers `parsePlanFromNotes`/`parsePaymentFromNotes` EXPORTADOS do `/api/telemedicina/request/route.ts` (Task 4 já os exportava) — zero duplicação de lógica de parse. O admin serialize agora espelha exatamente o serialize do request route.
+  * M-1 descobriu a key `saque.fee_free_days` ("5,6,7,8") já seedada no system-settings — usei-a em vez de inventar keys novas (`saque.free_days_start/end`). Lista separada por vírgula é mais flexível que range (suporta dias não-contíguos ex.: "5,6,15,20"). `formatFreeDaysLabel` mostra "5-8" quando contíguo (UX limpa) e "5,6,15,20" caso contrário.
+  * Fallback de freeDays quando a key não existe: `[5,6,7,8]` (mesmo comportamento pré-mudança — nenhum usuário nota diferença até o admin editar).
+  * Não toquei no dashboard admingeral (instrução explícita do usuário) nem na área do membro (Task 11 já resolveu).

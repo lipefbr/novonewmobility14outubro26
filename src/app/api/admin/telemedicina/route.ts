@@ -1,6 +1,12 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
+import {
+  parsePaymentFromNotes,
+  parsePlanFromNotes,
+  paymentMethodLabel,
+  TELEMEDICINA_PRICE_CENTS,
+} from '@/app/api/telemedicina/request/route'
 
 /**
  * Admin: list Telemedicina activation requests.
@@ -77,6 +83,15 @@ function serialize(r: any) {
   } catch {
     dependents = []
   }
+  // ===== Parse dos dois prefixes do notes (Task ID 4 / H-2) =====
+  // Mesma lógica do serialize() em /api/telemedicina/request/route.ts:
+  //  1. [Pagamento: <method>]  → no START da string
+  //  2. [Plano: <name> R$ <price>]  → no restante após o payment
+  // O restante final é o texto livre do usuário (limpo).
+  // Sem isto, o painel admin não recebe planName/priceCents e cai no
+  // fallback hardcoded "R$ 49,90" (bug H-2 reportado pelo usuário).
+  const { method, notes: afterPayment } = parsePaymentFromNotes(r.notes ?? null)
+  const { planName, priceCents, notes: cleanNotes } = parsePlanFromNotes(afterPayment)
   return {
     id: r.id,
     userId: r.userId,
@@ -86,7 +101,13 @@ function serialize(r: any) {
     phone: r.phone,
     email: r.email,
     dependents,
-    notes: r.notes ?? null,
+    notes: cleanNotes,
+    paymentMethod: method,
+    paymentMethodLabel: paymentMethodLabel(method),
+    planName,
+    // Se não houver snapshot no notes (pedido muito antigo), caímos no preço
+    // histórico default — melhor que "—" para o admin ter uma noção.
+    priceCents: priceCents ?? TELEMEDICINA_PRICE_CENTS,
     status: r.status,
     adminNotes: r.adminNotes ?? null,
     activationLink: r.activationLink ?? null,

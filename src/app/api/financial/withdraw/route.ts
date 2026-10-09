@@ -5,14 +5,21 @@ import { isKycApproved } from '@/lib/kyc'
 
 // Withdrawal rules — DEFAULT values. The admin can override ALL of these
 // via SystemConfig (keys: saque.min_cents, saque.max_cents, saque.fee_pct,
-// saque.max_daily_withdrawals, saque.processing_time_hours).
+// saque.max_daily_withdrawals, saque.processing_time_hours,
+// saque.fee_free_days = "5,6,7,8" comma-separated days with free withdrawal).
 // On each request, we try to read the latest config from the DB. If the
 // DB is unavailable or the key doesn't exist, we fall back to these.
 const DEFAULT_MIN_WITHDRAWAL_CENTS = 5000       // R$ 50,00
 const DEFAULT_MAX_DAILY_WITHDRAWAL_CENTS = 500000 // R$ 5.000,00
 const DEFAULT_WITHDRAWAL_FEE_PERCENT = 2        // 2%
-const FREE_WITHDRAWAL_DAY_START = 5
-const FREE_WITHDRAWAL_DAY_END = 8
+const DEFAULT_FREE_DAYS = [5, 6, 7, 8]
+
+function parseFreeDays(raw: string | undefined): number[] {
+  if (!raw) return DEFAULT_FREE_DAYS
+  const parts = raw.split(',').map(s => parseInt(s.trim(), 10))
+  const days = parts.filter(n => Number.isFinite(n) && n >= 1 && n <= 31)
+  return days.length ? days : DEFAULT_FREE_DAYS
+}
 
 async function getWithdrawalConfig() {
   try {
@@ -25,19 +32,35 @@ async function getWithdrawalConfig() {
       minCents: parseInt(map['saque.min_cents'] || '') || DEFAULT_MIN_WITHDRAWAL_CENTS,
       maxDailyCents: parseInt(map['saque.max_cents'] || '') || DEFAULT_MAX_DAILY_WITHDRAWAL_CENTS,
       feePct: parseFloat(map['saque.fee_pct'] || '') || DEFAULT_WITHDRAWAL_FEE_PERCENT,
+      freeDays: parseFreeDays(map['saque.fee_free_days']),
     }
   } catch {
     return {
       minCents: DEFAULT_MIN_WITHDRAWAL_CENTS,
       maxDailyCents: DEFAULT_MAX_DAILY_WITHDRAWAL_CENTS,
       feePct: DEFAULT_WITHDRAWAL_FEE_PERCENT,
+      freeDays: DEFAULT_FREE_DAYS,
     }
   }
 }
 
-function isFreeWithdrawalDay(date: Date = new Date()): boolean {
-  const day = date.getDate()
-  return day >= FREE_WITHDRAWAL_DAY_START && day <= FREE_WITHDRAWAL_DAY_END
+// Janela gratuita: o dia-do-mês precisa estar na lista de freeDays
+// (vinda do SystemConfig saque.fee_free_days). Lista vazia = sem grátis.
+function isFreeWithdrawalDay(date: Date, freeDays: number[]): boolean {
+  if (!Array.isArray(freeDays) || freeDays.length === 0) return false
+  return freeDays.includes(date.getDate())
+}
+
+function formatFreeDaysLabel(freeDays: number[]): string {
+  if (!freeDays.length) return '—'
+  const sorted = [...freeDays].sort((a, b) => a - b)
+  // Se for contíguo, mostra "5-8"; senão "5,6,7,8".
+  let isContiguous = true
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] !== sorted[i - 1] + 1) { isContiguous = false; break }
+  }
+  if (isContiguous && sorted.length > 1) return `${sorted[0]}-${sorted[sorted.length - 1]}`
+  return sorted.join(', ')
 }
 
 function calculateFee(amountCents: number, feePct: number, isFree: boolean): number {
@@ -147,14 +170,15 @@ export async function POST(request: Request) {
       )
     }
 
-    // --- Calculate withdrawal fee (reads from SystemConfig, free between days 5-8) ---
-    const freeDay = isFreeWithdrawalDay(now)
+    // --- Calculate withdrawal fee (reads from SystemConfig; free window
+    // is admin-editable via saque.fee_free_days, e.g. "5,6,7,8") ---
+    const freeDay = isFreeWithdrawalDay(now, wConfig.freeDays)
     const feeCents = calculateFee(amountCents, wConfig.feePct, freeDay)
     const netCents = amountCents - feeCents
 
     // Create transaction (status: pending -> admin approves later)
     const description = freeDay
-      ? `Saque sem taxa (janela gratuita dias 5-8) - ${category || 'withdrawal'} (PIX: ${user.pixKey})`
+      ? `Saque sem taxa (janela gratuita dias ${formatFreeDaysLabel(wConfig.freeDays)}) - ${category || 'withdrawal'} (PIX: ${user.pixKey})`
       : `Solicitação de saque - ${category || 'withdrawal'} (taxa ${wConfig.feePct}%: R$ ${(feeCents / 100).toFixed(2).replace('.', ',')}) (PIX: ${user.pixKey})`
 
     const transaction = await db.insert('Transaction', {

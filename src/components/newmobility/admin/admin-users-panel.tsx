@@ -402,6 +402,15 @@ export function AdminUsersPanel() {
     return merged
   }, [dbPlans])
 
+  // Resolve o nome de exibição de um plano pelo código.
+  // Procura primeiro no catálogo carregado do banco (dbPlans via /api/plans),
+  // que reflete renomeações feitas pelo admin no painel Plans. Se não achar,
+  // cai no código cru ou '—' (nunca mais um literal "Blue 5" hardcoded).
+  const planLabel = useCallback((code?: string) => {
+    if (!code) return '—'
+    return allPlans.find(p => p.value === code)?.label || code
+  }, [allPlans])
+
   useEffect(() => {
     apiFetch<{ types?: Array<{ code: string; label: string }> }>(`/admin/user-types?userId=${user?.id || ''}`)
       .then(data => {
@@ -893,7 +902,7 @@ export function AdminUsersPanel() {
                           <Badge className={typeBadge.color}>{typeBadge.label}</Badge>
                         </td>
                         <td className="p-3 hidden sm:table-cell">
-                          <Badge className={planBadge(u.plan)}>{u.plan === 'blue5' ? 'Blue 5' : u.plan === 'blue3' ? 'Blue 3' : 'Gratuito'}</Badge>
+                          <Badge className={planBadge(u.plan)}>{planLabel(u.plan)}</Badge>
                         </td>
                         <td className="p-3 hidden lg:table-cell">
                           <Badge className={roleBadgeClass(u.role)} title={u.role ? `Role: ${u.role}` : undefined}>
@@ -1382,7 +1391,7 @@ export function AdminUsersPanel() {
                 <Detail label="CPF" value={viewing.cpf || '—'} />
                 <Detail label="Tipo" value={userTypeBadge(viewing.userType).label} />
                 <Detail label="Qualificação" value={getQualificationLabel(viewing.qualification)} />
-                <Detail label="Plano" value={viewing.plan === 'blue5' ? 'Blue 5 Premium' : viewing.plan === 'blue3' ? 'Blue 3' : 'Gratuito'} />
+                <Detail label="Plano" value={planLabel(viewing.plan)} />
                 <Detail label="Role" value={roleLabel(viewing.role)} />
                 <Detail label="Status" value={viewing.isActive ? 'Ativo' : 'Inativo'} />
                 <Detail label="KYC" value={kycBadge(viewing.kycStatus).label} />

@@ -48,6 +48,7 @@ import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import { useStore } from '@/lib/store'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { apiFetch } from '@/lib/api'
 
 // ---------- Types ----------
 
@@ -172,14 +173,9 @@ function methodBadge(method: AdminWithdrawalRequest['paymentMethod']) {
   )
 }
 
-// Helper: retorna true se a data de criação do saque está na janela gratuita (dias 5-8 do mês).
-// Espelha a lógica do backend /api/financial/withdraw (FREE_WITHDRAWAL_DAY_START=5, _END=8).
-function isFreeWithdrawalDay(date: Date | string): boolean {
-  const d = typeof date === 'string' ? new Date(date) : date
-  if (isNaN(d.getTime())) return false
-  const day = d.getDate()
-  return day >= 5 && day <= 8
-}
+// M-1: a lógica de janela gratuita agora é dinâmica (lê saque.fee_free_days
+// do SystemConfig) e vive como closure `isFreeDay` dentro do componente.
+// O helper module-level fixo foi removido para não deixar 5/8 hardcodeados.
 
 function withdrawalDetailsSummary(w: AdminWithdrawalRequest): string {
   if (w.paymentMethod === 'pix') {
@@ -234,6 +230,52 @@ export function AdminWithdrawalsPanel() {
     withdrawal: AdminWithdrawalRequest | null
     loadingReceipt: boolean
   }>({ open: false, withdrawal: null, loadingReceipt: false })
+
+  // M-1 — dias de saque grátis carregados do SystemConfig
+  // (key saque.fee_free_days, ex.: "5,6,7,8"). Antes eram fixos 5-8 no
+  // módulo; agora o painel lê do banco e reflete edições do admin.
+  const [freeDays, setFreeDays] = useState<number[]>([5, 6, 7, 8])
+  const freeDaysLabel = (() => {
+    if (!freeDays.length) return '—'
+    const sorted = [...freeDays].sort((a, b) => a - b)
+    let isContiguous = true
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i] !== sorted[i - 1] + 1) { isContiguous = false; break }
+    }
+    if (isContiguous && sorted.length > 1) return `${sorted[0]}-${sorted[sorted.length - 1]}`
+    return sorted.join(', ')
+  })()
+
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await apiFetch<Record<string, string>>(`/admin/config?userId=${user.id}`)
+        if (cancelled || !data) return
+        const raw = data['saque.fee_free_days']
+        if (typeof raw === 'string' && raw.trim()) {
+          const parsed = raw
+            .split(',')
+            .map(s => parseInt(s.trim(), 10))
+            .filter(n => Number.isFinite(n) && n >= 1 && n <= 31)
+          if (parsed.length) setFreeDays(parsed)
+        }
+      } catch (err) {
+        console.error('Failed to load saque.fee_free_days:', err)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [user?.id])
+
+  // isFreeDay: closure sobre freeDays (estado). Substitui o helper
+  // module-level isFreeWithdrawalDay(date) que tinha 5 e 8 hardcodeados.
+  const isFreeDay = useCallback((date: Date | string): boolean => {
+    const d = typeof date === 'string' ? new Date(date) : date
+    if (isNaN(d.getTime())) return false
+    if (!freeDays.length) return false
+    return freeDays.includes(d.getDate())
+  }, [freeDays])
 
   const loadWithdrawals = useCallback(async () => {
     if (!adminUserId) return
@@ -614,11 +656,11 @@ export function AdminWithdrawalsPanel() {
             </div>
           ) : (
             <>
-              {isFreeWithdrawalDay(new Date()) && (
+              {isFreeDay(new Date()) && (
                 <div className="mx-3 mt-3 rounded-md border border-emerald-200 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/20 p-2 mb-3">
                   <p className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
                     <span className="font-semibold">Janela gratuita ativa:</span>
-                    saques solicitados hoje (dias 5-8) não têm taxa. Aproveite para aprovar sem descontar.
+                    saques solicitados hoje (dias {freeDaysLabel}) não têm taxa. Aproveite para aprovar sem descontar.
                   </p>
                 </div>
               )}
@@ -651,7 +693,7 @@ export function AdminWithdrawalsPanel() {
                         </TableCell>
                         <TableCell className="font-bold text-foreground">
                           <div className="flex items-center gap-2">
-                            {isFreeWithdrawalDay(w.createdAt) && (
+                            {isFreeDay(w.createdAt) && (
                               <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 text-[9px] px-1.5 py-0">
                                 Grátis
                               </Badge>
@@ -768,7 +810,7 @@ export function AdminWithdrawalsPanel() {
                         </p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        {isFreeWithdrawalDay(w.createdAt) && (
+                        {isFreeDay(w.createdAt) && (
                           <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 text-[9px] px-1.5 py-0">
                             Grátis
                           </Badge>
@@ -899,7 +941,7 @@ export function AdminWithdrawalsPanel() {
                   Você deseja realmente aprovar o saque de{' '}
                   <strong className="text-emerald-600 inline-flex items-center gap-1.5">
                     R$ {(approveDialog.withdrawal.amount / 100).toFixed(2)}
-                    {isFreeWithdrawalDay(approveDialog.withdrawal.createdAt) && (
+                    {isFreeDay(approveDialog.withdrawal.createdAt) && (
                       <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 text-[9px] px-1.5 py-0">
                         Grátis
                       </Badge>
@@ -1030,7 +1072,7 @@ export function AdminWithdrawalsPanel() {
               </DetailRow>
               <DetailRow label="Valor">
                 <span className="inline-flex items-center gap-1.5">
-                  {isFreeWithdrawalDay(detailDialog.withdrawal.createdAt) && (
+                  {isFreeDay(detailDialog.withdrawal.createdAt) && (
                     <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 text-[9px] px-1.5 py-0">
                       Grátis
                     </Badge>

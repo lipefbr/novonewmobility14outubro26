@@ -11,7 +11,7 @@ import {
 
 import { useStore } from '@/lib/store'
 import { apiFetch } from '@/lib/api'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -45,6 +45,12 @@ interface TelemedicinaRequestDTO {
   email: string
   dependents: TelemedicinaDependent[]
   notes: string | null
+  // ===== H-2 fix: plan + price agora vêm do backend (parse do notes) =====
+  // Antes eram undefined e o painel caía no literal hardcoded "R$ 49,90/mês".
+  paymentMethod?: string | null
+  paymentMethodLabel?: string | null
+  planName?: string | null
+  priceCents?: number | null
   status: 'pending' | 'approved' | 'rejected' | 'cancelled'
   adminNotes: string | null
   activationLink: string | null
@@ -106,6 +112,14 @@ function parsePaymentFromNotes(raw: string | null): {
   const label = PAYMENT_METHOD_LABELS[method] ?? rawMethod
   const rest = match[2].trim()
   return { method, label, notes: rest || null }
+}
+
+// H-2 — agora o backend já devolve paymentMethodLabel + notes (limpo) direto
+// no DTO (parse feito no serialize() de /api/admin/telemedicina/route.ts).
+// Este helper prioriza o campo do backend e só cai no parse local se o
+// backend não tiver enviado (backward-compat com respostas antigas/cache).
+function getPaymentLabel(req: TelemedicinaRequestDTO): string | null {
+  return req.paymentMethodLabel || parsePaymentFromNotes(req.notes).label
 }
 
 interface ListResponse {
@@ -372,15 +386,15 @@ export function AdminTelemedicinaPanel() {
                           {req.status === 'approved' ? 'Aprovado' : req.status === 'pending' ? 'Pendente' : req.status === 'rejected' ? 'Recusado' : 'Cancelado'}
                         </Badge>
                         {(() => {
-                          const pm = parsePaymentFromNotes(req.notes)
-                          return pm.label ? (
+                          const label = getPaymentLabel(req)
+                          return label ? (
                             <Badge
                               variant="outline"
                               className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800 text-[10px] gap-1"
                               title="Forma de pagamento escolhida pelo usuário"
                             >
                               <CreditCard className="h-3 w-3" />
-                              {pm.label}
+                              {label}
                             </Badge>
                           ) : null
                         })()}
@@ -391,9 +405,9 @@ export function AdminTelemedicinaPanel() {
                         <Badge
                           variant="outline"
                           className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800 text-[10px] gap-1 font-semibold"
-                          title="Valor da ativação da Telemedicina"
+                          title="Valor da ativação da Telemedicina (plano escolhido pelo usuário)"
                         >
-                          R$ 49,90/mês
+                          {req.planName ? `${req.planName} · ` : ''}{req.priceCents != null ? formatCurrency(req.priceCents) : '—'}/mês
                         </Badge>
                         {req.dependents && req.dependents.length > 0 && (
                           <Badge variant="outline" className="text-[10px] gap-1">
@@ -434,12 +448,12 @@ export function AdminTelemedicinaPanel() {
                       {(() => {
                         // Strip the `[Pagamento: …]` prefix when displaying
                         // the user's notes so the admin sees only what the
-                        // user actually typed.
-                        const pm = parsePaymentFromNotes(req.notes)
-                        if (!pm.notes) return null
+                        // user actually typed. (H-2: o backend já devolve
+                        // notes limpo, mas mantemos a guarda por segurança.)
+                        if (!req.notes) return null
                         return (
                           <p className="text-[11px] text-muted-foreground italic bg-muted/40 p-2 rounded">
-                            Obs.: {pm.notes}
+                            Obs.: {req.notes}
                           </p>
                         )
                       })()}
@@ -571,14 +585,18 @@ export function AdminTelemedicinaPanel() {
                   <p className="text-[11px] text-muted-foreground">
                     Pagamento:{' '}
                     <span className="font-medium text-foreground">
-                      {parsePaymentFromNotes(activeRequest.notes).label || '—'}
+                      {getPaymentLabel(activeRequest) || '—'}
                     </span>
                   </p>
                 </div>
               </div>
               <div className="text-right shrink-0">
-                <p className="text-base font-bold text-emerald-700 dark:text-emerald-400">R$ 49,90</p>
-                <p className="text-[10px] text-muted-foreground">por mês</p>
+                <p className="text-base font-bold text-emerald-700 dark:text-emerald-400">
+                  {activeRequest.priceCents != null ? formatCurrency(activeRequest.priceCents) : '—'}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  {activeRequest.planName ? `${activeRequest.planName} · ` : ''}por mês
+                </p>
               </div>
             </div>
           )}
@@ -678,18 +696,23 @@ export function AdminTelemedicinaPanel() {
                     payment method badge isn't set. */}
                 <div className="col-span-2 sm:col-span-1">
                   <p className="text-muted-foreground">Valor da ativação</p>
-                  <p className="font-bold text-emerald-700 dark:text-emerald-400">R$ 49,90/mês</p>
+                  <p className="font-bold text-emerald-700 dark:text-emerald-400">
+                    {detailsReq.priceCents != null ? formatCurrency(detailsReq.priceCents) : '—'}/mês
+                  </p>
+                  {detailsReq.planName && (
+                    <p className="text-[11px] text-muted-foreground">Plano: {detailsReq.planName}</p>
+                  )}
                 </div>
                 <div className="col-span-2">
                   <p className="text-muted-foreground">Forma de Pagamento</p>
                   <p className="font-medium text-foreground flex items-center gap-1.5">
                     {(() => {
-                      const pm = parsePaymentFromNotes(detailsReq.notes)
-                      if (!pm.label) return <span className="text-muted-foreground">—</span>
+                      const label = getPaymentLabel(detailsReq)
+                      if (!label) return <span className="text-muted-foreground">—</span>
                       return (
                         <>
                           <CreditCard className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                          {pm.label}
+                          {label}
                         </>
                       )
                     })()}
@@ -716,14 +739,14 @@ export function AdminTelemedicinaPanel() {
               )}
 
               {(() => {
-                // Show only the user-typed portion of the notes (strip the
-                // `[Pagamento: …]` prefix that encodes the payment method).
-                const pm = parsePaymentFromNotes(detailsReq.notes)
-                if (!pm.notes) return null
+                // Show only the user-typed portion of the notes.
+                // (H-2: o backend já devolve notes limpo — sem o prefixo
+                // [Pagamento: …] — então usamos direto.)
+                if (!detailsReq.notes) return null
                 return (
                   <div className="space-y-1 pt-2 border-t border-border">
                     <p className="text-xs font-semibold text-foreground">Observações do usuário</p>
-                    <p className="text-xs text-foreground/80 italic bg-muted/40 p-2 rounded">{pm.notes}</p>
+                    <p className="text-xs text-foreground/80 italic bg-muted/40 p-2 rounded">{detailsReq.notes}</p>
                   </div>
                 )
               })()}
