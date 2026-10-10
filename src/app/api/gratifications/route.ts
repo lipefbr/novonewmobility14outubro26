@@ -1,5 +1,10 @@
 import { db } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
+// Task 13-e — reusa os helpers de overlay das edições do admin (SystemConfig
+// `metas.benefit.{type}.name|.amount|.description`, gravados via
+// PUT /api/admin/gratifications-config/benefit), compartilhados com
+// /api/gratifications-config para as duas rotas ficarem consistentes.
+import { applyBenefitOverlay, loadBenefitOverlay } from '@/app/api/gratifications-config/route'
 
 // Static fallback list of client-spec gratifications (Índice.docx §5).
 // Returned in addition to whatever the DB has so that newly-registered users
@@ -145,6 +150,12 @@ export async function GET(request: Request) {
         }
       : null
 
+    // Task 13-e — aplica as edições do admin (nome/valor/descrição do
+    // benefício) por cima do catálogo estático, para o membro ver o valor
+    // REAL configurado e não mais o seed antigo (260000/78000/...).
+    const benefitOverlay = await loadBenefitOverlay()
+    const catalog = applyBenefitOverlay(STATIC_FALLBACK_GRATIFICATIONS, benefitOverlay)
+
     return success({
       available,
       claimed,
@@ -153,7 +164,8 @@ export async function GET(request: Request) {
       // Static catalog — always returned so the UI can show the full
       // gratification catalog (fuel voucher, car wash, vacations, driver
       // goals, cashback prize) even when no per-user rows exist yet.
-      catalog: STATIC_FALLBACK_GRATIFICATIONS,
+      // Task 13-e — agora com o overlay das edições do admin aplicado.
+      catalog,
       driverGoals,
     })
   } catch (err) {

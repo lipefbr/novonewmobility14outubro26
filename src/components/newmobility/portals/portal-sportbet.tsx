@@ -844,6 +844,13 @@ export function PortalSportBet() {
               <p className="text-[10px] text-muted-foreground mt-0.5">4+ seleções no bilhete</p>
             </div>
           </div>
+          {/* Task 13-e — os percentuais acima (5%/2%/10%) não possuem configuração
+              real no SystemConfig (nenhuma key de cashback de apostas existe).
+              Manter o card como marketing, MAS com aviso explícito de valor
+              ilustrativo para não passar percentuais fabricados como reais. */}
+          <p className="text-[10px] text-muted-foreground mt-3 text-center">
+            Valores ilustrativos — os percentuais definitivos de CashBack em apostas ainda serão definidos pela plataforma.
+          </p>
         </CardContent>
       </Card>
 

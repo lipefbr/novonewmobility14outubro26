@@ -1,10 +1,13 @@
 import { db, prisma } from '@/lib/db'
-import { success, error } from '@/lib/api-utils'
+import { success, error, DEFAULT_ENTRADA_LEVELS, DEFAULT_RESIDUAL_LEVELS, DEFAULT_VENDAS_LEVELS } from '@/lib/api-utils'
 
 // Matrix type config: depth limits + level metadata
 // Tarefa (19/09): agora lê width/depth do MatrixType do banco em vez de
 // usar MATRIX_CONFIG hardcoded. As percentuais por nível continuam vindo
 // do MatrixLevelEarning do banco (admin-configurável).
+// Task 13-d — os fallbacks (MatrixType/MatrixLevelEarning vazios) passam a
+// usar os defaults canônicos de @/lib/api-utils (mesmos do restante do
+// sistema) em vez de tabelas locais divergentes.
 const MATRIX_TYPE_MAP: Record<string, string> = {
   direta: 'entrada',   // "direta" na URL = matriz "entrada" no DB
   residual: 'residual',
@@ -15,6 +18,17 @@ interface MatrixLevelData {
   level: number
   percentage: number
   capacity: number
+}
+
+// Task 13-d — monta os níveis de fallback a partir dos defaults canônicos
+// (DEFAULT_*_LEVELS) e da largura padrão 4 (capacity = 4^level).
+const FALLBACK_WIDTH = 4
+function buildFallbackLevels(percentages: number[]): MatrixLevelData[] {
+  return percentages.map((percentage, i) => ({
+    level: i + 1,
+    percentage,
+    capacity: Math.pow(FALLBACK_WIDTH, i + 1),
+  }))
 }
 
 async function getMatrixConfig(matrixType: string): Promise<{
@@ -36,27 +50,15 @@ async function getMatrixConfig(matrixType: string): Promise<{
     },
   }).catch(() => null)
 
-  // Fallback para os defaults hardcoded se o DB não estiver disponível
+  // Fallback para os defaults canônicos (api-utils) se o DB não estiver
+  // disponível ou MatrixType/MatrixLevelEarning estiver vazio.
+  // Task 13-d — antes: tabelas locais com percentuais divergentes
+  // (residual [5, 5.5, 6, ...] e vendas [0.1×8, 0.2]).
   if (!matrixTypeRow || !matrixTypeRow.MatrixLevelEarning || matrixTypeRow.MatrixLevelEarning.length === 0) {
-    const FALLBACK = {
-      direta: { maxDepth: 5, label: 'Matriz de Entrada', levels: [
-        { level: 1, percentage: 5, capacity: 4 }, { level: 2, percentage: 10, capacity: 16 },
-        { level: 3, percentage: 10, capacity: 64 }, { level: 4, percentage: 5, capacity: 256 },
-        { level: 5, percentage: 5, capacity: 1024 },
-      ]},
-      residual: { maxDepth: 7, label: 'Matriz Residual', levels: [
-        { level: 1, percentage: 5, capacity: 4 }, { level: 2, percentage: 5.5, capacity: 16 },
-        { level: 3, percentage: 6, capacity: 64 }, { level: 4, percentage: 6.5, capacity: 256 },
-        { level: 5, percentage: 7, capacity: 1024 }, { level: 6, percentage: 7.5, capacity: 4096 },
-        { level: 7, percentage: 8, capacity: 16384 },
-      ]},
-      vendas: { maxDepth: 9, label: 'Matriz de Vendas', levels: [
-        { level: 1, percentage: 0.1, capacity: 4 }, { level: 2, percentage: 0.1, capacity: 16 },
-        { level: 3, percentage: 0.1, capacity: 64 }, { level: 4, percentage: 0.1, capacity: 256 },
-        { level: 5, percentage: 0.1, capacity: 1024 }, { level: 6, percentage: 0.1, capacity: 4096 },
-        { level: 7, percentage: 0.1, capacity: 16384 }, { level: 8, percentage: 0.1, capacity: 65536 },
-        { level: 9, percentage: 0.2, capacity: 262144 },
-      ]},
+    const FALLBACK: Record<string, { maxDepth: number; label: string; levels: MatrixLevelData[] }> = {
+      direta: { maxDepth: 5, label: 'Matriz de Entrada', levels: buildFallbackLevels(DEFAULT_ENTRADA_LEVELS) },
+      residual: { maxDepth: 7, label: 'Matriz Residual', levels: buildFallbackLevels(DEFAULT_RESIDUAL_LEVELS) },
+      vendas: { maxDepth: 9, label: 'Matriz de Vendas', levels: buildFallbackLevels(DEFAULT_VENDAS_LEVELS) },
     }
     return FALLBACK[matrixType] || null
   }

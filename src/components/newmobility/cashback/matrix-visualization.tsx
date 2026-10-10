@@ -194,8 +194,10 @@ export function MatrixVisualization({ type, onUpgradeClick }: MatrixVisualizatio
   const [config, setConfig] = useState(FALLBACK_MATRIX_CONFIG[type])
 
   // ---------- Task 14-F: matrix blocking state ----------
-  // True when the user has reached the earning ceiling for this matrix
-  // (entrada R$96.500 / residual R$750.000 / vendas 1.000 vendas).
+  // True when the user has reached the earning ceiling for this matrix.
+  // Task 13-d — o teto vem do SystemConfig via /api/network/matrix-progress
+  // (matrix.{entrada|residual|vendas}.limit_cents; 0/ausente = "a definir",
+  // matriz ilimitada → a API devolve isBlocked=false e NUNCA exibe bloqueio).
   // When blocked, the UI shows an overlay banner at the top.
   const [isBlocked, setIsBlocked] = useState(false)
   const [blockPct, setBlockPct] = useState(0)
@@ -322,7 +324,9 @@ export function MatrixVisualization({ type, onUpgradeClick }: MatrixVisualizatio
     <div className="space-y-5">
       {/* Task 14-F: matrix blocking overlay banner.
           Shown when the user has reached the earning ceiling for this
-          matrix type (entrada R$96.500 / residual R$750.000 / vendas 1.000 vendas).
+          matrix type. Task 13-d — o teto é dinâmico (SystemConfig via
+          /api/network/matrix-progress); matriz "a definir" (limite 0/ausente)
+          vem com isBlocked=false e o banner nunca é renderizado.
           Renders ABOVE everything else so the user immediately sees the
           matrix is blocked. */}
       {isBlocked && (

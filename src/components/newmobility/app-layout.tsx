@@ -21,6 +21,9 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState, useEffect } from 'react'
+// Task 13-e — marca dinâmica no header (mesmo hook já usado no admin-layout,
+// Task 6). Fallback 'NewMobility' é tratado dentro do próprio hook.
+import { useBranding } from '@/lib/use-branding'
 
 const languages: { code: Language; label: string; name: string }[] = [
   { code: 'pt', label: 'PT', name: 'Português' },
@@ -79,6 +82,10 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   const { user, setMobileSidebarOpen, updateUser, activePage, darkMode, toggleDarkMode, setActivePage, setAdminViewAsUser } = useStore()
   const { t } = useTranslation()
+  // Task 13-e — nome da plataforma editável pelo admin (SystemConfig
+  // platform_name, cache 5min). Enquanto carrega, o hook já devolve
+  // 'NewMobility' como fallback — sem flash e sem layout shift.
+  const branding = useBranding()
   // searchOpen state removed — header search lupa was removed per user request
 
   const isAdmin = user?.role === 'admin'
@@ -133,7 +140,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                   <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 text-white font-bold text-xs shadow-md shadow-emerald-500/20">
                     NM
                   </div>
-                  <span className="font-bold text-foreground">NewMobility</span>
+                  {/* Task 13-e — marca dinâmica (era "NewMobility" fixo) */}
+                  <span className="font-bold text-foreground">{branding.name}</span>
                 </div>
 
                 <div className="hidden lg:flex items-center gap-1.5 text-sm min-w-0">

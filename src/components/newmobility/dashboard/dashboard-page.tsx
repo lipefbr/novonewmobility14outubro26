@@ -578,13 +578,8 @@ export function DashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center gap-3 mb-3">
-                <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                  <TrendingUp className="h-3.5 w-3.5" />
-                  <span className="text-sm font-bold">+23%</span>
-                </div>
-                <span className="text-xs text-muted-foreground">crescimento nos últimos 6 meses</span>
-              </div>
+              {/* Task 13-e — chip "+23% crescimento nos últimos 6 meses" REMOVIDO:
+                  número fabricado sem fonte de dados. O gráfico permanece. */}
               <div className="h-[80px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={networkHealthData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>

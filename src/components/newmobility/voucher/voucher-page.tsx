@@ -14,7 +14,7 @@ import { formatBRL } from '@/lib/format'
 import {
   Ticket, Check, Clock, Car, ShoppingBag, Gift, Copy, Check as CheckIcon,
   Pill, UtensilsCrossed, ShoppingCart, Plus, QrCode, Filter, Timer, Sparkles,
-  Share2, ChevronDown, ChevronUp, Star, Info, TrendingUp, Zap, Store, CreditCard, Wallet,
+  Share2, ChevronDown, ChevronUp, Star, Info, Zap, Store, CreditCard, Wallet,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useToast } from '@/hooks/use-toast'
@@ -142,13 +142,11 @@ const voucherAmounts = [
   { label: 'R$ 500,00', value: 50000 },
 ]
 
-// Popular categories with usage count
-const popularCategories = [
-  { category: 'Mobilidade' as const, icon: Car, usage: 3420, color: 'bg-blue-500', lightBg: 'bg-blue-50 dark:bg-blue-950/30', textColor: 'text-blue-700 dark:text-blue-400', growth: '+18%' },
-  { category: 'Refeição' as const, icon: UtensilsCrossed, usage: 2890, color: 'bg-amber-500', lightBg: 'bg-amber-50 dark:bg-amber-950/30', textColor: 'text-amber-700 dark:text-amber-400', growth: '+12%' },
-  { category: 'Farmácia' as const, icon: Pill, usage: 2150, color: 'bg-rose-500', lightBg: 'bg-rose-50 dark:bg-rose-950/30', textColor: 'text-rose-700 dark:text-rose-400', growth: '+9%' },
-  { category: 'Shopping' as const, icon: ShoppingCart, usage: 1680, color: 'bg-emerald-500', lightBg: 'bg-emerald-50 dark:bg-emerald-950/30', textColor: 'text-emerald-700 dark:text-emerald-400', growth: '+15%' },
-]
+// Task 13-e — REMOVIDO o bloco "Vouchers Populares" (popularCategories) que
+// exibia números FABRICADOS como reais: usos/mês 3.420/2.890/2.150/1.680 e
+// crescimentos "+18%/+12%/+9%/+15%" sem nenhuma fonte de dados. O card só
+// existia para mostrar esses números — removido por inteiro.
+// const popularCategories = [...] (removido)
 
 // Countdown timer component with urgency color transitions
 function CountdownTimer({ expiresAt }: { expiresAt: string }) {
@@ -1177,55 +1175,10 @@ export function VoucherPage() {
         ))}
       </div>
 
-      {/* Vouchers Populares Section */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
-        <Card className="shadow-sm bg-card">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-bold flex items-center gap-2">
-              <TrendingUp className="h-4 w-4 text-emerald-500" />
-              Vouchers Populares
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {popularCategories.map((cat, i) => {
-                const CatIcon = cat.icon
-                const maxUsage = Math.max(...popularCategories.map(c => c.usage))
-                const barWidth = Math.round((cat.usage / maxUsage) * 100)
-                return (
-                  <motion.div
-                    key={cat.category}
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.06 }}
-                    className={`p-3 rounded-lg border ${cat.lightBg} border-border hover:shadow-md transition-all duration-200 cursor-pointer group`}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="p-1.5 rounded-lg bg-white dark:bg-gray-800 shadow-sm group-hover:scale-105 transition-transform">
-                        <CatIcon className="h-4 w-4 text-emerald-600" />
-                      </div>
-                      <Badge variant="outline" className="text-[9px] ml-auto text-emerald-600 border-emerald-200 dark:border-emerald-800">
-                        {cat.growth}
-                      </Badge>
-                    </div>
-                    <p className="text-sm font-bold text-foreground">{cat.category}</p>
-                    <p className={`text-lg font-bold ${cat.textColor} mt-0.5`}>{cat.usage.toLocaleString('pt-BR')}</p>
-                    <p className="text-[10px] text-muted-foreground">usos este mês</p>
-                    <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
-                      <motion.div
-                        className={`h-full rounded-full ${cat.color}`}
-                        initial={{ width: 0 }}
-                        animate={{ width: `${barWidth}%` }}
-                        transition={{ delay: 0.3 + i * 0.1, duration: 0.6, ease: 'easeOut' }}
-                      />
-                    </div>
-                  </motion.div>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+      {/* Task 13-e — seção "Vouchers Populares" REMOVIDA: exibia contagens de
+          uso e crescimentos fabricados (3.420/2.890/2.150/1.680 · +18%...)
+          sem fonte de dados. O restante da página (estatísticas do usuário,
+          vouchers reais da API) permanece intacto. */}
 
       {/* Featured Voucher Hero Card */}
       {featuredVoucher && (

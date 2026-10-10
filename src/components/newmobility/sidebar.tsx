@@ -63,6 +63,9 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { apiFetch } from '@/lib/api'
+// Task 13-e — marca dinâmica no sidebar (mesmo hook do admin-layout, Task 6).
+// O hook já devolve 'NewMobility' como fallback enquanto carrega/sem config.
+import { useBranding } from '@/lib/use-branding'
 
 // Task 2-c / Item 7 — shape returned by the public /api/gratifications-config
 // endpoint. Used to decide whether to show the "Metas" (gratifications) menu
@@ -192,6 +195,9 @@ const allMenuItems: MenuItem[] = [
 export function Sidebar() {
   const { activePage, setActivePage, logout, sidebarCollapsed, setSidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen, user } = useStore()
   const { t } = useTranslation()
+  // Task 13-e — nome da plataforma editável pelo admin (SystemConfig
+  // platform_name). Antes era "NewMobility" fixo na linha ~305.
+  const branding = useBranding()
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   // Task 2-c / Item 7 — admin-configured Metas module visibility.
   // Loaded once on mount from the public /api/gratifications-config endpoint
@@ -302,7 +308,8 @@ export function Sidebar() {
               animate={{ opacity: 1, x: 0 }}
               className="flex flex-col min-w-0"
             >
-              <span className="text-white font-bold text-base truncate">NewMobility</span>
+              {/* Task 13-e — marca dinâmica (era "NewMobility" fixo) */}
+              <span className="text-white font-bold text-base truncate">{branding.name}</span>
               <span className="text-emerald-400 text-xs truncate">{t('header.backoffice')}</span>
             </motion.div>
           )}

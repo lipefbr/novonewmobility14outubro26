@@ -11,8 +11,17 @@
 //                       (75.000.000 cents)
 //   - Vendas matrix   → blocks at 1.000 vendas (sales count)
 //
-// The thresholds are deliberately exported as a const record so admin
-// tooling / tests can reference the same numbers without re-hardcoding.
+// Task 13-d — os limites acima são agora apenas FALLBACKS documentados.
+// A fonte da verdade é o SystemConfig (editado na aba Matrizes do admin via
+// PUT /api/admin/matrix-config):
+//   - matrix.entrada.limit_cents  (default 9650000)
+//   - matrix.residual.limit_cents (default 75000000)
+//   - matrix.vendas.limit_cents   (default 0 = "a definir" / ilimitado)
+// O servidor (/api/network/matrix-progress) lê essas keys e repassa os
+// overrides para `getMatrixProgress()` — valor ausente/<= 0 → null =
+// ILIMITADO (nunca bloqueia, nunca mostra teto). Os consumidores client-side
+// continuam renderizando o que a API devolve; se a API não enviar overrides,
+// os fallbacks abaixo são usados (compatibilidade).
 
 export type MatrixType = 'entrada' | 'residual' | 'vendas'
 
@@ -27,10 +36,20 @@ export interface MatrixThresholdEntry {
   metric: 'amount' | 'count'
 }
 
+// FALLBACK defaults — usados somente quando a API não fornece overrides.
 export const MATRIX_THRESHOLDS: Record<MatrixType, MatrixThresholdEntry> = {
   entrada: { amountCents: 9_650_000, label: 'R$ 96.500', metric: 'amount' },
   residual: { amountCents: 75_000_000, label: 'R$ 750.000', metric: 'amount' },
   vendas: { count: 1_000, label: '1.000 vendas', metric: 'count' },
+}
+
+// Task 13-d — overrides opcionais vindos do SystemConfig (aba Matrizes).
+// Campo `undefined` → usa o fallback de MATRIX_THRESHOLDS (override parcial).
+// Campo `null` ou <= 0 → ILIMITADO ("a definir"): nunca bloqueia.
+export interface MatrixLimitsOverride {
+  entradaCents?: number | null
+  residualCents?: number | null
+  vendasCount?: number | null
 }
 
 export interface MatrixProgress {
@@ -48,6 +67,64 @@ export interface MatrixProgress {
   threshold: number
   /** The current value passed in. */
   current: number
+  /** Task 13-d — true quando a matriz não tem limite configurado ("a definir"). */
+  unlimited?: boolean
+}
+
+// Task 13-d — label dinâmico em R$ a partir de centavos (ex.: 9650000 → "R$ 96.500").
+function formatCentsBrlLabel(cents: number): string {
+  const reais = cents / 100
+  return `R$ ${reais.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+}
+
+// Task 13-d — label dinâmico de contagem (ex.: 1000 → "1.000 vendas").
+function formatCountLabel(count: number): string {
+  return `${count.toLocaleString('pt-BR')} vendas`
+}
+
+interface ResolvedCeiling {
+  max: number
+  label: string
+  unlimited: boolean
+}
+
+// Task 13-d — resolve o teto efetivo: override do SystemConfig > fallback.
+// null / <= 0 / não-numérico no override = ilimitado (nunca bloqueia).
+function resolveCeiling(
+  matrixType: MatrixType,
+  limits?: MatrixLimitsOverride,
+): ResolvedCeiling {
+  const fallback = MATRIX_THRESHOLDS[matrixType]
+  const fallbackMax =
+    fallback.metric === 'amount' ? fallback.amountCents ?? 0 : fallback.count ?? 0
+
+  if (limits) {
+    const override =
+      matrixType === 'entrada'
+        ? limits.entradaCents
+        : matrixType === 'residual'
+          ? limits.residualCents
+          : limits.vendasCount
+
+    // Campo presente no override (inclui null) → SystemConfig é a fonte.
+    if (override !== undefined) {
+      if (override === null || !Number.isFinite(override) || override <= 0) {
+        // "A definir" — matriz ilimitada: nunca bloqueia, sem teto exibido.
+        return { max: 0, label: 'A definir', unlimited: true }
+      }
+      return {
+        max: override,
+        label:
+          fallback.metric === 'amount'
+            ? formatCentsBrlLabel(override)
+            : formatCountLabel(override),
+        unlimited: false,
+      }
+    }
+  }
+
+  // Sem override para este tipo → mantém o fallback documentado.
+  return { max: fallbackMax, label: fallback.label, unlimited: false }
 }
 
 /**
@@ -58,21 +135,37 @@ export interface MatrixProgress {
  *                       - cents for `entrada` / `residual`
  *                       - integer count for `vendas`
  *                       Non-numeric / negative inputs are coerced to 0.
+ * @param limits       Task 13-d — overrides vindos do SystemConfig (opcional).
+ *                       null/<= 0 = ilimitado (nunca bloqueia). Ausente =
+ *                       fallback MATRIX_THRESHOLDS.
  */
 export function getMatrixProgress(
   matrixType: MatrixType,
   currentValue: number,
+  limits?: MatrixLimitsOverride,
 ): MatrixProgress {
   const threshold = MATRIX_THRESHOLDS[matrixType]
-  const max =
-    threshold.metric === 'amount'
-      ? threshold.amountCents ?? 0
-      : threshold.count ?? 0
+  const ceiling = resolveCeiling(matrixType, limits)
+  const max = ceiling.max
 
   const current =
     typeof currentValue === 'number' && !isNaN(currentValue) && isFinite(currentValue)
       ? Math.max(0, currentValue)
       : 0
+
+  // Matriz ilimitada: progresso 0%, nunca bloqueada, nada restante a exibir.
+  if (ceiling.unlimited) {
+    return {
+      pct: 0,
+      isBlocked: false,
+      remaining: 0,
+      thresholdLabel: ceiling.label,
+      metric: threshold.metric,
+      threshold: 0,
+      current,
+      unlimited: true,
+    }
+  }
 
   const pct = max > 0 ? Math.min(100, (current / max) * 100) : 0
   const isBlocked = current >= max && max > 0
@@ -82,7 +175,7 @@ export function getMatrixProgress(
     pct,
     isBlocked,
     remaining,
-    thresholdLabel: threshold.label,
+    thresholdLabel: ceiling.label,
     metric: threshold.metric,
     threshold: max,
     current,

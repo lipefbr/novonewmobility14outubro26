@@ -2,6 +2,45 @@ import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 import { getSession } from '@/lib/auth'
 
+// Fallbacks — usados SOMENTE quando a tabela Plan está vazia/ilegível.
+// Alinhados ao seed do banco (Task 2-b: blue3/blue5 = R$ 999,90 cada).
+// Antes o fallback era 4990/9990 (valores antigos e errados).
+const FALLBACK_PRICES: Record<string, number> = {
+  free: 0,
+  blue3: 99990, // R$ 999,90
+  blue5: 99990, // R$ 999,90
+}
+
+/**
+ * Monta o mapa <código do plano, preço em centavos> a partir da tabela
+ * Plan a cada request — mesmo padrão do loadPlanCatalog() de
+ * /api/plans/calculate-upgrade (Task 11). Cai nos fallbacks acima quando
+ * o banco está vazio ou a query falha. `premium5` espelha `blue5`
+ * (alias de exibição do client spec §1.1, mesma faixa de preço).
+ */
+async function loadPlanCatalog(): Promise<Map<string, number>> {
+  const catalog = new Map<string, number>(Object.entries(FALLBACK_PRICES))
+  try {
+    const plans = await prisma.plan.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
+      select: { code: true, priceCents: true },
+    })
+    for (const plan of plans) {
+      if (!plan?.code) continue
+      if (typeof plan.priceCents === 'number' && plan.priceCents >= 0) {
+        catalog.set(plan.code, plan.priceCents)
+      }
+    }
+  } catch (err) {
+    console.warn('ensure-monthly: falha ao carregar catálogo de Plan, usando fallbacks:', err)
+  }
+  // premium5 é alias de blue5 (mesmo tier) — precifica igual à linha do banco
+  const blue5Price = catalog.get('blue5')
+  if (blue5Price !== undefined) catalog.set('premium5', blue5Price)
+  return catalog
+}
+
 /**
  * POST /api/billing/ensure-monthly
  *
@@ -54,17 +93,14 @@ export async function POST(request: Request) {
     let created = 0
     let skipped = 0
     const createdInvoices: any[] = []
+    // Usuários pulados por não terem preço no catálogo (Task 13-a)
+    const skippedNoPrice: Array<{ userId: string; plan: string }> = []
 
-    // Valor mensal por plano (em centavos)
-    const PLAN_MONTHLY_FEE: Record<string, number> = {
-      blue3: 4990,    // R$ 49,90
-      blue5: 9990,    // R$ 99,90
-      premium1: 14990, // R$ 149,90
-      premium2: 24990, // R$ 249,90
-      premium3: 49990, // R$ 499,90
-      premium4: 99990, // R$ 999,90
-      premium5: 99990, // R$ 999,90
-    }
+    // Catálogo de preços mensais lido da tabela Plan (fonte da verdade
+    // editável pelo admin via PUT /api/admin/plans). Antes era um map
+    // estático com valores errados (blue3: 4990 / blue5: 9990 vs DB
+    // 99990/99990), gerando faturas de renovação com valor incorreto.
+    const planCatalog = await loadPlanCatalog()
 
     for (const user of users) {
       try {
@@ -86,7 +122,18 @@ export async function POST(request: Request) {
 
         // Determinar o valor e tipo da fatura
         const planCode = user.plan || 'blue3'
-        const amount = PLAN_MONTHLY_FEE[planCode] ?? 9990 // default R$ 99,90
+        // Task 13-a: se o plano do usuário não existe no catálogo do banco,
+        // NÃO criar fatura com valor "chutado" — pula este usuário (graça,
+        // sem quebrar o loop dos demais) e sinaliza na resposta.
+        const amount = planCatalog.get(planCode)
+        if (amount === undefined) {
+          skipped++
+          skippedNoPrice.push({ userId: user.id, plan: planCode })
+          console.error(
+            `[ensure-monthly] plano "${planCode}" sem preço no catálogo (tabela Plan) — usuário ${user.id} pulado, nenhuma fatura criada.`
+          )
+          continue
+        }
         const invoiceType = `plan_subscription_${planCode}`
         const nextDueDate = new Date(now)
         nextDueDate.setDate(nextDueDate.getDate() + 30)
@@ -138,6 +185,7 @@ export async function POST(request: Request) {
       scanned: users.length,
       created,
       skipped,
+      skippedNoPrice, // usuários pulados por plano sem preço no catálogo
       createdInvoices: createdInvoices.slice(0, 50), // limit response size
     })
   } catch (err) {

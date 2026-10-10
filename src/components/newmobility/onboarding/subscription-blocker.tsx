@@ -19,6 +19,8 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { apiFetch } from '@/lib/api'
+import { formatCurrency } from '@/lib/utils'
 
 // Pages that are always accessible (even without subscription)
 const ALLOWED_PAGES = ['myplan', 'profile', 'support', 'admin', 'dashboard']
@@ -35,29 +37,135 @@ const BLOCKED_FEATURES = [
   { icon: '🏆', label: 'Subir no Plano de Carreira' },
 ]
 
-const PLANS = [
+// Template local dos cards de plano (Task 13-a): nome, preço e features
+// são hidratados do banco via GET /api/plans no mount — os valores abaixo
+// são fallback (usados só quando a API falha) e estão alinhados ao seed da
+// tabela Plan (Task 2-b: blue3/blue5 = R$ 999,90 cada).
+//
+// FIX: Blue 3 libera SOMENTE Cashback Entrada (matriz 4x5) — Residual e
+// Vendas são bloqueados (gating em /api/cashback/entrada). As falsas
+// claims "Cashback Residual (4x7)" e "Cashback Vendas (4x9)" foram
+// removidas e os preços antigos errados (R$ 97 / R$ 147) corrigidos.
+type PlanCard = {
+  id: string
+  code: string
+  name: string
+  priceCents: number
+  popular?: boolean
+  color: string
+  features: string[]
+}
+
+const PLAN_TEMPLATES: PlanCard[] = [
   {
     id: 'blue3',
+    code: 'blue3',
     name: 'Blue 3',
-    price: 'R$ 97,00',
-    period: '/mês',
+    priceCents: 99990,
     color: 'from-blue-500 to-cyan-500',
-    features: ['Cashback Entrada (4x5)', 'Cashback Residual (4x7)', 'Cashback Vendas (4x9)', 'Apps Mobilidade, Refeição, Farmácia', 'Gratificações disponíveis', 'Plano de Carreira'],
+    features: [
+      'Cashback Entrada (4x5)',
+      'Apps Mobilidade, Refeição, Farmácia',
+      'Gratificações disponíveis',
+      'Plano de Carreira',
+    ],
   },
   {
     id: 'blue5',
-    name: 'Blue 5',
-    price: 'R$ 147,00',
-    period: '/mês',
+    code: 'blue5',
+    name: 'Blue 5 Premium',
+    priceCents: 99990,
     color: 'from-emerald-500 to-teal-500',
     popular: true,
-    features: ['Tudo do Blue 3', 'Gratificações exclusivas', 'Prioridade no suporte', 'Bônus de adesão aumentado', 'App Pet, Seguro Telefone', 'Telemedicina', 'Assistência funerária'],
+    features: [
+      'Tudo do Blue 3',
+      'Gratificações exclusivas',
+      'Prioridade no suporte',
+      'Bônus de adesão aumentado',
+      'App Pet, Seguro Telefone',
+      'Telemedicina',
+      'Assistência funerária',
+    ],
   },
 ]
+
+// Shape retornado por GET /api/plans (campo `plans`).
+type ApiPlan = {
+  id?: string
+  code?: string
+  name?: string
+  priceCents?: number
+  description?: string
+  features?: string[]
+}
+
+// Mescla um plano da API sobre o template local (mesmo padrão do
+// mergeApiPlan do myplan-page.tsx): dados do banco (nome, preço, features)
+// vencem; a apresentação (gradiente/badge popular) vem do template por
+// `code`. Códigos desconhecidos recebem uma apresentação padrão.
+function mergeApiPlanCard(apiPlan: ApiPlan): PlanCard {
+  const code = apiPlan.code || apiPlan.id || ''
+  const template = PLAN_TEMPLATES.find((t) => t.code === code)
+  const base: PlanCard =
+    template ?? {
+      id: code || 'plan',
+      code: code || 'plan',
+      name: apiPlan.name || code,
+      priceCents: 0,
+      color: 'from-blue-500 to-cyan-500',
+      features: [],
+    }
+  return {
+    ...base,
+    code: code || base.code,
+    name: apiPlan.name || base.name,
+    // Preço do banco em centavos quando válido; senão mantém o template
+    priceCents:
+      typeof apiPlan.priceCents === 'number' && apiPlan.priceCents >= 0
+        ? apiPlan.priceCents
+        : base.priceCents,
+    // Features do banco (admin-editáveis) quando presentes
+    features:
+      Array.isArray(apiPlan.features) && apiPlan.features.length > 0
+        ? apiPlan.features
+        : base.features,
+  }
+}
 
 export function SubscriptionBlocker() {
   const { user, activePage, setActivePage } = useStore()
   const [dismissed, setDismissed] = useState(false)
+  // Cards de plano: template local mesclado com o catálogo do banco
+  const [plans, setPlans] = useState<PlanCard[]>(PLAN_TEMPLATES)
+
+  // Carrega o catálogo público /api/plans no mount (endpoint público,
+  // sem auth — o mesmo consumido pelo myplan-page). Padrão do projeto:
+  // async IIFE + flag `cancelled`. Em caso de falha mantém os templates
+  // locais (preços já corrigidos e alinhados ao banco).
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await apiFetch<{ plans?: ApiPlan[] }>('/plans', {
+          timeoutMs: 30000,
+        })
+        if (cancelled) return
+        const apiPlans = Array.isArray(data?.plans) ? data.plans : []
+        // O blocker é um upsell — exclui o plano gratuito do catálogo
+        const paidPlans = apiPlans.filter((p) => (p.code || p.id) !== 'free')
+        if (paidPlans.length > 0) {
+          setPlans(paidPlans.map(mergeApiPlanCard))
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.warn('subscription-blocker: falha ao carregar planos, usando fallback:', err)
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Don't show if:
   // - User is not logged in
@@ -162,7 +270,7 @@ export function SubscriptionBlocker() {
 
         {/* Plans */}
         <div className="space-y-2">
-          {PLANS.map((plan) => (
+          {plans.map((plan) => (
             <motion.div
               key={plan.id}
               whileHover={{ scale: 1.02 }}
@@ -197,8 +305,9 @@ export function SubscriptionBlocker() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-lg font-bold text-foreground">{plan.price}</p>
-                  <p className="text-[10px] text-muted-foreground -mt-1">{plan.period}</p>
+                  {/* Task 13-a: preço hidratado do banco (centavos → BRL) */}
+                  <p className="text-lg font-bold text-foreground">{formatCurrency(plan.priceCents)}</p>
+                  <p className="text-[10px] text-muted-foreground -mt-1">/mês</p>
                 </div>
               </div>
               <div className="mt-2 pt-2 border-t border-border/50">

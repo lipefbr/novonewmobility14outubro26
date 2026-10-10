@@ -10,7 +10,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { referralsApi } from '@/lib/api'
-import { formatCurrency, formatDate, getPlanName } from '@/lib/utils'
+import { formatCurrency, formatDate } from '@/lib/utils'
+import { usePlanCatalog } from '@/lib/use-plan-catalog'
 import {
   Search, Users, DollarSign, TrendingUp, ChevronDown, ChevronRight,
   ZoomIn, ZoomOut, Maximize2, UserCheck, Award, Mail, Calendar, Loader2,
@@ -103,6 +104,8 @@ function collectAllIds(node: TreeNode, ids: Set<string>) {
   }
 }
 
+// Task 13-b: planBadgeColor mantém apenas as CORES (keyed pelo código do
+// plano) — o TEXTO do rótulo vem do catálogo (usePlanCatalog.planName).
 function planBadgeColor(plan: string) {
   switch (plan) {
     case 'blue5': return 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400'
@@ -119,6 +122,7 @@ function TreeNodeView({
   searchQuery,
   selectedId,
   onSelect,
+  planLabel,
 }: {
   node: TreeNode
   depth: number
@@ -127,6 +131,9 @@ function TreeNodeView({
   searchQuery: string
   selectedId: string | null
   onSelect: (node: TreeNode) => void
+  // Resolvedor de rótulo do catálogo (Task 13-b) — injetado pelo NetworkModal
+  // (hook chamado UMA vez no topo; evita fetches duplicados nos nós recursivos).
+  planLabel: (code: string) => string
 }) {
   const isExpanded = expanded.has(node.id)
   const hasChildren = node.children.length > 0
@@ -179,7 +186,7 @@ function TreeNodeView({
             {node.referralCode}
           </span>
         )}
-        <Badge variant="outline" className={`text-[9px] shrink-0 ${planBadgeColor(node.plan)}`}>{getPlanName(node.plan)}</Badge>
+        <Badge variant="outline" className={`text-[9px] shrink-0 ${planBadgeColor(node.plan)}`}>{planLabel(node.plan)}</Badge>
         {node.level > 0 && (
           <span className="text-[9px] text-muted-foreground shrink-0">N{node.level}</span>
         )}
@@ -203,6 +210,7 @@ function TreeNodeView({
                 searchQuery={searchQuery}
                 selectedId={selectedId}
                 onSelect={onSelect}
+                planLabel={planLabel}
               />
             ))}
           </motion.div>
@@ -220,6 +228,9 @@ interface NetworkModalProps {
 export function NetworkModal({ open, onOpenChange }: NetworkModalProps) {
   const { t } = useTranslation()
   const { user } = useStore()
+  // Task 13-b: catálogo público de planos (GET /api/plans, cache 5min) —
+  // hidrata os rótulos de plano da árvore com os nomes reais da tabela Plan.
+  const { planName } = usePlanCatalog()
   const [searchQuery, setSearchQuery] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [selectedNode, setSelectedNode] = useState<TreeNode | null>(null)
@@ -453,6 +464,7 @@ export function NetworkModal({ open, onOpenChange }: NetworkModalProps) {
                 searchQuery={searchQuery}
                 selectedId={selectedNode?.id || null}
                 onSelect={setSelectedNode}
+                planLabel={planName}
               />
             )}
           </div>
@@ -475,7 +487,7 @@ export function NetworkModal({ open, onOpenChange }: NetworkModalProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-bold text-foreground">{selectedNode.name}</span>
-                      <Badge variant="outline" className={`text-[9px] ${planBadgeColor(selectedNode.plan)}`}>{getPlanName(selectedNode.plan)}</Badge>
+                      <Badge variant="outline" className={`text-[9px] ${planBadgeColor(selectedNode.plan)}`}>{planName(selectedNode.plan)}</Badge>
                       {selectedNode.status === 'active' ? (
                         <Badge className="text-[9px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">Ativo</Badge>
                       ) : (

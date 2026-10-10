@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { db, prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 
 // ============================================================================
@@ -132,6 +132,78 @@ const BENEFIT_CATALOG: Array<{
   },
 ]
 
+// ============================================================================
+// Task 13-e — Overlay das edições do admin sobre o catálogo estático.
+// ----------------------------------------------------------------------------
+// O admin edita nome/valor/descrição de cada benefício via
+// PUT /api/admin/gratifications-config/benefit, que grava as chaves
+// SystemConfig `metas.benefit.{type}.name|.amount|.description`.
+// Antes estas rotas devolviam APENAS o catálogo estático (260000/78000/...),
+// então a edição do admin nunca aparecia para o membro.
+// Agora fazemos batch-read das chaves e aplicamos por cima do estático.
+// Regras: amount é inteiro em centavos (inválido/negativo → mantém estático);
+// name/description vazios → mantém estático; erro de banco → mantém estático.
+// ============================================================================
+const BENEFIT_CONFIG_PREFIX = 'metas.benefit.'
+
+export interface BenefitOverlayEntry {
+  name?: string
+  amount?: number
+  description?: string
+}
+
+// Lê todas as chaves `metas.benefit.*` de uma vez e monta um mapa
+// { benefitType: { name?, amount?, description? } }. Erro → overlay vazio.
+export async function loadBenefitOverlay(): Promise<Record<string, BenefitOverlayEntry>> {
+  const overlay: Record<string, BenefitOverlayEntry> = {}
+  try {
+    const rows = await prisma.systemConfig.findMany({
+      where: { key: { startsWith: BENEFIT_CONFIG_PREFIX } },
+      select: { key: true, value: true },
+    })
+    for (const row of rows) {
+      // Formato esperado: metas.benefit.{type}.{field} (4 segmentos)
+      const parts = row.key.split('.')
+      if (parts.length !== 4) continue
+      const [, , benefitType, field] = parts
+      if (!benefitType) continue
+      if (field !== 'name' && field !== 'amount' && field !== 'description') continue
+      if (!overlay[benefitType]) overlay[benefitType] = {}
+      if (field === 'amount') {
+        // amount é gravado como String(int) em centavos; ignora inválido.
+        const parsed = Number.parseInt(row.value, 10)
+        if (Number.isFinite(parsed) && parsed >= 0) {
+          overlay[benefitType].amount = parsed
+        }
+      } else {
+        const value = (row.value || '').trim()
+        if (value) {
+          overlay[benefitType][field] = value
+        }
+      }
+    }
+  } catch {
+    // Banco indisponível → overlay vazio (mantém catálogo estático).
+  }
+  return overlay
+}
+
+// Aplica o overlay por cima de um catálogo estático, mantendo o shape.
+export function applyBenefitOverlay<
+  T extends { type: string; name: string; amount: number; description: string },
+>(catalog: readonly T[], overlay: Record<string, BenefitOverlayEntry>): T[] {
+  return catalog.map((item) => {
+    const o = overlay[item.type]
+    if (!o) return item
+    return {
+      ...item,
+      name: o.name || item.name,
+      amount: typeof o.amount === 'number' ? o.amount : item.amount,
+      description: o.description || item.description,
+    }
+  })
+}
+
 export async function GET() {
   try {
     // 1. Overall module visibility (targetQualification) — stored on the
@@ -194,7 +266,9 @@ export async function GET() {
           ? allowedQualifications
           : DEFAULT_ALLOWED_QUALIFICATIONS,
       benefitTargets,
-      benefits: BENEFIT_CATALOG,
+      // Task 13-e — catálogo com as edições do admin aplicadas (nome/valor/
+      // descrição vindos de SystemConfig metas.benefit.*).
+      benefits: applyBenefitOverlay(BENEFIT_CATALOG, await loadBenefitOverlay()),
     })
   } catch (err) {
     console.error('Public gratifications-config GET error:', err)
@@ -209,6 +283,8 @@ export async function GET() {
 }
 
 // Re-exported for type-sharing with the admin route.
+// (Task 13-e: loadBenefitOverlay/applyBenefitOverlay já são exportados
+// inline acima — não redeclarar aqui para evitar TS2323.)
 export {
   CONFIG_TYPE,
   BENEFIT_TARGETS_KEY,

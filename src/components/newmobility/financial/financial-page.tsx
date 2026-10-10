@@ -198,6 +198,26 @@ function getTransactionLabel(tx: any): string {
   return tx?.type || tx?.category || ''
 }
 
+// Task 13-c — regras de saque vindas do SystemConfig (saque.*, admin-editáveis)
+// via GET /api/financial/withdraw-config (público, sem PII — padrão da Task 11).
+// Shape idêntico ao response da rota (que espelha o parse do POST /api/financial/withdraw).
+interface WithdrawRules {
+  minCents: number
+  maxDailyCents: number
+  feePct: number
+  freeDays: number[]
+  freeDaysLabel: string
+  processingTimeHours: number
+  maxDailyWithdrawals: number
+}
+
+// Interpola TODAS as ocorrências de {chave} no template com os valores
+// informados (usado no banner freeWindow do i18n, que agora tem placeholders
+// {days}/{fee} no lugar dos valores fixos "5 e 8"/"5%").
+function interpolate(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (match, key) => (key in vars ? vars[key] : match))
+}
+
 // Build monthly gratification chart data (last 6 months).
 // A transaction counts toward gratification when its type OR category is `gratification`.
 function buildGratificationData(transactions: any[]) {
@@ -332,6 +352,9 @@ export function FinancialPage() {
   const [withdrawals, setWithdrawals] = useState<any[]>([])
   const [withdrawalsLoading, setWithdrawalsLoading] = useState(false)
   const [withdrawalLimits, setWithdrawalLimits] = useState<{ minWithdrawal: number; maxWithdrawal: number; withdrawalFee: number }>({ minWithdrawal: 5000, maxWithdrawal: 500000, withdrawalFee: 2 })
+  // Task 13-c: regras de saque reais (SystemConfig). null = fetch ainda não
+  // chegou/falhou → consumidores usam os fallbacks (50 / 2 / "5 e 8").
+  const [withdrawRules, setWithdrawRules] = useState<WithdrawRules | null>(null)
   const [allTransactionsForChart, setAllTransactionsForChart] = useState<any[]>([])
   const [exportStartDate, setExportStartDate] = useState('')
   const [exportEndDate, setExportEndDate] = useState('')
@@ -489,6 +512,33 @@ export function FinancialPage() {
     return () => { cancelled = true }
   }, [user?.id])
 
+  // Task 13-c: carrega as regras de saque (saque.*) do SystemConfig para o
+  // banner freeWindow e para repassar ao WithdrawalCard (evita um 2º fetch).
+  // Padrão async IIFE + cancelled flag (Tasks 5/11 — evita lint
+  // react-hooks/set-state-in-effect do Next 16 + React 19 e race condition
+  // na troca de usuário). Em caso de falha mantém null — o banner e o card
+  // caem nos fallbacks ("5 e 8" / 2 / R$ 50) e a página nunca quebra.
+  useEffect(() => {
+    if (!user?.id) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await apiFetch<WithdrawRules>('/financial/withdraw-config', { timeoutMs: 30000 })
+        if (!cancelled && data) {
+          setWithdrawRules(data)
+          // Dialog de saque (Mínimo/Máximo/Taxa) também passa a refletir o SystemConfig.
+          setWithdrawalLimits({
+            minWithdrawal: data.minCents,
+            maxWithdrawal: data.maxDailyCents,
+            withdrawalFee: data.feePct,
+          })
+        }
+      } catch (err) {
+        console.warn('Falha ao carregar regras de saque, usando fallbacks:', err)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [user?.id])
   // Refetch transactions when filter or page changes
   useEffect(() => {
     if (initialLoading || !user?.id) return
@@ -1004,8 +1054,10 @@ export function FinancialPage() {
         </div>
       </div>
 
-      {/* Free-withdrawal window banner (client spec §15:
-          "ENTRE DIA 5 E 8 DE CADA MÊS ELE SACA SEM TAXA – APÓS TAXA DE 5%") */}
+      {/* Free-withdrawal window banner (client spec §15) — Task 13-c: os dias
+          e a taxa vêm do SystemConfig (saque.fee_free_days / saque.fee_pct,
+          admin-editáveis) via /api/financial/withdraw-config. Fallback:
+          "5 e 8" / 2 (defaults do backend). */}
       <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
         <Card className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 shadow-sm">
           <CardContent className="p-3 flex items-start gap-3">
@@ -1014,7 +1066,10 @@ export function FinancialPage() {
             </div>
             <div className="flex-1">
               <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
-                {t('financial.withdraw.freeWindow')}
+                {interpolate(t('financial.withdraw.freeWindow'), {
+                  days: withdrawRules?.freeDaysLabel ?? '5 e 8',
+                  fee: String(withdrawRules?.feePct ?? 2),
+                })}
               </p>
             </div>
           </CardContent>
@@ -1032,13 +1087,9 @@ export function FinancialPage() {
               <div>
                 <p className="text-sm text-gray-400 font-medium">Saldo Total</p>
                 <AnimatedBalance value={totalBalance} className="text-3xl md:text-4xl font-bold text-white" />
-                <div className="flex items-center gap-2 mt-2">
-                  <div className="flex items-center gap-1 bg-emerald-500/20 rounded-full px-2.5 py-1">
-                    <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
-                    <span className="text-xs font-bold text-emerald-400">+5.2%</span>
-                  </div>
-                  <span className="text-xs text-gray-400">vs. mês anterior</span>
-                </div>
+                {/* Task 13-c: chip fake "+5.2% vs. mês anterior" removido — dado
+                    fabricado sem nenhuma fonte real (nenhum endpoint fornece
+                    comparação mensal do saldo). */}
               </div>
               <div className="flex items-center gap-4">
                 <div className="h-[100px] w-[100px]">
@@ -1628,8 +1679,9 @@ export function FinancialPage() {
         </motion.div>
       </div>
 
-      {/* ===== Asaas-tracked Withdrawal Card (Task 12-D) — explicit PIX/TED saques ===== */}
-      <WithdrawalCard />
+      {/* ===== Asaas-tracked Withdrawal Card (Task 12-D) — explicit PIX/TED saques =====
+          Task 13-c: mínimo repassado do SystemConfig (saque.min_cents) — fallback 50 no card. */}
+      <WithdrawalCard minAmountBrl={withdrawRules ? withdrawRules.minCents / 100 : undefined} />
 
       {/* Balance Cards with gradient top border accents */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

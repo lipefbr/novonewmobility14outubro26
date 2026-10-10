@@ -1,6 +1,10 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
+// Task 13-e — overlay das edições de benefícios (SystemConfig metas.benefit.*).
+// Sem isso, o dialog "Editar benefício" do admin preenchia com o catálogo
+// ESTÁTICO mesmo após salvar, e uma nova edição revertia os valores salvos.
+import { applyBenefitOverlay, loadBenefitOverlay } from '@/app/api/gratifications-config/route'
 
 // ============================================================================
 // BACK-7 + Task 2-c / Item 7 — Admin config for the "Metas" module.
@@ -214,7 +218,10 @@ export async function GET(req: NextRequest) {
       targetQualification,
       allowedQualifications,
       benefitTargets,
-      benefits: BENEFIT_CATALOG,
+      // Task 13-e — catálogo com as edições salvas aplicadas (nome/valor/
+      // descrição de SystemConfig metas.benefit.*), para o dialog de edição
+      // preencher com o valor REAL e não reverter o que o admin já salvou.
+      benefits: applyBenefitOverlay(BENEFIT_CATALOG, await loadBenefitOverlay()),
       // Always also echo the allowed options so the admin UI can render them.
       options: VALID_TARGETS.map((v) => ({
         value: v,

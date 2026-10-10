@@ -143,11 +143,23 @@ interface MatrixProgressItem {
   pct: number
   isBlocked: boolean
   remaining: number
+  // Task 13-d — flag aditivo da API: matriz sem limite configurado ("a definir").
+  // Quando true, NUNCA renderiza estado "Bloqueada" nem teto (ex.: 1.000 vendas).
+  unlimited?: boolean
   amountLabel: number
+}
+
+// Task 13-d — limites reais do SystemConfig (null = ilimitado), vindos da API.
+interface MatrixLimits {
+  entradaCents: number | null
+  residualCents: number | null
+  vendasCount: number | null
 }
 
 interface MatrixProgressResponse {
   thresholds: Record<ThresholdMatrixType, unknown>
+  // Task 13-d — campo aditivo; se ausente, o card usa o que a API calculou.
+  limits?: MatrixLimits
   progress: MatrixProgressItem[]
 }
 
@@ -443,6 +455,11 @@ function MatrixBlockingCard({ item }: { item: MatrixProgressItem }) {
               <Ban className="h-3 w-3" />
               Bloqueado
             </Badge>
+          ) : item.unlimited ? (
+            // Task 13-d — matriz sem limite ("a definir"): nunca mostra % nem bloqueio.
+            <Badge variant="outline" className="text-[10px] shrink-0">
+              A definir
+            </Badge>
           ) : (
             <Badge variant="outline" className="text-[10px] shrink-0">
               {item.pct.toFixed(1)}%
@@ -478,6 +495,11 @@ function MatrixBlockingCard({ item }: { item: MatrixProgressItem }) {
             <p className="text-[10px] text-rose-600 dark:text-rose-400 font-medium flex items-center gap-1">
               <Lock className="h-3 w-3 shrink-0" />
               Limite atingido — matriz bloqueada
+            </p>
+          ) : item.unlimited ? (
+            // Task 13-d — sem limite configurado: sem teto, sem "Faltam X".
+            <p className="text-[10px] text-muted-foreground">
+              Sem limite definido pela administração
             </p>
           ) : (
             <p className="text-[10px] text-muted-foreground">

@@ -1,5 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, prisma } from '@/lib/db'
+import { error } from '@/lib/api-utils'
+
+// Task 13-e — nome da plataforma lido do SystemConfig (editável pelo admin
+// em Configurações do Sistema → Nome da Plataforma). Fallback 'NewMobility'
+// quando a chave não existe ou o banco falha.
+async function getPlatformName(): Promise<string> {
+  try {
+    const row = await prisma.systemConfig.findUnique({
+      where: { key: 'platform_name' },
+      select: { value: true },
+    })
+    return row?.value?.trim() || 'NewMobility'
+  } catch {
+    return 'NewMobility'
+  }
+}
+
+// Escapa o nome da plataforma antes de interpolar no HTML do documento
+// (valor vem do admin — defesa extra contra quebra/XXS no template).
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
 
 export async function GET(
   request: NextRequest,
@@ -16,25 +42,22 @@ export async function GET(
     const invoice = await db.findOne('Invoice', '"id" = $1 AND "userId" = $2', [invoiceId, userId])
 
     if (!invoice) {
-      // Generate mock invoice if not found in DB
-      const mockInvoiceHtml = generateMockInvoiceHtml(invoiceId, userId)
-      return new NextResponse(mockInvoiceHtml, {
-        headers: {
-          'Content-Type': 'text/html',
-          'Content-Disposition': `inline; filename="invoice-${invoiceId}.html"`,
-        },
-      })
+      // Task 13-e — ANTES gerava uma fatura FALSA "PAGO R$ 999,00" quando o id
+      // não era encontrado (documento financeiro fabricado). Agora retorna 404
+      // no mesmo padrão success()/error() das demais rotas.
+      return error('Invoice not found', 404)
     }
 
-    const html = generateInvoiceHtml(invoice)
+    const platformName = await getPlatformName()
+    const html = generateInvoiceHtml(invoice, platformName)
     return new NextResponse(html, {
       headers: {
         'Content-Type': 'text/html',
         'Content-Disposition': `inline; filename="invoice-${invoiceId}.html"`,
       },
     })
-  } catch (error) {
-    console.error('Error generating invoice PDF:', error)
+  } catch (err) {
+    console.error('Error generating invoice PDF:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -43,13 +66,15 @@ function formatCurrencyCents(cents: number): string {
   return `R$ ${(cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
 }
 
-function generateInvoiceHtml(invoice: any): string {
+function generateInvoiceHtml(invoice: any, platformName: string): string {
   const statusMap: Record<string, string> = {
     paid: 'PAGO',
     pending: 'PENDENTE',
     overdue: 'VENCIDO',
     cancelled: 'CANCELADO',
   }
+
+  const brand = escapeHtml(platformName)
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -91,7 +116,8 @@ function generateInvoiceHtml(invoice: any): string {
 <body>
   <div class="header">
     <div>
-      <div class="logo">New<span>Mobility</span></div>
+      <!-- Task 13-e — marca dinâmica do SystemConfig (platform_name) -->
+      <div class="logo">${brand}</div>
       <p style="font-size: 11px; color: #666; margin-top: 4px;">BackOffice - Sistema de Gestão</p>
     </div>
     <div class="invoice-info">
@@ -105,12 +131,12 @@ function generateInvoiceHtml(invoice: any): string {
     <div class="detail-box">
       <h3>Cliente</h3>
       <p>${invoice.userId}</p>
-      <p style="font-size: 11px; color: #666; margin-top: 2px;">Plano NewMobility</p>
+      <p style="font-size: 11px; color: #666; margin-top: 2px;">Plano ${brand}</p>
     </div>
     <div class="detail-box">
       <h3>Pagamento</h3>
       <p>PIX / Cartão de Crédito</p>
-      <p style="font-size: 11px; color: #666; margin-top: 2px;">Processado via NewMobility</p>
+      <p style="font-size: 11px; color: #666; margin-top: 2px;">Processado via ${brand}</p>
     </div>
   </div>
   <table class="items">
@@ -136,26 +162,12 @@ function generateInvoiceHtml(invoice: any): string {
     </div>
   </div>
   <div class="footer">
-    <p>NewMobility Tecnologia Ltda - CNPJ: 00.000.000/0001-00</p>
+    <!-- Task 13-e — CNPJ fictício "00.000.000/0001-00" removido: documento
+         financeiro não deve afirmar um CNPJ que não existe no sistema. -->
+    <p>${brand}</p>
     <p>Esta fatura é um documento não fiscal, de caráter informativo.</p>
   </div>
   <script>window.onload = function() { window.print(); }</script>
 </body>
 </html>`
-}
-
-function generateMockInvoiceHtml(invoiceId: string, userId: string): string {
-  const amount = 99900
-  const status = 'paid'
-  const createdAt = new Date().toISOString()
-  const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-
-  return generateInvoiceHtml({
-    id: invoiceId,
-    userId,
-    amount,
-    status,
-    createdAt,
-    dueDate,
-  })
 }

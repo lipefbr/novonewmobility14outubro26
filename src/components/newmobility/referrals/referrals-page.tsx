@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { formatDate, getStatusLabel, getStatusVariant, getPlanName } from '@/lib/utils'
+import { formatDate, getStatusLabel, getStatusVariant } from '@/lib/utils'
+import { usePlanCatalog } from '@/lib/use-plan-catalog'
 import { formatBRL } from '@/lib/format'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
@@ -65,6 +66,10 @@ const networkGrowthData = [
 export function ReferralsPage() {
   const { t } = useTranslation()
   const { user } = useStore()
+  // Task 13-b: catálogo público de planos (GET /api/plans, cache 5min) —
+  // hidrata os rótulos de plano com os nomes reais da tabela Plan (o admin
+  // renomeou na aba Plans → reflete aqui). catalogPlans alimenta o filtro.
+  const { plans: catalogPlans, planName } = usePlanCatalog()
   const [search, setSearch] = useState('')
   const [levelFilter, setLevelFilter] = useState<number | null>(null)
   const [copied, setCopied] = useState(false)
@@ -457,7 +462,7 @@ export function ReferralsPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <Badge className={`text-[8px] border ${planBadgeColor(item.plan)}`}>{getPlanName(item.plan)}</Badge>
+                      <Badge className={`text-[8px] border ${planBadgeColor(item.plan)}`}>{planName(item.plan)}</Badge>
                       <span className="text-[10px] text-muted-foreground">{item.time}</span>
                     </div>
                   </div>
@@ -832,9 +837,14 @@ export function ReferralsPage() {
           ))}
           <select value={planFilter} onChange={(e) => setPlanFilter(e.target.value)} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
             <option value="all">Todos os Planos</option>
-            <option value="free">Gratuito</option>
-            <option value="blue3">Blue 3</option>
-            <option value="blue5">Blue 5</option>
+            {/* Task 13-b: opções do catálogo (nomes do DB). Pré-load usa os
+                códigos canônicos com rótulo estático (Gratuito/Blue 3/Blue 5). */}
+            {(catalogPlans.length > 0
+              ? catalogPlans.map((p) => ({ code: p.code, label: p.name }))
+              : ['free', 'blue3', 'blue5'].map((code) => ({ code, label: planName(code) }))
+            ).map((opt) => (
+              <option key={opt.code} value={opt.code}>{opt.label}</option>
+            ))}
           </select>
           <select value={statusFilterVal} onChange={(e) => setStatusFilterVal(e.target.value)} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
             <option value="all">Todos</option>
@@ -868,7 +878,7 @@ export function ReferralsPage() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium text-foreground truncate">{referral.name}</span>
                     <Badge className={`text-[10px] border ${planBadgeColor(referral.plan)}`}>
-                      {getPlanName(referral.plan)}
+                      {planName(referral.plan)}
                     </Badge>
                     <Badge variant={getStatusVariant(referral.status)} className="text-[10px]">
                       {getStatusLabel(referral.status)}
@@ -929,7 +939,7 @@ export function ReferralsPage() {
                   <p className="text-sm text-muted-foreground">{detailReferral.email}</p>
                   <div className="flex items-center gap-2 mt-1">
                     <Badge className={`text-[10px] border ${planBadgeColor(detailReferral.plan)}`}>
-                      {getPlanName(detailReferral.plan)}
+                      {planName(detailReferral.plan)}
                     </Badge>
                     <Badge variant={getStatusVariant(detailReferral.status)} className="text-[10px]">
                       {getStatusLabel(detailReferral.status)}
@@ -965,7 +975,7 @@ export function ReferralsPage() {
                     <Award className="h-3.5 w-3.5 text-muted-foreground" />
                     <span className="text-xs text-muted-foreground">Plano</span>
                   </div>
-                  <p className="text-sm font-semibold text-foreground">{getPlanName(detailReferral.plan)}</p>
+                  <p className="text-sm font-semibold text-foreground">{planName(detailReferral.plan)}</p>
                 </div>
               </div>
             </div>

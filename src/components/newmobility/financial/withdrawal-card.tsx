@@ -78,7 +78,17 @@ const initialForm: WithdrawalFormState = {
   bankType: 'CHECKING',
 }
 
-const MIN_AMOUNT_BRL = 50
+// Task 13-c: fallback do mínimo de saque (R$ 50,00) — usado apenas quando o
+// pai (FinancialPage) ainda não carregou/falhou ao buscar /api/financial/
+// withdraw-config (SystemConfig saque.min_cents, admin-editável).
+const DEFAULT_MIN_AMOUNT_BRL = 50
+
+interface WithdrawalCardProps {
+  /** Valor mínimo de saque em BRL — vem do SystemConfig (saque.min_cents)
+   *  via /api/financial/withdraw-config, passado pelo FinancialPage (pai)
+   *  para evitar um segundo fetch. Fallback: DEFAULT_MIN_AMOUNT_BRL. */
+  minAmountBrl?: number
+}
 
 function formatBRL(reais: number): string {
   return reais.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -152,7 +162,7 @@ function methodBadge(method: WithdrawalRequest['paymentMethod']) {
 
 // ---------- Component ----------
 
-export function WithdrawalCard() {
+export function WithdrawalCard({ minAmountBrl = DEFAULT_MIN_AMOUNT_BRL }: WithdrawalCardProps) {
   const { user } = useStore()
 
   const [form, setForm] = useState<WithdrawalFormState>(initialForm)
@@ -220,8 +230,8 @@ export function WithdrawalCard() {
     const amountNum = Number(form.amount.replace(',', '.'))
     if (!form.amount || isNaN(amountNum) || amountNum <= 0) {
       errs.amount = 'Informe um valor válido.'
-    } else if (amountNum < MIN_AMOUNT_BRL) {
-      errs.amount = `Valor mínimo: ${formatBRL(MIN_AMOUNT_BRL)}.`
+    } else if (amountNum < minAmountBrl) {
+      errs.amount = `Valor mínimo: ${formatBRL(minAmountBrl)}.`
     } else {
       const amountCents = Math.round(amountNum * 100)
       if (amountCents > availableBalanceCents) {
@@ -349,7 +359,7 @@ export function WithdrawalCard() {
                 id="wd-amount"
                 type="number"
                 inputMode="decimal"
-                min={MIN_AMOUNT_BRL}
+                min={minAmountBrl}
                 step="0.01"
                 placeholder="0,00"
                 value={form.amount}
@@ -358,7 +368,7 @@ export function WithdrawalCard() {
               />
             </div>
             <p className="text-[11px] text-muted-foreground">
-              Valor mínimo: {formatBRL(MIN_AMOUNT_BRL)}
+              Valor mínimo: {formatBRL(minAmountBrl)}
             </p>
             {formErrors.amount && (
               <p className="text-[11px] text-red-600 dark:text-red-400 font-medium">

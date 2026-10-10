@@ -9,7 +9,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
-import { cn, getPlanName } from '@/lib/utils'
+import { cn } from '@/lib/utils'
+import { usePlanCatalog } from '@/lib/use-plan-catalog'
 import { leaderboardApi } from '@/lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -84,19 +85,26 @@ function getEmptyLeaderboard(type: string): LeaderboardData {
   }
 }
 
+// Task 13-b: getPlanBadge agora retorna apenas a COR do badge (keyed pelo
+// código do plano). O TEXTO do rótulo vem do catálogo de planos via
+// usePlanCatalog().planName(code) — assim o rename feito pelo admin na aba
+// Plans aparece aqui. Fallback pré-load: nomes estáticos de getPlanName
+// (Gratuito/Blue 3/Blue 5 Premium) já resolvidos dentro do próprio hook.
 function getPlanBadge(plan: string) {
   switch (plan) {
     case 'blue5':
-      return { label: 'PRO', className: 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white text-[8px] px-1.5 py-0 h-4 border-0' }
+      return { className: 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white text-[8px] px-1.5 py-0 h-4 border-0' }
     case 'blue3':
-      return { label: 'Blue 3', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[8px] px-1.5 py-0 h-4 border-0' }
+      return { className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-[8px] px-1.5 py-0 h-4 border-0' }
     default:
-      return { label: 'Free', className: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 text-[8px] px-1.5 py-0 h-4 border-0' }
+      return { className: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 text-[8px] px-1.5 py-0 h-4 border-0' }
   }
 }
 
 // Podium component for top 3
-function PodiumDisplay({ top3, activeTab }: { top3: LeaderboardUser[]; activeTab: string }) {
+// planLabel: resolvedor de rótulo do catálogo (Task 13-b) — injetado pelo
+// LeaderboardPage (hook chamado UMA vez no topo para não multiplicar fetches).
+function PodiumDisplay({ top3, planLabel }: { top3: LeaderboardUser[]; planLabel: (code: string) => string }) {
   if (top3.length < 3) return null
   const [first, second, third] = top3
   const maxValue = first.value
@@ -151,7 +159,7 @@ function PodiumDisplay({ top3, activeTab }: { top3: LeaderboardUser[]; activeTab
                 {entry.name.split(' ')[0]}
               </p>
               <Badge className={cn('text-[7px] px-1 py-0 h-3', planBadge.className)}>
-                {planBadge.label}
+                {planLabel(entry.plan)}
               </Badge>
             </div>
 
@@ -196,6 +204,9 @@ function PodiumDisplay({ top3, activeTab }: { top3: LeaderboardUser[]; activeTab
 export function LeaderboardPage() {
   const { user } = useStore()
   const { t } = useTranslation()
+  // Task 13-b: catálogo público de planos (GET /api/plans, cache 5min) para
+  // hidratar os rótulos dos badges com os nomes reais da tabela Plan.
+  const { planName } = usePlanCatalog()
   const [activeTab, setActiveTab] = useState('referrals')
   const [period, setPeriod] = useState('monthly')
   const [data, setData] = useState<LeaderboardData | null>(null)
@@ -403,7 +414,7 @@ export function LeaderboardPage() {
                   >
                     <Card className="shadow-sm bg-card mb-4">
                       <CardContent className="p-4 pt-2">
-                        <PodiumDisplay top3={top10.slice(0, 3)} activeTab={activeTab} />
+                        <PodiumDisplay top3={top10.slice(0, 3)} planLabel={planName} />
                       </CardContent>
                     </Card>
                   </motion.div>
@@ -465,7 +476,7 @@ export function LeaderboardPage() {
                                       </Badge>
                                     )}
                                     <Badge className={cn('text-[8px] px-1.5 py-0 h-4', planBadge.className)}>
-                                      {planBadge.label}
+                                      {planName(entry.plan)}
                                     </Badge>
                                   </div>
                                   {/* Gradient progress bar showing relative value */}

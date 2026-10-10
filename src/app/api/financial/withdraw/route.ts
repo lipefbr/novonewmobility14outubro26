@@ -224,9 +224,11 @@ export async function POST(request: Request) {
       feeCents,
       netCents,
       isFreeWithdrawal: freeDay,
+      // Task 13-c (W-2): dias da janela gratuita vindos do SystemConfig
+      // (saque.fee_free_days) via formatFreeDaysLabel — não mais "5-8" fixo.
       message: freeDay
-        ? 'Saque solicitado dentro da janela gratuita (dias 5-8). Sem taxa.'
-        : `Saque solicitado com taxa de ${wConfig.feePct}% (R$ ${(feeCents / 100).toFixed(2).replace('.', ',')}). Janela gratuita: dias 5 a 8 de cada mês.`,
+        ? `Saque solicitado dentro da janela gratuita (dias ${formatFreeDaysLabel(wConfig.freeDays)}). Sem taxa.`
+        : `Saque solicitado com taxa de ${wConfig.feePct}% (R$ ${(feeCents / 100).toFixed(2).replace('.', ',')}). Janela gratuita: dias ${formatFreeDaysLabel(wConfig.freeDays)} de cada mês.`,
     }, 201)
   } catch (err) {
     console.error('Withdrawal error:', err)

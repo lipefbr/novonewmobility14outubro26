@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useStore, type UserData } from '@/lib/store'
-import { authApi } from '@/lib/api'
+import { authApi, apiFetch } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,7 +16,7 @@ import {
   IdCard,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import { toast } from 'sonner'
 
 // Phone mask
@@ -52,12 +52,35 @@ function getPasswordStrength(password: string): { score: number; label: string; 
   return { score: 100, label: 'Forte', color: 'bg-emerald-600' }
 }
 
-const plans = [
+// Template local dos cards de plano no signup (Task 13-a): ícones,
+// gradientes e badges são apresentação local; nome e preço são hidratados
+// do banco via GET /api/plans no mount. Os valores abaixo são fallback
+// (usados só quando a API falha) e estão alinhados ao seed da tabela Plan
+// (Task 2-b: blue3/blue5 = R$ 999,90 cada).
+//
+// FIX: antes os cards exibiam "R$ 200,00" (blue3) e "R$ 999,00" (blue5) —
+// valores estáticos divergentes do banco (99990/99990). O campo `priceValue`
+// (em reais) foi removido porque não era usado em lugar nenhum — o preço
+// agora vive só em `priceCents` e é formatado com formatCurrency().
+type PlanCard = {
+  id: string
+  code: string
+  name: string
+  priceCents: number
+  icon: typeof Shield
+  popular?: boolean
+  features: Array<{ text: string; icon: typeof Shield }>
+  color: string
+  borderColor: string
+  bgSelected: string
+}
+
+const PLAN_TEMPLATES: PlanCard[] = [
   {
     id: 'blue3',
+    code: 'blue3',
     name: 'Blue 3',
-    price: 'R$ 200,00',
-    priceValue: 200,
+    priceCents: 99990,
     icon: Star,
     features: [
       { text: 'CashBack Entrada', icon: Shield },
@@ -72,9 +95,9 @@ const plans = [
   },
   {
     id: 'blue5',
+    code: 'blue5',
     name: 'Blue 5 Premium',
-    price: 'R$ 999,00',
-    priceValue: 999,
+    priceCents: 99990,
     icon: Crown,
     popular: true,
     features: [
@@ -90,6 +113,53 @@ const plans = [
     bgSelected: 'bg-emerald-50 dark:bg-emerald-950/30',
   },
 ]
+
+// Shape retornado por GET /api/plans (campo `plans`).
+type ApiPlan = {
+  id?: string
+  code?: string
+  name?: string
+  priceCents?: number
+  description?: string
+  features?: string[]
+}
+
+// Mescla um plano da API sobre o template local (mesmo padrão do
+// mergeApiPlan do myplan-page.tsx): nome e preçoCents do banco vencem;
+// apresentação (ícone/gradiente/badge) vem do template por `code`.
+// Features da API são strings — recebem o ícone Check (checklist).
+function mergeApiPlan(apiPlan: ApiPlan): PlanCard {
+  const code = apiPlan.code || apiPlan.id || ''
+  const template = PLAN_TEMPLATES.find((t) => t.code === code)
+  const base: PlanCard =
+    template ?? {
+      id: code || 'plan',
+      code: code || 'plan',
+      name: apiPlan.name || code,
+      priceCents: 0,
+      icon: Star,
+      features: [],
+      color: 'from-emerald-500 to-emerald-600',
+      borderColor: 'border-emerald-300 dark:border-emerald-700',
+      bgSelected: 'bg-emerald-50 dark:bg-emerald-950/30',
+    }
+  return {
+    ...base,
+    id: code || base.id,
+    code: code || base.code,
+    name: apiPlan.name || base.name,
+    // Preço do banco em centavos quando válido; senão mantém o template
+    priceCents:
+      typeof apiPlan.priceCents === 'number' && apiPlan.priceCents >= 0
+        ? apiPlan.priceCents
+        : base.priceCents,
+    // Features do banco (admin-editáveis) quando presentes
+    features:
+      Array.isArray(apiPlan.features) && apiPlan.features.length > 0
+        ? apiPlan.features.map((text) => ({ text, icon: Check }))
+        : base.features,
+  }
+}
 
 const steps = [
   { key: 'personal', label: 'Dados Pessoais', icon: User },
@@ -136,6 +206,9 @@ export function RegisterPage() {
   const [hasReferral, setHasReferral] = useState(false)
   const [referralValid, setReferralValid] = useState<boolean | null>(null)
   const [checkingReferral, setCheckingReferral] = useState(false)
+  // Cards de plano: template local mesclado com o catálogo do banco
+  // (Task 13-a) — nome e preço hidratados de GET /api/plans no mount.
+  const [plans, setPlans] = useState<PlanCard[]>(PLAN_TEMPLATES)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -155,6 +228,36 @@ export function RegisterPage() {
           .then(d => setReferralValid(!!d?.valid))
           .catch(() => setReferralValid(null))
       }
+    }
+  }, [])
+
+  // Task 13-a: catálogo de planos do banco (GET /api/plans — endpoint
+  // público, sem auth: a página de cadastro não tem usuário logado).
+  // Hidrata nome/preço dos cards para refletir edições do admin
+  // (PUT /api/admin/plans) em vez dos valores estáticos antigos
+  // (R$ 200 / R$ 999) que divergiam do banco (99990/99990).
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await apiFetch<{ plans?: ApiPlan[] }>('/plans', {
+          timeoutMs: 30000,
+        })
+        if (cancelled) return
+        const apiPlans = Array.isArray(data?.plans) ? data.plans : []
+        // Cadastro é upsell — mantém apenas planos pagos (exclui 'free')
+        const paidPlans = apiPlans.filter((p) => (p.code || p.id) !== 'free')
+        if (paidPlans.length > 0) {
+          setPlans(paidPlans.map(mergeApiPlan))
+        }
+      } catch (err) {
+        // Fallback: mantém os templates locais (preços corrigidos,
+        // alinhados ao banco)
+        console.warn('register-page: falha ao carregar planos, usando fallback:', err)
+      }
+    })()
+    return () => {
+      cancelled = true
     }
   }, [])
 
@@ -722,7 +825,8 @@ export function RegisterPage() {
                               </div>
                             </div>
                             <div className="mb-3">
-                              <span className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{plan.price}</span>
+                              {/* Task 13-a: preço hidratado do banco (centavos → BRL) */}
+                              <span className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(plan.priceCents)}</span>
                               <span className="text-xs text-muted-foreground block">/taxa de uso</span>
                             </div>
                             <ul className="space-y-1.5">

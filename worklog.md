@@ -11753,3 +11753,229 @@ Stage Summary:
   * M-1 descobriu a key `saque.fee_free_days` ("5,6,7,8") já seedada no system-settings — usei-a em vez de inventar keys novas (`saque.free_days_start/end`). Lista separada por vírgula é mais flexível que range (suporta dias não-contíguos ex.: "5,6,15,20"). `formatFreeDaysLabel` mostra "5-8" quando contíguo (UX limpa) e "5,6,15,20" caso contrário.
   * Fallback de freeDays quando a key não existe: `[5,6,7,8]` (mesmo comportamento pré-mudança — nenhum usuário nota diferença até o admin editar).
   * Não toquei no dashboard admingeral (instrução explícita do usuário) nem na área do membro (Task 11 já resolveu).
+
+---
+Task ID: 13-b
+Agent: Z.ai Code (subagent)
+Task: Tornar os RÓTULOS de nome de plano na área do membro dinâmicos (admin renomeia plano na aba Plans → páginas do membro refletindo via catálogo /api/plans). Criado hook use-plan-catalog.ts e aplicado em leaderboard-page, referrals-page e network-modal.
+
+Work Log:
+- Lido worklog.md (últimas 150 linhas) — contexto Tasks 10/11/12 (padrão: 13 erros lint pré-existentes em .js da raiz, hook use-branding.ts como referência de cache, Tasks 11/12 já tornaram myplan/simulator/admin-users dinâmicos).
+- Lidas as fontes: src/lib/utils.ts (getPlanName: free→'Gratuito', blue3→'Blue 3', blue5→'Blue 5 Premium', fallback código cru), src/app/api/plans/route.ts (GET público lê tabela Plan isActive&&isDefault, ordenado por sortOrder; response shape direto `{ plans: [{ id, code, name, priceCents, ... }] }` — success() do api-utils devolve o objeto puro sem wrapper), src/lib/use-branding.ts (padrão: 'use client', cache localStorage TTL 5min, readCache/writeCache com typeof window guard, useEffect com cancelled flag, useState initializer hidratando do cache), src/lib/api.ts (apiFetch com timeoutMs option).
+- Etapa 1 — CRIADO src/lib/use-plan-catalog.ts (espelha use-branding.ts exatamente, incluindo a diretiva 'use client'):
+  * Fetch único de /api/plans via apiFetch com timeoutMs 30000; cache localStorage key `plan_catalog_cache` TTL 5min (mesma mecânica readCache/writeCache do branding).
+  * Expõe `{ plans, planName(code), loading }`. planName resolve: nome do DB → mapa estático getPlanName (Gratuito/Blue 3/Blue 5 Premium pré-load) → código cru (comportamento interno do getPlanName). useCallback para referência estável.
+  * SSR-safe: guards typeof window === 'undefined' no readCache/writeCache (idêntico ao branding).
+  * Sanitização defensiva: só aceita itens com code+name não-vazios; resposta vazia/quebrada NÃO é cacheada (mantém fallback estático). Falha de rede/timeout silenciosa (catch vazio) — sem crash.
+  * Exporta invalidatePlanCatalogCache() (paridade com invalidateBrandingCache) para futuro uso pós-save no admin.
+- Etapa 2 — leaderboard-page.tsx:
+  * getPlanBadge (ex-linhas 87-96) agora retorna APENAS `{ className }` (cores keyed por código blue5/blue3/default — mantidas idênticas). Removidos os literais de label 'PRO'/'Blue 3'/'Free' do switch.
+  * Rótulos hidratados: PodiumDisplay recebe nova prop `planLabel` (injetada pelo LeaderboardPage com planName — hook chamado UMA vez no topo para não multiplicar fetches; prop activeTab que era unused foi substituída pela nova assinatura) e a lista 4º+ usa `planName(entry.plan)` direto no Badge.
+  * Import getPlanName removido (já estava unused no arquivo antes desta task).
+- Etapa 3 — referrals-page.tsx:
+  * Hook chamado no topo de ReferralsPage (`const { plans: catalogPlans, planName } = usePlanCatalog()`).
+  * 4 call sites de getPlanName migrados para planName: badge da Atividade Recente (~460), badge da lista de indicados (~871), badge do dialog de detalhes (~932) e campo "Plano" do dialog (~968).
+  * Filtro "Todos os Planos" (ex-linhas 835-837, options literais Gratuito/Blue 3/Blue 5): options agora vêm do catálogo (code+name do DB) com fallback pré-load para os 3 códigos canônicos free/blue3/blue5 rotulados via planName. Bônus: se o admin criar/remover planos isDefault, o filtro acompanha.
+  * Leitura prévia das linhas indicadas ~356-357 (planBadgeColor) e ~723-737 (ternários de cor do anel/dot da árvore): são mapas de COR keyed por código, sem texto de label — mantidos idênticos conforme instrução "keep layout/colors identical". Import getPlanName removido.
+- Etapa 4 — network-modal.tsx:
+  * planBadgeColor (ex-linhas ~108-109) mantido só com cores keyed por código (comentário Task 13-b adicionado).
+  * 2 call sites de getPlanName migrados: Badge do TreeNodeView (~182) e Badge do detail do nó selecionado (~478). TreeNodeView é recursivo → planName passado como prop `planLabel` do NetworkModal (hook chamado 1x no topo; evita N fetches paralelos nos nós filhos). Import getPlanName removido.
+- Arquivos NÃO tocados conforme lista de proibidos (minha-rede-page, matrix-pyramid, dashboard-page, sidebar etc. ainda usam getPlanName estático — fora do escopo desta task, owners distintos).
+- Validação:
+  * `bunx tsc --noEmit | rg "use-plan-catalog|leaderboard-page|referrals-page|network-modal"` → VAZIO (0 erros nos 4 arquivos).
+  * `bun run lint` → 13 erros, TODOS pré-existentes nos .js da raiz (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js — no-require-imports). ZERO erros novos em src/. Mesmos 13 das Tasks anteriores.
+  * Dev server NÃO iniciado (regra anti-OOM da sandbox); validação por tsc + lint + análise estática.
+
+Stage Summary:
+- Arquivo criado (1):
+  * `src/lib/use-plan-catalog.ts` — hook client 'use client' (espelho de use-branding.ts): fetch /api/plans (apiFetch, timeoutMs 30000), cache localStorage `plan_catalog_cache` TTL 5min, `{ plans, planName(code), loading }`; planName = nome DB → mapa getPlanName → código cru; exports invalidatePlanCatalogCache(); SSR-safe; falha de rede nunca crasha.
+- Arquivos modificados (3):
+  * `src/components/newmobility/leaderboard/leaderboard-page.tsx` — getPlanBadge só cores; rótulos dos badges (pódio via prop planLabel + lista via planName) hidratados do catálogo; import getPlanName (unused) removido.
+  * `src/components/newmobility/referrals/referrals-page.tsx` — 4 rótulos getPlanName → planName; filtro de planos com options dinâmicas do catálogo (fallback free/blue3/blue5 pré-load); cores (planBadgeColor + ternários da árvore) intocadas; import getPlanName removido.
+  * `src/components/newmobility/referrals/network-modal.tsx` — 2 rótulos getPlanName → planName (TreeNodeView via prop planLabel propagada na recursão); planBadgeColor só cores; import getPlanName removido.
+- Decisões/risks:
+  * Labels pré-load mudam levemente: leaderboard blue5 exibia 'PRO' e free exibia 'Free'; com a hidratação o fallback estático é o mapa canônico (Blue 5 Premium/Gratuito) — instrução da task explicitamente aceita literais só como fallback pré-load, e o rótulo pós-load passa a ser o nome do DB (objetivo da task).
+  * Hook chamado 1x por página com prop drilling (planLabel) em vez de hook nos subcomponentes recursivos — evita rajada de fetches paralelos quando o cache está stale (ex.: N nós do TreeNodeView).
+  * Resposta vazia de /api/plans não é cacheada (evita "colar" catálogo vazio por 5min se o backend vier vazio transitóriamente).
+  * Risco residual: TTL de 5min significa que um rename do admin pode demorar até 5min para aparecer em páginas já abertas (mesmo trade-off aceito no use-branding.ts); invalidatePlanCatalogCache() está disponível para o painel admin forçar invalidação pós-save (integração opcional, fora do escopo).
+  * admin-page.tsx tem seu PRÓPRIO getPlanName local (linha ~4047) — não é o de utils.ts, não confundir; fora do escopo (Task 12 já dinamizou admin-users-panel via allPlans).
+
+---
+Task ID: 13-c
+Agent: Z.ai Code (subagent)
+Task: Regras de saque member-facing passam a vir do SystemConfig (saque.*) — novo GET público /api/financial/withdraw-config + banner freeWindow com placeholders {days}/{fee} no i18n, mínimo dinâmico no WithdrawalCard, mensagens W-2 do withdraw route dinâmicas, e remoção do chip fake "+5.2%".
+
+Work Log:
+- Lido worklog.md (últimas 150 linhas) — contexto da Task 12 (saque.* dinâmico no admin, getWithdrawalConfig/formatFreeDaysLabel/parseFreeDays no withdraw route) e Task 11 (padrão de config endpoint público /api/simulator/config + fetch com async IIFE + cancelled flag).
+- Lidos os arquivos-alvo: src/app/api/financial/withdraw/route.ts (Task 12 — helpers NÃO exportados), src/app/api/simulator/config/route.ts (padrão público sem PII), src/lib/api-utils.ts (success/error), src/lib/api.ts (apiFetch com API_BASE='/api' e timeoutMs), src/lib/i18n.ts (5 ocorrências de freeWindow, uma por idioma), financial-page.tsx (banner linha ~1017, chip fake ~1038, WithdrawalCard renderizado como filho na linha ~1632), withdrawal-card.tsx (MIN_AMOUNT_BRL=50 na linha ~81, usada em 4 lugares).
+- Verificado com grep: WithdrawalCard só é usado dentro de financial-page.tsx → passo o mínimo via PROPS (evita 2º fetch), conforme instrução da task. Confirmei também que o state withdrawalLimits (min/max/fee do dialog de saque, linhas ~849-957) existia mas NUNCA era populado (ficava nos defaults 5000/500000/2 fixos).
+- Etapa 1 — CRIADO src/app/api/financial/withdraw-config/route.ts (GET público, sem auth — só regras de saque, sem PII, padrão /api/simulator/config):
+  * Lê TODAS as keys saque.* num único findMany (startsWith 'saque.') e aplica o MESMO parse/defaults do POST /api/financial/withdraw (parseInt/parseFloat || default) — cliente exibe exatamente o que o servidor enforce: min_cents→minCents (5000), max_cents→maxDailyCents (500000), fee_pct→feePct (2), fee_free_days→freeDays ([5,6,7,8]), processing_time_hours→processingTimeHours (48), max_daily_withdrawals→maxDailyWithdrawals (3).
+  * freeDaysLabel = "5-8" se contíguo senão "5,6,7,8" — parseFreeDays/formatFreeDaysLabel DUPLICADOS localmente (10 linhas, com comentário apontando a origem) em vez de importar de withdraw/route.ts: importar um route.ts por outro acoplaria duas rotas (kyc, db etc. virariam dependências); a task previa essa opção.
+  * try/catch em volta da leitura: se o banco falhar, degrada com os DEFAULTS e retorna 200 — config endpoint NUNCA dá 500 (console.warn registrado).
+- Etapa 2 — i18n.ts: as 5 strings 'financial.withdraw.freeWindow' (pt 117, en 548, es 965, fr 1344, it 1642) convertidas para templates com {days} e {fee} (pt: "Saque sem taxa entre os dias {days} de cada mês. Após esse período, incide taxa de {fee}%."); fr adaptado para "entre les jours {days}" (funciona tanto para "5-8" contíguo quanto para listas "5,6,15,20"); significado e estilo de cada idioma preservados. Nenhuma outra key do i18n foi tocada.
+- Etapa 3 — financial-page.tsx:
+  * Interface WithdrawRules (shape do response) + helper module-level interpolate(template, vars) (replace ALL de {key}; teste bun: dup-occurrence substitui todas, key ausente fica intacta, fallback "5 e 8"/2 reproduz o texto original com taxa correta de 2%).
+  * State withdrawRules (null inicial) + useEffect no mount: if (!user?.id) return, async IIFE + cancelled flag, deps [user?.id], apiFetch<WithdrawRules>('/financial/withdraw-config', { timeoutMs: 30000 }); catch → console.warn e mantém null (fallbacks nos consumidores, página nunca quebra).
+  * BÔNUS intencional (mesma fetch, zero round-trip extra): setWithdrawalLimits({ minWithdrawal: data.minCents, maxWithdrawal: data.maxDailyCents, withdrawalFee: data.feePct }) — o dialog de saque (presets, "Mínimo/Máximo", validações, taxa do resumo) estava hardcoded nos defaults e agora reflete o SystemConfig.
+  * Banner (linha ~1069): interpolate(t('financial.withdraw.freeWindow'), { days: withdrawRules?.freeDaysLabel ?? '5 e 8', fee: String(withdrawRules?.feePct ?? 2) }). Nota: t() do i18n já suporta params (mas só substitui a 1ª ocorrência de cada key e não era usado em nenhum lugar) — segui a instrução da task e criei o interpolate module-level que troca TODAS as ocorrências.
+  * Chip fake "+5.2% vs. mês anterior" (dado fabricado sem fonte) REMOVIDO junto com a legenda órfã "vs. mês anterior" (o div inteiro — a legenda só existia para qualificar o percentual falso). TrendingUp continua usado em outros 4 pontos — import permanece válido.
+  * <WithdrawalCard /> → <WithdrawalCard minAmountBrl={withdrawRules ? withdrawRules.minCents / 100 : undefined} />.
+- Etapa 4 — withdrawal-card.tsx: MIN_AMOUNT_BRL → DEFAULT_MIN_AMOUNT_BRL (fallback 50 documentado); nova interface WithdrawalCardProps com minAmountBrl?: number e destructure com default na assinatura (componente continua compatível se usado sem props); os 4 usos migrados (validação "Valor mínimo: R$ X", atributo min do input, texto de ajuda) — agora exibem o saque.min_cents real do SystemConfig.
+- Etapa 5 — withdraw/route.ts (W-2): mensagens de retorno hardcoded "janela gratuita (dias 5-8)" / "dias 5 a 8" substituídas por formatFreeDaysLabel(wConfig.freeDays) (helper já existente da Task 12); taxa na mensagem continua vindo de wConfig.feePct. Lógica de fee NÃO alterada.
+- Validação:
+  * bunx tsc --noEmit filtrado por "withdraw-config|financial-page|withdrawal-card|i18n|financial/withdraw" → VAZIO (zero erros nos arquivos tocados).
+  * bun run lint → 13 erros, TODOS pré-existentes nos .js auxiliares da raiz (keep-alive/persistent-server/process-manager/run-forever/supervisor, no-require-imports). ZERO erros novos em src/.
+  * Lógica do interpolate testada via bun -e (script inline, nada persistido): 4/4 casos ok.
+  * Dev server NÃO iniciado (instrução da task); validação por análise estática + tsc + lint, como nas Tasks 11/12.
+
+Stage Summary:
+- Arquivos criados (1):
+  * `src/app/api/financial/withdraw-config/route.ts` — GET público: { minCents, maxDailyCents, feePct, freeDays[], freeDaysLabel, processingTimeHours, maxDailyWithdrawals } lidos das keys saque.* com o MESMO parse/defaults do POST /api/financial/withdraw; degrada com defaults em erro de DB (nunca 500); helpers formatFreeDaysLabel/parseFreeDays replicados localmente com comentário (evita acoplamento entre rotas).
+- Arquivos modificados (4):
+  * `src/lib/i18n.ts` — 5 strings financial.withdraw.freeWindow (pt/en/es/fr/it) agora são templates com {days} e {fee}; nenhum outro trecho do i18n alterado.
+  * `src/components/newmobility/financial/financial-page.tsx` — state withdrawRules carregado de /api/financial/withdraw-config (async IIFE + cancelled flag, deps [user?.id], timeoutMs 30000); banner interpolado com fallback "5 e 8"/2; chip fake "+5.2% vs. mês anterior" removido; withdrawalLimits do dialog de saque populado pela mesma fetch; WithdrawalCard recebe minAmountBrl via props; helpers module-level WithdrawRules/interpolate.
+  * `src/components/newmobility/financial/withdrawal-card.tsx` — prop opcional minAmountBrl (default DEFAULT_MIN_AMOUNT_BRL=50); "Valor mínimo: R$ X", validação e atributo min do input vêm do SystemConfig.
+  * `src/app/api/financial/withdraw/route.ts` — W-2: mensagens de sucesso usam formatFreeDaysLabel(wConfig.freeDays) e wConfig.feePct (lógica de fee intocada).
+- `bun run lint`: 13 erros pré-existentes (.js da raiz). ZERO novos em src/.
+- `bunx tsc --noEmit`: ZERO erros nos 5 arquivos tocados (filtro rg vazio).
+- Decisões:
+  * withdraw-config espelha o parse do backend (parseInt/parseFloat || default) de propósito — se o admin configurar 0, cliente e servidor tratam igual (defaults); divergência cliente/servidor seria pior que o edge case "0 ignorado".
+  * Mínimo do WithdrawalCard via PROPS do pai (WithdrawalCard é filho exclusivo do FinancialPage — grep confirmou) em vez de 2ª fetch.
+  * withdrawalLimits (dialog de saque do FinancialPage) agora populado pela mesma fetch — era um estado morto com defaults fixos; integração dentro do espírito da task (regras member-facing dinâmicas) e sem tocar em arquivos de outros agentes.
+  * interpolate module-level (instrução da task) em vez do params do t(): substitui TODAS as ocorrências de {key} e não dependia de nenhum uso prévio do params.
+  * processingTimeHours/maxDailyWithdrawals expostos no endpoint conforme spec (nenhum texto hardcoded "48h"/"3x" encontrado no financial-page para consumi-los ainda — disponíveis para uso futuro).
+  * Chip fake removido por completo (chip + legenda "vs. mês anterior") — legenda sozinha não faz sentido; layout permanece válido (flex col com Saldo Total + AnimatedBalance).
+
+---
+Task ID: 13-d
+Agent: Z.ai Code (subagent)
+Task: Limites/bases da matriz exibidos ao membro agora vêm do SystemConfig (aba Matrizes do admin) — matrix-progress dinâmico, vendas 0 = "a definir" sem bloqueio, fallbacks de /api/minha-rede alinhados aos defaults canônicos e M-7 (crédito 1ª residual + posições L3 dinâmicos).
+
+Work Log:
+- Lido worklog.md (últimas 150 linhas) — contexto das Tasks 11/12 (padrões de lint, fail-open, sem setState direto em useEffect).
+- Confirmadas as keys/semântica lendo /api/admin/matrix-config/route.ts: `matrix.entrada.limit_cents` (default 9650000), `matrix.residual.limit_cents` (default 75000000), `matrix.vendas.limit_cents` (default 0 = "a definir") — PUT aceita inteiro >= 0, 0 permitido. Confirmados os defaults canônicos em src/lib/api-utils.ts: DEFAULT_ENTRADA_LEVELS [5,10,10,5,5], DEFAULT_RESIDUAL_LEVELS [10,9,5,5,4,3,2], DEFAULT_VENDAS_LEVELS [0.1×9] + helpers get*Levels().
+- rg "matrix-thresholds" → consumidores: apenas /api/network/matrix-progress/route.ts e minha-rede-page.tsx (só o TYPE). matrix-visualization.tsx NÃO importa a lib (usa a resposta da matrix-progress API).
+- Etapa 1 — src/lib/matrix-thresholds.ts: MATRIX_THRESHOLDS mantido como FALLBACK documentado; adicionado MatrixLimitsOverride { entradaCents?, residualCents?, vendasCount? } (undefined = fallback parcial, null/<=0/NaN = ILIMITADO); getMatrixProgress(matrixType, currentValue, limits?) com resolveCeiling: label dinâmico (R$ pt-BR / "N vendas"), campo aditivo `unlimited: true` → pct 0, isBlocked false, remaining 0, thresholdLabel "A definir". Comentários atualizados (limites vêm do SystemConfig).
+- Etapa 2 — src/app/api/network/matrix-progress/route.ts: loadMatrixLimits() lê as 3 keys via prisma.systemConfig.findMany({ key: { in: [...] } }); valor ausente/inválido/<= 0 → null = ilimitado; ERRO de leitura → fail-open (tudo null, nunca bloqueia usuário). Overrides passados por tipo ao getMatrixProgress. Response aditivo: `limits: { entradaCents, residualCents, vendasCount }` (null = ilimitado) + `unlimited` em cada item de progress; `thresholds` mantido por backward-compat.
+- Etapa 3 — minha-rede-page.tsx: página NÃO calcula thresholds localmente (só renderiza o que a API devolve) → dinâmico de graça. Tipos estendidos (unlimited?, limits?). MatrixBlockingCard: branch unlimited → badge "A definir" (sem %), texto "Sem limite definido pela administração" (sem "Faltam X para bloquear"), SEM estado "Bloqueada"; "Limite: A definir" no header. UX idêntica nos demais casos (banner Bloqueado, labels, cores).
+- Etapa 4 — matrix-visualization.tsx: sem import da lib; bloqueio já vem da matrix-progress API (agora dinâmica). unlimited → isBlocked=false → banner "Matriz Bloqueada" nunca renderiza. Apenas comentários desatualizados (R$96.500/750.000/1.000 vendas) corrigidos — zero mudança de lógica.
+- Etapa 5 — /api/minha-rede/[type]/route.ts: FALLBACK local divergente (residual [5,5.5,6,6.5,7,7.5,8], vendas [0.1×8, 0.2]) REMOVIDO; novo buildFallbackLevels() monta níveis a partir de DEFAULT_ENTRADA/RESIDUAL/VENDAS_LEVELS de @/lib/api-utils (capacity = 4^level). Caminho de leitura do DB (MatrixType + MatrixLevelEarning) intocado; shape da resposta inalterado.
+- Etapa 6 — /api/plans/first-residual-free/route.ts (M-7): removidos FIRST_RESIDUAL_CREDIT_CENTS=139900 e ENTRADA_L3_REQUIRED_USERS=64 fixos. loadFirstResidualConfig() por request: crédito ← `matrix.residual.base_cents` (fallback 139900) e posições L3 ← MatrixType (matrixKind='entrada', isActive).width^3 (fallback 4^3=64). Textos dinâmicos: "R$ X" via formatCentsBrl e "(N posições)" no GET.message, erros do POST e Notification. DESCRIPTION da Transaction mantida FIXA (idempotência de créditos emitidos). Shape da resposta inalterado (valores agora dinâmicos).
+- Sanity test (bun -e, script inline descartável, sem arquivo): 6 cenários validados — fallback preservado; override numérico (label "R$ 10.000", pct correto); null → unlimited/"A definir"; 0 → unlimited; override parcial → fallback por campo; bloqueio com override.
+- Validação: `bunx tsc --noEmit | rg "matrix-thresholds|matrix-progress|minha-rede|first-residual-free|matrix-visualization"` → VAZIO. `bun run lint` → 13 erros, TODOS pré-existentes nos .js da raiz (keep-alive/persistent-server/process-manager/run-forever/supervisor); ZERO erros em src/. Dev server NÃO iniciado (conforme restrição); sem git commands.
+
+Stage Summary:
+- Arquivos modificados (6):
+  * `src/lib/matrix-thresholds.ts` — MATRIX_THRESHOLDS = fallback documentado; MatrixLimitsOverride (null/<=0 = ilimitado, undefined = fallback); getMatrixProgress aceita `limits?`; campo aditivo `unlimited`; labels dinâmicos pt-BR.
+  * `src/app/api/network/matrix-progress/route.ts` — lê matrix.{entrada|residual|vendas}.limit_cents do SystemConfig; response aditivo `limits` + `unlimited` por item; fail-open em erro de leitura; `thresholds` mantido por compat.
+  * `src/components/newmobility/minha-rede/minha-rede-page.tsx` — tipos estendidos (unlimited?, limits?); card trata unlimited (badge "A definir", "Sem limite definido pela administração", nunca "Bloqueada"); demais UX idêntica.
+  * `src/components/newmobility/cashback/matrix-visualization.tsx` — só comentários (lib não é importada aqui; bloqueio já vem da API dinâmica; unlimited → banner nunca renderiza).
+  * `src/app/api/minha-rede/[type]/route.ts` — fallbacks divergentes removidos; buildFallbackLevels() a partir de DEFAULT_*_LEVELS de @/lib/api-utils; caminho de leitura do DB e shape da resposta intocados.
+  * `src/app/api/plans/first-residual-free/route.ts` (M-7) — crédito ← matrix.residual.base_cents (fallback 139900); posições L3 ← MatrixType(entrada).width^3 (fallback 64); textos/mensagens/notificação dinâmicos; description de dedup mantida fixa.
+- `bunx tsc --noEmit`: ZERO erros nos arquivos da task. `bun run lint`: 13 erros pré-existentes (raiz .js), ZERO novos em src/.
+- Decisões/risks:
+  * SEMÂNTICA CONFIRMADA: 0/ausente/<= 0 = ilimitado ("a definir"), NUNCA bloqueia — inclusive se a leitura do SystemConfig falhar (fail-open). Com defaults atuais (entrada 9650000, residual 75000000) nada muda visualmente; vendas passa de "1.000 vendas" para "A definir" (comportamento pedido).
+  * Risco documentado: `matrix.vendas.limit_cents` é gravado em CENTAVOS de R$ pelo admin, mas a API do membro expõe `vendasCount` (teto de CONTAGEM, semântica legada do bloqueio por qtde de vendas). Default 0 → null → ilimitado, então hoje não há impacto; se o admin um dia gravar valor > 0, ele será interpretado como contagem de vendas (não R$) — registrado para decisão futura do cliente.
+  * Idempotência do M-7 preservada: a description da Transaction continuam a string fixa original (dedup por description); só valor/textos/mensagens ficaram dinâmicos.
+  * matrix-pyramid.tsx NÃO tocado (legendas estáticas 4x5/4x7/4x9 ficam para depois — fora do escopo), conforme restrição.
+
+---
+Task ID: 13-a
+Agent: Z.ai Code (subagent)
+Task: Corrigir preços de plano errados (hardcodes) em 3 arquivos que exibem/precificam planos para membros — ensure-monthly (faturas com valor errado), subscription-blocker (cards com R$ 97/147 e falsas claims do Blue 3) e register-page (cards R$ 200/999). Fonte da verdade: tabela Plan (blue3=99990, blue5=99990, free=0, editável via PUT /api/admin/plans).
+
+Work Log:
+- Lido worklog.md (últimas 150 linhas) — contexto das Tasks 10/11/12 (padrão loadPlanCatalog do calculate-upgrade, mergeApiPlan do myplan-page, padrões de lint Next 16/React 19).
+- Lidos os 3 arquivos-alvo na íntegra + referências: src/app/api/plans/route.ts (shape da resposta: { plans: [{ id, code, name, price, priceCents, description, features[], level, isActive, isDefault, sortOrder, matrix* }] }, endpoint público GET sem auth), src/app/api/plans/calculate-upgrade/route.ts (loadPlanCatalog da Task 11), src/components/newmobility/myplan/myplan-page.tsx (padrão mergeApiPlan + fetch com async IIFE + cancelled flag), src/lib/utils.ts (formatCurrency: centavos → "R$ X,XX"), src/lib/api.ts (apiFetch com timeoutMs), billing-page.tsx (confirma chamada de /billing/ensure-monthly pelo membro), prisma/schema.prisma (model Plan: code unique, name, priceCents, isActive, isDefault, sortOrder), app-layout.tsx (SubscriptionBlocker montado dentro do layout para qualquer usuário logado).
+- Etapa 1 — src/app/api/billing/ensure-monthly/route.ts (HIGH):
+  * Removido o map estático PLAN_MONTHLY_FEE (blue3: 4990, blue5: 9990, premium1..5 — todos errados vs DB 99990/99990) e o default `?? 9990` que criava fatura com valor chutado.
+  * Criado loadPlanCatalog(): prisma.plan.findMany({ where: { isActive: true }, orderBy: sortOrder asc, select code+priceCents }) → Map<code, priceCents>, espelhando o padrão da Task 11. Aliasing premium5 → blue5 preservado (mesmo tier do client spec §1.1).
+  * Fallback (banco vazio/erro): free 0, blue3 99990, blue5 99990 — alinhado ao seed (ANTES era 4990/9990).
+  * Plano sem preço no catálogo: NÃO cria fatura — console.error + pula o usuário (skippedNoPrice no response com userId/plan) sem quebrar o loop dos demais (o WHERE já exclui free). Response agora: { scanned, created, skipped, skippedNoPrice, createdInvoices }.
+  * Fluxo de auth/lote (getSession, admin-only em lote) e criação de notificação preservados.
+- Etapa 2 — src/components/newmobility/onboarding/subscription-blocker.tsx (HIGH):
+  * PLANS estático → PLAN_TEMPLATES (PlanCard: id/code/name/priceCents/color/popular/features) com fallback corrigido: ambos 99990 (antes "R$ 97,00"/"R$ 147,00") e REMOVIDAS as falsas claims do Blue 3 ("Cashback Residual (4x7)" e "Cashback Vendas (4x9)" — Blue 3 libera SOMENTE Cashback Entrada 4x5, gating em /api/cashback/entrada).
+  * useState plans + useEffect no mount: apiFetch<{plans}>('/plans', timeoutMs 30000), async IIFE + cancelled flag (mesmo padrão anti-lint react-hooks/set-state-in-effect do projeto; hooks ficam ANTES do early-return de user/plan/dismissed para respeitar Rules of Hooks).
+  * mergeApiPlanCard(apiPlan): mescla API sobre template por code (dados do banco vencem: name, priceCents, features[]; apresentação local: gradiente/popular). Códigos desconhecidos recebem apresentação padrão. Exclui 'free' (upsell). Falha de API → mantém templates corrigidos + console.warn.
+  * Render: preço via formatCurrency(plan.priceCents); período '/mês' literal; badge "N recursos" e features slice(0,4) continuam dinâmicos com as features do banco.
+- Etapa 3 — src/components/newmobility/auth/register-page.tsx (HIGH):
+  * plans estático → PLAN_TEMPLATES + estado plans no RegisterPage, hidratado no mount via apiFetch('/plans') (página pública, sem user guard necessário), mesmo padrão async IIFE + cancelled.
+  * Fallback corrigido: blue3 e blue5 = 99990 (antes "R$ 200,00"/priceValue 200 e "R$ 999,00"/priceValue 999 — divergentes do banco).
+  * `priceValue` (reais) REMOVIDO: grep provou que não era usado downstream (só as 2 definições) — unidade única agora é priceCents, formatado com formatCurrency() no card (evita drift de unidades centavos/reais). Nomes também hidratados do banco.
+  * mergeApiPlan (mesmo nome/padrão do myplan-page): API vence em name/priceCents/features (strings da API viram { text, icon: Check }); apresentação (icon/gradiente/borda/popular) vem do template por code. Exclui 'free' (signup é upsell — set de planos selecionáveis inalterado). plans.map no step 2 e plans.find no review step continuam funcionando (estado tem o mesmo nome).
+  * Ordem/ícones das features do fallback mantidos idênticos aos originais (mudança mínima; o signup hidrata features do banco no fluxo normal).
+- Validação:
+  * `bunx tsc --noEmit 2>&1 | rg "ensure-monthly|subscription-blocker|register-page"` → VAZIO (zero erros nos 3 arquivos).
+  * `bun run lint` → 13 erros, TODOS pré-existentes nos .js auxiliares da raiz (keep-alive.js, persistent-server.js, process-manager.js, run-forever.js, supervisor.js — no-require-imports). ZERO erros em src/ e nos 3 arquivos tocados. Obs.: a 1ª execução do lint crashou com ENOENT em notification-toast.tsx — corrida transitória com outro agente que deletava o arquivo no mesmo instante (git status mostra D daquele arquivo, fora do meu escopo); rerun imediato ficou limpo e nenhum arquivo meu referencia notification-toast.
+  * Sem dev server (OOM sandbox) — verificação estática apenas, conforme instrução.
+
+Stage Summary:
+- Arquivos modificados (3):
+  * `src/app/api/billing/ensure-monthly/route.ts` — preços de renovação lidos da tabela Plan a cada request (loadPlanCatalog com fallback 0/99990/99990 + alias premium5=blue5); plano sem preço no catálogo → console.error + skip do usuário (skippedNoPrice no response), nunca mais fatura com valor chutado. (HIGH)
+  * `src/components/newmobility/onboarding/subscription-blocker.tsx` — fetch de /api/plans no mount com merge sobre templates por code (mesmo padrão mergeApiPlan do myplan); fallback corrigido para 99990/99990 e falsas claims de Residual/Vendas removidas do card Blue 3; preço via formatCurrency(priceCents). (HIGH)
+  * `src/components/newmobility/auth/register-page.tsx` — fetch de /api/plans no mount hidratando nome+preço dos cards de signup (estado plans sobre PLAN_TEMPLATES por code); fallback corrigido para 99990/99990; priceValue (reais, unused) removido em favor de priceCents único + formatCurrency. (HIGH)
+- `bun run lint`: 13 erros pré-existentes (.js da raiz). ZERO novos em src/.
+- `bunx tsc --noEmit`: ZERO erros nos 3 arquivos (filtro vazio).
+- Decisões/risco:
+  * Bloqueador e signup filtram 'free' do catálogo para manter a semântica de upsell (mesmo set blue3/blue5 de antes) — planos pagos novos criados pelo admin aparecem automaticamente.
+  * ensure-monthly agora pode "criar menos faturas" do que antes se existirem usuários com plan code fora do catálogo (antes criava com 9990 chutado) — comportamento intencional pedido pela task; skippedNoPrice expõe os afetados para diagnóstico.
+  * priceValue removido do register-page: confirmado unused por grep (unidade centavos única elimina risco de mistura reais/centavos).
+  * Fallbacks client-side e server-side agora todos alinhados ao DB seed (99990) — mesma convenção adotada na Task 11.
+
+---
+Task ID: 13-e
+Agent: Z.ai Code (subagent)
+Task: 4 fixes — (A) gratificações refletirem edições do admin (overlay SystemConfig metas.benefit.*) + remover itens fake "claimed" da página Metas; (B) PDF de fatura não fabricar mais fatura PAGO R$999/CNPJ fake + marca dinâmica; (C) header/sidebar do membro com useBranding(); (D) remover stats fabricados (+23%, usos de vouchers, toasts fake) e disclaimar percentuais ilustrativos.
+
+Work Log:
+- Lido worklog.md (últimas 150 linhas) + arquivos-guia: /api/admin/gratifications-config (PUT /benefit grava keys `metas.benefit.{type}.name|.amount|.description`), /api/admin/gratifications-config/benefit/route.ts, /lib/use-branding.ts (retorna {name, logoUrl, primaryColor, loading} com fallback 'NewMobility' e cache 5min), /api/system-settings/public.
+- (A1) src/app/api/gratifications-config/route.ts — criados `loadBenefitOverlay()` (batch `prisma.systemConfig.findMany({ where: { key: { startsWith: 'metas.benefit.' } } })`, parse de 4 segmentos, amount = parseInt centavos (inválido/negativo → mantém estático), name/description vazios → mantém estático) e `applyBenefitOverlay()` (genérico, mantém shape). GET público agora retorna `benefits` com overlay aplicado (response shape inalterado).
+- (A2) src/app/api/gratifications/route.ts — importa os mesmos helpers e aplica overlay no `catalog` (STATIC_FALLBACK_GRATIFICATIONS) → membro vê nome/valor/descrição editados pelo admin. Fail-open: erro de banco → catálogo estático.
+- (A3) gratifications-page.tsx — estado inicial VAZIO (`[]`) + skeleton (antes semeava fallbackCategories com fakes "CashBack Shopping R$1.500 claimed 2025-01-08", "Seguro Auto claimed 2024-12-20", "Telemedicina claimed 2025-01-05"). fallbackCategories enxugado para ESPELHAR o catálogo documentado (7 itens da spec §5, todos isClaimed:false) — removidos Compras/Liderança/Seguros/Saúde/Benefícios/Prêmios Físicos fabricados. Fallback continua entrando só em erro/API vazia (com banner "Gratificações de demonstração" que já existia). isUsingFallback inicial agora false (só fica true de fato quando o fallback é usado).
+- (A-extra, decisão) /api/admin/gratifications-config (rota admin) — MESMO overlay no GET: sem isso o dialog "Editar benefício" (admin-page.tsx preenche com b.name/b.amount do GET admin) reabriria com o valor ESTÁTICO e uma nova edição REVERTERIA o que o admin já salvou. Mesma shape, backward-compatible.
+- (B) src/app/api/invoices/[invoiceId]/pdf/route.ts — (1) `generateMockInvoiceHtml` (fatura fake PAGO R$ 999,00 para id inexistente) REMOVIDO → retorna `error('Invoice not found', 404)` (padrão success()/error() de api-utils, mesma shape `{ error }` já usada na rota). (2) Marca do header (e "Plano …"/"Processado via …"/rodapé) agora lê `platform_name` de `prisma.systemConfig` (fallback 'NewMobility'), com escapeHtml antes de interpolar no HTML. (3) CNPJ fictício "00.000.000/0001-00" e "Tecnologia Ltda" removidos do rodapé (documento financeiro não deve afirmar CNPJ inexistente).
+- (C) app-layout.tsx + sidebar.tsx — `useBranding()` importado de '@/lib/use-branding'; `<span>NewMobility</span>` do header mobile e do sidebar substituídos por `{branding.name}` (o hook já devolve 'NewMobility' como fallback durante loading/sem config — sem flash). Badge "NM" e layout preservados (mesmo padrão do admin-layout da Task 6, que também mantém o badge). login/register NÃO tocados.
+- (D) dashboard-page.tsx — chip "+23% crescimento nos últimos 6 meses" (linha ~584, sem fonte de dados) removido junto com sua legenda (formavam uma única afirmação); gráfico do card mantido. voucher-page.tsx — card "Vouchers Populares" REMOVIDO por inteiro (só existia para os números fabricados 3.420/2.890/2.150/1.680 usos + "+18/12/9/15%"), junto com a const `popularCategories` e o import TrendingUp (ficaria unused). portal-sportbet.tsx — card de cashback 5%/2%/10% MANTIDO (marketing) com disclaimer muted: "Valores ilustrativos — os percentuais definitivos de CashBack em apostas ainda serão definidos pela plataforma.". portal-lojista.tsx — NENHUMA mudança: o "Produtos +10% CB" (linha ~523) já é valor REAL calculado de `activeProducts.filter(p => p.cashbackPercent >= 10).length`, vindo da API de produtos do lojista (idem salesMetrics: total de vendas/pedidos/ativos vêm das APIs) — condição "align with a real value if one exists" já satisfeita. notification-toast.tsx — `rg "NotificationToastManager|notification-toast"` em todo o repo só casou com a própria definição (zero imports) → arquivo DELETADO (toasts fake "R$ 32,50 CashBack creditados" a cada 30-60s eram código morto que ninguém renderiza).
+- Correções durante o desenvolvimento: TS2323 (redeclare) ao listar loadBenefitOverlay/applyBenefitOverlay no bloco de re-exports do route público — removidos do bloco (já exportados inline); catch(error) renomeado para catch(err) no route do PDF para não sombrear o `error()` importado.
+- Verificação: `bun run lint` → 13 erros, TODOS pré-existentes nos .js da raiz (keep-alive/persistent-server/process-manager/run-forever/supervisor) — ZERO novos em src/. `bunx tsc --noEmit` filtrado por gratifications|invoice|app-layout|sidebar|dashboard-page|voucher-page|portal-|notification-toast → só 2 TS2367 PRÉ-EXISTENTES em sidebar.tsx:278 (comparação `item.key === 'bets'/'jogos'` que já estava na linha 272 antes do meu import deslocar 6 linhas — linha não tocada). Nenhum dev server iniciado, nenhum comando git.
+
+Stage Summary:
+- Arquivos modificados (7):
+  * `src/app/api/gratifications-config/route.ts` — helpers exportados loadBenefitOverlay/applyBenefitOverlay (batch prisma.systemConfig startsWith 'metas.benefit.') + GET público aplica overlay em `benefits`. Shape backward-compatible.
+  * `src/app/api/gratifications/route.ts` — `catalog` do membro com overlay das edições do admin.
+  * `src/app/api/admin/gratifications-config/route.ts` — GET admin também aplica overlay (dialog de edição passa a preencher com o valor salvo; evita reverter edição anterior). DECISÃO fora da lista literal, mas necessária para o objetivo "edições do admin refletem".
+  * `src/app/api/invoices/[invoiceId]/pdf/route.ts` — 404 JSON para fatura inexistente (fim da fatura fake R$999 PAGO), platform_name dinâmico + escapeHtml, CNPJ fictício removido.
+  * `src/components/newmobility/gratifications/gratifications-page.tsx` — estado inicial vazio + skeleton; fallback reduzido ao catálogo documentado (7 itens, nada claimed); fakes "claimed" eliminados.
+  * `src/components/newmobility/app-layout.tsx` + `src/components/newmobility/sidebar.tsx` — marca dinâmica via useBranding() com fallback NewMobility; layout idêntico.
+  * `src/components/newmobility/dashboard/dashboard-page.tsx` — chip fake "+23%" removido; card/gráfico mantidos.
+  * `src/components/newmobility/voucher/voucher-page.tsx` — card "Vouchers Populares" + popularCategories removidos (stats fabricadas); import TrendingUp limpo.
+  * `src/components/newmobility/portals/portal-sportbet.tsx` — disclaimer "Valores ilustrativos" no card 5%/2%/10% (card mantido).
+- Arquivo deletado (1): `src/components/newmobility/notifications/notification-toast.tsx` (NotificationToastManager não é importado em lugar nenhum — dead code com toasts financeiros fabricados).
+- `bun run lint`: 13 erros pré-existentes (.js raiz). ZERO novos em src/.
+- `bunx tsc --noEmit`: 0 erros novos nos arquivos tocados (2 TS2367 pré-existentes em sidebar.tsx, linha deslocada por imports).
+- Riscos/observações: (1) o PDF agora retorna 404 JSON para fatura inexistente — consumidores (billing-page link, invoice-viewer) exibirão o JSON de erro em vez de documento falso (comportamento desejado). (2) "Vouchers Recomendados" no voucher-page continua (marketing com valores de compra reais do fluxo; fora do escopo dos "stats"). (3) Se um dia o admin quiser blank out name/description do benefício, o overlay atual trata string vazia como "mantém estático" (decisão conservadora).
+
+---
+Task ID: 14
+Agent: Z.ai Code (orchestrator)
+Task: Varredura completa da ÁREA DO MEMBRO (backoffice do cliente) para eliminar dados estáticos/errados — planos, matriz, saques, gratificações, marca, estatísticas falsas. 5 subagentes paralelos (13-a..13-e, entradas acima). Comando do usuário: "veja todas funcoes que editamos no dashboard e edite no backoffice do cliente... os dados devem voltar do banco de dados e nao estatico, e deve voltar dados certos e nao errados".
+
+Work Log:
+- Audit completo via subagent Explore (14+ findings, priorizados por "dinheiro errado → admin-blind → texto errado → cosmético").
+- 5 subagentes gerais rodaram EM PARALELO com escopos de arquivos disjuntos (zero conflito):
+  * 13-a (preços de plano errados): ensure-monthly mintava faturas R$49,90/R$99,90 vs DB R$999,90 → catálogo da tabela Plan; subscription-blocker R$97/R$147 + features falsas do Blue 3 → /api/plans; register-page R$200/R$999 → /api/plans (merge pattern do myplan-page).
+  * 13-b (nomes de plano): novo hook use-plan-catalog.ts (cache localStorage 5min, espelho do use-branding); leaderboard/referrals/network-modal hidratam labels do DB; fallback free/blue3/blue5 pré-load.
+  * 13-c (regras de saque): NOVO endpoint público /api/financial/withdraw-config (mesmos parses do backend); i18n freeWindow (5 idiomas) virou template {days}/{fee}; banner financeiro dinâmico; WithdrawalCard min via props; bônus: withdrawalLimits do dialog de saque (que nunca era populado!) agora alimenta min/max/fee/presets; mensagem de sucesso do withdraw usa formatFreeDaysLabel; chip falso "+5.2%" removido.
+  * 13-d (matriz): matrix-thresholds com override; /api/network/matrix-progress lê matrix.*.limit_cents e devolve limits (null = ilimitado, fail-open); minha-rede "A definir" em vez de bloquear com 1000 vendas hardcode; /api/minha-rede/[type] fallbacks agora canônicos (DEFAULT_*_LEVELS do api-utils); first-residual-free lê matrix.residual.base_cents + width^3 do MatrixType.
+  * 13-e (gratificações/marca/fakes): overlay metas.benefit.* do SystemConfig sobre o catálogo estático (nas 3 rotas: pública, membro e ADMIN — senão o dialog do admin reabria com valor antigo); página sem mais itens "claimed" FALSOS (R$1.500 Shopping etc.); PDF de fatura não fabrica mais documento PAID R$999 (404 honesto) e lê platform_name; CNPJ fake removido; app-layout + sidebar usam useBranding; chip "+23%" do dashboard e stats falsos de voucher removidos; sportbet com disclaimer "Valores ilustrativos"; notification-toast.tsx DELETADO (morto, disparava toasts falsos "R$ 32,50 creditados").
+- Verificação consolidada: lint 13 erros pré-existentes (.js raiz), ZERO novos em src/; tsc 0 erros nos ~28 arquivos tocados (2 TS2367 pré-existentes no sidebar, confirmados no stash); HOME 200 compila TODOS os componentes frontend alterados; /api/financial/withdraw-config testado AO VIVO → 200 com JSON correto ({"minCents":5000,...,"freeDaysLabel":"5-8","feePct":2}); agentes 13-c e 13-d rodaram sanity suites próprias (4/4 interpolate, 6/6 thresholds).
+- Limite do sandbox (recorrente): 4GB não compila todas as rotas API em sequência sem OOM — rotas restantes verificadas por tsc + code review; compilarão on-demand na VPS.
+
+Stage Summary:
+- 28 arquivos modificados + 2 criados (withdraw-config, use-plan-catalog) + 1 deletado (notification-toast).
+- Dinheiro certo: faturas de renovação, preços de cadastro/upgrade e credit de residual vêm da tabela Plan/MatrixType/SystemConfig.
+- Admin-blind resolvido: limites de matriz, % de cashback, dias grátis/taxa de saque, benefícios Metas e nome da plataforma agora propagam para o cliente.
+- Dados falsos removidos: toasts de cashback inventados, "+5.2%"/"+23%", usos de voucher, claims de gratificação, fatura PDF fantasma, CNPJ fake.
+- Risco documentado (13-d): admin guarda matrix.vendas.limit_cents em R$ centavos mas API expõe como vendasCount (legado); default 0 ⇒ ilimitado, sem impacto hoje — decidir com o cliente se vira contagem ou R$.
+- Pendente (próxima rodada): matrix-pyramid.tsx legendas 4x5/4x7/4x9 estáticas; CP-1 ranks de carreira (CAREER_RANKS estático em myplan/profile) para ler /api/career; invalidar cache do use-plan-catalog ao salvar plano no admin.

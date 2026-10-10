@@ -48,16 +48,17 @@ interface GratificationCategory {
   items: GratificationItem[]
 }
 
-// Fallback static data (used when API returns no gratifications).
-// Per client spec (Índice.docx §5):
-//   - Auxílio Combustível: R$ 2.600/mês (R$100/dia × 26 dias) — Ao fechar 5º nível
-//   - Reembolso Vale Ducha: R$ 780/mês (R$30/dia × 26 dias) — Ao fechar 5º nível
-//   - Férias 6 Meses: R$ 5.000 + 10 dias — 6 meses de cadastro ativo
-//   - Férias 12 Meses: R$ 20.000 + 20 dias — 12 meses de cadastro ativo
-//   - Meta Diária Motorista: 18 corridas/dia — Motorista/Entregador ativo
-//   - Meta Mensal Motorista: 384 corridas/mês — Motorista/Entregador ativo
-//   - Prêmio CashBack Gratificação: R$ 15.000 — Fechar equipe com 1.364 usuários
-// "Pagamento de Faturas" is the ONLY recurring gratification. Others are one-time.
+// Fallback estático DOCUMENTADO (Task 13-e) — espelha exatamente o catálogo
+// da especificação (Índice.docx §5), o mesmo servido por
+// STATIC_FALLBACK_GRATIFICATIONS em /api/gratifications. Usado SOMENTE quando
+// a API falha ou retorna vazio.
+// Task 13-e — REMOVIDOS os itens fabricados que nunca existiram no backend:
+//   - "CashBack Shopping R$ 1.500" / "Seguro Auto" / "Telemedicina" com
+//     isClaimed: true + claimedAt falsos (o usuário nunca reivindicou);
+//   - Liderança, Seguros, Saúde, Benefícios (Kit Mimo, Vale Refeição, ...)
+//     e Prêmios Físicos com valores inventados.
+// O estado inicial da página é VAZIO + skeleton de loading; os dados reais
+// vêm SEMPRE da API (disponíveis/claimed por usuário + catálogo).
 const fallbackCategories: GratificationCategory[] = [
   {
     name: 'Mobilidade — Metas Motorista',
@@ -150,67 +151,6 @@ const fallbackCategories: GratificationCategory[] = [
       },
     ],
   },
-  {
-    name: 'Compras',
-    icon: ShoppingBag,
-    color: 'bg-purple-100 text-purple-600',
-    items: [
-      { id: '3', name: 'CashBack Shopping', amount: 150000, type: 'shopping', isClaimed: true, claimedAt: '2025-01-08' },
-    ],
-  },
-  {
-    name: 'Liderança',
-    icon: Heart,
-    color: 'bg-rose-100 text-rose-600',
-    items: [
-      { id: '4', name: 'Gratificação Liderança', amount: 300000, type: 'leadership', isClaimed: false },
-      { id: '5', name: 'Ativação Residual', amount: 100000, type: 'residual_activation', isClaimed: false },
-    ],
-  },
-  {
-    name: 'Seguros',
-    icon: Shield,
-    color: 'bg-amber-100 text-amber-600',
-    items: [
-      { id: '6', name: 'Seguro Auto', amount: 180000, type: 'insurance_car', isClaimed: true, claimedAt: '2024-12-20' },
-      { id: '7', name: 'Seguro de Vida', amount: 250000, type: 'insurance_life', isClaimed: false },
-      { id: '8', name: 'Seguro Celular', amount: 30000, type: 'insurance_phone', isClaimed: false },
-    ],
-  },
-  {
-    name: 'Saúde',
-    icon: Stethoscope,
-    color: 'bg-emerald-100 text-emerald-600',
-    items: [
-      { id: '9', name: 'Telemedicina', amount: 40000, type: 'telemedicine', isClaimed: true, claimedAt: '2025-01-05' },
-      { id: '10', name: 'Plano Odontológico', amount: 60000, type: 'dental', isClaimed: false },
-    ],
-  },
-  {
-    name: 'Benefícios',
-    icon: Gift,
-    color: 'bg-teal-100 text-teal-600',
-    items: [
-      { id: '11', name: 'Kit Mimo', amount: 25000, type: 'mimo_kit', isClaimed: false },
-      { id: '12', name: 'Vale Refeição', amount: 45000, type: 'food_ticket', isClaimed: false },
-      { id: '13', name: 'Vale Alimentação', amount: 45000, type: 'food_voucher', isClaimed: false },
-      { id: '14', name: 'Guincho', amount: 35000, type: 'tow_truck', isClaimed: false },
-      { id: '15', name: 'Assistência Residencial', amount: 45000, type: 'home_assistance', isClaimed: false },
-      { id: '16', name: 'Fundo Aposentadoria', amount: 500000, type: 'retirement_fund', isClaimed: false },
-      { id: '17', name: 'Escolha da Moto', amount: 800000, type: 'motorcycle_choice', isClaimed: false },
-    ],
-  },
-  {
-    name: 'Prêmios Físicos',
-    icon: Award,
-    color: 'bg-yellow-100 text-yellow-700',
-    items: [
-      { id: '18', name: 'Prêmio Carro', amount: 0, type: 'prize_car', isClaimed: false, description: 'Prêmio físico desbloqueado a cada nível de pontuação. Sistema libera botão "Reivindicar".' },
-      { id: '19', name: 'Prêmio Moto', amount: 0, type: 'prize_motorcycle', isClaimed: false, description: 'Prêmio físico desbloqueado a cada nível de pontuação. Sistema libera botão "Reivindicar".' },
-      { id: '20', name: 'Prêmio Casa', amount: 0, type: 'prize_house', isClaimed: false, description: 'Prêmio físico desbloqueado a cada nível de pontuação. Sistema libera botão "Reivindicar".' },
-      { id: '21', name: 'Prêmio Móveis', amount: 0, type: 'prize_furniture', isClaimed: false, description: 'Prêmio físico desbloqueado a cada nível de pontuação. Sistema libera botão "Reivindicar".' },
-    ],
-  },
 ]
 
 // Map API category to UI category
@@ -247,9 +187,13 @@ function groupByCategories(items: GratificationItem[]): GratificationCategory[] 
 
 export function GratificationsPage() {
   const { user, updateUser } = useStore()
-  const [categories, setCategories] = useState<GratificationCategory[]>(fallbackCategories)
+  // Task 13-e — estado inicial VAZIO: enquanto carrega, mostra o skeleton.
+  // Antes semeava `fallbackCategories` com itens falsos "Reivindicado em
+  // 08/01/2025" etc. que o usuário nunca reivindicou. Agora os dados vêm
+  // exclusivamente da API; o fallback documentado só entra em erro/API vazia.
+  const [categories, setCategories] = useState<GratificationCategory[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [isUsingFallback, setIsUsingFallback] = useState(true)
+  const [isUsingFallback, setIsUsingFallback] = useState(false)
   const [claimingId, setClaimingId] = useState<string | null>(null)
   const [claimDialogOpen, setClaimDialogOpen] = useState(false)
   const [selectedGratification, setSelectedGratification] = useState<GratificationItem | null>(null)
