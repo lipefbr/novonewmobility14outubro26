@@ -136,7 +136,10 @@ interface NetworkResponse {
 
 interface MatrixProgressItem {
   type: ThresholdMatrixType
-  metric: 'amount' | 'count'
+  // Task 15-j — sempre 'amount' (R$ em centavos): a matriz Vendas tinha
+  // metric 'count' (contagem de vendas) e comparava a contagem com um teto
+  // gravado em centavos pelo admin — unidade trocada para dinheiro.
+  metric: 'amount'
   current: number
   threshold: number
   thresholdLabel: string
@@ -144,16 +147,21 @@ interface MatrixProgressItem {
   isBlocked: boolean
   remaining: number
   // Task 13-d — flag aditivo da API: matriz sem limite configurado ("a definir").
-  // Quando true, NUNCA renderiza estado "Bloqueada" nem teto (ex.: 1.000 vendas).
+  // Quando true, NUNCA renderiza estado "Bloqueada" nem teto (o limite real
+  // vem do SystemConfig em R$; ausente/0 = "A definir").
   unlimited?: boolean
   amountLabel: number
+  // Task 15-j — campo extra da API (somente no item vendas): quantidade de
+  // vendas do usuário, informativo. O teto da matriz é em R$ (centavos).
+  salesCount?: number
 }
 
 // Task 13-d — limites reais do SystemConfig (null = ilimitado), vindos da API.
+// Task 15-j — `vendasCents` (era `vendasCount`): R$ em CENTAVOS, como o admin grava.
 interface MatrixLimits {
   entradaCents: number | null
   residualCents: number | null
-  vendasCount: number | null
+  vendasCents: number | null
 }
 
 interface MatrixProgressResponse {
@@ -397,12 +405,12 @@ function PyramidLevel({
 
 // ---------- Task 14-F: matrix blocking cards section ----------
 function MatrixBlockingCard({ item }: { item: MatrixProgressItem }) {
-  const isAmount = item.metric === 'amount'
-  const currentLabel = isAmount ? formatBRL(item.current) : item.current.toLocaleString('pt-BR')
-  const remainingLabel = isAmount ? formatBRL(item.remaining) : item.remaining.toLocaleString('pt-BR')
-  const amountSub = isAmount
-    ? null
-    : <span className="block text-[10px] text-muted-foreground">≈ {formatBRL(item.amountLabel)} em vendas</span>
+  // Task 15-j — todas as matrizes (incl. Vendas) são medidas em R$: current,
+  // remaining e o teto (thresholdLabel) são sempre formatados como dinheiro.
+  // Antes o card exibia a contagem de vendas ("2.000.000 vendas") contra um
+  // teto que o admin gravou como centavos ("Atual: R$ 20.000,00").
+  const currentLabel = formatBRL(item.current)
+  const remainingLabel = formatBRL(item.remaining)
 
   // Per-matrix accent colors (entrada=emerald, residual=teal, vendas=amber).
   // Avoids indigo/blue per the project styling rules.
@@ -506,7 +514,6 @@ function MatrixBlockingCard({ item }: { item: MatrixProgressItem }) {
               Faltam <span className="font-semibold text-foreground">{remainingLabel}</span> para bloquear
             </p>
           )}
-          {amountSub}
         </div>
       </CardContent>
     </Card>

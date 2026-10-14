@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -19,6 +19,8 @@ import {
   HeartPulse,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock,
   XCircle,
   ShieldCheck,
@@ -63,6 +65,14 @@ interface TelemedicinaPlanDTO {
 interface PlansApiResponse {
   plans: TelemedicinaPlanDTO[]
 }
+
+/**
+ * How many benefit rows a plan card shows by default. The admin can add an
+ * unlimited number of items (one per line), so anything beyond this is
+ * revealed by the "+N benefícios" expand toggle instead of a static
+ * "+N outros benefícios" text that hid the items from the member.
+ */
+const TELEMED_FEATURE_PREVIEW = 8
 
 /**
  * Catálogo fallback hardcoded — exibido se a API não responder (DB offline,
@@ -238,6 +248,22 @@ export function TelemedicinaPage() {
   // "Quero Ativar" no card correspondente. Se o usuário reabrir o dialog a
   // partir do status banner, reutilizamos o plano do último pedido.
   const [selectedPlan, setSelectedPlan] = useState<TelemedicinaPlanDTO | null>(null)
+
+  // Plan cards whose benefit list the user expanded: the card shows the first
+  // TELEMED_FEATURE_PREVIEW items and a "+N benefícios" button reveals the
+  // rest (plans can have 12+ items — nothing is silently hidden anymore).
+  const [expandedPlans, setExpandedPlans] = useState<Set<string>>(new Set())
+  const toggleExpanded = useCallback((planId: string) => {
+    setExpandedPlans((prev) => {
+      const next = new Set(prev)
+      if (next.has(planId)) {
+        next.delete(planId)
+      } else {
+        next.add(planId)
+      }
+      return next
+    })
+  }, [])
 
   // Activation form state (Telemedicina)
   const [form, setForm] = useState({
@@ -771,21 +797,44 @@ export function TelemedicinaPage() {
                       </p>
                     )}
 
-                    {/* Features */}
+                    {/* Features — first TELEMED_FEATURE_PREVIEW rows inline,
+                        the rest behind a "+N benefícios" expand toggle. */}
                     {plan.features.length > 0 && (
-                      <ul className="space-y-1.5 mt-1">
-                        {plan.features.slice(0, 8).map((f, i) => (
-                          <li key={i} className="flex items-start gap-2 text-xs md:text-sm text-foreground/80">
-                            <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                            <span className="leading-snug">{f}</span>
-                          </li>
-                        ))}
-                        {plan.features.length > 8 && (
-                          <li className="text-[11px] text-muted-foreground">
-                            +{plan.features.length - 8} outros benefícios
-                          </li>
+                      <div className="mt-1">
+                        <ul className="space-y-1.5">
+                          {(expandedPlans.has(plan.id)
+                            ? plan.features
+                            : plan.features.slice(0, TELEMED_FEATURE_PREVIEW)
+                          ).map((f, i) => (
+                            <li key={i} className="flex items-start gap-2 text-xs md:text-sm text-foreground/80">
+                              <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                              <span className="leading-snug">{f}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        {plan.features.length > TELEMED_FEATURE_PREVIEW && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            aria-expanded={expandedPlans.has(plan.id)}
+                            onClick={() => toggleExpanded(plan.id)}
+                            className="mt-1.5 -ml-2 h-11 min-h-[44px] gap-1 px-2 text-xs font-medium text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300"
+                          >
+                            {expandedPlans.has(plan.id) ? (
+                              <>
+                                Ver menos
+                                <ChevronUp className="h-3.5 w-3.5" />
+                              </>
+                            ) : (
+                              <>
+                                +{plan.features.length - TELEMED_FEATURE_PREVIEW} benefícios
+                                <ChevronDown className="h-3.5 w-3.5" />
+                              </>
+                            )}
+                          </Button>
                         )}
-                      </ul>
+                      </div>
                     )}
 
                     {/* Subscribe button pinned to bottom */}

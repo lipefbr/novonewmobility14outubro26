@@ -212,6 +212,9 @@ export function PointsPage() {
           <CardContent className="p-6 text-white text-center">
             <Star className="h-8 w-8 mx-auto mb-2 text-yellow-300" />
             <p className="text-emerald-200 text-sm">Total de Pontos</p>
+            {/* Task 15-g — desambiguação: este saldo (careerPoints) NÃO inclui o
+                placar de conquistas exibido mais abaixo (soma de pointsReward). */}
+            <p className="text-emerald-200/70 text-[10px] mb-1">saldo de carreira (pessoais + rede)</p>
             <p className="text-4xl font-bold">{totalPoints}</p>
             <div className="flex justify-center gap-6 mt-4">
               <div>

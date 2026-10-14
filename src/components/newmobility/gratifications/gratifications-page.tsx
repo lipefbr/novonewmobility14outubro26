@@ -50,8 +50,12 @@ interface GratificationCategory {
 
 // Fallback estático DOCUMENTADO (Task 13-e) — espelha exatamente o catálogo
 // da especificação (Índice.docx §5), o mesmo servido por
-// STATIC_FALLBACK_GRATIFICATIONS em /api/gratifications. Usado SOMENTE quando
-// a API falha ou retorna vazio.
+// STATIC_FALLBACK_GRATIFICATIONS em src/lib/gratification-catalog.ts. Usado
+// SOMENTE quando a API falha ou retorna vazio.
+// Task 15-f — os ids agora usam o MESMO formato sintético de catálogo do
+// fluxo normal (`catalog_<type>_<idx>`), então o botão "Reivindicar" continua
+// funcionando end-to-end mesmo em modo fallback (o POST resolve o item no
+// catálogo e materializa a linha real de Gratification).
 // Task 13-e — REMOVIDOS os itens fabricados que nunca existiram no backend:
 //   - "CashBack Shopping R$ 1.500" / "Seguro Auto" / "Telemedicina" com
 //     isClaimed: true + claimedAt falsos (o usuário nunca reivindicou);
@@ -66,7 +70,7 @@ const fallbackCategories: GratificationCategory[] = [
     color: 'bg-blue-100 text-blue-600',
     items: [
       {
-        id: 'meta_diaria_motorista',
+        id: 'catalog_driver_daily_goal_0',
         name: 'Meta Diária Motorista',
         amount: 0,
         type: 'driver_daily_goal',
@@ -75,7 +79,7 @@ const fallbackCategories: GratificationCategory[] = [
         description: '18 corridas/dia — Motorista/Entregador ativo. Ao bater a meta no dia, o sistema envia notificação push avisando que aquele dia teve a meta batida.',
       },
       {
-        id: 'meta_mensal_motorista',
+        id: 'catalog_driver_monthly_goal_1',
         name: 'Meta Mensal Motorista',
         amount: 0,
         type: 'driver_monthly_goal',
@@ -91,7 +95,7 @@ const fallbackCategories: GratificationCategory[] = [
     color: 'bg-amber-100 text-amber-600',
     items: [
       {
-        id: 'auxilio_combustivel',
+        id: 'catalog_fuel_aid_2',
         name: 'Auxílio Combustível',
         amount: 260000, // R$ 2.600 (R$100/dia × 26 dias)
         type: 'fuel_aid',
@@ -100,7 +104,7 @@ const fallbackCategories: GratificationCategory[] = [
         description: 'R$ 2.600/mês (R$100/dia × 26 dias). Pago no fim do mês após pagamento da fatura. Qualificação: ao fechar o 5º nível.',
       },
       {
-        id: 'reembolso_vale_ducha',
+        id: 'catalog_car_wash_3',
         name: 'Reembolso Vale Ducha (Lava-Carro)',
         amount: 78000, // R$ 780 (R$30/dia × 26 dias)
         type: 'car_wash',
@@ -116,7 +120,7 @@ const fallbackCategories: GratificationCategory[] = [
     color: 'bg-teal-100 text-teal-600',
     items: [
       {
-        id: 'ferias_6_meses',
+        id: 'catalog_vacation_6mo_4',
         name: 'Férias 6 Meses',
         amount: 500000, // R$ 5.000 + 10 dias de férias
         type: 'vacation_6mo',
@@ -125,7 +129,7 @@ const fallbackCategories: GratificationCategory[] = [
         description: 'R$ 5.000 + 10 dias de férias. Único aos 6 meses de cadastro ativo.',
       },
       {
-        id: 'ferias_12_meses',
+        id: 'catalog_vacation_12mo_5',
         name: 'Férias 12 Meses',
         amount: 2000000, // R$ 20.000 + 20 dias de férias
         type: 'vacation_12mo',
@@ -141,7 +145,7 @@ const fallbackCategories: GratificationCategory[] = [
     color: 'bg-rose-100 text-rose-600',
     items: [
       {
-        id: 'premio_cashback_gratificacao',
+        id: 'catalog_cashback_bonus_prize_6',
         name: 'Prêmio CashBack Gratificação',
         amount: 1500000, // R$ 15.000
         type: 'cashback_bonus_prize',
@@ -183,6 +187,22 @@ function groupByCategories(items: GratificationItem[]): GratificationCategory[] 
   }
 
   return Object.values(groups)
+}
+
+// Task 15-f — deriva um nome amigável para a linha de gratificação e remove
+// os marcadores internos de dedup que passaram a viver na description
+// ("[catalog:fuel_aid]", "[<goalConfig.id>]" — usados pelo claim para
+// idempotência). Sem isso, o nome exibido seria "[catalog:fuel_aid] Auxílio
+// Combustível" após o resgate.
+function deriveGratificationName(g: {
+  name?: string | null
+  description?: string | null
+  type?: string | null
+}): string {
+  if (g.name) return g.name
+  const firstPart = (g.description || '').split('—')[0] || ''
+  const cleaned = firstPart.replace(/\s*\[[^\]]*\]\s*/g, ' ').trim()
+  return cleaned || g.type || 'Gratificação'
 }
 
 export function GratificationsPage() {
@@ -339,9 +359,10 @@ export function GratificationsPage() {
       const apiGratifications: GratificationItem[] = [
         ...(data.available || []).map((g: any) => ({
           id: g.id,
-          // Prefer a friendly name (from description or type-to-name mapping)
-          // over the raw type slug for catalog display.
-          name: g.name || g.description?.split('—')[0]?.trim() || g.type || 'Gratificação',
+          // Task 15-f — nome amigável sem marcadores de dedup
+          // ("[catalog:...]", "[<goalConfig.id>]") que o claim grava na
+          // description para idempotência.
+          name: deriveGratificationName(g),
           amount: g.amount || 0,
           type: g.type || '',
           category: g.category || 'benefits',
@@ -350,7 +371,7 @@ export function GratificationsPage() {
         })),
         ...(data.claimed || []).map((g: any) => ({
           id: g.id,
-          name: g.name || g.description?.split('—')[0]?.trim() || g.type || 'Gratificação',
+          name: deriveGratificationName(g),
           amount: g.amount || 0,
           type: g.type || '',
           category: g.category || 'benefits',
@@ -523,9 +544,10 @@ export function GratificationsPage() {
       setSelectedGratification(null)
     } catch (err: any) {
       console.error('[Gratifications] Error claiming gratification:', err)
-      toast.error('Erro ao reivindicar gratificação', {
-        description: err?.message || 'Tente novamente mais tarde.',
-      })
+      // Task 15-f — surfacing a mensagem ESPECÍFICA da API (ex.: "KYC não
+      // aprovado...", "Gratificação já resgatada", "Gratificação não
+      // encontrada") em vez do título genérico que escondia o motivo real.
+      toast.error(err?.message || 'Erro ao reivindicar gratificação')
     } finally {
       setIsClaiming(false)
       setClaimingId(null)

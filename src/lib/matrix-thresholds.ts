@@ -9,14 +9,24 @@
 //                       (9.650.000 cents)
 //   - Residual matrix → blocks at R$ 750.000,00 total earned
 //                       (75.000.000 cents)
-//   - Vendas matrix   → blocks at 1.000 vendas (sales count)
+//   - Vendas matrix   → blocks at R$ 20.000,00 total earned
+//                       (2.000.000 cents)
+//
+// Task 15-j — a matriz VENDAS agora é medida em DINHEIRO (R$ ganhos),
+// não em quantidade de vendas. O admin grava matrix.vendas.limit_cents
+// como centavos de R$ (mesmo campo "Limite" em R$ da aba Matrizes) —
+// antes a API interpretava esse valor como CONTAGEM de vendas, o que
+// exibia "2.000.000 vendas" no backoffice para um teto de R$ 20.000,00.
+// Todas as 3 matrizes compartilham a mesma unidade (centavos) e o mesmo
+// formato de label (formatCentsBrlLabel).
 //
 // Task 13-d — os limites acima são agora apenas FALLBACKS documentados.
 // A fonte da verdade é o SystemConfig (editado na aba Matrizes do admin via
 // PUT /api/admin/matrix-config):
 //   - matrix.entrada.limit_cents  (default 9650000)
 //   - matrix.residual.limit_cents (default 75000000)
-//   - matrix.vendas.limit_cents   (default 0 = "a definir" / ilimitado)
+//   - matrix.vendas.limit_cents   (default 0 = "a definir" / ilimitado;
+//                                  quando > 0, é R$ em CENTAVOS)
 // O servidor (/api/network/matrix-progress) lê essas keys e repassa os
 // overrides para `getMatrixProgress()` — valor ausente/<= 0 → null =
 // ILIMITADO (nunca bloqueia, nunca mostra teto). Os consumidores client-side
@@ -26,21 +36,20 @@
 export type MatrixType = 'entrada' | 'residual' | 'vendas'
 
 export interface MatrixThresholdEntry {
-  /** Cents ceiling when `metric === 'amount'`. */
-  amountCents?: number
-  /** Count ceiling when `metric === 'count'`. */
-  count?: number
+  /** Cents ceiling (R$ × 100) — all matrices are money-measured (Task 15-j). */
+  amountCents: number
   /** Human-friendly label of the ceiling (e.g. "R$ 96.500"). */
   label: string
-  /** Whether the threshold is measured in currency (cents) or in count. */
-  metric: 'amount' | 'count'
+  /** Measurement unit — always 'amount' (BRL cents) since Task 15-j. */
+  metric: 'amount'
 }
 
 // FALLBACK defaults — usados somente quando a API não fornece overrides.
+// Task 15-j — vendas alinhado ao default exibido no admin (R$ 20.000,00).
 export const MATRIX_THRESHOLDS: Record<MatrixType, MatrixThresholdEntry> = {
   entrada: { amountCents: 9_650_000, label: 'R$ 96.500', metric: 'amount' },
   residual: { amountCents: 75_000_000, label: 'R$ 750.000', metric: 'amount' },
-  vendas: { count: 1_000, label: '1.000 vendas', metric: 'count' },
+  vendas: { amountCents: 2_000_000, label: 'R$ 20.000', metric: 'amount' },
 }
 
 // Task 13-d — overrides opcionais vindos do SystemConfig (aba Matrizes).
@@ -49,7 +58,8 @@ export const MATRIX_THRESHOLDS: Record<MatrixType, MatrixThresholdEntry> = {
 export interface MatrixLimitsOverride {
   entradaCents?: number | null
   residualCents?: number | null
-  vendasCount?: number | null
+  /** Task 15-j — renomeado de `vendasCount`: é R$ em CENTAVOS, não contagem. */
+  vendasCents?: number | null
 }
 
 export interface MatrixProgress {
@@ -57,13 +67,13 @@ export interface MatrixProgress {
   pct: number
   /** True when `currentValue >= threshold` — matrix is blocked. */
   isBlocked: boolean
-  /** Remaining units (cents or count) until the threshold is hit. */
+  /** Remaining BRL cents until the threshold is hit. */
   remaining: number
   /** Human-friendly label of the threshold (e.g. "R$ 96.500"). */
   thresholdLabel: string
-  /** The threshold's measurement unit. */
-  metric: 'amount' | 'count'
-  /** The raw ceiling value (cents for amount metrics, count for count metrics). */
+  /** The threshold's measurement unit (always 'amount' — Task 15-j). */
+  metric: 'amount'
+  /** The raw ceiling value in BRL cents. */
   threshold: number
   /** The current value passed in. */
   current: number
@@ -72,14 +82,10 @@ export interface MatrixProgress {
 }
 
 // Task 13-d — label dinâmico em R$ a partir de centavos (ex.: 9650000 → "R$ 96.500").
+// Task 15-j — usado pelas 3 matrizes (vendas incluída: teto em dinheiro).
 function formatCentsBrlLabel(cents: number): string {
   const reais = cents / 100
   return `R$ ${reais.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
-}
-
-// Task 13-d — label dinâmico de contagem (ex.: 1000 → "1.000 vendas").
-function formatCountLabel(count: number): string {
-  return `${count.toLocaleString('pt-BR')} vendas`
 }
 
 interface ResolvedCeiling {
@@ -95,8 +101,7 @@ function resolveCeiling(
   limits?: MatrixLimitsOverride,
 ): ResolvedCeiling {
   const fallback = MATRIX_THRESHOLDS[matrixType]
-  const fallbackMax =
-    fallback.metric === 'amount' ? fallback.amountCents ?? 0 : fallback.count ?? 0
+  const fallbackMax = fallback.amountCents
 
   if (limits) {
     const override =
@@ -104,7 +109,7 @@ function resolveCeiling(
         ? limits.entradaCents
         : matrixType === 'residual'
           ? limits.residualCents
-          : limits.vendasCount
+          : limits.vendasCents
 
     // Campo presente no override (inclui null) → SystemConfig é a fonte.
     if (override !== undefined) {
@@ -112,12 +117,10 @@ function resolveCeiling(
         // "A definir" — matriz ilimitada: nunca bloqueia, sem teto exibido.
         return { max: 0, label: 'A definir', unlimited: true }
       }
+      // Task 15-j — todas as matrizes são dinheiro: label sempre em R$.
       return {
         max: override,
-        label:
-          fallback.metric === 'amount'
-            ? formatCentsBrlLabel(override)
-            : formatCountLabel(override),
+        label: formatCentsBrlLabel(override),
         unlimited: false,
       }
     }
@@ -131,9 +134,10 @@ function resolveCeiling(
  * Compute the progress towards a matrix's blocking threshold.
  *
  * @param matrixType   Which matrix to look up.
- * @param currentValue Current accumulated value for the logged-in user:
- *                       - cents for `entrada` / `residual`
- *                       - integer count for `vendas`
+ * @param currentValue Current accumulated value for the logged-in user, in
+ *                       BRL CENTS for all three matrices (Task 15-j — vendas
+ *                       comparava contagem de vendas com um teto em centavos;
+ *                       agora compara R$ ganhos vs R$ de teto).
  *                       Non-numeric / negative inputs are coerced to 0.
  * @param limits       Task 13-d — overrides vindos do SystemConfig (opcional).
  *                       null/<= 0 = ilimitado (nunca bloqueia). Ausente =

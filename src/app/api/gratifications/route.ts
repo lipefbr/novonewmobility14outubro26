@@ -1,70 +1,10 @@
 import { db } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
-// Task 13-e — reusa os helpers de overlay das edições do admin (SystemConfig
-// `metas.benefit.{type}.name|.amount|.description`, gravados via
-// PUT /api/admin/gratifications-config/benefit), compartilhados com
-// /api/gratifications-config para as duas rotas ficarem consistentes.
-import { applyBenefitOverlay, loadBenefitOverlay } from '@/app/api/gratifications-config/route'
-
-// Static fallback list of client-spec gratifications (Índice.docx §5).
-// Returned in addition to whatever the DB has so that newly-registered users
-// (or any user with zero rows in the Gratification table) still see the full
-// catalog of gratifications the platform offers. The DB rows (when present)
-// take precedence — they hold the actual claimed/unclaimed state and
-// per-user amounts. The static fallback items are always rendered as
-// "available" (not claimed) since they represent the catalog, not the
-// per-user claim state.
-const STATIC_FALLBACK_GRATIFICATIONS = [
-  {
-    type: 'fuel_aid',
-    name: 'Auxílio Combustível',
-    amount: 260000, // R$ 2.600 (R$100/dia × 26 dias)
-    category: 'mobility',
-    description: 'R$ 2.600/mês (R$100/dia × 26 dias). Pago no fim do mês após pagamento da fatura. Qualificação: ao fechar o 5º nível.',
-  },
-  {
-    type: 'car_wash',
-    name: 'Reembolso Vale Ducha (Lava-Carro)',
-    amount: 78000, // R$ 780 (R$30/dia × 26 dias)
-    category: 'mobility',
-    description: 'R$ 780/mês (R$30/dia × 26 dias). Pago diário ou no fim do mês após fatura. Qualificação: ao fechar o 5º nível.',
-  },
-  {
-    type: 'vacation_6mo',
-    name: 'Férias 6 Meses',
-    amount: 500000, // R$ 5.000 + 10 dias
-    category: 'vacation',
-    description: 'R$ 5.000 + 10 dias de férias. Único aos 6 meses de cadastro ativo.',
-  },
-  {
-    type: 'vacation_12mo',
-    name: 'Férias 12 Meses',
-    amount: 2000000, // R$ 20.000 + 20 dias
-    category: 'vacation',
-    description: 'R$ 20.000 + 20 dias de férias. Único aos 12 meses de cadastro ativo.',
-  },
-  {
-    type: 'driver_daily_goal',
-    name: 'Meta Diária Motorista',
-    amount: 0,
-    category: 'mobility',
-    description: '18 corridas/dia — Motorista/Entregador ativo. Ao bater a meta no dia, o sistema envia notificação push avisando que aquele dia teve a meta batida.',
-  },
-  {
-    type: 'driver_monthly_goal',
-    name: 'Meta Mensal Motorista',
-    amount: 0,
-    category: 'mobility',
-    description: '384 corridas/mês (18 corridas × ~21 dias úteis). Bonificação extra mensal ao bater a meta — Motorista/Entregador ativo.',
-  },
-  {
-    type: 'cashback_bonus_prize',
-    name: 'Prêmio CashBack Gratificação',
-    amount: 1500000, // R$ 15.000
-    category: 'prize',
-    description: 'R$ 15.000 — Único ao fechar equipe com 1.364 usuários.',
-  },
-]
+// Task 15-f — o catálogo estático (STATIC_FALLBACK_GRATIFICATIONS) e a
+// montagem com overlay das edições do admin (Task 13-e) foram movidos para
+// src/lib/gratification-catalog.ts, fonte única compartilhada com o claim
+// (que precisa resolver ids sintéticos `catalog_<type>_<idx>` do front).
+import { getCatalogGratifications } from '@/lib/gratification-catalog'
 
 export async function GET(request: Request) {
   try {
@@ -150,11 +90,10 @@ export async function GET(request: Request) {
         }
       : null
 
-    // Task 13-e — aplica as edições do admin (nome/valor/descrição do
-    // benefício) por cima do catálogo estático, para o membro ver o valor
-    // REAL configurado e não mais o seed antigo (260000/78000/...).
-    const benefitOverlay = await loadBenefitOverlay()
-    const catalog = applyBenefitOverlay(STATIC_FALLBACK_GRATIFICATIONS, benefitOverlay)
+    // Task 13-e/15-f — catálogo estático + overlay das edições do admin
+    // (nome/valor/descrição REAL configurado, não mais o seed antigo),
+    // agora via fonte única em src/lib/gratification-catalog.ts.
+    const catalog = await getCatalogGratifications()
 
     return success({
       available,

@@ -1,6 +1,10 @@
-import { db } from '@/lib/db'
+import { db, prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
 import { isKycApproved } from '@/lib/kyc'
+// Task 15-f — fonte única do catálogo (com overlay das edições do admin),
+// compartilhada com GET /api/gratifications. Necessária para resolver os ids
+// sintéticos `catalog_<type>_<idx>` que o front gera para itens de catálogo.
+import { getCatalogItem } from '@/lib/gratification-catalog'
 
 function generateId(): string {
   const timestamp = Date.now().toString(36)
@@ -9,10 +13,26 @@ function generateId(): string {
   return `c${timestamp}${random}${random2}`
 }
 
+// Task 15-f — extrai o `type` de um id sintético de catálogo gerado pelo
+// front no formato `catalog_<type>_<idx>` (o `<idx>` é a posição na lista
+// filtrada do client e NÃO é usado no servidor — o `type` identifica o item).
+// Retorna null quando o id não é de catálogo. Obs.: o `<idx>` é sempre
+// anexado pelo front, então o trailing `_<dígitos>` pode ser descartado com
+// segurança; um type hipotético terminando em dígitos puros sem idx não é
+// produzido pelo front atual.
+function parseCatalogId(gratificationId: string): string | null {
+  if (!gratificationId.startsWith('catalog_')) return null
+  const raw = gratificationId.slice('catalog_'.length)
+  if (!raw) return null
+  const match = raw.match(/^(.*)_(\d+)$/)
+  return match ? match[1] : raw
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { userId, gratificationId, claimType } = body
+    const { userId, claimType } = body
+    let { gratificationId } = body
 
     if (!userId || !gratificationId) {
       return error('userId e gratificationId são obrigatórios')
@@ -21,6 +41,58 @@ export async function POST(request: Request) {
     // Validate claimType
     const validClaimTypes = ['balance', 'prize']
     const resolvedClaimType = validClaimTypes.includes(claimType) ? claimType : 'balance'
+
+    // Task 15-f — itens de CATÁLOGO (ids `catalog_<type>_<idx>`) não existem
+    // na tabela Gratification: antes o findOne abaixo caía em 404 e o membro
+    // via o toast genérico "Erro ao reivindicar gratificação". Agora
+    // resolvemos o item no catálogo (com overlay do admin) e MATERIALIZAMOS
+    // uma linha real de Gratification para o usuário; o fluxo comum abaixo
+    // (ownership → claimed → KYC → creditação) segue idêntico.
+    const catalogType = typeof gratificationId === 'string' ? parseCatalogId(gratificationId) : null
+    if (catalogType !== null) {
+      const item = await getCatalogItem(catalogType)
+      if (!item) {
+        return error('Gratificação não encontrada', 404)
+      }
+      if (!item.amount || item.amount <= 0) {
+        // Itens de meta (amount 0, ex.: driver_daily_goal) não são
+        // resgatáveis — o botão só aparece para itens com valor.
+        return error('Este benefício não possui valor configurado para resgate', 400)
+      }
+
+      // Idempotência: o marker `[catalog:<type>]` na description identifica
+      // a linha criada por este fluxo (o schema Gratification não tem
+      // referenceId — mesmo padrão de dedup do goal-configs/claim).
+      const catalogMarker = `[catalog:${item.type}]`
+      const existing = await prisma.gratification.findFirst({
+        where: {
+          userId,
+          type: item.type,
+          description: { contains: catalogMarker },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+      if (existing?.isClaimed) {
+        return error('Gratificação já resgatada', 400)
+      }
+      if (existing) {
+        // Tentativa anterior interrompida (row criada, não resgatada):
+        // reutiliza a row pendente em vez de duplicar.
+        gratificationId = existing.id
+      } else {
+        const created = await prisma.gratification.create({
+          data: {
+            userId,
+            type: item.type,
+            amount: item.amount,
+            category: item.category || 'benefits',
+            description: `${catalogMarker} ${item.name}`,
+            isClaimed: false,
+          },
+        })
+        gratificationId = created.id
+      }
+    }
 
     // Find the gratification
     const gratification = await db.findOne('Gratification', '"id" = $1', [gratificationId])
@@ -34,7 +106,7 @@ export async function POST(request: Request) {
     }
 
     if (gratification.isClaimed) {
-      return error('Gratificação já foi reivindicada', 400)
+      return error('Gratificação já resgatada', 400)
     }
 
     // Find the user

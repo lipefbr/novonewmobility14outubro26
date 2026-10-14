@@ -55,12 +55,36 @@ try {
 projectRoot = path.resolve(projectRoot);
 
 const nextConfig: NextConfig = {
+  // PRODUCTION DEPLOY (LipeHost): `output: "standalone"` IS REQUIRED and must
+  // stay. The deploy scripts (PM2 ecosystem.config.js / start-prod.sh) run
+  // `.next/standalone/server.js`, which only exists when this is enabled.
+  // (An older comment here claimed it had been removed — that was wrong.)
+  //
+  // Side effect we must handle: in standalone mode the server only serves
+  // files that existed in `public/` at BUILD time. Files written to
+  // `public/uploads` at RUNTIME (profile photos etc.) are not in that
+  // build-time snapshot, so they would 404 and DB URLs would break after the
+  // first redeploy. Fix below via the /uploads/* → /api/uploads/* rewrite:
+  // the API route streams files from `process.env.UPLOADS_DIR` (set it in
+  // production to a PERSISTENT path outside `.next/standalone/`) or, by
+  // default, `<cwd>/public/uploads`.
   output: "standalone",
-  // NOTE: `output: "standalone"` was removed because it causes
-  // "next start does not work with output: standalone" warning and
-  // runtime errors on LipeHost (Application error: a client-side
-  // exception). The LipeHost deploy uses `next build && next start`
-  // (via PM2), which works without standalone mode.
+
+  // ── Runtime uploads (Task 15-d) ───────────────────────────────────────────
+  // Serve every /uploads/* URL through /api/uploads/[...path], which reads
+  // from disk on each request (with path-traversal sanitization) and therefore
+  // works in dev AND in standalone production where `public/` is a frozen
+  // build-time snapshot. Old URLs already stored in the DB keep working.
+  // Next checks `public/` first for afterFiles rewrites, so in dev an existing
+  // file is still served statically — behavior is unchanged locally.
+  async rewrites() {
+    return [
+      {
+        source: "/uploads/:path*",
+        destination: "/api/uploads/:path*",
+      },
+    ];
+  },
 
   // ── Root detection overrides ──────────────────────────────────────────────
   // These prevent Next.js from picking the parent directory (where LipeHost's

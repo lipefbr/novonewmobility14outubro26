@@ -68,6 +68,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'dashboard.financial.shopping': 'CASHBACK SHOPPING',
     'dashboard.financial.revenue': 'FATURAMENTO',
     'dashboard.financial.paymentInvoice': 'PAGAMENTO FATURA',
+    'dashboard.financial.withdrawal': 'SAQUE',
     'dashboard.network.title': 'Visão da Rede',
     'dashboard.network.total': 'Total da Rede',
     'dashboard.network.active': 'Membros Ativos',
@@ -253,7 +254,9 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Achievements
     'achievements.earned': 'Conquistados',
-    'achievements.points': 'Pontos',
+    'achievements.points': 'Pts. Conquistas',
+    'achievements.pointsHint': 'placar de conquistas',
+    'achievements.pointsFootnote': 'Os pontos de conquistas são um placar de badges e não entram no seu saldo de pontos (Total/Pessoais).',
     'achievements.completion': 'Conclusão',
     'achievements.overallProgress': 'Progresso Geral',
     'achievements.earnedTitle': 'Conquistas Desbloqueadas',
@@ -503,6 +506,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'dashboard.financial.shopping': 'SHOPPING CASHBACK',
     'dashboard.financial.revenue': 'REVENUE',
     'dashboard.financial.paymentInvoice': 'PAYMENT INVOICE',
+    'dashboard.financial.withdrawal': 'WITHDRAWAL',
     'dashboard.network.title': 'Network Overview',
     'dashboard.network.total': 'Total Network',
     'dashboard.network.active': 'Active Members',
@@ -670,7 +674,9 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Achievements
     'achievements.earned': 'Earned',
-    'achievements.points': 'Points',
+    'achievements.points': 'Achv. Points',
+    'achievements.pointsHint': 'badge scoreboard',
+    'achievements.pointsFootnote': 'Achievement points are a badge scoreboard — they are NOT added to your points balance (Total/Personal).',
     'achievements.completion': 'Completion',
     'achievements.overallProgress': 'Overall Progress',
     'achievements.earnedTitle': 'Unlocked Achievements',
@@ -920,6 +926,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'dashboard.financial.shopping': 'CASHBACK COMPRAS',
     'dashboard.financial.revenue': 'FACTURACIÓN',
     'dashboard.financial.paymentInvoice': 'PAGO FACTURA',
+    'dashboard.financial.withdrawal': 'RETIRO',
     'dashboard.network.title': 'Vista de la Red',
     'dashboard.network.total': 'Total de la Red',
     'dashboard.network.active': 'Miembros Activos',
@@ -1049,7 +1056,9 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Achievements
     'achievements.earned': 'Ganados',
-    'achievements.points': 'Puntos',
+    'achievements.points': 'Pts. Logros',
+    'achievements.pointsHint': 'marcador de logros',
+    'achievements.pointsFootnote': 'Los puntos de logros son un marcador de insignias y NO se suman a tu saldo de puntos (Total/Personal).',
     'achievements.completion': 'Completado',
     'achievements.overallProgress': 'Progreso General',
     'achievements.earnedTitle': 'Logros Desbloqueados',
@@ -1299,6 +1308,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'dashboard.financial.shopping': 'CASHBACK SHOPPING',
     'dashboard.financial.revenue': "CHIFFRE D'AFFAIRES",
     'dashboard.financial.paymentInvoice': 'PAIEMENT FACTURE',
+    'dashboard.financial.withdrawal': 'RETRAIT',
     'dashboard.network.title': 'Aperçu du Réseau',
     'dashboard.network.total': 'Réseau Total',
     'dashboard.network.active': 'Membres Actifs',
@@ -1424,7 +1434,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'activity.refresh': 'Mis à jour',
 
     // New features (abbreviated for FR)
-    'achievements.earned': 'Gagnés', 'achievements.points': 'Points', 'achievements.completion': 'Complétion',
+    'achievements.earned': 'Gagnés', 'achievements.points': 'Pts. Succès', 'achievements.pointsHint': 'score de badges', 'achievements.pointsFootnote': "Les points de succès sont un score de badges — ils ne s'ajoutent PAS à votre solde de points (Total/Personnel).", 'achievements.completion': 'Complétion',
     'achievements.overallProgress': 'Progression Globale', 'achievements.earnedTitle': 'Succès Débloqués', 'achievements.lockedTitle': 'Succès Verrouillés',
     'achievements.firstReferral': 'Premier Filleul', 'achievements.firstReferralDesc': 'Faites votre premier filleul actif',
     'achievements.tenReferrals': '10 Filleuls', 'achievements.tenReferralsDesc': 'Obtenez 10 filleuls actifs',
@@ -1597,6 +1607,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'dashboard.financial.shopping': 'CASHBACK SHOPPING',
     'dashboard.financial.revenue': 'FATTURATO',
     'dashboard.financial.paymentInvoice': 'PAGAMENTO FATTURA',
+    'dashboard.financial.withdrawal': 'PRELIEVO',
     'dashboard.network.title': 'Panoramica della Rete',
     'dashboard.network.total': 'Rete Totale',
     'dashboard.network.active': 'Membri Attivi',
@@ -1722,7 +1733,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'activity.refresh': 'Aggiornato',
 
     // New features (abbreviated for IT)
-    'achievements.earned': 'Guadagnati', 'achievements.points': 'Punti', 'achievements.completion': 'Completamento',
+    'achievements.earned': 'Guadagnati', 'achievements.points': 'Pti. Traguardi', 'achievements.pointsHint': 'punteggio badge', 'achievements.pointsFootnote': 'I punti dei traguardi sono un punteggio di badge — NON si aggiungono al tuo saldo punti (Totale/Personale).', 'achievements.completion': 'Completamento',
     'achievements.overallProgress': 'Progresso Generale', 'achievements.earnedTitle': 'Traguardi Sbloccati', 'achievements.lockedTitle': 'Traguardi Bloccati',
     'achievements.firstReferral': 'Primo Referral', 'achievements.firstReferralDesc': 'Fai il tuo primo referral attivo',
     'achievements.tenReferrals': '10 Referral', 'achievements.tenReferralsDesc': 'Ottieni 10 referral attivi',

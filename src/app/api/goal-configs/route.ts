@@ -1,6 +1,9 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
+// Task 15-f — helper compartilhado de audiência (lib, não route file, para
+// evitar import cycles e permitir reuso no claim).
+import { userMatchesGoalAudience } from '@/lib/goal-audience'
 
 // ============================================================================
 // /api/goal-configs — Metas configuradas pelo admin para o usuário logado
@@ -33,18 +36,18 @@ import { success, error } from '@/lib/api-utils'
 //   }
 // ============================================================================
 
-function userMatchesTargetQualification(userQual: string | null | undefined, target: string): boolean {
-  if (!userQual) return false
-  const q = userQual.toLowerCase()
-  if (target === 'ambos') return q === 'motorista' || q === 'entregador'
-  return q === target.toLowerCase()
-}
+// Task 15-f — o filtro por igualdade estrita de user.qualification foi
+// substituído por userMatchesGoalAudience() (src/lib/goal-audience.ts), que
+// reconhece todas as categorias de condutor (mototaxista, taxista,
+// motorista_app, caminhoneiro, motofretista), userType, as flags legacy
+// isDriver/isDelivery e usuários sem qualificação preenchida.
 
 // Compute current progress for a goal based on metricCode + frequency
 async function computeProgress(
   userId: string,
   metricCode: string,
-  frequency: string
+  frequency: string,
+  totalRides: number
 ): Promise<number> {
   const now = new Date()
   let since: Date
@@ -63,36 +66,32 @@ async function computeProgress(
   }
 
   try {
-    // Try to count from Ride model if it exists (motorista trips)
+    // Task 15-f — MÉTRICA REAL DE VIAGENS: o schema NÃO possui tabela
+    // Ride/Delivery (o código antigo chamava prisma.ride/prisma.delivery
+    // com @ts-expect-error e SEMPRE retornava 0 — por isso o botão
+    // "Resgatar Recompensa" nunca aparecia). A única contagem real que
+    // existe é User.totalRides (total de corridas do usuário). Usamos esse
+    // dado REAL; limitação documentada: como não há contagem por período,
+    // metas daily/weekly/monthly de viagens mostram o total acumulado e o
+    // resgate continua limitado a 1x por período pelo dedup do claim.
     if (metricCode === 'trips_daily' || metricCode === 'trips_monthly' || metricCode === 'trips_total') {
-      // @ts-expect-error — Ride model may or may not exist
-      const count = await prisma.ride?.count({
-        where: {
-          driverId: userId,
-          status: 'completed',
-          completedAt: { gte: since },
-        },
-      })
-      if (typeof count === 'number') return count
+      return totalRides
     }
+    // Entregas: NÃO existe nenhuma métrica de entregas no schema — progresso
+    // honesto 0 (nunca inventamos dado).
     if (metricCode === 'deliveries_daily' || metricCode === 'deliveries_monthly') {
-      // @ts-expect-error — Delivery model may or may not exist
-      const count = await prisma.delivery?.count({
-        where: {
-          driverId: userId,
-          status: 'completed',
-          completedAt: { gte: since },
-        },
-      })
-      if (typeof count === 'number') return count
+      return 0
     }
     if (metricCode === 'sales_total') {
-      const count = await prisma.marketplaceOrder.count({
-        where: {
-          sellerId: userId,
-          status: { in: ['paid', 'delivered', 'completed'] },
-          createdAt: { gte: since },
-        },
+      // Task 15-f — métrica REAL de "vendas": cada venda atribuída ao usuário
+      // gera exatamente 1 registro CashbackSales de nível 1 (o cashback de
+      // vendas credita o upline direto por venda). O código antigo consultava
+      // prisma.marketplaceOrder com `sellerId` — campo que NÃO existe no
+      // schema (MarketplaceOrder só tem o comprador `userId`) e nem
+      // compilava. Limitação documentada: lançamentos manuais do admin
+      // (fromUserId = admin) também entram na contagem.
+      const count = await prisma.cashbackSales.count({
+        where: { fromUserId: userId, level: 1, createdAt: { gte: since } },
       })
       return count
     }
@@ -110,7 +109,7 @@ async function computeProgress(
       return count
     }
   } catch {
-    // If the model doesn't exist or query fails, fall back to 0
+    // If the query fails, fall back to 0
     return 0
   }
 
@@ -125,7 +124,16 @@ export async function GET(req: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, qualification: true, role: true, isActive: true },
+      select: {
+        id: true,
+        qualification: true,
+        userType: true,
+        isDriver: true,
+        isDelivery: true,
+        role: true,
+        isActive: true,
+        totalRides: true,
+      },
     })
     if (!user) return error('User not found', 404)
 
@@ -135,21 +143,22 @@ export async function GET(req: NextRequest) {
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
     })
 
-    // Filter by user qualification
-    const applicable = configs.filter((c) =>
-      userMatchesTargetQualification(user.qualification, c.targetQualification)
-    )
+    // Filter by goal audience (Task 15-f — categories/userType/flags/empty)
+    const applicable = configs.filter((c) => userMatchesGoalAudience(user, c.targetQualification))
 
     // Compute progress for each goal
     const goalsWithProgress = await Promise.all(
       applicable.map(async (c) => {
-        const currentValue = await computeProgress(userId, c.metricCode, c.frequency)
+        const currentValue = await computeProgress(userId, c.metricCode, c.frequency, user.totalRides)
         const progressPct = c.targetValue > 0 ? Math.min(100, Math.round((currentValue / c.targetValue) * 100)) : 0
         const isAchieved = currentValue >= c.targetValue
 
         // Check if the user has already claimed this goal for the current period
-        // (we look for a Gratification row with type='goal_claim' + referenceId=goalConfig.id
-        // created within the current period)
+        // (we look for a Gratification row with type='goal_claim' whose
+        // description carries the dedup marker `[<goalConfig.id>]` — gravado
+        // pelo POST /api/goal-configs/claim. Task 15-f: o schema Gratification
+        // NÃO tem coluna referenceId, então o dedup é pela description
+        // (typed, sem @ts-expect-error).
         let isClaimed = false
         try {
           const periodStart =
@@ -164,8 +173,7 @@ export async function GET(req: NextRequest) {
             where: {
               userId,
               type: 'goal_claim',
-              // @ts-expect-error — referenceId may not exist on Gratification schema
-              referenceId: c.id,
+              description: { contains: `[${c.id}]` },
               createdAt: { gte: periodStart },
             },
           })
@@ -196,6 +204,6 @@ export async function GET(req: NextRequest) {
     return success({ goals: goalsWithProgress })
   } catch (err) {
     console.error('goal-configs GET error:', err)
-    return error('Failed to fetch goal configs', 500)
+    return error('Erro ao carregar as metas. Tente novamente.', 500)
   }
 }

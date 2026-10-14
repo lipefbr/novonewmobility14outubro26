@@ -340,6 +340,15 @@ export function CareerPage() {
   const [levels, setLevels] = useState<CareerLevel[]>(careerLevels)
   const [apiCurrentRank, setApiCurrentRank] = useState<string | null>(null)
 
+  // 15-h — driver-bonus banner goals (§6 motorista/entregador). Defaults
+  // mirror the SystemConfig seeds (metas.daily_goal_rides / metas.monthly_goal_rides);
+  // hydrated from GET /api/career (`metas` in the response) so admin edits
+  // propagate to the banner text.
+  const [metas, setMetas] = useState<{ dailyGoalRides: number; monthlyGoalRides: number }>({
+    dailyGoalRides: 18,
+    monthlyGoalRides: 384,
+  })
+
   // BACK-9 — claimed-gratification tracking. Maps planId → claimedAt ISO
   // string for every career plan the user has already claimed. Populated
   // from GET /api/career/claim on mount. Drives the "Reivindicar
@@ -423,6 +432,16 @@ export function CareerPage() {
           }
         }
         if (data.currentRank) setApiCurrentRank(data.currentRank)
+        // 15-h — hydrate the driver-bonus banner goals from SystemConfig
+        // (server applies parseInt with fallback 18/384; re-validate here).
+        if (data.metas && typeof data.metas === 'object') {
+          const daily = Number(data.metas.dailyGoalRides)
+          const monthly = Number(data.metas.monthlyGoalRides)
+          setMetas({
+            dailyGoalRides: Number.isFinite(daily) && daily > 0 ? daily : 18,
+            monthlyGoalRides: Number.isFinite(monthly) && monthly > 0 ? monthly : 384,
+          })
+        }
       } catch (err) {
         console.error('Failed to load career data:', err)
         // keep loading fallback on error
@@ -672,7 +691,7 @@ export function CareerPage() {
                 <p className="text-xs text-amber-700 dark:text-amber-400 mt-1 leading-relaxed">
                   Motorista ao escolher a categoria que deseja trabalhar ganhará uma{' '}
                   <span className="font-semibold">Bonificação extra todo mês que bater sua meta mensal</span>{' '}
-                  (18 corridas/dia). A meta mensal é de <span className="font-semibold">384 corridas/mês</span>.
+                  ({metas.dailyGoalRides} corridas/dia). A meta mensal é de <span className="font-semibold">{metas.monthlyGoalRides} corridas/mês</span>.
                   Ao bater a meta diária, o sistema envia uma notificação push avisando que aquele dia teve a meta batida.
                   A manutenção do bônus é paga só quando atinge a graduação dele, após a conquista.
                 </p>
@@ -1175,6 +1194,19 @@ export function CareerPage() {
                               </motion.div>
                             )}
                           </div>
+                          {/* 15-h — emoji tile (parity with the mobile card): DB-driven
+                              iconEmoji with a Lucide fallback, gradient from the plan's
+                              color. Decorative → aria-hidden. */}
+                          <div
+                            className="shrink-0 p-2 rounded-xl text-white shadow-lg flex items-center justify-center"
+                            style={{ background: `linear-gradient(135deg, ${level.color}, ${level.color}dd)` }}
+                          >
+                            {level.iconEmoji ? (
+                              <span className="text-lg leading-none" aria-hidden>{level.iconEmoji}</span>
+                            ) : (
+                              <Icon className="h-5 w-5" />
+                            )}
+                          </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
                               <h4 className="font-bold text-foreground text-sm lg:text-base break-words leading-tight">{level.name}</h4>
@@ -1194,18 +1226,59 @@ export function CareerPage() {
                                 <p className="font-medium text-emerald-600">{level.cashbackMultiplier}</p>
                               </div>
                             </div>
-                            {level.benefits.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {level.benefits.slice(0, 3).map((b, bi) => (
-                                  <Badge key={bi} variant="outline" className="text-[10px]">{b}</Badge>
-                                ))}
-                                {level.benefits.length > 3 && (
-                                  <Badge variant="outline" className="text-[10px]">+{level.benefits.length - 3}</Badge>
-                                )}
-                              </div>
-                            )}
                           </div>
                         </div>
+
+                        {/* 15-h — Recompensa block (parity with the mobile card):
+                            Saque / Compras / Pontos laid out horizontally for the
+                            wider desktop card, plus the gratification description.
+                            Same labels, icons and colors as the mobile card. */}
+                        {((level.rewardWithdrawalCents ?? 0) > 0 ||
+                          (level.rewardShoppingCents ?? 0) > 0 ||
+                          (level.rewardPoints ?? 0) > 0 ||
+                          !!level.gratification) && (
+                          <div className="mt-3 pt-3 border-t border-border/50">
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Recompensa</p>
+                            <div className="flex flex-wrap gap-x-6 gap-y-1">
+                              {(level.rewardWithdrawalCents ?? 0) > 0 && (
+                                <p className="text-xs text-foreground">
+                                  <span className="text-muted-foreground">Saque:</span>{' '}
+                                  <span className="font-semibold text-emerald-600">{formatBRLFromCents(level.rewardWithdrawalCents)}</span>
+                                </p>
+                              )}
+                              {(level.rewardShoppingCents ?? 0) > 0 && (
+                                <p className="text-xs text-foreground">
+                                  <span className="text-muted-foreground">Compras:</span>{' '}
+                                  <span className="font-semibold text-emerald-600">{formatBRLFromCents(level.rewardShoppingCents)}</span>
+                                </p>
+                              )}
+                              {(level.rewardPoints ?? 0) > 0 && (
+                                <p className="text-xs text-foreground">
+                                  <span className="text-muted-foreground">Pontos:</span>{' '}
+                                  <span className="font-semibold text-emerald-600">{Number(level.rewardPoints).toLocaleString('pt-BR')}</span>
+                                </p>
+                              )}
+                            </div>
+                            {/* 15-h — gratification (bônus description) below the rewards,
+                                same amber styling as the mobile card. */}
+                            {level.gratification && (
+                              <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1.5 leading-snug line-clamp-2">
+                                {level.gratification}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {level.benefits.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {level.benefits.slice(0, 3).map((b, bi) => (
+                              <Badge key={bi} variant="outline" className="text-[10px]">{b}</Badge>
+                            ))}
+                            {level.benefits.length > 3 && (
+                              <Badge variant="outline" className="text-[10px]">+{level.benefits.length - 3}</Badge>
+                            )}
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   </div>

@@ -393,15 +393,15 @@ export function TelemedicinaManager() {
 
                   {plan.features.length > 0 ? (
                     <ul className="space-y-1 text-sm">
-                      {plan.features.slice(0, 5).map((f, i) => (
+                      {plan.features.slice(0, 8).map((f, i) => (
                         <li key={i} className="flex items-start gap-1.5">
                           <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-500" />
                           <span className="text-muted-foreground">{f}</span>
                         </li>
                       ))}
-                      {plan.features.length > 5 && (
+                      {plan.features.length > 8 && (
                         <li className="text-xs text-muted-foreground">
-                          +{plan.features.length - 5} outros benefícios
+                          +{plan.features.length - 8} outros benefícios
                         </li>
                       )}
                     </ul>
@@ -562,7 +562,7 @@ export function TelemedicinaManager() {
               <Label htmlFor="telemed-features">Benefícios (um por linha)</Label>
               <Textarea
                 id="telemed-features"
-                rows={5}
+                rows={10}
                 value={form.features}
                 onChange={(e) => setForm((f) => ({ ...f, features: e.target.value }))}
                 placeholder={
@@ -570,7 +570,9 @@ export function TelemedicinaManager() {
                 }
               />
               <p className="text-xs text-muted-foreground">
-                Cada linha vira um item na lista de benefícios do plano.
+                Cada linha vira um item na lista de benefícios do plano — sem limite
+                de linhas; itens além dos primeiros ficam atrás de um botão
+                "+N benefícios" para o membro expandir.
               </p>
             </div>
 

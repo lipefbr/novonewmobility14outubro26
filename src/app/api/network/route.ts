@@ -8,9 +8,10 @@ import { getSession } from '@/lib/auth'
 // No platform-wide data. Used by the Minha Rede page to render:
 //   - the paid/unpaid chart
 //   - the downline table (with filters + pagination)
-//   - the per-matrix blocking progress cards (also returned here for one
-//     round-trip; the dedicated /api/network/matrix-progress route exists
-//     for cases where only the progress is needed).
+//   - per-matrix earnings totals (Task 15-j: the blocking progress cards
+//     are NOT built here — they come from the dedicated
+//     /api/network/matrix-progress route, which applies the admin's
+//     money-denominated limits from SystemConfig).
 //
 // Performance: builds a parent→children map ONCE from a single DB query
 // (same pattern as /api/dashboard/route.ts `buildChildrenMap`), then walks
@@ -224,9 +225,12 @@ export async function GET(request: Request) {
       summary.byLevel[m.level] = (summary.byLevel[m.level] || 0) + 1
     }
 
-    // 4. Per-matrix earnings (entrada + residual in cents, vendas in count).
-    //    These are the USER's OWN earnings (not the downline's), used by
-    //    the matrix blocking progress cards.
+    // 4. Per-matrix earnings (entrada + residual in cents; vendas returns
+    //    BOTH the sales count — genuine qty of CashbackSales rows, NOT a
+    //    limit — and the total R$ amount in cents, `vendasAmount`).
+    //    Task 15-j: the vendas LIMIT is money and lives only in
+    //    /api/network/matrix-progress (matrix.vendas.limit_cents = centavos).
+    //    These are the USER's OWN earnings (not the downline's).
     const [entradaRecords, residualRecords, vendasRecords] = await Promise.all([
       db.find('CashbackEntry', '"userId" = $1', [rootId]),
       db.find('CashbackResidual', '"userId" = $1', [rootId]),

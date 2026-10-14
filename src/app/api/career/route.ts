@@ -61,6 +61,31 @@ export async function GET(request: Request) {
       return error('userId is required')
     }
 
+    // 15-h — Driver-bonus banner goals (§6 motorista/entregador). Read from
+    // SystemConfig so admin edits to `metas.daily_goal_rides` /
+    // `metas.monthly_goal_rides` propagate to the career-page banner.
+    // Same parseInt-with-fallback parse style as the seeded defaults in
+    // api/admin/system-settings/route.ts (18 corridas/dia, 384 corridas/mês).
+    // Degrades to the defaults if the DB read fails — a config feed must
+    // never break the career page.
+    const DEFAULT_DAILY_GOAL_RIDES = 18
+    const DEFAULT_MONTHLY_GOAL_RIDES = 384
+    let dailyGoalRides = DEFAULT_DAILY_GOAL_RIDES
+    let monthlyGoalRides = DEFAULT_MONTHLY_GOAL_RIDES
+    try {
+      const metasConfigs = await prisma.systemConfig.findMany({
+        where: { key: { in: ['metas.daily_goal_rides', 'metas.monthly_goal_rides'] } },
+      })
+      const metasMap: Record<string, string> = {}
+      metasConfigs.forEach((c) => { metasMap[c.key] = c.value })
+      dailyGoalRides =
+        parseInt(metasMap['metas.daily_goal_rides'] || '') || DEFAULT_DAILY_GOAL_RIDES
+      monthlyGoalRides =
+        parseInt(metasMap['metas.monthly_goal_rides'] || '') || DEFAULT_MONTHLY_GOAL_RIDES
+    } catch (metasErr) {
+      console.warn('career: falha ao ler metas do SystemConfig, usando defaults:', metasErr)
+    }
+
     const user = await db.findOne('User', '"id" = $1', [userId])
 
     if (!user) {
@@ -134,6 +159,11 @@ export async function GET(request: Request) {
       progress,
       plans: mappedPlans,
       milestones,
+      // 15-h — driver-bonus banner goals from SystemConfig (metas.*).
+      metas: {
+        dailyGoalRides,
+        monthlyGoalRides,
+      },
     })
   } catch (err) {
     console.error('Career error:', err)

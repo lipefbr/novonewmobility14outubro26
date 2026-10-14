@@ -72,8 +72,9 @@ function parseAllowedQualifications(raw: string | null | undefined): string[] | 
 }
 
 // Catalog of benefit types the admin can configure per-benefit. Mirrors the
-// STATIC_FALLBACK_GRATIFICATIONS in /api/gratifications/route.ts so the admin
-// UI has a stable list of benefit types to toggle.
+// STATIC_FALLBACK_GRATIFICATIONS em src/lib/gratification-catalog.ts
+// (Task 15-f: movido de /api/gratifications/route.ts para a lib compartilhada
+// com o claim) so the admin UI has a stable list of benefit types to toggle.
 const BENEFIT_CATALOG: Array<{
   type: string
   name: string

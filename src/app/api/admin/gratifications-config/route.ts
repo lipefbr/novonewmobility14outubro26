@@ -109,7 +109,8 @@ function sanitizeAllowedQualifications(arr: unknown): string[] {
 // Catalog of configurable benefits — mirrors the public endpoint's catalog
 // so the admin UI can render one row per benefit with a Motorista/Entregador/
 // Ambos selector. Keep in sync with /api/gratifications-config/route.ts and
-// /api/gratifications/route.ts STATIC_FALLBACK_GRATIFICATIONS.
+// STATIC_FALLBACK_GRATIFICATIONS em src/lib/gratification-catalog.ts
+// (movido da rota /api/gratifications na Task 15-f).
 const BENEFIT_CATALOG: Array<{
   type: string
   name: string

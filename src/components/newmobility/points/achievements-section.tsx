@@ -181,6 +181,12 @@ export function AchievementsSection() {
             <Star className="h-5 w-5 text-emerald-500 mx-auto mb-1" />
             <p className="text-xl font-bold text-foreground">{summary.points}</p>
             <p className="text-[10px] text-muted-foreground font-medium">{t('achievements.points')}</p>
+            {/* Task 15-g — desambiguação: estes pontos são o placar das conquistas
+                (soma dos pointsReward desbloqueados), NÃO o saldo da página
+                (careerPoints/personalPoints). Sem isso o usuário compara 300 vs 350. */}
+            <p className="text-[9px] text-muted-foreground/70 leading-tight mt-0.5">
+              {t('achievements.pointsHint')}
+            </p>
           </CardContent>
         </Card>
         <Card className="shadow-sm bg-card">
@@ -191,6 +197,11 @@ export function AchievementsSection() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Task 15-g — nota explicativa: pontos de conquistas ≠ saldo de pontos */}
+      <p className="text-[10px] text-muted-foreground text-center -mt-1">
+        {t('achievements.pointsFootnote')}
+      </p>
 
       {/* Overall Progress */}
       <Card className="shadow-sm bg-card">

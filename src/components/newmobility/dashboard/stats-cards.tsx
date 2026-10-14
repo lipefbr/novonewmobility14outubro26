@@ -5,7 +5,7 @@ import { motion } from 'framer-motion'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn, formatNumber } from '@/lib/utils'
 import { useTranslation } from '@/lib/i18n'
-import { Users, DollarSign, Activity, Truck, TrendingUp, TrendingDown, ChevronRight } from 'lucide-react'
+import { Users, DollarSign, Activity, Truck, ChevronRight } from 'lucide-react'
 import {
   Tooltip,
   TooltipContent,
@@ -49,29 +49,6 @@ function AnimatedNumber({ value, className }: { value: number; className?: strin
   )
 }
 
-interface TrendIndicatorProps {
-  value: number
-  label: string
-}
-
-function TrendIndicator({ value, label }: TrendIndicatorProps) {
-  const isPositive = value >= 0
-  return (
-    <div className={cn(
-      'flex items-center gap-1 text-xs font-semibold',
-      isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500'
-    )}>
-      {isPositive ? (
-        <TrendingUp className="h-3 w-3" />
-      ) : (
-        <TrendingDown className="h-3 w-3" />
-      )}
-      <span>{isPositive ? '+' : ''}{value}%</span>
-      <span className="text-muted-foreground font-normal">{label}</span>
-    </div>
-  )
-}
-
 export function StatsCards({ data }: StatsCardsProps) {
   const { t } = useTranslation()
 
@@ -88,7 +65,6 @@ export function StatsCards({ data }: StatsCardsProps) {
       border: 'border-emerald-200/80 dark:border-emerald-800/50',
       iconBg: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400',
       delay: 0,
-      trend: 12,
       tooltipDetail: t('dashboard.stats.direct'),
     },
     {
@@ -103,7 +79,6 @@ export function StatsCards({ data }: StatsCardsProps) {
       border: 'border-teal-200/80 dark:border-teal-800/50',
       iconBg: 'bg-teal-100 text-teal-600 dark:bg-teal-900/40 dark:text-teal-400',
       delay: 0.1,
-      trend: 8,
       tooltipDetail: t('dashboard.stats.entrada'),
     },
     {
@@ -118,7 +93,6 @@ export function StatsCards({ data }: StatsCardsProps) {
       border: 'border-amber-200/80 dark:border-amber-800/50',
       iconBg: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400',
       delay: 0.2,
-      trend: -3,
       tooltipDetail: t('dashboard.stats.residual'),
     },
     {
@@ -133,7 +107,6 @@ export function StatsCards({ data }: StatsCardsProps) {
       border: 'border-purple-200/80 dark:border-purple-800/50',
       iconBg: 'bg-purple-100 text-purple-600 dark:bg-purple-900/40 dark:text-purple-400',
       delay: 0.3,
-      trend: 15,
       tooltipDetail: t('dashboard.stats.sales'),
     },
   ]
@@ -178,8 +151,9 @@ export function StatsCards({ data }: StatsCardsProps) {
                       <div className="flex items-center justify-between mt-1">
                         <p className="text-xs text-muted-foreground font-medium">{stat.subtitle}</p>
                       </div>
-                      <div className="flex items-center justify-between mt-2">
-                        <TrendIndicator value={stat.trend} label={t('dashboard.stats.vsMonth')} />
+                      {/* Task 15-b: chip fake "+12% vs mês anterior" removido — a API não
+                          fornece série mês-a-mês; % sem fonte = dado errado (regra do usuário). */}
+                      <div className="flex items-center justify-end mt-2">
                         <ChevronRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all duration-200" />
                       </div>
                     </CardContent>

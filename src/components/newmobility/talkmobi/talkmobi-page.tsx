@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -19,6 +19,8 @@ import {
   Smartphone,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock,
   XCircle,
   Sparkles,
@@ -56,6 +58,13 @@ interface TalkMobiPlanDTO {
 interface ApiResponse {
   plans: TalkMobiPlanDTO[]
 }
+
+/**
+ * How many feature rows a plan card shows by default. The admin can add an
+ * unlimited number of items (one per line), so anything beyond this is
+ * revealed by the "+N benefícios" expand toggle instead of being cut off.
+ */
+const TALKMOBI_FEATURE_PREVIEW = 6
 
 /**
  * Subscription request for a TalkMobi mobile plan. Created when the user
@@ -227,6 +236,22 @@ export function TalkMobiPage() {
   // Subscribe dialog open/close + the plan the user is currently subscribing to
   const [subscribeOpen, setSubscribeOpen] = useState(false)
   const [subscribePlan, setSubscribePlan] = useState<TalkMobiPlanDTO | null>(null)
+
+  // Plan cards whose feature list the user expanded: the card shows the first
+  // TALKMOBI_FEATURE_PREVIEW items and a "+N benefícios" button reveals the
+  // rest (plans can have 10+ items — nothing is silently hidden anymore).
+  const [expandedPlans, setExpandedPlans] = useState<Set<string>>(new Set())
+  const toggleExpanded = useCallback((planId: string) => {
+    setExpandedPlans((prev) => {
+      const next = new Set(prev)
+      if (next.has(planId)) {
+        next.delete(planId)
+      } else {
+        next.add(planId)
+      }
+      return next
+    })
+  }, [])
 
   // TalkMobi subscription form state — holder + shipping address for the SIM chip
   const [subForm, setSubForm] = useState({
@@ -672,16 +697,44 @@ export function TalkMobiPage() {
                       )}
                     </div>
 
-                    {/* Features */}
+                    {/* Features — first TALKMOBI_FEATURE_PREVIEW rows inline,
+                        the rest behind a "+N benefícios" expand toggle. */}
                     {plan.features.length > 0 && (
-                      <ul className="space-y-1.5 mt-1">
-                        {plan.features.slice(0, 6).map((f, i) => (
-                          <li key={i} className="flex items-start gap-2 text-xs md:text-sm text-foreground/80">
-                            <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                            <span className="leading-snug">{f}</span>
-                          </li>
-                        ))}
-                      </ul>
+                      <div className="mt-1">
+                        <ul className="space-y-1.5">
+                          {(expandedPlans.has(plan.id)
+                            ? plan.features
+                            : plan.features.slice(0, TALKMOBI_FEATURE_PREVIEW)
+                          ).map((f, i) => (
+                            <li key={i} className="flex items-start gap-2 text-xs md:text-sm text-foreground/80">
+                              <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                              <span className="leading-snug">{f}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        {plan.features.length > TALKMOBI_FEATURE_PREVIEW && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            aria-expanded={expandedPlans.has(plan.id)}
+                            onClick={() => toggleExpanded(plan.id)}
+                            className="mt-1.5 -ml-2 h-11 min-h-[44px] gap-1 px-2 text-xs font-medium text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300"
+                          >
+                            {expandedPlans.has(plan.id) ? (
+                              <>
+                                Ver menos
+                                <ChevronUp className="h-3.5 w-3.5" />
+                              </>
+                            ) : (
+                              <>
+                                +{plan.features.length - TALKMOBI_FEATURE_PREVIEW} benefícios
+                                <ChevronDown className="h-3.5 w-3.5" />
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </div>
                     )}
 
                     {/* Subscribe button pinned to bottom */}

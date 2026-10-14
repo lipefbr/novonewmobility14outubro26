@@ -353,6 +353,14 @@ export function ProfilePage() {
   // Profile image upload state
   const [profileImageUploading, setProfileImageUploading] = useState(false)
   const profileImageInputRef = useRef<HTMLInputElement | null>(null)
+  // Task 15-d: track avatar load failures so a broken/missing photo is NOT
+  // silent (Radix Avatar already falls back to initials — this adds a visible
+  // warning badge on top of it). Reset whenever the URL changes (new upload,
+  // or refreshed DB value) so a fixed photo clears the badge.
+  const [avatarLoadError, setAvatarLoadError] = useState(false)
+  useEffect(() => {
+    setAvatarLoadError(false)
+  }, [user?.profileImage])
 
   const [bankInfo, setBankInfo] = useState({
     bankCode: '',
@@ -922,6 +930,7 @@ export function ProfilePage() {
       const data = await res.json()
       if (data.profileImage) {
         updateUser({ profileImage: data.profileImage })
+        setAvatarLoadError(false)
         sonnerToast.success('Foto de perfil atualizada com sucesso!')
         toast({
           title: 'Foto atualizada',
@@ -1197,6 +1206,24 @@ export function ProfilePage() {
                       src={user.profileImage}
                       alt={user?.name || 'Avatar'}
                       className="object-cover"
+                      // Task 15-d: make load failures non-silent — Radix
+                      // swaps in the initials fallback automatically; this
+                      // also flips a warning badge + logs for diagnosis.
+                      // NOTE: this Radix version preloads with a detached
+                      // `new Image()` and only renders <img> when loaded,
+                      // so `onError` would NEVER fire — the supported hook
+                      // is `onLoadingStatusChange`.
+                      onLoadingStatusChange={(status) => {
+                        if (status === 'error') {
+                          setAvatarLoadError(true)
+                          console.warn(
+                            '[profile] Falha ao carregar a foto de perfil:',
+                            user.profileImage
+                          )
+                        } else if (status === 'loaded') {
+                          setAvatarLoadError(false)
+                        }
+                      }}
                     />
                   ) : null}
                   <AvatarFallback className="bg-emerald-100 text-emerald-700 text-2xl font-bold">
@@ -1228,6 +1255,17 @@ export function ProfilePage() {
                     </span>
                   )}
                 </button>
+                {/* Task 15-d: visible feedback when the stored photo fails to
+                    load (e.g. file lost after a redeploy). Radix already shows
+                    the initials fallback — this badge explains WHY. */}
+                {avatarLoadError && user?.profileImage && (
+                  <div
+                    className="absolute -top-1 -left-1 z-10 bg-amber-500 rounded-full p-1"
+                    title="Não foi possível carregar sua foto. Envie uma nova para corrigir."
+                  >
+                    <AlertTriangle className="h-3 w-3 text-white" />
+                  </div>
+                )}
                 <div className="absolute -bottom-1 -right-1 bg-card rounded-full p-0.5">
                   <div className="bg-emerald-500 rounded-full p-1" title="Conta verificada">
                     <Verified className="h-3.5 w-3.5 text-white" />

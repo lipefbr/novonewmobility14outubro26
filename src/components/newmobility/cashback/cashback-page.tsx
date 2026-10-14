@@ -12,6 +12,7 @@ import { DollarSign, TrendingUp, ShoppingBag, ArrowDownRight, Download, Trending
 import { motion, AnimatePresence } from 'framer-motion'
 import { EmptyState } from '../ui/empty-states'
 import { Skeleton } from '@/components/ui/skeleton'
+import { formatBRL } from '@/lib/format'
 import {
   BarChart,
   Bar,
@@ -26,16 +27,17 @@ import {
 } from 'recharts'
 
 // Initial loading state — replaced with API data on mount.
-// All values are MEMBER COUNTS (not monetary totals). Privacy
-// requirement: no personal R$ earnings on user-facing pages.
-// `total` here represents the size of the user's network in that
-// matrix (entrada/residual/vendas). `lastMonth` / `lastWeek` /
-// `pending` are left at 0 until the API exposes per-period
-// member counts — the UI now displays them as counts, not R$.
+// `total` / `totalUsers` are MEMBER COUNTS (network size per matrix).
+// `totalEarned` (Task 15-j) is the per-type TOTAL CASHBACK EARNED in BRL
+// cents (from /api/dashboard `cashback*.totalEarned`) — used by the
+// "Proporção por Tipo" donut, where R$ amounts genuinely differ per matrix
+// (the member counts were nearly equal → always ~33.3% each, which was wrong).
+// `lastMonth` / `lastWeek` / `pending` are left at 0 until the API exposes
+// per-period member counts — the UI displays them as counts, not R$.
 const INITIAL_CASHBACK_SUMMARY = {
-  entrada: { total: 0, lastMonth: 0, lastWeek: 0, pending: 0, totalUsers: 0 },
-  residual: { total: 0, lastMonth: 0, lastWeek: 0, pending: 0, totalUsers: 0 },
-  vendas: { total: 0, lastMonth: 0, lastWeek: 0, pending: 0, totalUsers: 0 },
+  entrada: { total: 0, lastMonth: 0, lastWeek: 0, pending: 0, totalUsers: 0, totalEarned: 0 },
+  residual: { total: 0, lastMonth: 0, lastWeek: 0, pending: 0, totalUsers: 0, totalEarned: 0 },
+  vendas: { total: 0, lastMonth: 0, lastWeek: 0, pending: 0, totalUsers: 0, totalEarned: 0 },
 }
 
 type Period = '7d' | '30d' | 'all'
@@ -231,8 +233,9 @@ export function CashbackPage() {
   // `totalUsers` derived from CashbackEntry transactions, which is 0
   // for users who haven't received any payouts yet — not useful for a
   // "Total Members" headline.
-  // Privacy (task 4b): no R$ values are read or displayed here. Only
-  // member counts.
+  // Task 15-j — ALSO reads the per-type `totalEarned` (BRL cents) from the
+  // same response to feed the "Proporção por Tipo" donut with R$ amounts
+  // (user request: percentages must reflect the different R$ totals).
   useEffect(() => {
     if (!user?.id) return
     let cancelled = false
@@ -244,15 +247,20 @@ export function CashbackPage() {
         const entradaUsers = d?.cashbackEntrada?.totalUsers ?? 0
         const residualUsers = d?.cashbackResidual?.totalUsers ?? 0
         const vendasUsers = d?.cashbackVendas?.totalUsers ?? 0
+        // Task 15-j — total R$ ganho por matriz (centavos).
+        const entradaEarned = d?.cashbackEntrada?.totalEarned ?? 0
+        const residualEarned = d?.cashbackResidual?.totalEarned ?? 0
+        const vendasEarned = d?.cashbackVendas?.totalEarned ?? 0
         const newThisMonth = d?.network?.newReferrals ?? 0
         setCashbackSummary({
           entrada: {
-            // `total` now holds the member count for this matrix (not R$).
+            // `total` holds the member count for this matrix (not R$).
             total: entradaUsers,
             lastMonth: newThisMonth,
             lastWeek: 0,
             pending: 0,
             totalUsers: entradaUsers,
+            totalEarned: entradaEarned,
           },
           residual: {
             total: residualUsers,
@@ -260,6 +268,7 @@ export function CashbackPage() {
             lastWeek: 0,
             pending: 0,
             totalUsers: residualUsers,
+            totalEarned: residualEarned,
           },
           vendas: {
             total: vendasUsers,
@@ -267,6 +276,7 @@ export function CashbackPage() {
             lastWeek: 0,
             pending: 0,
             totalUsers: vendasUsers,
+            totalEarned: vendasEarned,
           },
         })
       })
@@ -346,12 +356,18 @@ export function CashbackPage() {
     { name: 'Vendas 4x9', value: cashbackSummary.vendas.total, color: '#f59e0b', users: cashbackSummary.vendas.totalUsers },
   ]
 
-  // Donut chart data — also member counts.
+  // Donut chart data — Task 15-j: values are the per-type TOTAL EARNED in
+  // BRL cents (from /api/dashboard `cashback*.totalEarned`), NOT member
+  // counts. The three matrices had nearly-equal member counts → the old
+  // donut showed ~33.3% for each type regardless of how much was earned.
+  // Colors keep the existing distinct palette (entrada=emerald,
+  // residual=teal, vendas=amber).
   const donutData = [
-    { name: 'Entrada', value: cashbackSummary.entrada.total, color: '#059669' },
-    { name: 'Residual', value: cashbackSummary.residual.total, color: '#0d9488' },
-    { name: 'Vendas', value: cashbackSummary.vendas.total, color: '#f59e0b' },
+    { name: 'Entrada', value: cashbackSummary.entrada.totalEarned, color: '#059669' },
+    { name: 'Residual', value: cashbackSummary.residual.totalEarned, color: '#0d9488' },
+    { name: 'Vendas', value: cashbackSummary.vendas.totalEarned, color: '#f59e0b' },
   ]
+  const donutTotalEarned = donutData.reduce((sum, d) => sum + d.value, 0)
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -398,9 +414,8 @@ export function CashbackPage() {
               <div>
                 <p className="text-xs sm:text-sm text-emerald-100 font-medium">Total de Membros na Rede</p>
                 <AnimatedCounter value={totalMembers} className="text-2xl sm:text-3xl md:text-4xl text-white mt-1" />
-                <div className="flex items-center gap-2 mt-2 flex-wrap">
-                  <span className="text-xs text-emerald-200">vs. mês anterior</span>
-                </div>
+                {/* Task 15-k: chip solto "vs. mês anterior" removido — nenhum valor de
+                    comparação existia atrás dele (dado sem fonte = removido). */}
               </div>
               {/* Network Footprint Summary */}
               <div className="flex flex-wrap items-center gap-3 sm:gap-4 md:gap-6">
@@ -459,15 +474,15 @@ export function CashbackPage() {
             </CardContent>
           </Card>
 
-          {/* Donut Chart */}
+          {/* Donut Chart — Task 15-j: fatias/legendas em R$ recebidos. */}
           <Card className="shadow-sm bg-card">
             <CardContent className="p-3 sm:p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Activity className="h-4 w-4 text-emerald-600" />
-                <span className="text-sm font-semibold text-foreground">Proporção por Tipo</span>
+                <span className="text-sm font-semibold text-foreground">Proporção por Tipo (R$ recebidos)</span>
               </div>
               <div className="flex items-center gap-3 sm:gap-4 flex-wrap sm:flex-nowrap">
-                <div className="h-[120px] w-[120px] sm:h-[140px] sm:w-[140px] shrink-0 mx-auto sm:mx-0">
+                <div className="relative h-[120px] w-[120px] sm:h-[140px] sm:w-[140px] shrink-0 mx-auto sm:mx-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -485,22 +500,36 @@ export function CashbackPage() {
                         ))}
                       </Pie>
                       <Tooltip
-                        formatter={(value: number) => [`${value.toLocaleString('pt-BR')} membros`, '']}
+                        formatter={(value: number) => [formatBRL(value), 'Recebido']}
                         contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '11px' }}
                       />
                     </PieChart>
                   </ResponsiveContainer>
+                  {/* Task 15-j — total central: soma R$ recebida nas 3 matrizes
+                      (mesma unidade das fatias). Zero-guard: soma 0 → "R$ 0,00". */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-[9px] uppercase tracking-wide text-muted-foreground">Total</span>
+                    <span className="text-[11px] sm:text-xs font-bold text-foreground tabular-nums text-center leading-tight px-1">
+                      {formatBRL(donutTotalEarned)}
+                    </span>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-2 flex-1">
                   {donutData.map((item) => {
-                    const pct = ((item.value / Math.max(totalMembers, 1)) * 100).toFixed(1)
+                    // Task 15-j — porcentagem sobre o TOTAL R$ recebido
+                    // (antes: sobre a soma de contagens de membros, que eram
+                    // quase iguais → 33.3% para todos). Zero-guard mantido.
+                    const pct = ((item.value / Math.max(donutTotalEarned, 1)) * 100).toFixed(1)
                     return (
                       <div key={item.name} className="flex items-center gap-2">
                         <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-medium text-foreground">{item.name}</span>
-                            <span className="text-xs font-bold text-foreground">{pct}%</span>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-medium text-foreground truncate">{item.name}</span>
+                            <span className="text-xs font-bold text-foreground whitespace-nowrap tabular-nums">
+                              {formatBRL(item.value)}{' '}
+                              <span className="text-muted-foreground font-medium">({pct}%)</span>
+                            </span>
                           </div>
                           <div className="h-1.5 bg-muted rounded-full mt-1 overflow-hidden">
                             <motion.div

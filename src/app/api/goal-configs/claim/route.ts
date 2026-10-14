@@ -1,6 +1,10 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { success, error } from '@/lib/api-utils'
+// Task 15-f — helper de audiência compartilhado (mesma regra do GET) e gate
+// de KYC (mesma regra de /api/gratifications/claim).
+import { userMatchesGoalAudience } from '@/lib/goal-audience'
+import { isKycApproved } from '@/lib/kyc'
 
 // ============================================================================
 // POST /api/goal-configs/claim — Reivindicar a recompensa de uma meta atingida
@@ -43,6 +47,9 @@ export async function POST(req: NextRequest) {
       select: {
         id: true,
         qualification: true,
+        userType: true,
+        isDriver: true,
+        isDelivery: true,
         role: true,
         isActive: true,
         balanceGratification: true,
@@ -62,15 +69,22 @@ export async function POST(req: NextRequest) {
       return error('Meta não encontrada ou inativa', 404)
     }
 
-    // Check qualification match
-    const userQual = (user.qualification || '').toLowerCase()
-    const target = config.targetQualification.toLowerCase()
-    const matches =
-      target === 'ambos'
-        ? userQual === 'motorista' || userQual === 'entregador'
-        : userQual === target
-    if (!matches) {
+    // Check audience match (Task 15-f — mesma regra do GET: reconhece todas
+    // as categorias de condutor, userType, flags legacy e qualificação vazia)
+    if (!userMatchesGoalAudience(user, config.targetQualification)) {
       return error('Esta meta não se aplica ao seu tipo de usuário', 403)
+    }
+
+    // Task 15-f — KYC gate (alinha o resgate de metas com o resgate de
+    // gratificações: ambos movimentam saldo e exigem identidade verificada).
+    if (user.role !== 'admin' && user.userType !== 'admin' && user.userType !== 'ADMIN') {
+      const kycOk = await isKycApproved(userId)
+      if (!kycOk) {
+        return error(
+          'KYC não aprovado. Complete sua verificação de documentos na aba KYC para resgatar gratificações.',
+          403
+        )
+      }
     }
 
     // Determine the period start for the claim dedup
@@ -87,44 +101,45 @@ export async function POST(req: NextRequest) {
       periodStart = new Date(0) // one_time — never claimable again
     }
 
-    // Check if already claimed in this period
-    try {
-      const existingClaim = await prisma.gratification.findFirst({
-        where: {
-          userId,
-          type: 'goal_claim',
-          // @ts-expect-error — referenceId may not be on schema
-          referenceId: config.id,
-          createdAt: { gte: periodStart },
-        },
-      })
-      if (existingClaim) {
-        return error('Você já reivindicou esta meta neste período', 409)
-      }
-    } catch {
-      // If referenceId doesn't exist on schema, fall back to description-based dedup
-      const existingClaim = await prisma.gratification.findFirst({
-        where: {
-          userId,
-          type: 'goal_claim',
-          description: { contains: `[${config.id}]` },
-          createdAt: { gte: periodStart },
-        },
-      })
-      if (existingClaim) {
-        return error('Você já reivindicou esta meta neste período', 409)
-      }
+    // Check if already claimed in this period.
+    // Task 15-f — o schema Gratification NÃO tem coluna referenceId (o código
+    // antigo usava @ts-expect-error e sempre caía no catch). O dedup é pela
+    // description com o marker `[<goalConfig.id>]` gravado abaixo — agora
+    // typed, sem @ts-expect-error e sem try/catch duplicado.
+    const existingClaim = await prisma.gratification.findFirst({
+      where: {
+        userId,
+        type: 'goal_claim',
+        description: { contains: `[${config.id}]` },
+        createdAt: { gte: periodStart },
+      },
+    })
+    if (existingClaim) {
+      return error('Você já reivindicou esta meta neste período', 409)
     }
 
     // Credit the reward to the specified wallet
     const walletField = WALLET_FIELD_MAP[config.rewardWallet] || 'balanceGratification'
     const rewardCents = config.rewardCents
 
-    // Update user balance
-    // @ts-expect-error — dynamic field access
+    // Update user balance — objeto explícito por carteira para manter a
+    // tipagem do Prisma (sem @ts-expect-error em acesso dinâmico).
+    const rewardIncrement = { increment: rewardCents }
+    const walletData =
+      walletField === 'balanceWithdrawal'
+        ? { balanceWithdrawal: rewardIncrement }
+        : walletField === 'balanceShopping'
+          ? { balanceShopping: rewardIncrement }
+          : walletField === 'balanceMobility'
+            ? { balanceMobility: rewardIncrement }
+            : walletField === 'balanceFood'
+              ? { balanceFood: rewardIncrement }
+              : walletField === 'balancePharmacy'
+                ? { balancePharmacy: rewardIncrement }
+                : { balanceGratification: rewardIncrement }
     await prisma.user.update({
       where: { id: userId },
-      data: { [walletField]: { increment: rewardCents } },
+      data: walletData,
     })
 
     // Create Gratification history record
@@ -159,6 +174,6 @@ export async function POST(req: NextRequest) {
     })
   } catch (err) {
     console.error('goal-configs/claim POST error:', err)
-    return error('Failed to claim goal reward', 500)
+    return error('Erro ao reivindicar a recompensa da meta. Tente novamente.', 500)
   }
 }

@@ -56,12 +56,18 @@ function getPasswordStrength(password: string): { score: number; label: string; 
 // gradientes e badges são apresentação local; nome e preço são hidratados
 // do banco via GET /api/plans no mount. Os valores abaixo são fallback
 // (usados só quando a API falha) e estão alinhados ao seed da tabela Plan
-// (Task 2-b: blue3/blue5 = R$ 999,90 cada).
+// (Task 2-b: blue3/blue5 = R$ 999,90 cada; free = R$ 0).
 //
 // FIX: antes os cards exibiam "R$ 200,00" (blue3) e "R$ 999,00" (blue5) —
 // valores estáticos divergentes do banco (99990/99990). O campo `priceValue`
 // (em reais) foi removido porque não era usado em lugar nenhum — o preço
 // agora vive só em `priceCents` e é formatado com formatCurrency().
+//
+// Task 15-a: o cadastro oferece os 3 planos iniciais (Gratuito, Blue 3,
+// Blue 5 Premium) — o template `free` existe para que o mergeApiPlan
+// encontre apresentação (ícone/badge/borda) quando a API retornar o plano
+// Gratuito. `badge` é um selo opcional (ex.: "PARA COMEÇAR"), distinto do
+// badge `popular`.
 type PlanCard = {
   id: string
   code: string
@@ -69,6 +75,7 @@ type PlanCard = {
   priceCents: number
   icon: typeof Shield
   popular?: boolean
+  badge?: string
   features: Array<{ text: string; icon: typeof Shield }>
   color: string
   borderColor: string
@@ -76,6 +83,23 @@ type PlanCard = {
 }
 
 const PLAN_TEMPLATES: PlanCard[] = [
+  {
+    // Task 15-a: plano Gratuito (sortOrder 0 no banco — aparece primeiro).
+    // priceCents 0 espelha o seed; o card exibe "Grátis" quando o preço é 0.
+    id: 'free',
+    code: 'free',
+    name: 'Gratuito',
+    priceCents: 0,
+    icon: Sparkles,
+    badge: 'PARA COMEÇAR',
+    features: [
+      { text: 'Cadastro gratuito', icon: Shield },
+      { text: 'Indicação de usuários', icon: Users },
+    ],
+    color: 'from-teal-500 to-emerald-500',
+    borderColor: 'border-teal-300 dark:border-teal-700',
+    bgSelected: 'bg-teal-50 dark:bg-teal-950/30',
+  },
   {
     id: 'blue3',
     code: 'blue3',
@@ -122,6 +146,7 @@ type ApiPlan = {
   priceCents?: number
   description?: string
   features?: string[]
+  sortOrder?: number
 }
 
 // Mescla um plano da API sobre o template local (mesmo padrão do
@@ -245,10 +270,16 @@ export function RegisterPage() {
         })
         if (cancelled) return
         const apiPlans = Array.isArray(data?.plans) ? data.plans : []
-        // Cadastro é upsell — mantém apenas planos pagos (exclui 'free')
-        const paidPlans = apiPlans.filter((p) => (p.code || p.id) !== 'free')
-        if (paidPlans.length > 0) {
-          setPlans(paidPlans.map(mergeApiPlan))
+        // Task 15-a: cadastro mostra TODOS os planos do banco (Gratuito,
+        // Blue 3, Blue 5 Premium) — o filtro de upsell que excluía 'free'
+        // foi removido. A API já ordena por sortOrder asc (free=0 primeiro);
+        // o sort defensivo abaixo só fixa a ordem caso o array venha fora
+        // de ordem (sortOrder ausente → mantém a posição original).
+        const orderedPlans = [...apiPlans].sort(
+          (a, b) => (a.sortOrder ?? 99) - (b.sortOrder ?? 99)
+        )
+        if (orderedPlans.length > 0) {
+          setPlans(orderedPlans.map(mergeApiPlan))
         }
       } catch (err) {
         // Fallback: mantém os templates locais (preços corrigidos,
@@ -788,10 +819,16 @@ export function RegisterPage() {
                 >
                   <div className="space-y-3">
                     <Label className="text-sm font-semibold">Escolha seu Plano</Label>
+                    {/* Task 15-a: 3 cards — mobile empilha (grid-cols-1);
+                        sm mantém 2 colunas e o último card de uma lista
+                        ímpar ocupa a linha inteira (2+1 balanceado),
+                        evitando buraco vazio na grid. */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {plans.map((plan) => {
+                      {plans.map((plan, i) => {
                         const PlanIcon = plan.icon
                         const isSelected = formData.plan === plan.id
+                        const isLastOdd =
+                          plans.length % 2 === 1 && i === plans.length - 1
                         return (
                           <motion.button
                             key={plan.id}
@@ -800,14 +837,20 @@ export function RegisterPage() {
                             whileTap={{ scale: 0.98 }}
                             className={cn(
                               "relative p-4 rounded-xl border-2 text-left transition-all",
+                              isLastOdd && 'sm:col-span-2',
                               isSelected
                                 ? `${plan.borderColor} ${plan.bgSelected} shadow-md`
                                 : "border-gray-200 dark:border-gray-700 bg-card hover:border-emerald-300 dark:hover:border-emerald-700"
                             )}
                           >
-                            {plan.popular && (
-                              <span className="absolute -top-2.5 left-3 bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-                                POPULAR
+                            {(plan.popular || plan.badge) && (
+                              <span
+                                className={cn(
+                                  'absolute -top-2.5 left-3 text-white text-[10px] font-bold px-2 py-0.5 rounded-full',
+                                  plan.popular ? 'bg-emerald-600' : 'bg-teal-600'
+                                )}
+                              >
+                                {plan.popular ? 'POPULAR' : plan.badge}
                               </span>
                             )}
                             <div className="flex items-center justify-between mb-3">
@@ -825,9 +868,15 @@ export function RegisterPage() {
                               </div>
                             </div>
                             <div className="mb-3">
-                              {/* Task 13-a: preço hidratado do banco (centavos → BRL) */}
-                              <span className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(plan.priceCents)}</span>
-                              <span className="text-xs text-muted-foreground block">/taxa de uso</span>
+                              {/* Task 13-a: preço hidratado do banco (centavos → BRL).
+                                  Task 15-a: plano gratuito (priceCents 0) exibe
+                                  "Grátis" em vez de "R$ 0,00 /taxa de uso". */}
+                              <span className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
+                                {plan.priceCents === 0 ? 'Grátis' : formatCurrency(plan.priceCents)}
+                              </span>
+                              <span className="text-xs text-muted-foreground block">
+                                {plan.priceCents === 0 ? 'sem mensalidade' : '/taxa de uso'}
+                              </span>
                             </div>
                             <ul className="space-y-1.5">
                               {plan.features.map((f, i) => {

@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useStore } from '@/lib/store'
 import { useTranslation } from '@/lib/i18n'
 import { formatCurrency, formatDate, getStatusLabel, getStatusVariant, cn } from '@/lib/utils'
-import { financialApi, transferApi, apiFetch, invoicesApi, referralsApi } from '@/lib/api'
+import { financialApi, transferApi, apiFetch, invoicesApi, referralsApi, gratificationsApi } from '@/lib/api'
 import { FinancialSkeleton } from '../ui/loading-skeletons'
 import { EmptyState } from '../ui/empty-states'
 import { InvoiceViewer } from './invoice-viewer'
@@ -321,6 +321,20 @@ function AnimatedBalance({ value, className }: { value: number; className?: stri
   return <span className={className}>{formatCurrency(display)}</span>
 }
 
+// Task 15-b: estado vazio padronizado para os gráficos — quando não há dados
+// reais no período (últimos 6 meses), mostra uma mensagem centralizada em vez
+// de um gráfico de eixos vazios que o usuário lê como "não abre/quebrado".
+function ChartEmptyState({ message, icon: Icon = TrendingUp }: { message: string; icon?: React.ElementType }) {
+  return (
+    <div className="h-full flex flex-col items-center justify-center text-center px-4 gap-2">
+      <div className="p-2.5 rounded-full bg-muted/60">
+        <Icon className="h-6 w-6 text-muted-foreground/50" />
+      </div>
+      <p className="text-xs text-muted-foreground font-medium max-w-[280px]">{message}</p>
+    </div>
+  )
+}
+
 
 const withdrawalStatusConfig: Record<string, { label: string; icon: React.ElementType; color: string }> = {
   requested: { label: 'Solicitado', icon: Clock, color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
@@ -378,6 +392,12 @@ export function FinancialPage() {
   const [invoicesLoading, setInvoicesLoading] = useState(false)
   const [referralStats, setReferralStats] = useState<{ totalDirect: number; totalNetwork: number; activeDirect: number } | null>(null)
   const [referralStatsLoading, setReferralStatsLoading] = useState(false)
+
+  // Task 15-b: histórico real de gratificações RESGATADAS (tabela Gratification,
+  // via GET /api/gratifications → `claimed[]`). Alimenta o gráfico "Saldo de
+  // Gratificação" e o resumo quando o usuário não tem transações do tipo
+  // `gratification` (nesse caso o claim é a única fonte de histórico).
+  const [claimedGratifications, setClaimedGratifications] = useState<any[]>([])
 
   const PAGE_LIMIT = 20
 
@@ -490,6 +510,20 @@ export function FinancialPage() {
     }
   }, [user?.id])
 
+  // Task 15-b: busca os resgates de gratificação do usuário (`claimed[]`) para
+  // o gráfico do Saldo de Gratificação. Best-effort: em caso de falha mantém
+  // [] e o gráfico cai no estado vazio.
+  const refreshGratificationClaims = useCallback(async () => {
+    if (!user?.id) return
+    try {
+      const data = await gratificationsApi.getList(user.id)
+      setClaimedGratifications(data?.claimed || [])
+    } catch (err) {
+      console.error('Failed to refresh claimed gratifications', err)
+      setClaimedGratifications([])
+    }
+  }, [user?.id])
+
   // Initial mount: fetch balances, transactions (page 1), withdrawals, chart data
   useEffect(() => {
     if (!user?.id) {
@@ -506,6 +540,7 @@ export function FinancialPage() {
         refreshAllTransactionsForChart(),
         refreshInvoices(),
         refreshReferralStats(),
+        refreshGratificationClaims(),
       ])
       if (!cancelled) setInitialLoading(false)
     })()
@@ -561,8 +596,9 @@ export function FinancialPage() {
       refreshAllTransactionsForChart(),
       refreshInvoices(),
       refreshReferralStats(),
+      refreshGratificationClaims(),
     ])
-  }, [refreshBalances, refreshTransactions, refreshWithdrawals, refreshAllTransactionsForChart, refreshInvoices, refreshReferralStats, currentPage, filterType])
+  }, [refreshBalances, refreshTransactions, refreshWithdrawals, refreshAllTransactionsForChart, refreshInvoices, refreshReferralStats, refreshGratificationClaims, currentPage, filterType])
 
   // Keep the transfer destination valid whenever the source changes: it must never equal
   // the source and must never be `withdrawal` (Saldo para Saque), which is only ever a
@@ -613,10 +649,36 @@ export function FinancialPage() {
     .filter((tx) => (tx.type && tx.type.startsWith('cashback')) || tx.category === 'cashback')
     .reduce((sum, tx) => sum + Math.max(0, Number(tx.amount) || 0), 0)
 
+  // Task 15-b: fonte do gráfico/lista de gratificações. Transações do tipo
+  // `gratification` são a fonte primária; quando o usuário NÃO tem nenhuma
+  // (comum — claims vivem só na tabela Gratification), usa o histórico real
+  // de resgates de /api/gratifications (claimed[]) para o gráfico mostrar os
+  // resgates de verdade em vez de zeros. NUNCA mescla as duas fontes: um claim
+  // normalmente também gera transação, e somar ambos duplicaria valores.
+  const gratificationTransactions = allTransactionsForChart.filter(
+    (tx) => tx.type === 'gratification' || tx.category === 'gratification'
+  )
+  const claimedGratificationEvents = claimedGratifications.map((g) => ({
+    id: g.id,
+    amount: Number(g.amount) || 0,
+    type: 'gratification',
+    description: g.description || g.name || g.type || 'Gratificação',
+    createdAt: g.claimedAt || g.createdAt,
+  }))
+  const gratificationChartSource =
+    gratificationTransactions.length > 0 ? gratificationTransactions : claimedGratificationEvents
+
   // Total Gratification earned (type or category == 'gratification')
-  const totalGratificationEarned = allTransactionsForChart
-    .filter((tx) => tx.type === 'gratification' || tx.category === 'gratification')
+  // Task 15-b: usa a fonte real (transações OU claims resgatadas) para não
+  // zerar quando o histórico de gratificações vive só na tabela Gratification.
+  const totalGratificationEarned = gratificationChartSource
     .reduce((sum, tx) => sum + Math.max(0, Number(tx.amount) || 0), 0)
+
+  // Task 15-b: resumo de resgates reais (para o card "Resumo Gratificação").
+  const claimedGratificationsCount = claimedGratifications.length
+  const claimedGratificationsTotal = claimedGratifications.reduce(
+    (sum, g) => sum + Math.max(0, Number(g.amount) || 0), 0
+  )
 
   // Total referral earnings: residual + entry cashback plus any transaction whose
   // description references referrals/indicações/residual.
@@ -628,12 +690,11 @@ export function FinancialPage() {
     })
     .reduce((sum, tx) => sum + Math.max(0, Number(tx.amount) || 0), 0)
 
-  // Gratification chart data (monthly, last 6 months)
-  const gratificationData = buildGratificationData(allTransactionsForChart)
+  // Gratification chart data (monthly, last 6 months) — fonte real (Task 15-b)
+  const gratificationData = buildGratificationData(gratificationChartSource)
 
-  // Latest 5 gratification transactions (most recent first)
-  const latestGratificationTransactions = allTransactionsForChart
-    .filter((tx) => tx.type === 'gratification' || tx.category === 'gratification')
+  // Latest 5 gratification events (most recent first)
+  const latestGratificationTransactions = gratificationChartSource
     .slice()
     .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
     .slice(0, 5)
@@ -735,6 +796,15 @@ export function FinancialPage() {
 
   // Monthly chart data computed from real transactions (no mock)
   const monthlyData = buildMonthlyData(allTransactionsForChart)
+
+  // Task 15-b: flags "tem dados reais" para os estados vazios dos gráficos —
+  // sem isso um usuário sem movimentações vê um gráfico vazio/zerado.
+  const hasMonthlyData = monthlyData.some((m) => m.ganhos > 0 || m.saques > 0)
+  const hasGratificationData = gratificationData.some((m) => m.gratificacao > 0)
+  // Saldo Disponível: só esconde o gráfico quando NÃO há saldo atual, NÃO há
+  // histórico de saques E a reconstrução mensal está toda zerada (nada a plotar).
+  const hasSaldoDisponivel =
+    saldoDisponivelData.some((m) => m.saldo > 0) || withdrawals.length > 0
 
   // Pending transactions (only withdrawals show up as pending in the API)
   const pendingTransactions = allTransactionsForChart.filter((tx) => tx.status === 'pending')
@@ -1400,6 +1470,7 @@ export function FinancialPage() {
           </CardHeader>
           <CardContent>
             <div className="h-[200px] md:h-[240px]">
+              {hasMonthlyData ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={monthlyData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                   <defs>
@@ -1426,6 +1497,9 @@ export function FinancialPage() {
                   <Area type="monotone" dataKey="saques" stroke="#f59e0b" strokeWidth={2} fillOpacity={1} fill="url(#colorSaques)" name="Saques" />
                 </AreaChart>
               </ResponsiveContainer>
+              ) : (
+                <ChartEmptyState message="Sem movimentações nos últimos 6 meses" icon={TrendingUp} />
+              )}
             </div>
           </CardContent>
         </Card>
@@ -1461,6 +1535,7 @@ export function FinancialPage() {
           </CardHeader>
           <CardContent>
             <div className="h-[180px]">
+              {hasGratificationData ? (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={gratificationData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                   <defs>
@@ -1483,6 +1558,9 @@ export function FinancialPage() {
                   <Bar dataKey="gratificacao" name="Gratificação" fill="url(#colorGratificacao)" radius={[4, 4, 0, 0]} animationDuration={900} />
                 </BarChart>
               </ResponsiveContainer>
+              ) : (
+                <ChartEmptyState message="Sem resgates de gratificação nos últimos 6 meses" icon={Gift} />
+              )}
             </div>
             {/* Latest gratification transactions */}
             {latestGratificationTransactions.length > 0 && (
@@ -1514,39 +1592,42 @@ export function FinancialPage() {
         </Card>
       </motion.div>
 
-      {/* ===== Task 13-E: 4 new charts (Saldo Gratificação, Saldo Faturas, Saldo Disponível, Saldo Sacável) ===== */}
+      {/* ===== Task 13-E: charts auxiliares (Resumo Gratificação, Saldo Faturas, Saldo Disponível, Saldo Sacável) =====
+          Task 15-b: o 2º gráfico de gratificação (duplicado do "Saldo de Gratificação" acima) foi substituído
+          pelo resumo compacto "Resumo Gratificação" — saldo atual + nº de resgates + total resgatado. */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* 1. Saldo Gratificação — BarChart (monthly gratification, last 6 months) */}
+        {/* 1. Resumo Gratificação — saldo atual + resgates reais (Task 15-b) */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.13, duration: 0.3 }}
         >
-          <Card className="shadow-sm bg-card h-full">
+          <Card className="shadow-sm bg-gradient-to-br from-purple-50 to-amber-50/50 dark:from-purple-950/30 dark:to-amber-950/20 border-purple-200/60 dark:border-purple-900/40 h-full">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2">
                 <Gift className="h-4 w-4 text-purple-600" />
-                Saldo Gratificação
+                Resumo Gratificação
               </CardTitle>
-              <p className="text-[11px] text-muted-foreground">Gratificação mensal — últimos 6 meses</p>
+              <p className="text-[11px] text-muted-foreground">Visão geral das gratificações do usuário</p>
             </CardHeader>
             <CardContent>
-              <div className="h-[200px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={gratificationData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.3)" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
-                    <YAxis
-                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                      tickFormatter={(value) => `R$${(value / 100000).toFixed(0)}k`}
-                    />
-                    <Tooltip
-                      formatter={(value: number) => [`R$ ${(value / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Gratificação']}
-                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                    />
-                    <Bar dataKey="gratificacao" name="Gratificação" fill="#8b5cf6" radius={[4, 4, 0, 0]} animationDuration={900} />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div className="flex flex-col gap-3 h-[200px] justify-center">
+                <div>
+                  <p className="text-[11px] text-muted-foreground font-medium">Saldo atual</p>
+                  <p className="text-3xl font-bold text-purple-700 dark:text-purple-400">
+                    {formatCurrency(user?.balanceGratification || 0)}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-md bg-white/60 dark:bg-purple-950/40 p-2 border border-purple-100 dark:border-purple-900/50">
+                    <p className="text-[10px] text-muted-foreground font-medium">Resgates</p>
+                    <p className="text-sm font-bold text-foreground">{claimedGratificationsCount}</p>
+                  </div>
+                  <div className="rounded-md bg-white/60 dark:bg-amber-950/40 p-2 border border-amber-100 dark:border-amber-900/50">
+                    <p className="text-[10px] text-muted-foreground font-medium">Total resgatado</p>
+                    <p className="text-sm font-bold text-foreground">{formatCurrency(claimedGratificationsTotal)}</p>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -1621,6 +1702,7 @@ export function FinancialPage() {
             </CardHeader>
             <CardContent>
               <div className="h-[200px]">
+                {hasSaldoDisponivel ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={saldoDisponivelData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.3)" />
@@ -1636,6 +1718,9 @@ export function FinancialPage() {
                     <Line type="monotone" dataKey="saldo" name="Saldo" stroke="#059669" strokeWidth={2} dot={{ r: 3 }} animationDuration={900} />
                   </LineChart>
                 </ResponsiveContainer>
+                ) : (
+                  <ChartEmptyState message="Nenhum saldo ou saque registrado nos últimos 6 meses" icon={Wallet} />
+                )}
               </div>
             </CardContent>
           </Card>

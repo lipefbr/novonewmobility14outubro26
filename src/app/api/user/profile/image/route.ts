@@ -110,11 +110,17 @@ export async function POST(request: NextRequest) {
     }
     const ext = extMap[mime] || 'png'
 
-    // Save the file to /public/uploads/profiles/{userId}-{timestamp}.{ext}
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'profiles')
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true })
-    }
+    // Save the file to <uploadsBase>/profiles/{userId}-{timestamp}.{ext}
+    // Task 15-d: resolve the base dir exactly like /api/uploads/[...path]
+    // (the route that serves these files back). Dev default keeps the old
+    // behavior (<cwd>/public/uploads, served statically); in standalone
+    // production set UPLOADS_DIR to a persistent path so photos survive
+    // redeploys (the rewrite /uploads/* → /api/uploads/* serves them).
+    const uploadsBaseDir =
+      process.env.UPLOADS_DIR || path.join(process.cwd(), 'public', 'uploads')
+    const uploadsDir = path.join(uploadsBaseDir, 'profiles')
+    // mkdir recursive is idempotent — safe to call on every request.
+    fs.mkdirSync(uploadsDir, { recursive: true })
     const filename = `${userId}-${Date.now()}.${ext}`
     const filePath = path.join(uploadsDir, filename)
     fs.writeFileSync(filePath, buffer)
